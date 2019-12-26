@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMDirectCallStackFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMDirectCallStackFrame.java</span></div><h1>JVMDirectCallStackFrame.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.vm.DirectCallStackFrame;
+import gov.nasa.jpf.vm.MethodInfo;
+
+/**
+ * a direct call stackframe that supports JVM calling conventions
+ */
+public class JVMDirectCallStackFrame extends DirectCallStackFrame {
+  
+  JVMDirectCallStackFrame (MethodInfo miDirectCall, MethodInfo callee){
+<span class="fc" id="L30">    super( miDirectCall, callee);</span>
+<span class="fc" id="L31">  }</span>
+
+  //--- return value handling
+  
+  @Override
+  public int getResult(){
+<span class="fc" id="L37">    return pop();</span>
+  }
+  
+  @Override
+  public int getReferenceResult(){
+<span class="fc" id="L42">    return pop();</span>
+  }
+  
+  @Override
+  public long getLongResult(){
+<span class="fc" id="L47">    return popLong();</span>
+  }
+
+  @Override
+  public Object getResultAttr(){
+<span class="fc" id="L52">    return getOperandAttr();</span>
+  }
+  
+  @Override
+  public Object getLongResultAttr(){
+<span class="fc" id="L57">    return getLongOperandAttr();</span>
+  }
+
+  @Override
+  public void setExceptionReference (int exRef){
+<span class="nc" id="L62">    clearOperandStack();</span>
+<span class="nc" id="L63">    pushRef( exRef);</span>
+<span class="nc" id="L64">  }</span>
+  
+  @Override
+  public int getExceptionReference(){
+<span class="nc" id="L68">    return pop();</span>
+  }
+
+  @Override
+  public void setExceptionReferenceAttribute (Object attr){
+<span class="nc" id="L73">    setOperandAttr(attr);</span>
+<span class="nc" id="L74">  }</span>
+  
+  @Override
+  public Object getExceptionReferenceAttribute (){
+<span class="nc" id="L78">    return getOperandAttr();</span>
+  }
+  
+  //--- direct call argument initialization
+  // NOTE - we don't support out-of-order arguments yet, i.e. the slotIdx is ignored
+  
+  
+  @Override
+  public int setArgument (int slotIdx, int v, Object attr){
+<span class="fc" id="L87">    push(v);</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L89">      setOperandAttr(attr);</span>
+    }
+    
+<span class="fc" id="L92">    return slotIdx+1;</span>
+  }
+  
+  @Override
+  public int setReferenceArgument (int slotIdx, int ref, Object attr){
+<span class="fc" id="L97">    pushRef(ref);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">    if (attr != null){</span>
+<span class="fc" id="L99">      setOperandAttr(attr);</span>
+    }
+    
+<span class="fc" id="L102">    return slotIdx+1;</span>
+  }
+  
+  @Override
+  public int setLongArgument (int slotIdx, long v, Object attr){
+<span class="fc" id="L107">    pushLong(v);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L109">      setLongOperandAttr(attr);</span>
+    } 
+    
+<span class="fc" id="L112">    return slotIdx+2;</span>
+  }
+  
+  //--- DirectCallStackFrame methods don't have arguments
+  
+  @Override
+  public void setArgumentLocal (int argIdx, int v, Object attr){
+<span class="nc" id="L119">    throw new UnsupportedOperationException(&quot;direct call methods don't have arguments&quot;);</span>
+  }
+  @Override
+  public void setReferenceArgumentLocal (int argIdx, int v, Object attr){
+<span class="nc" id="L123">    throw new UnsupportedOperationException(&quot;direct call methods don't have arguments&quot;);</span>
+  }
+  @Override
+  public void setLongArgumentLocal (int argIdx, long v, Object attr){
+<span class="nc" id="L127">    throw new UnsupportedOperationException(&quot;direct call methods don't have arguments&quot;);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

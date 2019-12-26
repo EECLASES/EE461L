@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VarRecorder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">VarRecorder.java</span></div><h1>VarRecorder.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.JVMArrayElementInstruction;
+import gov.nasa.jpf.jvm.bytecode.ArrayLoadInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMLocalVariableInstruction;
+import gov.nasa.jpf.vm.bytecode.StoreInstruction;
+import gov.nasa.jpf.vm.bytecode.LocalVariableInstruction;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.Step;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+import java.util.HashMap;
+
+/**
+ * Simple listener tool to record the values of variables as they are accessed.
+ * Records the information in Step.setComment() so that when the trace is
+ * written the values can be written too.
+ */
+public class VarRecorder extends ListenerAdapter {
+
+<span class="nc" id="L50">  private final HashMap&lt;ThreadInfo, String&gt; pendingComment = new HashMap&lt;ThreadInfo, String&gt;();</span>
+
+  private final StringSetMatcher includes;
+  private final StringSetMatcher excludes;
+  private final boolean recordFields;
+  private final boolean recordLocals;
+  private final boolean recordArrays;
+
+  private ClassInfo lastClass;
+  private boolean recordClass;
+
+<span class="nc" id="L61">  public VarRecorder(Config config) {</span>
+<span class="nc" id="L62">    includes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;var_recorder.include&quot;));</span>
+<span class="nc" id="L63">    excludes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;var_recorder.exclude&quot;));</span>
+<span class="nc" id="L64">    recordFields = config.getBoolean(&quot;var_recorder.fields&quot;, true);</span>
+<span class="nc" id="L65">    recordLocals = config.getBoolean(&quot;var_recorder.locals&quot;, true);</span>
+<span class="nc" id="L66">    recordArrays = config.getBoolean(&quot;var_recorder.arrays&quot;, true);</span>
+<span class="nc" id="L67">  }</span>
+
+  @Override
+  public void executeInstruction(VM vm, ThreadInfo ti, Instruction insnToExecute) {
+    String name, value;
+    byte type;
+
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (!canRecord(vm, insnToExecute))</span>
+<span class="nc" id="L75">      return;</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    if (!(insnToExecute instanceof StoreInstruction))</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      if (!(insnToExecute instanceof ArrayLoadInstruction))</span>
+<span class="nc" id="L79">        return;</span>
+
+<span class="nc" id="L81">    type = getType(ti, insnToExecute);</span>
+<span class="nc" id="L82">    name = getName(ti, insnToExecute, type);</span>
+
+<span class="nc bnc" id="L84" title="All 2 branches missed.">    if (insnToExecute instanceof ArrayLoadInstruction) {</span>
+<span class="nc" id="L85">      setComment(vm, ti, name, &quot;&quot;, &quot;&quot;, true);</span>
+<span class="nc" id="L86">      saveVariableType(ti, type);</span>
+    } else {
+<span class="nc" id="L88">      value = getValue(ti, insnToExecute, type);</span>
+<span class="nc" id="L89">      setComment(vm, ti, name, &quot; &lt;- &quot;, value, true);</span>
+    }
+<span class="nc" id="L91">  }</span>
+
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+    String name, value;
+    byte type;
+
+<span class="nc bnc" id="L98" title="All 2 branches missed.">    if (!canRecord(vm, executedInsn))</span>
+<span class="nc" id="L99">      return;</span>
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (executedInsn instanceof StoreInstruction) {</span>
+<span class="nc" id="L102">      name = pendingComment.remove(ti);</span>
+<span class="nc" id="L103">      setComment(vm, ti, name, &quot;&quot;, &quot;&quot;, false);</span>
+<span class="nc" id="L104">      return;</span>
+    }
+
+<span class="nc" id="L107">    type  = getType(ti, executedInsn);</span>
+<span class="nc" id="L108">    value = getValue(ti, executedInsn, type);</span>
+
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    if (executedInsn instanceof ArrayLoadInstruction)</span>
+<span class="nc" id="L111">      name = pendingComment.remove(ti);</span>
+    else
+<span class="nc" id="L113">      name = getName(ti, executedInsn, type);</span>
+
+<span class="nc bnc" id="L115" title="All 2 branches missed.">    if (isArrayReference(vm, ti))</span>
+<span class="nc" id="L116">      saveVariableName(ti, name);</span>
+    else
+<span class="nc" id="L118">      saveVariableType(ti, type);</span>
+
+<span class="nc" id="L120">    setComment(vm, ti, name, &quot; -&gt; &quot;, value, false);</span>
+<span class="nc" id="L121">  }</span>
+
+  private final void setComment(VM vm, ThreadInfo ti, String name, String operator, String value, boolean pending) {
+    Step step;
+    String comment;
+
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    if (name == null)</span>
+<span class="nc" id="L128">      return;</span>
+
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    if (value == null)</span>
+<span class="nc" id="L131">      return;</span>
+
+<span class="nc" id="L133">    comment = name + operator + value;</span>
+
+<span class="nc bnc" id="L135" title="All 2 branches missed.">    if (pending) {</span>
+<span class="nc" id="L136">      pendingComment.put(ti, comment);</span>
+    } else {
+<span class="nc" id="L138">      step = vm.getLastStep();</span>
+<span class="nc" id="L139">      step.setComment(name + operator + value);</span>
+    }
+<span class="nc" id="L141">  }</span>
+
+  private final boolean canRecord(VM vm, Instruction inst) {
+    ClassInfo ci;
+    MethodInfo mi;
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    if (vm.getLastStep() == null)</span>
+<span class="nc" id="L148">      return(false);</span>
+
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (!(inst instanceof LocalVariableInstruction))</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">      if (!(inst instanceof JVMArrayElementInstruction))</span>
+<span class="nc" id="L152">        return(false);</span>
+
+<span class="nc" id="L154">    mi   = inst.getMethodInfo();</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (mi == null)</span>
+<span class="nc" id="L156">      return(false);</span>
+
+<span class="nc" id="L158">    ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (ci == null)</span>
+<span class="nc" id="L160">      return(false);</span>
+
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    if (lastClass != ci) {</span>
+<span class="nc" id="L163">      lastClass   = ci;</span>
+<span class="nc" id="L164">      recordClass = StringSetMatcher.isMatch(ci.getName(), includes, excludes);</span>
+    }
+
+<span class="nc" id="L167">    return(recordClass);</span>
+  }
+
+  // &lt;2do&gt; general purpose listeners should not use anonymous attribute types such as String
+  
+  private final void saveVariableName(ThreadInfo ti, String name) {
+<span class="nc" id="L173">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L174">    frame.addOperandAttr(name);</span>
+<span class="nc" id="L175">  }</span>
+
+  private final void saveVariableType(ThreadInfo ti, byte type) {
+    StackFrame frame;
+    String str;
+
+<span class="nc" id="L181">    frame = ti.getModifiableTopFrame();</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">    if (frame.getTopPos() &lt; 0) {</span>
+<span class="nc" id="L183">      return;</span>
+    }
+
+<span class="nc" id="L186">    str = encodeType(type);</span>
+<span class="nc" id="L187">    frame.addOperandAttr(str);</span>
+<span class="nc" id="L188">  }</span>
+
+  private final boolean isArrayReference(VM vm, ThreadInfo ti) {
+<span class="nc" id="L191">    StackFrame frame = ti.getTopFrame();</span>
+
+<span class="nc bnc" id="L193" title="All 2 branches missed.">    if (frame.getTopPos() &lt; 0) {</span>
+<span class="nc" id="L194">      return(false);</span>
+    }
+
+<span class="nc bnc" id="L197" title="All 2 branches missed.">    if (!frame.isOperandRef()) {</span>
+<span class="nc" id="L198">      return(false);</span>
+    }
+
+<span class="nc" id="L201">    int objRef = frame.peek();</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    if (objRef == MJIEnv.NULL) {</span>
+<span class="nc" id="L203">      return(false);</span>
+    }
+
+<span class="nc" id="L206">    ElementInfo ei = ti.getElementInfo(objRef);</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">    if (ei == null) {</span>
+<span class="nc" id="L208">      return(false);</span>
+    }
+
+<span class="nc" id="L211">    return(ei.isArray());</span>
+  }
+
+  private byte getType(ThreadInfo ti, Instruction inst) {
+    StackFrame frame;
+    FieldInfo fi;
+    String type;
+
+<span class="nc" id="L219">    frame = ti.getTopFrame();</span>
+<span class="nc bnc" id="L220" title="All 4 branches missed.">    if ((frame.getTopPos() &gt;= 0) &amp;&amp; (frame.isOperandRef())) {</span>
+<span class="nc" id="L221">      return (Types.T_REFERENCE);</span>
+    }
+
+<span class="nc" id="L224">    type = null;</span>
+
+<span class="nc bnc" id="L226" title="All 8 branches missed.">    if (((recordLocals) &amp;&amp; (inst instanceof JVMLocalVariableInstruction))</span>
+            || ((recordFields) &amp;&amp; (inst instanceof JVMFieldInstruction))) {
+<span class="nc bnc" id="L228" title="All 2 branches missed.">      if (inst instanceof JVMLocalVariableInstruction) {</span>
+<span class="nc" id="L229">        type = ((JVMLocalVariableInstruction) inst).getLocalVariableType();</span>
+      } else {
+<span class="nc" id="L231">        fi = ((JVMFieldInstruction) inst).getFieldInfo();</span>
+<span class="nc" id="L232">        type = fi.getType();</span>
+      }
+    }
+
+<span class="nc bnc" id="L236" title="All 4 branches missed.">    if ((recordArrays) &amp;&amp; (inst instanceof JVMArrayElementInstruction)) {</span>
+<span class="nc" id="L237">      return (getTypeFromInstruction(inst));</span>
+    }
+
+<span class="nc bnc" id="L240" title="All 2 branches missed.">    if (type == null) {</span>
+<span class="nc" id="L241">      return (Types.T_VOID);</span>
+    }
+
+<span class="nc" id="L244">    return (decodeType(type));</span>
+  }
+
+  private final static byte getTypeFromInstruction(Instruction inst) {
+<span class="nc bnc" id="L248" title="All 2 branches missed.">    if (inst instanceof JVMArrayElementInstruction)</span>
+<span class="nc" id="L249">      return(getTypeFromInstruction((JVMArrayElementInstruction) inst));</span>
+
+<span class="nc" id="L251">    return(Types.T_VOID);</span>
+  }
+
+  private final static byte getTypeFromInstruction(JVMArrayElementInstruction inst) {
+    String name;
+
+<span class="nc" id="L257">    name = inst.getClass().getName();</span>
+<span class="nc" id="L258">    name = name.substring(name.lastIndexOf('.') + 1);</span>
+
+<span class="nc bnc" id="L260" title="All 9 branches missed.">    switch (name.charAt(0)) {</span>
+<span class="nc" id="L261">      case 'A': return(Types.T_REFERENCE);</span>
+<span class="nc" id="L262">      case 'B': return(Types.T_BYTE);      // Could be a boolean but it is better to assume a byte.</span>
+<span class="nc" id="L263">      case 'C': return(Types.T_CHAR);</span>
+<span class="nc" id="L264">      case 'F': return(Types.T_FLOAT);</span>
+<span class="nc" id="L265">      case 'I': return(Types.T_INT);</span>
+<span class="nc" id="L266">      case 'S': return(Types.T_SHORT);</span>
+<span class="nc" id="L267">      case 'D': return(Types.T_DOUBLE);</span>
+<span class="nc" id="L268">      case 'L': return(Types.T_LONG);</span>
+    }
+
+<span class="nc" id="L271">    return(Types.T_VOID);</span>
+  }
+
+  private final static String encodeType(byte type) {
+<span class="nc bnc" id="L275" title="All 12 branches missed.">    switch (type) {</span>
+<span class="nc" id="L276">      case Types.T_BYTE:    return(&quot;B&quot;);</span>
+<span class="nc" id="L277">      case Types.T_CHAR:    return(&quot;C&quot;);</span>
+<span class="nc" id="L278">      case Types.T_DOUBLE:  return(&quot;D&quot;);</span>
+<span class="nc" id="L279">      case Types.T_FLOAT:   return(&quot;F&quot;);</span>
+<span class="nc" id="L280">      case Types.T_INT:     return(&quot;I&quot;);</span>
+<span class="nc" id="L281">      case Types.T_LONG:    return(&quot;J&quot;);</span>
+<span class="nc" id="L282">      case Types.T_REFERENCE:  return(&quot;L&quot;);</span>
+<span class="nc" id="L283">      case Types.T_SHORT:   return(&quot;S&quot;);</span>
+<span class="nc" id="L284">      case Types.T_VOID:    return(&quot;V&quot;);</span>
+<span class="nc" id="L285">      case Types.T_BOOLEAN: return(&quot;Z&quot;);</span>
+<span class="nc" id="L286">      case Types.T_ARRAY:   return(&quot;[&quot;);</span>
+    }
+
+<span class="nc" id="L289">    return(&quot;?&quot;);</span>
+  }
+
+  private final static byte decodeType(String type) {
+<span class="nc bnc" id="L293" title="All 2 branches missed.">    if (type.charAt(0) == '?'){</span>
+<span class="nc" id="L294">      return(Types.T_REFERENCE);</span>
+    } else {
+<span class="nc" id="L296">      return Types.getBuiltinType(type);</span>
+    }
+  }
+
+  private String getName(ThreadInfo ti, Instruction inst, byte type) {
+    String name;
+    int index;
+    boolean store;
+
+<span class="nc bnc" id="L305" title="All 8 branches missed.">    if (((recordLocals) &amp;&amp; (inst instanceof JVMLocalVariableInstruction)) ||</span>
+        ((recordFields) &amp;&amp; (inst instanceof JVMFieldInstruction))) {
+<span class="nc" id="L307">      name = ((LocalVariableInstruction) inst).getVariableId();</span>
+<span class="nc" id="L308">      name = name.substring(name.lastIndexOf('.') + 1);</span>
+
+<span class="nc" id="L310">      return(name);</span>
+    }
+
+<span class="nc bnc" id="L313" title="All 4 branches missed.">    if ((recordArrays) &amp;&amp; (inst instanceof JVMArrayElementInstruction)) {</span>
+<span class="nc" id="L314">      store  = inst instanceof StoreInstruction;</span>
+<span class="nc" id="L315">      name   = getArrayName(ti, type, store);</span>
+<span class="nc" id="L316">      index  = getArrayIndex(ti, type, store);</span>
+<span class="nc" id="L317">      return(name + '[' + index + ']');</span>
+    }
+
+<span class="nc" id="L320">    return(null);</span>
+  }
+
+  private String getValue(ThreadInfo ti, Instruction inst, byte type) {
+    StackFrame frame;
+    int lo, hi;
+
+<span class="nc" id="L327">    frame = ti.getTopFrame();</span>
+
+<span class="nc bnc" id="L329" title="All 8 branches missed.">    if (((recordLocals) &amp;&amp; (inst instanceof JVMLocalVariableInstruction)) ||</span>
+        ((recordFields) &amp;&amp; (inst instanceof JVMFieldInstruction)))
+    {
+<span class="nc bnc" id="L332" title="All 2 branches missed.">       if (frame.getTopPos() &lt; 0)</span>
+<span class="nc" id="L333">         return(null);</span>
+
+<span class="nc" id="L335">       lo = frame.peek();</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">       hi = frame.getTopPos() &gt;= 1 ? frame.peek(1) : 0;</span>
+
+<span class="nc" id="L338">       return(decodeValue(type, lo, hi));</span>
+    }
+
+<span class="nc bnc" id="L341" title="All 4 branches missed.">    if ((recordArrays) &amp;&amp; (inst instanceof JVMArrayElementInstruction))</span>
+<span class="nc" id="L342">      return(getArrayValue(ti, type));</span>
+
+<span class="nc" id="L344">    return(null);</span>
+  }
+
+  private String getArrayName(ThreadInfo ti, byte type, boolean store) {
+    String attr;
+    int offset;
+
+<span class="nc" id="L351">    offset = calcOffset(type, store) + 1;</span>
+    // &lt;2do&gt; String is really not a good attribute type to retrieve!
+<span class="nc" id="L353">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L354">    attr   = frame.getOperandAttr( offset, String.class); </span>
+
+<span class="nc bnc" id="L356" title="All 2 branches missed.">    if (attr != null) {</span>
+<span class="nc" id="L357">      return(attr);</span>
+    }
+
+<span class="nc" id="L360">    return(&quot;?&quot;);</span>
+  }
+
+  private int getArrayIndex(ThreadInfo ti, byte type, boolean store) {
+    int offset;
+
+<span class="nc" id="L366">    offset = calcOffset(type, store);</span>
+
+<span class="nc" id="L368">    return(ti.getTopFrame().peek(offset));</span>
+  }
+
+  private final static int calcOffset(byte type, boolean store) {
+<span class="nc bnc" id="L372" title="All 2 branches missed.">    if (!store)</span>
+<span class="nc" id="L373">      return(0);</span>
+
+<span class="nc" id="L375">    return(Types.getTypeSize(type));</span>
+  }
+
+  private String getArrayValue(ThreadInfo ti, byte type) {
+    StackFrame frame;
+    int lo, hi;
+
+<span class="nc" id="L382">    frame = ti.getTopFrame();</span>
+<span class="nc" id="L383">    lo    = frame.peek();</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">    hi    = frame.getTopPos() &gt;= 1 ? frame.peek(1) : 0;</span>
+
+<span class="nc" id="L386">    return(decodeValue(type, lo, hi));</span>
+  }
+
+  private final static String decodeValue(byte type, int lo, int hi) {
+<span class="nc bnc" id="L390" title="All 12 branches missed.">    switch (type) {</span>
+<span class="nc" id="L391">      case Types.T_ARRAY:   return(null);</span>
+<span class="nc" id="L392">      case Types.T_VOID:    return(null);</span>
+
+<span class="nc" id="L394">      case Types.T_BOOLEAN: return(String.valueOf(Types.intToBoolean(lo)));</span>
+<span class="nc" id="L395">      case Types.T_BYTE:    return(String.valueOf(lo));</span>
+<span class="nc" id="L396">      case Types.T_CHAR:    return(String.valueOf((char) lo));</span>
+<span class="nc" id="L397">      case Types.T_DOUBLE:  return(String.valueOf(Types.intsToDouble(lo, hi)));</span>
+<span class="nc" id="L398">      case Types.T_FLOAT:   return(String.valueOf(Types.intToFloat(lo)));</span>
+<span class="nc" id="L399">      case Types.T_INT:     return(String.valueOf(lo));</span>
+<span class="nc" id="L400">      case Types.T_LONG:    return(String.valueOf(Types.intsToLong(lo, hi)));</span>
+<span class="nc" id="L401">      case Types.T_SHORT:   return(String.valueOf(lo));</span>
+
+      case Types.T_REFERENCE:
+<span class="nc" id="L404">        ElementInfo ei = VM.getVM().getHeap().get(lo);</span>
+<span class="nc bnc" id="L405" title="All 2 branches missed.">        if (ei == null)</span>
+<span class="nc" id="L406">          return(null);</span>
+
+<span class="nc" id="L408">        ClassInfo ci = ei.getClassInfo();</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        if (ci == null)</span>
+<span class="nc" id="L410">          return(null);</span>
+
+<span class="nc bnc" id="L412" title="All 2 branches missed.">        if (ci.getName().equals(&quot;java.lang.String&quot;))</span>
+<span class="nc" id="L413">          return('&quot;' + ei.asString() + '&quot;');</span>
+
+<span class="nc" id="L415">        return(ei.toString());</span>
+
+      default:
+<span class="nc" id="L418">        System.err.println(&quot;Unknown type: &quot; + type);</span>
+<span class="nc" id="L419">        return(null);</span>
+     }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

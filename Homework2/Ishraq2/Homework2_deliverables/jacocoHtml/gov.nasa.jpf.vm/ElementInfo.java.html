@@ -1,0 +1,2258 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ElementInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ElementInfo.java</span></div><h1>ElementInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.ObjectList;
+import gov.nasa.jpf.util.Processor;
+
+import java.io.PrintWriter;
+
+/**
+ * Describes an element of memory containing the field values of a class or an
+ * object. In the case of a class, contains the values of the static fields. For
+ * an object contains the values of the object fields.
+ *
+ * @see gov.nasa.jpf.vm.FieldInfo
+ */
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">public abstract class ElementInfo implements Cloneable {</span>
+
+
+  //--- the lower 2 bytes of the attribute field are sticky (state stored/restored)
+
+  // object attribute flag values
+
+  // the first 8 bits constitute an unsigned pinDown count
+  public static final int   ATTR_PINDOWN_MASK = 0xff;
+
+  // this ElementInfo is not allowed to be modified anymore since it has been state stored
+  // ElementInfos are constructed in a non-frozen state, and will be frozen upon
+  // heap store (usuall in the heap or ElementInfo memento ctor)
+  // This is the basis for lifting the change management from the fields level (fields,monitor,attributes)
+  // to the ElementInfo object level
+  public static final int   ATTR_IS_FROZEN     = 0x100;
+
+  // object has an immutable type (no field value change)
+  public static final int   ATTR_IMMUTABLE     = 0x200;
+
+  // The constructor for the object has returned.  Final fields can no longer break POR
+  // This attribute is set in gov.nasa.jpf.vm.bytecode.RETURN.enter().
+  // If ThreadInfo.usePorSyncDetection() is false, then this attribute is never set.
+  public static final int   ATTR_CONSTRUCTED   = 0x400;
+
+  // object has been added to finalizer queue
+  public static final int ATTR_FINALIZED = 0x800;
+  
+  public static final int   ATTR_EXPOSED       = 0x1000;
+  
+  // object is shared between threads
+  public static final int   ATTR_SHARED        = 0x4000;
+  
+  // ATTR_SHARED is frozen (has to be changed explicitly, will not be updated by checkUpdatedSharedness)
+  public static final int   ATTR_FREEZE_SHARED = 0x8000; 
+  
+  
+  //--- the upper two bytes are for transient (heap internal) use only, and are not stored
+
+  // BEWARE if you add or change values, make sure these are not used in derived classes !
+  // &lt;2do&gt; this is efficient but fragile
+
+  public static final int   ATTR_TREF_CHANGED       = 0x10000; // referencingThreads have changed
+  public static final int   ATTR_FLI_CHANGED        = 0x20000; // fieldLockInfos changed
+  public static final int   ATTR_ATTRIBUTE_CHANGED  = 0x80000; // refers only to sticky bits
+
+  
+  //--- useful flag sets &amp; masks
+
+  static final int   ATTR_STORE_MASK = 0x0000ffff;
+
+  static final int   ATTR_ANY_CHANGED = (ATTR_TREF_CHANGED | ATTR_FLI_CHANGED | ATTR_ATTRIBUTE_CHANGED);
+
+  // transient flag set if object is reachable from root object, i.e. can't be recycled
+  public static final int   ATTR_IS_MARKED   = 0x80000000;
+  
+  // this bit is set/unset by the heap in order to identify live objects that have
+  // already been unmarked. This is to avoid additional passes over the whole heap in
+  // order to clean up dangling references etc.
+  // NOTE - this bit should never be state stored - restored ElementInfo should never have it set
+  public static final int   ATTR_LIVE_BIT    = 0x40000000;
+  
+  public static final int   ATTR_MARKED_OR_LIVE_BIT = (ATTR_IS_MARKED | ATTR_LIVE_BIT);
+
+
+  //--- instance fields
+
+  protected ClassInfo       ci;
+  protected Fields          fields;
+  protected Monitor         monitor;
+  
+  // the set of threads using this object. Note this is not used for state matching
+  // so that order or thread id do not have a direct impact on heap symmetry
+  protected ThreadInfoSet referencingThreads;
+
+  // this is where we keep track of lock sets that potentially protect field access
+  // of shared objects. Since usually only a subset of objects are shared, we
+  // initialize this on demand
+  protected FieldLockInfo[] fLockInfo;
+
+  
+  // this is the reference value for the object represented by this ElementInfo
+  // (note this is a slight misnomer for StaticElementInfos, which don't really
+  // represent objects but collections of static fields belonging to the same class)
+  protected int objRef;
+
+  // these are our state-stored object attributes
+  // WATCH OUT! only include info that otherwise reflects a state change, so
+  // that we don't introduce new changes. Its value is used to hash the state!
+  // &lt;2do&gt; what a pity - 32 stored bits for (currently) only 2 bits of
+  // information,but we might use this as a hash for more complex reference
+  // info in the future.
+  // We distinguish between propagates and private object attributes, the first
+  // one stored in the lower 2 bytes
+  protected int attributes;
+
+  //--- the following fields are transient or search global, i.e. their values
+  // are not state-stored, but might be set during state restoration
+
+  // cache for unchanged ElementInfos, so that we don't have to re-create cachedMemento
+  // objects all the time
+  protected Memento&lt;ElementInfo&gt; cachedMemento;
+
+  // cache for a serialized representation of the object, which can be used
+  // by state-matching. Value interpretation depends on the configured Serializer
+  protected int sid;
+
+
+  // helpers for state storage/restore processing, to avoid explicit iterators on
+  // respective ElementInfo containers (heap,statics)
+  
+<span class="fc" id="L146">  static class Restorer implements Processor&lt;ElementInfo&gt; {</span>
+    @Override
+    public void process (ElementInfo ei) {
+<span class="fc" id="L149">      ei.attributes &amp;= ElementInfo.ATTR_STORE_MASK;</span>
+<span class="fc" id="L150">      ei.sid = 0;</span>
+<span class="fc" id="L151">      ei.updateLockingInfo();</span>
+<span class="fc" id="L152">      ei.markUnchanged();</span>
+<span class="fc" id="L153">    }        </span>
+  }
+<span class="fc" id="L155">  static Restorer restorer = new Restorer();</span>
+  
+<span class="fc" id="L157">  static class Storer implements Processor&lt;ElementInfo&gt; {</span>
+    @Override
+    public void process (ElementInfo ei) {
+<span class="fc" id="L160">      ei.freeze();</span>
+<span class="fc" id="L161">    }</span>
+  }
+<span class="fc" id="L163">  static Storer storer = new Storer();</span>
+  
+  
+  static boolean init (Config config) {
+<span class="fc" id="L167">    return true;</span>
+  }
+
+<span class="fc" id="L170">  protected ElementInfo (int id, ClassInfo c, Fields f, Monitor m, ThreadInfo ti) {</span>
+<span class="fc" id="L171">    objRef = id;</span>
+<span class="fc" id="L172">    ci = c;</span>
+<span class="fc" id="L173">    fields = f;</span>
+<span class="fc" id="L174">    monitor = m;</span>
+
+<span class="pc bpc" id="L176" title="2 of 4 branches missed.">    assert ti != null; // we need that for our POR</span>
+<span class="fc" id="L177">  }</span>
+
+  public abstract ElementInfo getModifiableInstance();
+    
+  // not ideal, a sub-type checker.
+  public abstract boolean isObject();
+
+  public abstract boolean hasFinalizer();
+  
+<span class="fc" id="L186">  protected ElementInfo() {</span>
+<span class="fc" id="L187">  }</span>
+
+  public boolean hasChanged() {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">    return !isFrozen();</span>
+    //return (attributes &amp; ATTR_ANY_CHANGED) != 0;
+  }
+
+  @Override
+  public String toString() {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">    return ((ci != null ? ci.getName() : &quot;ElementInfo&quot;) + '@' + Integer.toHexString(objRef));</span>
+  }
+
+  public FieldLockInfo getFieldLockInfo (FieldInfo fi) {
+<span class="fc bfc" id="L200" title="All 2 branches covered.">    if (fLockInfo != null){</span>
+<span class="fc" id="L201">      return fLockInfo[fi.getFieldIndex()];</span>
+    } else {
+<span class="fc" id="L203">      return null;</span>
+    }
+  }
+
+  public void setFieldLockInfo (FieldInfo fi, FieldLockInfo flInfo) {
+<span class="fc" id="L208">    checkIsModifiable();</span>
+
+<span class="fc bfc" id="L210" title="All 2 branches covered.">    if (fLockInfo == null){</span>
+<span class="fc" id="L211">      fLockInfo = new FieldLockInfo[getNumberOfFields()];</span>
+    }
+    
+<span class="fc" id="L214">    fLockInfo[fi.getFieldIndex()] = flInfo;</span>
+<span class="fc" id="L215">    attributes |= ATTR_FLI_CHANGED;</span>
+<span class="fc" id="L216">  }</span>
+  
+  public boolean isLockProtected (FieldInfo fi){
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">    if (fLockInfo != null){</span>
+<span class="fc" id="L220">      FieldLockInfo fli = fLockInfo[fi.getFieldIndex()];</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">      if (fli != null){</span>
+<span class="fc" id="L222">        return fli.isProtected();</span>
+      }
+    }
+    
+<span class="nc" id="L226">    return false;</span>
+  }
+
+  /**
+   * object is recycled (after potential finalization)
+   */
+  public void processReleaseActions(){
+    // type based release actions
+<span class="fc" id="L234">    ci.processReleaseActions(this);</span>
+    
+    // instance based release actions
+<span class="fc bfc" id="L237" title="All 2 branches covered.">    if (fields.hasObjectAttr()){</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">      for (ReleaseAction action : fields.objectAttrIterator(ReleaseAction.class)){</span>
+<span class="nc" id="L239">        action.release(this);</span>
+<span class="nc" id="L240">      }</span>
+    }
+<span class="fc" id="L242">  }</span>
+
+  /**
+   * post transition live object cleanup
+   * update all non-fields references used by this object. This is only called
+   * at the end of the gc, and recycled objects should be either null or not marked
+   */
+  void cleanUp (Heap heap, boolean isThreadTermination, int tid) {
+<span class="fc bfc" id="L250" title="All 2 branches covered.">    if (fLockInfo != null) {</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">      for (int i=0; i&lt;fLockInfo.length; i++) {</span>
+<span class="fc" id="L252">        FieldLockInfo fli = fLockInfo[i];</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        if (fli != null) {</span>
+<span class="fc" id="L254">          fLockInfo[i] = fli.cleanUp(heap);</span>
+        }
+      }
+    }
+<span class="fc" id="L258">  }</span>
+  
+  
+  //--- sids are only supposed to be used by the Serializer
+  public void setSid(int id){
+<span class="fc" id="L263">    sid = id;</span>
+<span class="fc" id="L264">  }</span>
+
+  public int getSid() {
+<span class="fc" id="L267">    return sid;</span>
+  }
+
+  //--- cached mementos are only supposed to be used/set by the Restorer
+
+  public Memento&lt;ElementInfo&gt; getCachedMemento(){
+<span class="nc" id="L273">    return cachedMemento;</span>
+  }
+
+  public void setCachedMemento (Memento&lt;ElementInfo&gt; memento){
+<span class="nc" id="L277">    cachedMemento = memento;</span>
+<span class="nc" id="L278">  }</span>
+
+  /**
+   * do we have a reference field with value objRef?
+   */
+  public boolean hasRefField (int objRef) {
+<span class="nc" id="L284">    return ci.hasRefField( objRef, fields);</span>
+  }
+
+
+  public int numberOfUserThreads() {
+<span class="nc" id="L289">    return referencingThreads.size();</span>
+  }
+
+
+  /**
+   * the recursive phase2 marker entry, which propagates the attributes set by a
+   * previous phase1. This one is called on all 'root'-marked objects after
+   * phase1 is completed. ElementInfo is not an ideal place for this method, as
+   * it has to access some innards of both ClassInfo (FieldInfo container) and
+   * Fields. But on the other hand, we want to keep the whole heap traversal
+   * business as much centralized in ElementInfo and Heap implementors
+   */
+  void markRecursive(Heap heap) {
+    int i, n;
+
+<span class="fc bfc" id="L304" title="All 2 branches covered.">    if (isArray()) {</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">      if (fields.isReferenceArray()) {</span>
+<span class="fc" id="L306">        n = ((ArrayFields)fields).arrayLength();</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">        for (i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L308">          int objref = fields.getReferenceValue(i);</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">          if (objref != MJIEnv.NULL){</span>
+<span class="fc" id="L310">            heap.queueMark( objref);</span>
+          }
+        }
+      }
+
+    } else { // not an array
+<span class="fc" id="L316">      ClassInfo ci = getClassInfo();</span>
+<span class="fc" id="L317">      boolean isWeakRef = ci.isWeakReference();</span>
+
+      do {
+<span class="fc" id="L320">        n = ci.getNumberOfDeclaredInstanceFields();</span>
+<span class="fc bfc" id="L321" title="All 4 branches covered.">        boolean isRef = isWeakRef &amp;&amp; ci.isReferenceClassInfo(); // is this the java.lang.ref.Reference part?</span>
+
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        for (i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L324">          FieldInfo fi = ci.getDeclaredInstanceField(i);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">          if (fi.isReference()) {</span>
+<span class="fc bfc" id="L326" title="All 4 branches covered.">            if ((i == 0) &amp;&amp; isRef) {</span>
+              // we need to reset the ref field once the referenced object goes away
+              // NOTE: only the *first* WeakReference field is a weak ref
+              // (this is why we have our own implementation)
+<span class="fc" id="L330">              heap.registerWeakReference(this);</span>
+            } else {
+<span class="fc" id="L332">              int objref = fields.getReferenceValue(fi.getStorageOffset());</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">              if (objref != MJIEnv.NULL){</span>
+<span class="fc" id="L334">                heap.queueMark( objref);</span>
+              }
+            }
+          }
+        }
+<span class="fc" id="L339">        ci = ci.getSuperClass();</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">      } while (ci != null);</span>
+    }
+<span class="fc" id="L342">  }</span>
+
+
+  int getAttributes () {
+<span class="nc" id="L346">    return attributes;</span>
+  }
+
+  int getStoredAttributes() {
+<span class="nc" id="L350">    return attributes &amp; ATTR_STORE_MASK;</span>
+  }
+
+  public boolean isImmutable() {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">    return ((attributes &amp; ATTR_IMMUTABLE) != 0);</span>
+  }
+
+  //--- freeze handling
+  
+  public void freeze() {
+<span class="fc" id="L360">    attributes |= ATTR_IS_FROZEN;</span>
+<span class="fc" id="L361">  }</span>
+
+  public void defreeze() {
+<span class="fc" id="L364">    attributes &amp;= ~ATTR_IS_FROZEN;</span>
+<span class="fc" id="L365">  }</span>
+  
+  public boolean isFrozen() {
+<span class="fc bfc" id="L368" title="All 2 branches covered.">    return ((attributes &amp; ATTR_IS_FROZEN) != 0);    </span>
+  }
+  
+  //--- shared handling
+
+  /**
+   * set the referencing threads. Unless you know this is from a non-shared
+   * context, make sure to update sharedness by calling setShared()
+   */
+  public void setReferencingThreads (ThreadInfoSet refThreads){
+<span class="fc" id="L378">    checkIsModifiable();    </span>
+<span class="fc" id="L379">    referencingThreads = refThreads;</span>
+<span class="fc" id="L380">  }</span>
+  
+  public ThreadInfoSet getReferencingThreads (){
+<span class="fc" id="L383">    return referencingThreads;</span>
+  }
+  
+  public void freezeSharedness (boolean freeze) {
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">    if (freeze) {</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">      if ((attributes &amp; ATTR_FREEZE_SHARED) == 0) {</span>
+<span class="fc" id="L389">        checkIsModifiable();</span>
+<span class="fc" id="L390">        attributes |= (ATTR_FREEZE_SHARED | ATTR_ATTRIBUTE_CHANGED);</span>
+      }
+    } else {
+<span class="nc bnc" id="L393" title="All 2 branches missed.">      if ((attributes &amp; ATTR_FREEZE_SHARED) != 0) {</span>
+<span class="nc" id="L394">        checkIsModifiable();</span>
+<span class="nc" id="L395">        attributes &amp;= ~ATTR_FREEZE_SHARED;</span>
+<span class="nc" id="L396">        attributes |= ATTR_ATTRIBUTE_CHANGED;</span>
+      }
+    }
+<span class="fc" id="L399">  }</span>
+  
+  public boolean isSharednessFrozen () {
+<span class="fc bfc" id="L402" title="All 2 branches covered.">    return (attributes &amp; ATTR_FREEZE_SHARED) != 0;</span>
+  }
+  
+  public boolean isShared() {
+    //return usingTi.getNumberOfLiveThreads() &gt; 1;
+<span class="fc bfc" id="L407" title="All 2 branches covered.">    return ((attributes &amp; ATTR_SHARED) != 0);</span>
+  }
+  
+  public void setShared (ThreadInfo ti, boolean isShared) {
+<span class="pc bpc" id="L411" title="1 of 2 branches missed.">    if (isShared) {</span>
+<span class="pc bpc" id="L412" title="1 of 2 branches missed.">      if ((attributes &amp; ATTR_SHARED) == 0) {</span>
+<span class="fc" id="L413">        checkIsModifiable();</span>
+<span class="fc" id="L414">        attributes |= (ATTR_SHARED | ATTR_ATTRIBUTE_CHANGED);</span>
+        
+        // note we don't report the thread here since this is explicitly set via Verify.setShared
+<span class="fc" id="L417">        VM.getVM().notifyObjectShared(ti, this);</span>
+      }
+    } else {
+<span class="nc bnc" id="L420" title="All 2 branches missed.">      if ((attributes &amp; ATTR_SHARED) != 0) {</span>
+<span class="nc" id="L421">        checkIsModifiable();</span>
+<span class="nc" id="L422">        attributes &amp;= ~ATTR_SHARED;</span>
+<span class="nc" id="L423">        attributes |= ATTR_ATTRIBUTE_CHANGED;</span>
+      }
+    }
+<span class="fc" id="L426">  }</span>
+  
+  /**
+   * NOTE - this should only be called internally if we know the object is
+   * modifiable (e.g. from the ctor)
+   */
+  void setSharednessFromReferencingThreads () {
+<span class="nc bnc" id="L433" title="All 2 branches missed.">    if (referencingThreads.isShared( null, this)) {</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">      if ((attributes &amp; ATTR_SHARED) == 0) {</span>
+<span class="nc" id="L435">        checkIsModifiable();</span>
+<span class="nc" id="L436">        attributes |= (ATTR_SHARED | ATTR_ATTRIBUTE_CHANGED);</span>
+      }
+    }
+<span class="nc" id="L439">  }</span>
+  
+  public boolean isReferencedBySameThreads (ElementInfo eiOther) {
+<span class="nc" id="L442">    return referencingThreads.equals(eiOther.referencingThreads);</span>
+  }
+  
+  public boolean isReferencedByThread (ThreadInfo ti) {
+<span class="nc" id="L446">    return referencingThreads.contains(ti);</span>
+  }
+  
+  public boolean isExposed(){
+<span class="nc bnc" id="L450" title="All 2 branches missed.">    return (attributes &amp; ATTR_EXPOSED) != 0;</span>
+  }
+  
+  public boolean isExposedOrShared(){
+<span class="fc bfc" id="L454" title="All 2 branches covered.">    return (attributes &amp; (ATTR_SHARED | ATTR_EXPOSED)) != 0;</span>
+  }
+  
+  public ElementInfo getExposedInstance (ThreadInfo ti, ElementInfo eiFieldOwner){
+<span class="fc" id="L458">    ElementInfo ei = getModifiableInstance();</span>
+<span class="fc" id="L459">    ei.setExposed( ti, eiFieldOwner);</span>
+    
+    // &lt;2do&gt; do we have to traverse every object reachable from here?
+    // (does every reference of an indirectly exposed object have to go through this one?)
+    
+<span class="fc" id="L464">    return ei;</span>
+  }
+  
+  protected void setExposed (){
+<span class="fc" id="L468">    attributes |= (ATTR_EXPOSED | ATTR_ATTRIBUTE_CHANGED);</span>
+<span class="fc" id="L469">  }</span>
+  
+  public void setExposed (ThreadInfo ti, ElementInfo eiFieldOwner){
+    // we actually have to add this to the attributes to avoid endless loops by
+    // re-exposing the same object along a given path
+<span class="fc" id="L474">    attributes |= (ATTR_EXPOSED | ATTR_ATTRIBUTE_CHANGED);</span>
+    
+<span class="fc" id="L476">    ti.getVM().notifyObjectExposed(ti, eiFieldOwner, this);</span>
+<span class="fc" id="L477">  }</span>
+  
+  /**
+   * this is called before the system attempts to reclaim the object. If
+   * we return 'false', the object will *not* be removed
+   */
+  protected boolean recycle () {  
+    // this is required to avoid loosing field lock assumptions
+    // when the system sequentialized threads with conflicting assumptions,
+    // but the offending object goes out of scope before the system backtracks
+<span class="nc bnc" id="L487" title="All 2 branches missed.">    if (hasVolatileFieldLockInfos()) {</span>
+<span class="nc" id="L488">      return false;</span>
+    }
+
+<span class="nc" id="L491">    setObjectRef(MJIEnv.NULL);</span>
+
+<span class="nc" id="L493">    return true;</span>
+  }
+
+  boolean hasVolatileFieldLockInfos() {
+<span class="nc bnc" id="L497" title="All 2 branches missed.">    if (fLockInfo != null) {</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">      for (int i=0; i&lt;fLockInfo.length; i++) {</span>
+<span class="nc" id="L499">        FieldLockInfo fli = fLockInfo[i];</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">        if (fli != null) {</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">          if (fli.needsPindown(this)) {</span>
+<span class="nc" id="L502">            return true;</span>
+          }
+        }
+      }
+    }
+
+<span class="nc" id="L508">    return false;</span>
+  }
+  
+  public void hash(HashData hd) {
+<span class="nc" id="L512">    hd.add(ci.getClassLoaderInfo().getId());</span>
+<span class="nc" id="L513">    hd.add(ci.getId());</span>
+<span class="nc" id="L514">    fields.hash(hd);</span>
+<span class="nc" id="L515">    monitor.hash(hd);</span>
+<span class="nc" id="L516">    hd.add(attributes &amp; ATTR_STORE_MASK);</span>
+<span class="nc" id="L517">  }</span>
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L521">    HashData hd = new HashData();</span>
+
+<span class="nc" id="L523">    hash(hd);</span>
+
+<span class="nc" id="L525">    return hd.getValue();</span>
+  }
+
+  @Override
+  public boolean equals(Object o) {
+<span class="nc bnc" id="L530" title="All 4 branches missed.">    if (o != null &amp;&amp; o instanceof ElementInfo) {</span>
+<span class="nc" id="L531">      ElementInfo other = (ElementInfo) o;</span>
+
+<span class="nc bnc" id="L533" title="All 2 branches missed.">      if (ci != other.ci){</span>
+<span class="nc" id="L534">        return false;</span>
+      }
+
+<span class="nc bnc" id="L537" title="All 2 branches missed.">      if ((attributes &amp; ATTR_STORE_MASK) != (other.attributes &amp; ATTR_STORE_MASK)){</span>
+<span class="nc" id="L538">        return false;</span>
+      }
+<span class="nc bnc" id="L540" title="All 2 branches missed.">      if (!fields.equals(other.fields)) {</span>
+<span class="nc" id="L541">        return false;</span>
+      }
+<span class="nc bnc" id="L543" title="All 2 branches missed.">      if (!monitor.equals(other.monitor)){</span>
+<span class="nc" id="L544">        return false;</span>
+      }
+<span class="nc bnc" id="L546" title="All 2 branches missed.">      if (referencingThreads != other.referencingThreads){</span>
+<span class="nc" id="L547">        return false;</span>
+      }
+
+<span class="nc" id="L550">      return true;</span>
+
+    } else {
+<span class="nc" id="L553">      return false;</span>
+    }
+  }
+
+  public ClassInfo getClassInfo() {
+<span class="fc" id="L558">    return ci;</span>
+  }
+
+  abstract protected FieldInfo getDeclaredFieldInfo(String clsBase, String fname);
+
+  abstract protected FieldInfo getFieldInfo(String fname);
+
+  protected abstract int getNumberOfFieldsOrElements();
+
+  
+  //--- Object attribute accessors
+
+  public boolean hasObjectAttr(){
+<span class="nc" id="L571">    return fields.hasObjectAttr();</span>
+  }
+  
+  public boolean hasObjectAttr(Class&lt;?&gt; attrType) {
+<span class="nc" id="L575">    return fields.hasObjectAttr(attrType);</span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getObjectAttr(){
+<span class="fc" id="L583">    return fields.getObjectAttr();</span>
+  }
+  
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setObjectAttr (Object a){
+<span class="fc" id="L593">    checkIsModifiable();</span>
+<span class="fc" id="L594">    fields.setObjectAttr(a);</span>
+<span class="fc" id="L595">  }</span>
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setObjectAttrNoClone (Object a){
+<span class="nc" id="L604">    fields.setObjectAttr(a);</span>
+<span class="nc" id="L605">  }</span>
+
+  
+  public void addObjectAttr(Object a){
+<span class="nc" id="L609">    checkIsModifiable();</span>
+<span class="nc" id="L610">    fields.addObjectAttr(a);</span>
+<span class="nc" id="L611">  }</span>
+  public void removeObjectAttr(Object a){
+<span class="nc" id="L613">    checkIsModifiable();</span>
+<span class="nc" id="L614">    fields.removeObjectAttr(a);</span>
+<span class="nc" id="L615">  }</span>
+  public void replaceObjectAttr(Object oldAttr, Object newAttr){
+<span class="nc" id="L617">    checkIsModifiable();</span>
+<span class="nc" id="L618">    fields.replaceObjectAttr(oldAttr, newAttr);</span>
+<span class="nc" id="L619">  }</span>
+
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getObjectAttr (Class&lt;T&gt; attrType) {
+<span class="nc" id="L627">    return fields.getObjectAttr(attrType);</span>
+  }
+  public &lt;T&gt; T getNextObjectAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L630">    return fields.getNextObjectAttr(attrType, prev);</span>
+  }
+  public ObjectList.Iterator objectAttrIterator(){
+<span class="nc" id="L633">    return fields.objectAttrIterator();</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; objectAttrIterator(Class&lt;T&gt; type){
+<span class="nc" id="L636">    return fields.objectAttrIterator(type);</span>
+  }
+  
+  //--- field attribute accessors
+  
+  public boolean hasFieldAttr() {
+<span class="fc" id="L642">    return fields.hasFieldAttr();</span>
+  }
+
+  public boolean hasFieldAttr (Class&lt;?&gt; attrType){
+<span class="nc" id="L646">    return fields.hasFieldAttr(attrType);</span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getFieldAttr (FieldInfo fi){
+<span class="fc" id="L654">    return fields.getFieldAttr(fi.getFieldIndex());</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setFieldAttr (FieldInfo fi, Object attr){
+<span class="fc" id="L664">    checkIsModifiable();</span>
+    
+<span class="fc" id="L666">    int nFields = getNumberOfFieldsOrElements();</span>
+<span class="fc" id="L667">    fields.setFieldAttr( nFields, fi.getFieldIndex(), attr);    </span>
+<span class="fc" id="L668">  }</span>
+
+  
+  public void addFieldAttr (FieldInfo fi, Object a){
+<span class="nc" id="L672">    checkIsModifiable();</span>
+    
+<span class="nc" id="L674">    int nFields = getNumberOfFieldsOrElements();    </span>
+<span class="nc" id="L675">    fields.addFieldAttr( nFields, fi.getFieldIndex(), a);</span>
+<span class="nc" id="L676">  }</span>
+  public void removeFieldAttr (FieldInfo fi, Object a){
+<span class="nc" id="L678">    checkIsModifiable();</span>
+<span class="nc" id="L679">    fields.removeFieldAttr(fi.getFieldIndex(), a);</span>
+<span class="nc" id="L680">  }</span>
+  public void replaceFieldAttr (FieldInfo fi, Object oldAttr, Object newAttr){
+<span class="nc" id="L682">    checkIsModifiable();    </span>
+<span class="nc" id="L683">    fields.replaceFieldAttr(fi.getFieldIndex(), oldAttr, newAttr);</span>
+<span class="nc" id="L684">  }</span>
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getFieldAttr (FieldInfo fi, Class&lt;T&gt; attrType) {
+<span class="nc" id="L691">    return fields.getFieldAttr(fi.getFieldIndex(), attrType);</span>
+  }
+  public &lt;T&gt; T getNextFieldAttr (FieldInfo fi, Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L694">    return fields.getNextFieldAttr(fi.getFieldIndex(), attrType, prev);</span>
+  }
+  public ObjectList.Iterator fieldAttrIterator (FieldInfo fi){
+<span class="nc" id="L697">    return fields.fieldAttrIterator(fi.getFieldIndex());</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; fieldAttrIterator (FieldInfo fi, Class&lt;T&gt; type){
+<span class="nc" id="L700">    return fields.fieldAttrIterator(fi.getFieldIndex(), type);</span>
+  }
+  
+
+  
+  //--- element attribute accessors
+  
+  public boolean hasElementAttr() {
+<span class="nc" id="L708">    return fields.hasFieldAttr();</span>
+  }
+
+  public boolean hasElementAttr (Class&lt;?&gt; attrType){
+<span class="nc" id="L712">    return fields.hasFieldAttr(attrType);</span>
+  }
+
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getElementAttr (int idx){
+<span class="fc" id="L721">    return fields.getFieldAttr(idx);</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setElementAttr (int idx, Object attr){
+<span class="fc" id="L731">    int nElements = getNumberOfFieldsOrElements();</span>
+<span class="fc" id="L732">    checkIsModifiable();</span>
+<span class="fc" id="L733">    fields.setFieldAttr( nElements, idx, attr);</span>
+<span class="fc" id="L734">  }</span>
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setElementAttrNoClone (int idx, Object attr){
+<span class="fc" id="L743">    int nElements = getNumberOfFieldsOrElements();</span>
+<span class="fc" id="L744">    fields.setFieldAttr(nElements,idx, attr);</span>
+<span class="fc" id="L745">  }</span>
+
+  
+  public void addElementAttr (int idx, Object a){
+<span class="nc" id="L749">    checkIsModifiable();</span>
+    
+<span class="nc" id="L751">    int nElements = getNumberOfFieldsOrElements();   </span>
+<span class="nc" id="L752">    fields.addFieldAttr( nElements, idx, a);</span>
+<span class="nc" id="L753">  }</span>
+  public void removeElementAttr (int idx, Object a){
+<span class="nc" id="L755">    checkIsModifiable();</span>
+<span class="nc" id="L756">    fields.removeFieldAttr(idx, a);</span>
+<span class="nc" id="L757">  }</span>
+  public void replaceElementAttr (int idx, Object oldAttr, Object newAttr){
+<span class="nc" id="L759">    checkIsModifiable();</span>
+<span class="nc" id="L760">    fields.replaceFieldAttr(idx, oldAttr, newAttr);</span>
+<span class="nc" id="L761">  }</span>
+
+/** &lt;2do&gt; those will be obsolete */
+  public void addElementAttrNoClone (int idx, Object a){
+<span class="nc" id="L765">    int nElements = getNumberOfFieldsOrElements();   </span>
+<span class="nc" id="L766">    fields.addFieldAttr( nElements, idx, a);</span>
+<span class="nc" id="L767">  }</span>
+  public void removeElementAttrNoClone (int idx, Object a){
+<span class="nc" id="L769">    fields.removeFieldAttr(idx, a);</span>
+<span class="nc" id="L770">  }</span>
+  public void replaceElementAttrNoClone (int idx, Object oldAttr, Object newAttr){
+<span class="nc" id="L772">    fields.replaceFieldAttr(idx, oldAttr, newAttr);</span>
+<span class="nc" id="L773">  }</span>
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getElementAttr (int idx, Class&lt;T&gt; attrType) {
+<span class="nc" id="L780">    return fields.getFieldAttr(idx, attrType);</span>
+  }
+  public &lt;T&gt; T getNextElementAttr (int idx, Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L783">    return fields.getNextFieldAttr(idx, attrType, prev);</span>
+  }
+  public ObjectList.Iterator elementAttrIterator (int idx){
+<span class="nc" id="L786">    return fields.fieldAttrIterator(idx);</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; elementAttrIterator (int idx, Class&lt;T&gt; type){
+<span class="nc" id="L789">    return fields.fieldAttrIterator(idx, type);</span>
+  }
+
+  // -- end attributes --
+  
+  
+  public void setDeclaredIntField(String fname, String clsBase, int value) {
+<span class="nc" id="L796">    setIntField(getDeclaredFieldInfo(clsBase, fname), value);</span>
+<span class="nc" id="L797">  }</span>
+
+  public void setBooleanField (String fname, boolean value) {
+<span class="fc" id="L800">    setBooleanField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L801">  }</span>
+  public void setByteField (String fname, byte value) {
+<span class="fc" id="L803">    setByteField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L804">  }</span>
+  public void setCharField (String fname, char value) {
+<span class="fc" id="L806">    setCharField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L807">  }</span>
+  public void setShortField (String fname, short value) {
+<span class="fc" id="L809">    setShortField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L810">  }</span>
+  public void setIntField(String fname, int value) {
+<span class="fc" id="L812">    setIntField(getFieldInfo(fname), value);</span>
+<span class="fc" id="L813">  }</span>
+  public void setLongField (String fname, long value) {
+<span class="fc" id="L815">    setLongField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L816">  }</span>
+  public void setFloatField (String fname, float value) {
+<span class="fc" id="L818">    setFloatField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L819">  }</span>
+  public void setDoubleField (String fname, double value) {
+<span class="fc" id="L821">    setDoubleField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L822">  }</span>
+  public void setReferenceField (String fname, int value) {
+<span class="fc" id="L824">    setReferenceField( getFieldInfo(fname), value);</span>
+<span class="fc" id="L825">  }</span>
+
+
+  // &lt;2do&gt; we need to tell 'null' values apart from 'no such field'
+  public Object getFieldValueObject (String fname) {
+<span class="fc" id="L830">    Object ret = null;</span>
+<span class="fc" id="L831">    FieldInfo fi = getFieldInfo(fname);</span>
+
+<span class="pc bpc" id="L833" title="1 of 2 branches missed.">    if (fi != null){</span>
+<span class="fc" id="L834">      ret = fi.getValueObject(fields);</span>
+
+    } else {
+      // check if there is an enclosing class object
+<span class="nc" id="L838">      ElementInfo eiEnclosing = getEnclosingElementInfo();</span>
+<span class="nc bnc" id="L839" title="All 2 branches missed.">      if (eiEnclosing != null){</span>
+<span class="nc" id="L840">        ret = eiEnclosing.getFieldValueObject(fname);</span>
+
+      } else {
+        // we should check static fields in enclosing scopes, but there is no
+        // other way than to guess this from the name, and the outer
+        // classes might not even be initialized yet
+      }
+    }
+
+<span class="fc" id="L849">    return ret;</span>
+  }
+
+  public ElementInfo getEnclosingElementInfo() {
+<span class="nc" id="L853">    return null; // only for DynamicElementInfos</span>
+  }
+
+  public void setBooleanField(FieldInfo fi, boolean newValue) {
+<span class="fc" id="L857">    checkIsModifiable();</span>
+    
+<span class="pc bpc" id="L859" title="1 of 2 branches missed.">    if (fi.isBooleanField()) {</span>
+<span class="fc" id="L860">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L861">      fields.setBooleanValue( offset, newValue);</span>
+<span class="fc" id="L862">    } else {</span>
+<span class="nc" id="L863">      throw new JPFException(&quot;not a boolean field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L865">  }</span>
+
+  public void setByteField(FieldInfo fi, byte newValue) {
+<span class="fc" id="L868">    checkIsModifiable();</span>
+    
+<span class="pc bpc" id="L870" title="1 of 2 branches missed.">    if (fi.isByteField()) {</span>
+<span class="fc" id="L871">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L872">      fields.setByteValue( offset, newValue);</span>
+<span class="fc" id="L873">    } else {</span>
+<span class="nc" id="L874">      throw new JPFException(&quot;not a byte field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L876">  }</span>
+
+  public void setCharField(FieldInfo fi, char newValue) {
+<span class="fc" id="L879">    checkIsModifiable();</span>
+    
+<span class="pc bpc" id="L881" title="1 of 2 branches missed.">    if (fi.isCharField()) {</span>
+<span class="fc" id="L882">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L883">      fields.setCharValue( offset, newValue);</span>
+<span class="fc" id="L884">    } else {</span>
+<span class="nc" id="L885">      throw new JPFException(&quot;not a char field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L887">  }</span>
+
+  public void setShortField(FieldInfo fi, short newValue) {
+<span class="fc" id="L890">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L892" title="1 of 2 branches missed.">    if (fi.isShortField()) {</span>
+<span class="fc" id="L893">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L894">      fields.setShortValue( offset, newValue);</span>
+<span class="fc" id="L895">    } else {</span>
+<span class="nc" id="L896">      throw new JPFException(&quot;not a short field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L898">  }</span>
+
+  public void setIntField(FieldInfo fi, int newValue) {
+<span class="fc" id="L901">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L903" title="1 of 2 branches missed.">    if (fi.isIntField()) {</span>
+<span class="fc" id="L904">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L905">      fields.setIntValue( offset, newValue);</span>
+<span class="fc" id="L906">    } else {</span>
+<span class="nc" id="L907">      throw new JPFException(&quot;not an int field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L909">  }</span>
+
+  public void setLongField(FieldInfo fi, long newValue) {
+<span class="fc" id="L912">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L914" title="1 of 2 branches missed.">    if (fi.isLongField()) {</span>
+<span class="fc" id="L915">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L916">      fields.setLongValue( offset, newValue);</span>
+<span class="fc" id="L917">    } else {</span>
+<span class="nc" id="L918">      throw new JPFException(&quot;not a long field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L920">  }</span>
+
+  public void setFloatField(FieldInfo fi, float newValue) {
+<span class="fc" id="L923">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L925" title="1 of 2 branches missed.">    if (fi.isFloatField()) {</span>
+<span class="fc" id="L926">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L927">      fields.setFloatValue( offset, newValue);</span>
+<span class="fc" id="L928">    } else {</span>
+<span class="nc" id="L929">      throw new JPFException(&quot;not a float field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L931">  }</span>
+
+  public void setDoubleField(FieldInfo fi, double newValue) {
+<span class="fc" id="L934">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L936" title="1 of 2 branches missed.">    if (fi.isDoubleField()) {</span>
+<span class="fc" id="L937">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L938">      fields.setDoubleValue( offset, newValue);</span>
+<span class="fc" id="L939">    } else {</span>
+<span class="nc" id="L940">      throw new JPFException(&quot;not a double field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L942">  }</span>
+
+  public void setReferenceField(FieldInfo fi, int newValue) {
+<span class="fc" id="L945">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L947" title="1 of 2 branches missed.">    if (fi.isReference()) {</span>
+<span class="fc" id="L948">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L949">      fields.setReferenceValue( offset, newValue);</span>
+<span class="fc" id="L950">    } else {</span>
+<span class="nc" id="L951">      throw new JPFException(&quot;not a reference field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L953">  }</span>
+
+  public void set1SlotField(FieldInfo fi, int newValue) {
+<span class="fc" id="L956">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L958" title="1 of 2 branches missed.">    if (fi.is1SlotField()) {</span>
+<span class="fc" id="L959">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L960">      fields.setIntValue( offset, newValue);</span>
+<span class="fc" id="L961">    } else {</span>
+<span class="nc" id="L962">      throw new JPFException(&quot;not a 1 slot field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L964">  }</span>
+
+  public void set2SlotField(FieldInfo fi, long newValue) {
+<span class="fc" id="L967">    checkIsModifiable();</span>
+
+<span class="pc bpc" id="L969" title="1 of 2 branches missed.">    if (fi.is2SlotField()) {</span>
+<span class="fc" id="L970">      int offset = fi.getStorageOffset();</span>
+<span class="fc" id="L971">      fields.setLongValue( offset, newValue);</span>
+<span class="fc" id="L972">    } else {</span>
+<span class="nc" id="L973">      throw new JPFException(&quot;not a 2 slot field: &quot; + fi.getFullName());</span>
+    }
+<span class="fc" id="L975">  }</span>
+
+
+  public void setDeclaredReferenceField(String fname, String clsBase, int value) {
+<span class="nc" id="L979">    setReferenceField(getDeclaredFieldInfo(clsBase, fname), value);</span>
+<span class="nc" id="L980">  }</span>
+
+  public int getDeclaredReferenceField(String fname, String clsBase) {
+<span class="fc" id="L983">    FieldInfo fi = getDeclaredFieldInfo(clsBase, fname);</span>
+<span class="fc" id="L984">    return getReferenceField( fi);</span>
+  }
+
+  public int getReferenceField(String fname) {
+<span class="fc" id="L988">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L989">    return getReferenceField( fi);</span>
+  }
+
+
+  public int getDeclaredIntField(String fname, String clsBase) {
+    // be aware of that static fields are not flattened (they are unique), i.e.
+    // the FieldInfo might actually refer to another ClassInfo/StaticElementInfo
+<span class="nc" id="L996">    FieldInfo fi = getDeclaredFieldInfo(clsBase, fname);</span>
+<span class="nc" id="L997">    return getIntField( fi);</span>
+  }
+
+  public int getIntField(String fname) {
+    // be aware of that static fields are not flattened (they are unique), i.e.
+    // the FieldInfo might actually refer to another ClassInfo/StaticElementInfo
+<span class="fc" id="L1003">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1004">    return getIntField( fi);</span>
+  }
+
+  public void setDeclaredLongField(String fname, String clsBase, long value) {
+<span class="nc" id="L1008">    checkIsModifiable();</span>
+    
+<span class="nc" id="L1010">    FieldInfo fi = getDeclaredFieldInfo(clsBase, fname);</span>
+<span class="nc" id="L1011">    fields.setLongValue( fi.getStorageOffset(), value);</span>
+<span class="nc" id="L1012">  }</span>
+
+  public long getDeclaredLongField(String fname, String clsBase) {
+<span class="nc" id="L1015">    FieldInfo fi = getDeclaredFieldInfo(clsBase, fname);</span>
+<span class="nc" id="L1016">    return getLongField( fi);</span>
+  }
+
+  public long getLongField(String fname) {
+<span class="fc" id="L1020">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1021">    return getLongField( fi);</span>
+  }
+
+  public boolean getDeclaredBooleanField(String fname, String refType) {
+<span class="nc" id="L1025">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1026">    return getBooleanField( fi);</span>
+  }
+
+  public boolean getBooleanField(String fname) {
+<span class="fc" id="L1030">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1031">    return getBooleanField( fi);</span>
+  }
+
+  public byte getDeclaredByteField(String fname, String refType) {
+<span class="nc" id="L1035">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1036">    return getByteField( fi);</span>
+  }
+
+  public byte getByteField(String fname) {
+<span class="fc" id="L1040">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1041">    return getByteField( fi);</span>
+  }
+
+  public char getDeclaredCharField(String fname, String refType) {
+<span class="nc" id="L1045">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1046">    return getCharField( fi);</span>
+  }
+
+  public char getCharField(String fname) {
+<span class="fc" id="L1050">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1051">    return getCharField( fi);</span>
+  }
+
+  public double getDeclaredDoubleField(String fname, String refType) {
+<span class="nc" id="L1055">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1056">    return getDoubleField( fi);</span>
+  }
+
+  public double getDoubleField(String fname) {
+<span class="fc" id="L1060">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1061">    return getDoubleField( fi);</span>
+  }
+
+  public float getDeclaredFloatField(String fname, String refType) {
+<span class="nc" id="L1065">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1066">    return getFloatField( fi);</span>
+  }
+
+  public float getFloatField(String fname) {
+<span class="fc" id="L1070">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1071">    return getFloatField( fi);</span>
+  }
+
+  public short getDeclaredShortField(String fname, String refType) {
+<span class="nc" id="L1075">    FieldInfo fi = getDeclaredFieldInfo(refType, fname);</span>
+<span class="nc" id="L1076">    return getShortField( fi);</span>
+  }
+
+  public short getShortField(String fname) {
+<span class="fc" id="L1080">    FieldInfo fi = getFieldInfo(fname);</span>
+<span class="fc" id="L1081">    return getShortField( fi);</span>
+  }
+
+  /**
+   * note this only holds for instance fields, and hence the method has to
+   * be overridden in StaticElementInfo
+   */
+  private void checkFieldInfo(FieldInfo fi) {
+<span class="nc bnc" id="L1089" title="All 2 branches missed.">    if (!getClassInfo().isInstanceOf(fi.getClassInfo())) {</span>
+<span class="nc" id="L1090">      throw new JPFException(&quot;wrong FieldInfo : &quot; + fi.getName()</span>
+<span class="nc" id="L1091">          + &quot; , no such field in &quot; + getClassInfo().getName());</span>
+    }
+<span class="nc" id="L1093">  }</span>
+
+  // those are the cached field value accessors. The caller is responsible
+  // for assuring type compatibility
+
+  public boolean getBooleanField(FieldInfo fi) {
+<span class="pc bpc" id="L1099" title="1 of 2 branches missed.">    if (fi.isBooleanField()){</span>
+<span class="fc" id="L1100">      return fields.getBooleanValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1102">      throw new JPFException(&quot;not a boolean field: &quot; + fi.getName());</span>
+    }
+  }
+  public byte getByteField(FieldInfo fi) {
+<span class="pc bpc" id="L1106" title="1 of 2 branches missed.">    if (fi.isByteField()){</span>
+<span class="fc" id="L1107">      return fields.getByteValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1109">      throw new JPFException(&quot;not a byte field: &quot; + fi.getName());</span>
+    }
+  }
+  public char getCharField(FieldInfo fi) {
+<span class="pc bpc" id="L1113" title="1 of 2 branches missed.">    if (fi.isCharField()){</span>
+<span class="fc" id="L1114">      return fields.getCharValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1116">      throw new JPFException(&quot;not a char field: &quot; + fi.getName());</span>
+    }
+  }
+  public short getShortField(FieldInfo fi) {
+<span class="pc bpc" id="L1120" title="1 of 2 branches missed.">    if (fi.isShortField()){</span>
+<span class="fc" id="L1121">      return fields.getShortValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1123">      throw new JPFException(&quot;not a short field: &quot; + fi.getName());</span>
+    }
+  }
+  public int getIntField(FieldInfo fi) {
+<span class="pc bpc" id="L1127" title="1 of 2 branches missed.">    if (fi.isIntField()){</span>
+<span class="fc" id="L1128">      return fields.getIntValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1130">      throw new JPFException(&quot;not a int field: &quot; + fi.getName());</span>
+    }
+  }
+  public long getLongField(FieldInfo fi) {
+<span class="pc bpc" id="L1134" title="1 of 2 branches missed.">    if (fi.isLongField()){</span>
+<span class="fc" id="L1135">      return fields.getLongValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1137">      throw new JPFException(&quot;not a long field: &quot; + fi.getName());</span>
+    }
+  }
+  public float getFloatField (FieldInfo fi){
+<span class="pc bpc" id="L1141" title="1 of 2 branches missed.">    if (fi.isFloatField()){</span>
+<span class="fc" id="L1142">      return fields.getFloatValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1144">      throw new JPFException(&quot;not a float field: &quot; + fi.getName());</span>
+    }
+  }
+  public double getDoubleField (FieldInfo fi){
+<span class="pc bpc" id="L1148" title="1 of 2 branches missed.">    if (fi.isDoubleField()){</span>
+<span class="fc" id="L1149">      return fields.getDoubleValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1151">      throw new JPFException(&quot;not a double field: &quot; + fi.getName());</span>
+    }
+  }
+  public int getReferenceField (FieldInfo fi) {
+<span class="pc bpc" id="L1155" title="1 of 2 branches missed.">    if (fi.isReference()){</span>
+<span class="fc" id="L1156">      return fields.getReferenceValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1158">      throw new JPFException(&quot;not a reference field: &quot; + fi.getName());</span>
+    }
+  }
+
+  public int get1SlotField(FieldInfo fi) {
+<span class="pc bpc" id="L1163" title="1 of 2 branches missed.">    if (fi.is1SlotField()){</span>
+<span class="fc" id="L1164">      return fields.getIntValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1166">      throw new JPFException(&quot;not a 1 slot field: &quot; + fi.getName());</span>
+    }
+  }
+  public long get2SlotField(FieldInfo fi) {
+<span class="pc bpc" id="L1170" title="1 of 2 branches missed.">    if (fi.is2SlotField()){</span>
+<span class="fc" id="L1171">      return fields.getLongValue(fi.getStorageOffset());</span>
+    } else {
+<span class="nc" id="L1173">      throw new JPFException(&quot;not a 2 slot field: &quot; + fi.getName());</span>
+    }
+  }
+
+  protected void checkArray(int index) {
+<span class="pc bpc" id="L1178" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields) { // &lt;2do&gt; should check for !long array</span>
+<span class="pc bpc" id="L1179" title="2 of 4 branches missed.">      if ((index &lt; 0) || (index &gt;= ((ArrayFields)fields).arrayLength())) {</span>
+<span class="nc" id="L1180">        throw new JPFException(&quot;illegal array offset: &quot; + index);</span>
+      }
+    } else {
+<span class="nc" id="L1183">      throw new JPFException(&quot;cannot access non array objects by index&quot;);</span>
+    }
+<span class="fc" id="L1185">  }</span>
+
+  public boolean isReferenceArray() {
+<span class="fc" id="L1188">    return getClassInfo().isReferenceArray();</span>
+  }
+
+  /**
+   * this is the backend for System.arraycopy implementations, but since it only
+   * throws general exceptions it can also be used in other contexts that require
+   * type and objRef checking
+   *
+   * note that we have to do some additional type checking here because we store
+   * reference arrays as int[], i.e. for reference arrays we can't rely on
+   * System.arraycopy to do the element type checking for us
+   *
+   * @throws java.lang.ArrayIndexOutOfBoundsException
+   * @throws java.lang.ArrayStoreException
+   */
+  public void copyElements( ThreadInfo ti, ElementInfo eiSrc, int srcIdx, int dstIdx, int length){
+
+<span class="pc bpc" id="L1205" title="1 of 2 branches missed.">    if (!isArray()){</span>
+<span class="nc" id="L1206">      throw new ArrayStoreException(&quot;destination object not an array: &quot; + ci.getName());</span>
+    }
+<span class="pc bpc" id="L1208" title="1 of 2 branches missed.">    if (!eiSrc.isArray()){</span>
+<span class="nc" id="L1209">      throw new ArrayStoreException(&quot;source object not an array: &quot; + eiSrc.getClassInfo().getName());</span>
+    }
+
+<span class="fc" id="L1212">    boolean isRefArray = isReferenceArray();</span>
+<span class="fc bfc" id="L1213" title="All 2 branches covered.">    if (eiSrc.isReferenceArray() != isRefArray){</span>
+<span class="fc" id="L1214">      throw new ArrayStoreException(&quot;array types not compatible: &quot; + eiSrc.getClassInfo().getName() + &quot; and &quot; + ci.getName());</span>
+    }
+
+    // since the caller has to handle normal ArrayStoreExceptions and
+    // ArrayIndexOutOfBoundsExceptions, we don't have to explicitly check array length here
+
+    // if we copy reference arrays, we first have to check element type compatibility
+    // (the underlying Fields type is always int[], hence we have to do this explicitly)
+<span class="fc bfc" id="L1222" title="All 2 branches covered.">    if (isRefArray){</span>
+<span class="fc" id="L1223">      ClassInfo dstElementCi = ci.getComponentClassInfo();</span>
+<span class="fc" id="L1224">      int[] srcRefs = ((ArrayFields)eiSrc.fields).asReferenceArray();</span>
+<span class="fc" id="L1225">      int max = srcIdx + length;</span>
+
+<span class="fc bfc" id="L1227" title="All 2 branches covered.">      for (int i=srcIdx; i&lt;max; i++){</span>
+<span class="fc" id="L1228">        int eref = srcRefs[i];</span>
+<span class="pc bpc" id="L1229" title="1 of 2 branches missed.">        if (eref != MJIEnv.NULL){</span>
+<span class="fc" id="L1230">          ClassInfo srcElementCi = ti.getClassInfo(eref);</span>
+<span class="fc bfc" id="L1231" title="All 2 branches covered.">          if (!srcElementCi.isInstanceOf(dstElementCi)) {</span>
+<span class="fc" id="L1232">            throw new ArrayStoreException(&quot;incompatible reference array element type (required &quot; + dstElementCi.getName() +</span>
+<span class="fc" id="L1233">                    &quot;, found &quot; + srcElementCi.getName());</span>
+          }
+        }
+      }
+    }
+
+    // NOTE - we have to clone the fields even in case System.arraycopy fails, since
+    // the caller might handle ArrayStore/IndexOutOfBounds, and partial changes
+    // have to be preserved
+    // note also this preserves values in case of a self copy
+<span class="fc" id="L1243">    checkIsModifiable();</span>
+
+<span class="fc" id="L1245">    Object srcVals = ((ArrayFields)eiSrc.getFields()).getValues();</span>
+<span class="fc" id="L1246">    Object dstVals = ((ArrayFields)fields).getValues();</span>
+
+    // this might throw ArrayIndexOutOfBoundsExceptions and ArrayStoreExceptions
+<span class="fc" id="L1249">    System.arraycopy(srcVals, srcIdx, dstVals, dstIdx, length);</span>
+
+    // now take care of the attributes
+    // &lt;2do&gt; what in case arraycopy did throw - we should only copy the changed element attrs
+<span class="fc bfc" id="L1253" title="All 2 branches covered.">    if (eiSrc.hasFieldAttr()){</span>
+<span class="pc bpc" id="L1254" title="3 of 4 branches missed.">      if (eiSrc == this &amp;&amp; srcIdx &lt; dstIdx) { // self copy</span>
+<span class="nc bnc" id="L1255" title="All 2 branches missed.">        for (int i = length - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L1256">          Object a = eiSrc.getElementAttr( srcIdx+i);</span>
+<span class="nc" id="L1257">          setElementAttr( dstIdx+i, a);</span>
+        }
+      } else {
+<span class="fc bfc" id="L1260" title="All 2 branches covered.">        for (int i = 0; i &lt; length; i++) {</span>
+<span class="fc" id="L1261">          Object a = eiSrc.getElementAttr(srcIdx+i);</span>
+<span class="fc" id="L1262">          setElementAttr( dstIdx+i, a);</span>
+        }
+      }
+    }
+<span class="fc" id="L1266">  }</span>
+
+  public void setBooleanElement(int idx, boolean value){
+<span class="fc" id="L1269">    checkArray(idx);</span>
+<span class="fc" id="L1270">    checkIsModifiable();</span>
+<span class="fc" id="L1271">    fields.setBooleanValue(idx, value);</span>
+<span class="fc" id="L1272">  }</span>
+  public void setByteElement(int idx, byte value){
+<span class="fc" id="L1274">    checkArray(idx);</span>
+<span class="fc" id="L1275">    checkIsModifiable();</span>
+<span class="fc" id="L1276">    fields.setByteValue(idx, value);</span>
+<span class="fc" id="L1277">  }</span>
+  public void setCharElement(int idx, char value){
+<span class="fc" id="L1279">    checkArray(idx);</span>
+<span class="fc" id="L1280">    checkIsModifiable();</span>
+<span class="fc" id="L1281">    fields.setCharValue(idx, value);</span>
+<span class="fc" id="L1282">  }</span>
+  public void setShortElement(int idx, short value){
+<span class="fc" id="L1284">    checkArray(idx);</span>
+<span class="fc" id="L1285">    checkIsModifiable();</span>
+<span class="fc" id="L1286">    fields.setShortValue(idx, value);</span>
+<span class="fc" id="L1287">  }</span>
+  public void setIntElement(int idx, int value){
+<span class="fc" id="L1289">    checkArray(idx);</span>
+<span class="fc" id="L1290">    checkIsModifiable();</span>
+<span class="fc" id="L1291">    fields.setIntValue(idx, value);</span>
+<span class="fc" id="L1292">  }</span>
+  public void setLongElement(int idx, long value) {
+<span class="fc" id="L1294">    checkArray(idx);</span>
+<span class="fc" id="L1295">    checkIsModifiable();</span>
+<span class="fc" id="L1296">    fields.setLongValue(idx, value);</span>
+<span class="fc" id="L1297">  }</span>
+  public void setFloatElement(int idx, float value){
+<span class="fc" id="L1299">    checkArray(idx);</span>
+<span class="fc" id="L1300">    checkIsModifiable();</span>
+<span class="fc" id="L1301">    fields.setFloatValue(idx, value);</span>
+<span class="fc" id="L1302">  }</span>
+  public void setDoubleElement(int idx, double value){
+<span class="fc" id="L1304">    checkArray(idx);</span>
+<span class="fc" id="L1305">    checkIsModifiable();</span>
+<span class="fc" id="L1306">    fields.setDoubleValue(idx, value);</span>
+<span class="fc" id="L1307">  }</span>
+  public void setReferenceElement(int idx, int value){
+<span class="fc" id="L1309">    checkArray(idx);</span>
+<span class="fc" id="L1310">    checkIsModifiable();</span>
+<span class="fc" id="L1311">    fields.setReferenceValue(idx, value);</span>
+<span class="fc" id="L1312">  }</span>
+
+  /**
+   * NOTE - this doesn't support element type checks or overlapping in-array copy 
+   */
+  public void arrayCopy (ElementInfo src, int srcPos, int dstPos, int len){
+<span class="nc" id="L1318">    checkArray(dstPos+len-1);</span>
+<span class="nc" id="L1319">    src.checkArray(srcPos+len-1);</span>
+<span class="nc" id="L1320">    checkIsModifiable();</span>
+    
+<span class="nc" id="L1322">    ArrayFields da = (ArrayFields)fields;</span>
+<span class="nc" id="L1323">    ArrayFields sa = (ArrayFields)src.fields;</span>
+    
+<span class="nc" id="L1325">    da.copyElements(sa, srcPos, dstPos, len);</span>
+<span class="nc" id="L1326">  }</span>
+
+  public boolean getBooleanElement(int idx) {
+<span class="fc" id="L1329">    checkArray(idx);</span>
+<span class="fc" id="L1330">    return fields.getBooleanValue(idx);</span>
+  }
+  public byte getByteElement(int idx) {
+<span class="fc" id="L1333">    checkArray(idx);</span>
+<span class="fc" id="L1334">    return fields.getByteValue(idx);</span>
+  }
+  public char getCharElement(int idx) {
+<span class="fc" id="L1337">    checkArray(idx);</span>
+<span class="fc" id="L1338">    return fields.getCharValue(idx);</span>
+  }
+  public short getShortElement(int idx) {
+<span class="fc" id="L1341">    checkArray(idx);</span>
+<span class="fc" id="L1342">    return fields.getShortValue(idx);</span>
+  }
+  public int getIntElement(int idx) {
+<span class="fc" id="L1345">    checkArray(idx);</span>
+<span class="fc" id="L1346">    return fields.getIntValue(idx);</span>
+  }
+  public long getLongElement(int idx) {
+<span class="fc" id="L1349">    checkArray(idx);</span>
+<span class="fc" id="L1350">    return fields.getLongValue(idx);</span>
+  }
+  public float getFloatElement(int idx) {
+<span class="fc" id="L1353">    checkArray(idx);</span>
+<span class="fc" id="L1354">    return fields.getFloatValue(idx);</span>
+  }
+  public double getDoubleElement(int idx) {
+<span class="fc" id="L1357">    checkArray(idx);</span>
+<span class="fc" id="L1358">    return fields.getDoubleValue(idx);</span>
+  }
+  public int getReferenceElement(int idx) {
+<span class="fc" id="L1361">    checkArray(idx);</span>
+<span class="fc" id="L1362">    return fields.getReferenceValue(idx);</span>
+  }
+
+  public void setObjectRef(int newObjRef) {
+<span class="nc" id="L1366">    objRef = newObjRef;</span>
+<span class="nc" id="L1367">  }</span>
+
+  public int getObjectRef() {
+<span class="fc" id="L1370">    return objRef;</span>
+  }
+
+  /** use getObjectRef() - this is not an index */
+  @Deprecated
+  public int getIndex(){
+<span class="nc" id="L1376">    return objRef;</span>
+  }
+
+  public int getLockCount() {
+<span class="fc" id="L1380">    return monitor.getLockCount();</span>
+  }
+
+  public ThreadInfo getLockingThread() {
+<span class="fc" id="L1384">    return monitor.getLockingThread();</span>
+  }
+
+  public boolean isLocked() {
+<span class="pc bpc" id="L1388" title="1 of 2 branches missed.">    return (monitor.getLockCount() &gt; 0);</span>
+  }
+
+  public boolean isArray() {
+<span class="fc" id="L1392">    return ci.isArray();</span>
+  }
+
+  public boolean isCharArray(){
+<span class="nc" id="L1396">    return (fields instanceof CharArrayFields);</span>
+  }
+  
+  public boolean isFloatArray(){
+<span class="nc" id="L1400">    return (fields instanceof FloatArrayFields);</span>
+  }
+
+  public boolean isDoubleArray(){
+<span class="nc" id="L1404">    return (fields instanceof DoubleArrayFields);</span>
+  }
+
+  
+  public String getArrayType() {
+<span class="nc bnc" id="L1409" title="All 2 branches missed.">    if (!ci.isArray()) {</span>
+<span class="nc" id="L1410">      throw new JPFException(&quot;object is not an array&quot;);</span>
+    }
+
+<span class="nc" id="L1413">    return Types.getArrayElementType(ci.getType());</span>
+  }
+
+  public Object getBacktrackData() {
+<span class="nc" id="L1417">    return null;</span>
+  }
+
+
+  // &lt;2do&gt; these will check for corresponding ArrayFields types
+  public boolean[] asBooleanArray() {
+<span class="pc bpc" id="L1423" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1424">      return ((ArrayFields)fields).asBooleanArray();</span>
+    } else {
+<span class="nc" id="L1426">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public byte[] asByteArray() {
+<span class="pc bpc" id="L1431" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1432">      return ((ArrayFields)fields).asByteArray();</span>
+    } else {
+<span class="nc" id="L1434">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public short[] asShortArray() {
+<span class="pc bpc" id="L1439" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1440">      return ((ArrayFields)fields).asShortArray();</span>
+    } else {
+<span class="nc" id="L1442">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public char[] asCharArray() {
+<span class="pc bpc" id="L1447" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1448">      return ((ArrayFields)fields).asCharArray();</span>
+    } else {
+<span class="nc" id="L1450">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public int[] asIntArray() {
+<span class="pc bpc" id="L1455" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1456">      return ((ArrayFields)fields).asIntArray();</span>
+    } else {
+<span class="nc" id="L1458">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public long[] asLongArray() {
+<span class="pc bpc" id="L1463" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1464">      return ((ArrayFields)fields).asLongArray();</span>
+    } else {
+<span class="nc" id="L1466">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public float[] asFloatArray() {
+<span class="pc bpc" id="L1471" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1472">      return ((ArrayFields)fields).asFloatArray();</span>
+    } else {
+<span class="nc" id="L1474">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public double[] asDoubleArray() {
+<span class="pc bpc" id="L1479" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1480">      return ((ArrayFields)fields).asDoubleArray();</span>
+    } else {
+<span class="nc" id="L1482">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public int[] asReferenceArray() {
+<span class="pc bpc" id="L1487" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1488">      return ((ArrayFields)fields).asReferenceArray();</span>
+    } else {
+<span class="nc" id="L1490">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+    
+  public boolean isNull() {
+<span class="pc bpc" id="L1495" title="1 of 2 branches missed.">    return (objRef == MJIEnv.NULL);</span>
+  }
+
+  public ElementInfo getDeclaredObjectField(String fname, String referenceType) {
+<span class="nc" id="L1499">    return VM.getVM().getHeap().get(getDeclaredReferenceField(fname, referenceType));</span>
+  }
+
+  public ElementInfo getObjectField(String fname) {
+<span class="nc" id="L1503">    return VM.getVM().getHeap().get(getReferenceField(fname));</span>
+  }
+
+
+  /**
+   * answer an estimate of the heap size in bytes (this is of course VM
+   * dependent, but we can give an upper bound for the fields/elements, and that
+   * should be good in terms of application specific properties)
+   */
+  public int getHeapSize() {
+<span class="nc" id="L1513">    return fields.getHeapSize();</span>
+  }
+
+  public String getStringField(String fname) {
+<span class="fc" id="L1517">    int ref = getReferenceField(fname);</span>
+
+<span class="fc bfc" id="L1519" title="All 2 branches covered.">    if (ref != MJIEnv.NULL) {</span>
+<span class="fc" id="L1520">      ElementInfo ei = VM.getVM().getHeap().get(ref);</span>
+<span class="fc" id="L1521">      return ei.asString();</span>
+    } else {
+<span class="fc" id="L1523">      return &quot;null&quot;;</span>
+    }
+  }
+
+  public String getType() {
+<span class="fc" id="L1528">    return ci.getType();</span>
+  }
+
+  /**
+   * return all threads that are trying to acquire this lock
+   * (blocked, waiting, interrupted)
+   * NOTE - this is not a copy, don't modify the array
+   */
+  public ThreadInfo[] getLockedThreads() {
+<span class="nc" id="L1537">    return monitor.getLockedThreads();</span>
+  }
+  
+  /**
+   * get a cloned list of the waiters for this object
+   */
+  public ThreadInfo[] getWaitingThreads() {
+<span class="nc" id="L1544">    return monitor.getWaitingThreads();</span>
+  }
+
+  public boolean hasWaitingThreads() {
+<span class="nc" id="L1548">    return monitor.hasWaitingThreads();</span>
+  }
+
+  public ThreadInfo[] getBlockedThreads() {
+<span class="nc" id="L1552">    return monitor.getBlockedThreads();</span>
+  }
+
+  public ThreadInfo[] getBlockedOrWaitingThreads() {
+<span class="nc" id="L1556">    return monitor.getBlockedOrWaitingThreads();</span>
+  }
+    
+  public int arrayLength() {
+<span class="pc bpc" id="L1560" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L1561">      return ((ArrayFields)fields).arrayLength();</span>
+    } else {
+<span class="nc" id="L1563">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+
+  public boolean isStringObject() {
+<span class="nc" id="L1568">    return ClassInfo.isStringClassInfo(ci);</span>
+  }
+
+  public String asString() {
+<span class="nc" id="L1572">    throw new JPFException(&quot;not a String object: &quot; + this);</span>
+  }
+
+  public char[] getStringChars(){
+<span class="nc" id="L1576">    throw new JPFException(&quot;not a String object: &quot; + this);    </span>
+  }
+  
+  /**
+   * just a helper to avoid creating objects just for the sake of comparing
+   */
+  public boolean equalsString (String s) {
+<span class="nc" id="L1583">    throw new JPFException(&quot;not a String object: &quot; + this);</span>
+  }
+
+  /**
+   * is this a Number, a Boolean or a Character object
+   * Note these classes are all final, so we don't have to check for subtypes
+   * 
+   * &lt;2do&gt; we should probably use a regular expression here
+   */
+  public boolean isBoxObject(){
+<span class="nc" id="L1593">    return false;</span>
+  }
+  
+  public Object asBoxObject(){
+<span class="nc" id="L1597">    throw new JPFException(&quot;not a box object: &quot; + this);    </span>
+  }
+  
+  void updateLockingInfo() {
+    int i;
+
+<span class="fc" id="L1603">    ThreadInfo ti = monitor.getLockingThread();</span>
+<span class="fc bfc" id="L1604" title="All 2 branches covered.">    if (ti != null) {</span>
+      // here we can update ThreadInfo lock object info (so that we don't
+      // have to store it separately)
+
+      // NOTE - the threads need to be restored *before* the ElementInfo containers,
+      // or this is going to choke
+
+      // note that we add only once, i.e. rely on the monitor lockCount to
+      // determine when to remove an object from our lock set
+      //assert area.ks.tl.get(ti.objRef) == ti;  // covered by verifyLockInfo
+<span class="fc" id="L1614">      ti.updateLockedObject(this);</span>
+    }
+
+<span class="fc bfc" id="L1617" title="All 2 branches covered.">    if (monitor.hasLockedThreads()) {</span>
+<span class="fc" id="L1618">      ThreadInfo[] lockedThreads = monitor.getLockedThreads();</span>
+<span class="fc bfc" id="L1619" title="All 2 branches covered.">      for (i=0; i&lt;lockedThreads.length; i++) {</span>
+<span class="fc" id="L1620">        ti = lockedThreads[i];</span>
+        //assert area.ks.tl.get(ti.objRef) == ti;  // covered by verifyLockInfo
+        
+        // note that the thread might still be runnable if we have several threads
+        // competing for the same lock
+<span class="fc bfc" id="L1625" title="All 2 branches covered.">        if (!ti.isRunnable()){</span>
+<span class="fc" id="L1626">          ti.setLockRef(objRef);</span>
+        }
+      }
+    }
+<span class="fc" id="L1630">  }</span>
+
+  public boolean canLock(ThreadInfo th) {
+<span class="fc" id="L1633">    return monitor.canLock(th);</span>
+  }
+
+  public void checkArrayBounds(int index) throws ArrayIndexOutOfBoundsExecutiveException {
+<span class="pc bpc" id="L1637" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields) {</span>
+<span class="fc bfc" id="L1638" title="All 4 branches covered.">      if (index &lt; 0 || index &gt;= ((ArrayFields)fields).arrayLength()){</span>
+<span class="fc" id="L1639">        throw new ArrayIndexOutOfBoundsExecutiveException(</span>
+<span class="fc" id="L1640">              ThreadInfo.getCurrentThread().createAndThrowException(</span>
+<span class="fc" id="L1641">              &quot;java.lang.ArrayIndexOutOfBoundsException&quot;, Integer.toString(index)));</span>
+      }
+    } else {
+<span class="nc" id="L1644">      throw new JPFException(&quot;object is not an array: &quot; + this);</span>
+    }
+<span class="fc" id="L1646">  }</span>
+
+  @Override
+  public ElementInfo clone() {
+    try {
+<span class="nc" id="L1651">      ElementInfo ei = (ElementInfo) super.clone();</span>
+<span class="nc" id="L1652">      ei.fields = fields.clone();</span>
+<span class="nc" id="L1653">      ei.monitor = monitor.clone();</span>
+
+<span class="nc" id="L1655">      return ei;</span>
+      
+<span class="nc" id="L1657">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L1658">      throw new InternalError(&quot;should not happen&quot;);</span>
+    }
+  }
+
+  // this is the one that should be used by heap
+  public ElementInfo deepClone() {
+    try {
+<span class="fc" id="L1665">      ElementInfo ei = (ElementInfo) super.clone();</span>
+<span class="fc" id="L1666">      ei.fields = fields.clone();</span>
+<span class="fc" id="L1667">      ei.monitor = monitor.clone();</span>
+      
+      // referencingThreads is at least subtree global, hence doesn't need to be cloned
+      
+<span class="fc" id="L1671">      ei.cachedMemento = null;</span>
+<span class="fc" id="L1672">      ei.defreeze();</span>
+      
+<span class="fc" id="L1674">      return ei;</span>
+      
+<span class="nc" id="L1676">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L1677">      throw new InternalError(&quot;should not happen&quot;);</span>
+    }
+    
+  }
+
+  public boolean instanceOf(String type) {
+<span class="fc" id="L1683">    return Types.instanceOf(ci.getType(), type);</span>
+  }
+
+  abstract public int getNumberOfFields();
+
+  abstract public FieldInfo getFieldInfo(int fieldIndex);
+
+  /**
+   * threads that will grab our lock on their next execution have to be
+   * registered, so that they can be blocked in case somebody else gets
+   * scheduled
+   */
+  public void registerLockContender (ThreadInfo ti) {
+
+<span class="pc bpc" id="L1697" title="4 of 6 branches missed.">    assert ti.lockRef == MJIEnv.NULL || ti.lockRef == objRef :</span>
+      &quot;thread &quot; + ti + &quot; trying to register for : &quot; + this +
+<span class="nc" id="L1699">      &quot; ,but already blocked on: &quot; + ti.getElementInfo(ti.lockRef);</span>
+
+    // note that using the lockedThreads list is a bit counter-intuitive
+    // since the thread is still in RUNNING or UNBLOCKED state, but it will
+    // remove itself from there once it resumes: lock() calls setMonitorWithoutLocked(ti)
+<span class="fc" id="L1704">    setMonitorWithLocked(ti);</span>
+
+    // added to satisfy invariant implied by updateLockingInfo() -peterd
+    //ti.setLockRef(objRef);
+<span class="fc" id="L1708">  }</span>
+
+  public boolean isRegisteredLockContender (ThreadInfo ti){
+<span class="fc" id="L1711">    return monitor.isLocking(ti);</span>
+  }
+  
+  /**
+   * somebody made up his mind and decided not to enter a synchronized section
+   * of code it had registered before (e.g. INVOKECLINIT)
+   */
+  public void unregisterLockContender (ThreadInfo ti) {
+<span class="fc" id="L1719">    setMonitorWithoutLocked(ti);</span>
+
+    // moved from INVOKECLINIT -peterd
+    //ti.resetLockRef();
+<span class="fc" id="L1723">  }</span>
+
+  void blockLockContenders () {
+    // check if there are any other threads that have to change status because they
+    // require to lock us in their next exec
+<span class="fc" id="L1728">    ThreadInfo[] lockedThreads = monitor.getLockedThreads();</span>
+<span class="fc bfc" id="L1729" title="All 2 branches covered.">    for (int i=0; i&lt;lockedThreads.length; i++) {</span>
+<span class="fc" id="L1730">      ThreadInfo ti = lockedThreads[i];</span>
+<span class="fc bfc" id="L1731" title="All 2 branches covered.">      if (ti.isRunnable()) {</span>
+<span class="fc" id="L1732">        ti.setBlockedState(objRef);</span>
+      }
+    }
+<span class="fc" id="L1735">  }</span>
+
+  /**
+   * from a MONITOR_ENTER or sync INVOKExx if we cannot acquire the lock
+   * note: this is not called from a NOTIFIED_UNBLOCKED state, so we don't have to restore NOTIFIED
+   */
+  public void block (ThreadInfo ti) {
+<span class="pc bpc" id="L1742" title="3 of 6 branches missed.">    assert (monitor.getLockingThread() != null) &amp;&amp; (monitor.getLockingThread() != ti) :</span>
+<span class="nc" id="L1743">          &quot;attempt to block &quot; + ti.getName() + &quot; on unlocked or own locked object: &quot; + this;</span>
+
+<span class="fc" id="L1745">    setMonitorWithLocked(ti);</span>
+    
+<span class="fc" id="L1747">    ti.setBlockedState(objRef);    </span>
+<span class="fc" id="L1748">  }</span>
+
+  /**
+   * from a MONITOR_ENTER or sync INVOKExx if we can acquire the lock
+   */
+  public void lock (ThreadInfo ti) {
+    // if we do unlock consistency checks with JPFExceptions, we should do the same here
+<span class="pc bpc" id="L1755" title="1 of 4 branches missed.">    if ((monitor.getLockingThread() != null) &amp;&amp;  (monitor.getLockingThread() != ti)){</span>
+<span class="nc" id="L1756">      throw new JPFException(&quot;thread &quot; + ti.getName() + &quot; tries to lock object: &quot;</span>
+<span class="nc" id="L1757">              + this + &quot; which is locked by: &quot; + monitor.getLockingThread().getName());</span>
+    }
+    
+    // the thread might be still in the lockedThreads list if this is the
+    // first step of a transition
+<span class="fc" id="L1762">    setMonitorWithoutLocked(ti);</span>
+<span class="fc" id="L1763">    monitor.setLockingThread(ti);</span>
+<span class="fc" id="L1764">    monitor.incLockCount();</span>
+
+    // before we enter anything else, mark this thread as not being blocked anymore
+<span class="fc" id="L1767">    ti.resetLockRef();</span>
+
+<span class="fc" id="L1769">    ThreadInfo.State state = ti.getState();</span>
+<span class="fc bfc" id="L1770" title="All 2 branches covered.">    if (state == ThreadInfo.State.UNBLOCKED) {</span>
+<span class="fc" id="L1771">      ti.setState(ThreadInfo.State.RUNNING);</span>
+    }
+
+    // don't re-add if we are recursive - the lock count is avaliable in the monitor
+<span class="fc bfc" id="L1775" title="All 2 branches covered.">    if (monitor.getLockCount() == 1) {</span>
+<span class="fc" id="L1776">      ti.addLockedObject(this);</span>
+    }
+
+    // this might set other threads blocked - make sure we lock first or the sequence
+    // of notifications is a bit screwed (i.e. the lock would appear *after* the block)
+<span class="fc" id="L1781">    blockLockContenders();</span>
+<span class="fc" id="L1782">  }</span>
+
+  /**
+   * from a MONITOR_EXIT or sync method RETURN
+   * release a possibly recursive lock if lockCount goes to zero
+   * 
+   * return true if this unblocked any waiters
+   */
+  public boolean unlock (ThreadInfo ti) {
+<span class="fc" id="L1791">    boolean didUnblock = false;</span>
+
+<span class="fc" id="L1793">    checkIsModifiable();</span>
+    
+    /* If there is a compiler bug, we need to flag it.  Most compilers should 
+     * generate balanced monitorenter and monitorexit instructions for all code 
+     * paths.  The VM is being used for more non-Java languages.  Some of these 
+     * compilers might be experimental and might generate unbalanced 
+     * instructions.  In a more likely case, dynamically generated bytecode is
+     * more likely to make a mistake and miss a code path.
+     */
+<span class="pc bpc" id="L1802" title="2 of 4 branches missed.">    if ((monitor.getLockCount() &lt;= 0) || (monitor.getLockingThread() != ti)){</span>
+<span class="nc" id="L1803">      throw new JPFException(&quot;thread &quot; + ti.getName() + &quot; tries to release non-owned lock for object: &quot; + this);</span>
+    }
+
+<span class="fc bfc" id="L1806" title="All 2 branches covered.">    if (monitor.getLockCount() == 1) {</span>
+<span class="fc" id="L1807">      ti.removeLockedObject(this);</span>
+
+<span class="fc" id="L1809">      ThreadInfo[] lockedThreads = monitor.getLockedThreads();</span>
+<span class="fc bfc" id="L1810" title="All 2 branches covered.">      for (int i = 0; i &lt; lockedThreads.length; i++) {</span>
+<span class="fc" id="L1811">        ThreadInfo lti = lockedThreads[i];</span>
+<span class="pc bpc" id="L1812" title="1 of 3 branches missed.">        switch (lti.getState()) {</span>
+
+        case BLOCKED:
+        case NOTIFIED:
+        case TIMEDOUT:
+        case INTERRUPTED:
+          // Ok, this thread becomes runnable again
+<span class="fc" id="L1819">          lti.resetLockRef();</span>
+<span class="fc" id="L1820">          lti.setState(ThreadInfo.State.UNBLOCKED);</span>
+<span class="fc" id="L1821">          didUnblock = true;</span>
+<span class="fc" id="L1822">          break;</span>
+
+        case WAITING:
+        case TIMEOUT_WAITING:
+          // nothing to do yet, thread has to timeout, get notified, or interrupted
+<span class="fc" id="L1827">          break;</span>
+
+        default:
+<span class="nc bnc" id="L1830" title="All 2 branches missed.">          assert false : &quot;Monitor.lockedThreads&lt;-&gt;ThreadData.status inconsistency! &quot; + lockedThreads[i].getStateName();</span>
+          // why is it in the list - when someone unlocks, all others should have been blocked
+        }
+      }
+
+      // leave the contenders - we need to know whom to block on subsequent lock
+
+<span class="fc" id="L1837">      monitor.decLockCount();</span>
+<span class="fc" id="L1838">      monitor.setLockingThread(null);</span>
+
+<span class="fc" id="L1840">    } else { // recursive unlock</span>
+<span class="fc" id="L1841">      monitor.decLockCount();</span>
+    }
+    
+<span class="fc" id="L1844">    return didUnblock;</span>
+  }
+
+  /**
+   * notifies one of the waiters. Note this is a potentially non-deterministic action
+   * if we have several waiters, since we have to try all possible choices.
+   * Note that even if we notify a thread here, it still remains in the lockedThreads
+   * list until the lock is released (notified threads cannot run right away)
+   */
+  public boolean notifies(SystemState ss, ThreadInfo ti){
+<span class="fc" id="L1854">    return notifies(ss, ti, true);</span>
+  }
+  
+  
+  private void notifies0 (ThreadInfo tiWaiter){
+<span class="fc bfc" id="L1859" title="All 2 branches covered.">    if (tiWaiter.isWaitingOrTimedOut()){</span>
+<span class="fc bfc" id="L1860" title="All 2 branches covered.">      if (tiWaiter.getLockCount() &gt; 0) {</span>
+        // waiter did hold the lock, but gave it up in the wait,  so it can't run yet
+<span class="fc" id="L1862">        tiWaiter.setNotifiedState();</span>
+
+      } else {
+        // waiter didn't hold the lock, set it running
+<span class="fc" id="L1866">        setMonitorWithoutLocked(tiWaiter);</span>
+<span class="fc" id="L1867">        tiWaiter.resetLockRef();</span>
+<span class="fc" id="L1868">        tiWaiter.setRunning();</span>
+      }
+    }
+<span class="fc" id="L1871">  }</span>
+
+  
+  /** return true if this did notify any waiters */
+  public boolean notifies (SystemState ss, ThreadInfo ti, boolean hasToHoldLock){
+<span class="fc bfc" id="L1876" title="All 2 branches covered.">    if (hasToHoldLock){</span>
+<span class="pc bpc" id="L1877" title="2 of 4 branches missed.">      assert monitor.getLockingThread() != null : &quot;notify on unlocked object: &quot; + this;</span>
+    }
+
+<span class="fc" id="L1880">    ThreadInfo[] locked = monitor.getLockedThreads();</span>
+<span class="fc" id="L1881">    int i, nWaiters=0, iWaiter=0;</span>
+
+<span class="fc bfc" id="L1883" title="All 2 branches covered.">    for (i=0; i&lt;locked.length; i++) {</span>
+<span class="fc bfc" id="L1884" title="All 2 branches covered.">      if (locked[i].isWaitingOrTimedOut() ) {</span>
+<span class="fc" id="L1885">        nWaiters++;</span>
+<span class="fc" id="L1886">        iWaiter = i;</span>
+      }
+    }
+
+<span class="fc bfc" id="L1890" title="All 2 branches covered.">    if (nWaiters == 0) {</span>
+      // no waiters, nothing to do
+<span class="pc bpc" id="L1892" title="1 of 2 branches missed.">    } else if (nWaiters == 1) {</span>
+      // only one waiter, no choice point
+<span class="fc" id="L1894">      notifies0(locked[iWaiter]);</span>
+
+    } else {
+      // Ok, this is the non-deterministic case
+<span class="nc" id="L1898">      ThreadChoiceGenerator cg = ss.getCurrentChoiceGeneratorOfType(ThreadChoiceGenerator.class);</span>
+
+<span class="nc bnc" id="L1900" title="All 4 branches missed.">      assert (cg != null) : &quot;no ThreadChoiceGenerator in notify&quot;;</span>
+
+<span class="nc" id="L1902">      notifies0(cg.getNextChoice());</span>
+    }
+
+<span class="fc" id="L1905">    ti.getVM().notifyObjectNotifies(ti, this);</span>
+<span class="fc bfc" id="L1906" title="All 2 branches covered.">    return (nWaiters &gt; 0);</span>
+  }
+
+  /**
+   * notify all waiters. This is a deterministic action
+   * all waiters remain in the locked list, since they still have to be unblocked,
+   * which happens in the unlock (monitor_exit or sync return) following the notifyAll()
+   */
+  public boolean notifiesAll() {
+<span class="pc bpc" id="L1915" title="2 of 4 branches missed.">    assert monitor.getLockingThread() != null : &quot;notifyAll on unlocked object: &quot; + this;</span>
+
+<span class="fc" id="L1917">    ThreadInfo[] locked = monitor.getLockedThreads();</span>
+<span class="fc bfc" id="L1918" title="All 2 branches covered.">    for (int i=0; i&lt;locked.length; i++) {</span>
+      // !!!! if there is more than one BLOCKED thread (sync call or monitor enter), only one can be
+      // unblocked
+<span class="fc" id="L1921">      notifies0(locked[i]);</span>
+    }
+
+<span class="fc" id="L1924">    VM.getVM().notifyObjectNotifiesAll(ThreadInfo.currentThread, this);</span>
+<span class="fc bfc" id="L1925" title="All 2 branches covered.">    return (locked.length &gt; 0);</span>
+  }
+
+
+  /**
+   * wait to be notified. thread has to hold the lock, but gives it up in the wait.
+   * Make sure lockCount can be restored properly upon notification
+   */
+  public void wait(ThreadInfo ti, long timeout){
+<span class="fc" id="L1934">    wait(ti,timeout,true);</span>
+<span class="fc" id="L1935">  }</span>
+
+  // this is used from a context where we don't require a lock, e.g. Unsafe.park()/unpark()
+  public void wait (ThreadInfo ti, long timeout, boolean hasToHoldLock){
+<span class="fc" id="L1939">    checkIsModifiable();</span>
+    
+<span class="fc bfc" id="L1941" title="All 2 branches covered.">    boolean holdsLock = monitor.getLockingThread() == ti;</span>
+
+<span class="fc bfc" id="L1943" title="All 2 branches covered.">    if (hasToHoldLock){</span>
+<span class="pc bpc" id="L1944" title="2 of 4 branches missed.">      assert holdsLock : &quot;wait on unlocked object: &quot; + this;</span>
+    }
+
+<span class="fc" id="L1947">    setMonitorWithLocked(ti);</span>
+<span class="fc" id="L1948">    ti.setLockRef(objRef);</span>
+    
+<span class="fc bfc" id="L1950" title="All 2 branches covered.">    if (timeout == 0) {</span>
+<span class="fc" id="L1951">      ti.setState(ThreadInfo.State.WAITING);</span>
+    } else {
+<span class="fc" id="L1953">      ti.setState(ThreadInfo.State.TIMEOUT_WAITING);</span>
+    }
+
+<span class="fc bfc" id="L1956" title="All 2 branches covered.">    if (holdsLock) {</span>
+<span class="fc" id="L1957">      ti.setLockCount(monitor.getLockCount());</span>
+
+<span class="fc" id="L1959">      monitor.setLockingThread(null);</span>
+<span class="fc" id="L1960">      monitor.setLockCount(0);</span>
+
+<span class="fc" id="L1962">      ti.removeLockedObject(this);</span>
+
+      // unblock all runnable threads that are blocked on this lock
+<span class="fc" id="L1965">      ThreadInfo[] lockedThreads = monitor.getLockedThreads();</span>
+<span class="fc bfc" id="L1966" title="All 2 branches covered.">      for (int i = 0; i &lt; lockedThreads.length; i++) {</span>
+<span class="fc" id="L1967">        ThreadInfo lti = lockedThreads[i];</span>
+<span class="fc bfc" id="L1968" title="All 2 branches covered.">        switch (lti.getState()) {</span>
+          case NOTIFIED:
+          case BLOCKED:
+          case INTERRUPTED:
+<span class="fc" id="L1972">            lti.resetLockRef();</span>
+<span class="fc" id="L1973">            lti.setState(ThreadInfo.State.UNBLOCKED);</span>
+            break;
+        }
+      }
+    }
+
+    // &lt;2do&gt; not sure if this is right if we don't hold the lock
+<span class="fc" id="L1980">    ti.getVM().notifyObjectWait(ti, this);</span>
+<span class="fc" id="L1981">  }</span>
+
+
+  /**
+   * re-acquire lock after being notified. This is the notified thread, i.e. the one
+   * that will come out of a wait()
+   */
+  public void lockNotified (ThreadInfo ti) {
+<span class="pc bpc" id="L1989" title="2 of 4 branches missed.">    assert ti.isUnblocked() : &quot;resume waiting thread &quot; + ti.getName() + &quot; which is not unblocked&quot;;</span>
+
+<span class="fc" id="L1991">    setMonitorWithoutLocked(ti);</span>
+<span class="fc" id="L1992">    monitor.setLockingThread( ti);</span>
+<span class="fc" id="L1993">    monitor.setLockCount( ti.getLockCount());</span>
+
+<span class="fc" id="L1995">    ti.setLockCount(0);</span>
+<span class="fc" id="L1996">    ti.resetLockRef();</span>
+<span class="fc" id="L1997">    ti.setState( ThreadInfo.State.RUNNING);</span>
+
+<span class="fc" id="L1999">    blockLockContenders();</span>
+
+    // this is important, if we later-on backtrack (reset the
+    // ThreadInfo.lockedObjects set, and then restore from the saved heap), the
+    // lock set would not include the lock when we continue to enter this thread
+<span class="fc" id="L2004">    ti.addLockedObject(this); //wv: add locked object back here</span>
+<span class="fc" id="L2005">  }</span>
+
+  /**
+   * this is for waiters that did not own the lock
+   */
+  public void resumeNonlockedWaiter (ThreadInfo ti){
+<span class="fc" id="L2011">    setMonitorWithoutLocked(ti);</span>
+
+<span class="fc" id="L2013">    ti.setLockCount(0);</span>
+<span class="fc" id="L2014">    ti.resetLockRef();</span>
+<span class="fc" id="L2015">    ti.setRunning();</span>
+<span class="fc" id="L2016">  }</span>
+
+
+  void dumpMonitor () {
+<span class="nc" id="L2020">    PrintWriter pw = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L2021">    pw.print( &quot;monitor &quot;);</span>
+    //pw.print( mIndex);
+<span class="nc" id="L2023">    monitor.printFields(pw);</span>
+<span class="nc" id="L2024">    pw.flush();</span>
+<span class="nc" id="L2025">  }</span>
+
+  /**
+   * updates a pinDown counter. If it is &gt; 0 the object is kept alive regardless
+   * if it is reachable from live objects or not.
+   * @return true if the new counter is 1, i.e. the object just became pinned down
+   *
+   * NOTE - this is *not* a public method and you probably want to use
+   * Heap.register/unregisterPinDown(). Pinning down an object is now
+   * done through the Heap API, which updates the counter here, but might also
+   * have to update internal caches
+   */
+  boolean incPinDown() {
+<span class="fc" id="L2038">    int pdCount = (attributes &amp; ATTR_PINDOWN_MASK);</span>
+
+<span class="fc" id="L2040">    pdCount++;</span>
+<span class="fc bfc" id="L2041" title="All 2 branches covered.">    if ((pdCount &amp; ~ATTR_PINDOWN_MASK) != 0){</span>
+<span class="fc" id="L2042">      throw new JPFException(&quot;pinDown limit exceeded: &quot; + this);</span>
+    } else {
+<span class="fc" id="L2044">      int a = (attributes &amp; ~ATTR_PINDOWN_MASK);</span>
+<span class="fc" id="L2045">      a |= pdCount;</span>
+<span class="fc" id="L2046">      a |= ATTR_ATTRIBUTE_CHANGED;</span>
+<span class="fc" id="L2047">      attributes = a;</span>
+      
+<span class="fc bfc" id="L2049" title="All 2 branches covered.">      return (pdCount == 1);</span>
+    }
+  }
+
+  /**
+   * see incPinDown
+   *
+   * @return true if the counter becomes 0, i.e. the object just ceased to be
+   * pinned down
+   */
+  boolean decPinDown() {
+<span class="fc" id="L2060">    int pdCount = (attributes &amp; ATTR_PINDOWN_MASK);</span>
+
+<span class="pc bpc" id="L2062" title="1 of 2 branches missed.">    if (pdCount &gt; 0){</span>
+<span class="fc" id="L2063">      pdCount--;</span>
+<span class="fc" id="L2064">      int a = (attributes &amp; ~ATTR_PINDOWN_MASK);</span>
+<span class="fc" id="L2065">      a |= pdCount;</span>
+<span class="fc" id="L2066">      a |= ATTR_ATTRIBUTE_CHANGED;</span>
+<span class="fc" id="L2067">      attributes = a;</span>
+
+<span class="fc bfc" id="L2069" title="All 2 branches covered.">      return (pdCount == 0);</span>
+      
+    } else {
+<span class="nc" id="L2072">      return false;</span>
+    }
+  }
+
+  public int getPinDownCount() {
+<span class="fc" id="L2077">    return (attributes &amp; ATTR_PINDOWN_MASK);</span>
+  }
+
+  public boolean isPinnedDown() {
+<span class="pc bpc" id="L2081" title="1 of 2 branches missed.">    return (attributes &amp; ATTR_PINDOWN_MASK) != 0;</span>
+  }
+
+
+  public boolean isConstructed() {
+<span class="fc bfc" id="L2086" title="All 2 branches covered.">    return (attributes &amp; ATTR_CONSTRUCTED) != 0;</span>
+  }
+
+  public void setConstructed() {
+<span class="fc" id="L2090">    attributes |= (ATTR_CONSTRUCTED | ATTR_ATTRIBUTE_CHANGED);</span>
+<span class="fc" id="L2091">  }</span>
+
+  public void restoreFields(Fields f) {
+<span class="nc" id="L2094">    fields = f;</span>
+<span class="nc" id="L2095">  }</span>
+
+  /**
+   * BEWARE - never change the returned object without knowing about the
+   * ElementInfo change status, this field is state managed!
+   */
+  public Fields getFields() {
+<span class="fc" id="L2102">    return fields;</span>
+  }
+
+  public ArrayFields getArrayFields(){
+<span class="pc bpc" id="L2106" title="1 of 2 branches missed.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L2107">      return (ArrayFields)fields;</span>
+    } else {
+<span class="nc" id="L2109">      throw new JPFException(&quot;not an array: &quot; + ci.getName());</span>
+    }
+  }
+  
+  public void restore(int index, int attributes, Fields fields, Monitor monitor){
+<span class="nc" id="L2114">    markUnchanged();</span>
+    
+<span class="nc" id="L2116">    this.objRef = index;</span>
+<span class="nc" id="L2117">    this.attributes = attributes;</span>
+<span class="nc" id="L2118">    this.fields = fields;</span>
+<span class="nc" id="L2119">    this.monitor = monitor;</span>
+<span class="nc" id="L2120">  }</span>
+
+  public void restoreMonitor(Monitor m) {
+<span class="nc" id="L2123">    monitor = m;</span>
+<span class="nc" id="L2124">  }</span>
+
+  /**
+   * BEWARE - never change the returned object without knowing about the
+   * ElementInfo change status, this field is state managed!
+   */
+  public Monitor getMonitor() {
+<span class="nc" id="L2131">    return monitor;</span>
+  }
+
+  public void restoreAttributes(int a) {
+<span class="nc" id="L2135">    attributes = a;</span>
+<span class="nc" id="L2136">  }</span>
+
+  public boolean isAlive(boolean liveBitValue) {
+<span class="fc bfc" id="L2139" title="All 2 branches covered.">    return ((attributes &amp; ATTR_LIVE_BIT) == 0) ^ liveBitValue;</span>
+  }
+
+  public void setAlive(boolean liveBitValue){
+<span class="fc bfc" id="L2143" title="All 2 branches covered.">    if (liveBitValue){</span>
+<span class="fc" id="L2144">      attributes |= ATTR_LIVE_BIT;</span>
+    } else {
+<span class="fc" id="L2146">      attributes &amp;= ~ATTR_LIVE_BIT;</span>
+    }
+<span class="fc" id="L2148">  }</span>
+
+  public boolean isMarked() {
+<span class="fc bfc" id="L2151" title="All 2 branches covered.">    return (attributes &amp; ATTR_IS_MARKED) != 0;</span>
+  }
+
+  public boolean isFinalized() {
+<span class="fc bfc" id="L2155" title="All 2 branches covered.">    return (attributes &amp; ATTR_FINALIZED) != 0;</span>
+  }
+  
+  public void setFinalized() {
+<span class="fc" id="L2159">    attributes |= ATTR_FINALIZED;</span>
+<span class="fc" id="L2160">  }</span>
+  
+  public void setMarked() {
+<span class="fc" id="L2163">    attributes |= ATTR_IS_MARKED;</span>
+<span class="fc" id="L2164">  }</span>
+
+  public boolean isMarkedOrAlive (boolean liveBitValue){
+<span class="fc bfc" id="L2167" title="All 4 branches covered.">    return ((attributes &amp; ATTR_IS_MARKED) != 0) | (((attributes &amp; ATTR_LIVE_BIT) == 0) ^ liveBitValue);</span>
+  }
+
+  public void markUnchanged() {
+<span class="fc" id="L2171">    attributes &amp;= ~ATTR_ANY_CHANGED;</span>
+<span class="fc" id="L2172">  }</span>
+
+  public void setUnmarked() {
+<span class="fc" id="L2175">    attributes &amp;= ~ATTR_IS_MARKED;</span>
+<span class="fc" id="L2176">  }</span>
+
+
+  protected void checkIsModifiable() {
+<span class="pc bpc" id="L2180" title="1 of 2 branches missed.">    if ((attributes &amp; ATTR_IS_FROZEN) != 0) {</span>
+<span class="nc" id="L2181">      throw new JPFException(&quot;attempt to modify frozen object: &quot; + this);</span>
+    }
+<span class="fc" id="L2183">  }</span>
+
+  void setMonitorWithLocked( ThreadInfo ti) {
+<span class="fc" id="L2186">    checkIsModifiable();</span>
+<span class="fc" id="L2187">    monitor.addLocked(ti);</span>
+<span class="fc" id="L2188">  }</span>
+
+  void setMonitorWithoutLocked (ThreadInfo ti) {
+<span class="fc" id="L2191">    checkIsModifiable();    </span>
+<span class="fc" id="L2192">    monitor.removeLocked(ti);</span>
+<span class="fc" id="L2193">  }</span>
+
+  public boolean isLockedBy(ThreadInfo ti) {
+<span class="pc bpc" id="L2196" title="1 of 4 branches missed.">    return ((monitor != null) &amp;&amp; (monitor.getLockingThread() == ti));</span>
+  }
+
+  public boolean isLocking(ThreadInfo ti){
+<span class="nc bnc" id="L2200" title="All 4 branches missed.">    return (monitor != null) &amp;&amp; monitor.isLocking(ti);</span>
+  }
+  
+  void _printAttributes(String cls, String msg, int oldAttrs) {
+<span class="nc bnc" id="L2204" title="All 2 branches missed.">    if (getClassInfo().getName().equals(cls)) {</span>
+<span class="nc" id="L2205">      System.out.println(msg + &quot; &quot; + this + &quot; attributes: &quot;</span>
+<span class="nc" id="L2206">          + Integer.toHexString(attributes) + &quot; was: &quot;</span>
+<span class="nc" id="L2207">          + Integer.toHexString(oldAttrs));</span>
+    }
+<span class="nc" id="L2209">  }</span>
+
+    
+  public void checkConsistency() {
+/**
+    ThreadInfo ti = monitor.getLockingThread();
+    if (ti != null) {
+      // object has to be in the lockedObjects list of this thread
+      checkAssertion( ti.getLockedObjects().contains(this), &quot;locked object not in thread: &quot; + ti);
+    }
+
+    if (monitor.hasLockedThreads()) {
+      checkAssertion( refTid.cardinality() &gt; 1, &quot;locked threads without multiple referencing threads&quot;);
+
+      for (ThreadInfo lti : monitor.getBlockedOrWaitingThreads()){
+        checkAssertion( lti.lockRef == objRef, &quot;blocked or waiting thread has invalid lockRef: &quot; + lti);
+      }
+
+      // we can't check for having lock contenders without being shared, since this can happen
+      // in case an object is behind a FieldInfo shared-ness firewall (e.g. ThreadGroup.threads), or
+      // is kept/used in native code (listener, peer)
+    }
+**/
+<span class="nc" id="L2232">  }</span>
+  
+  protected void checkAssertion(boolean cond, String failMsg){
+<span class="nc bnc" id="L2235" title="All 2 branches missed.">    if (!cond){</span>
+<span class="nc" id="L2236">      System.out.println(&quot;!!!!!! failed ElementInfo consistency: &quot;  + this + &quot;: &quot; + failMsg);</span>
+
+<span class="nc" id="L2238">      System.out.println(&quot;object: &quot; + this);</span>
+<span class="nc" id="L2239">      System.out.println(&quot;usingTi: &quot; + referencingThreads);</span>
+      
+<span class="nc" id="L2241">      ThreadInfo tiLock = getLockingThread();</span>
+<span class="nc bnc" id="L2242" title="All 2 branches missed.">      if (tiLock != null) System.out.println(&quot;locked by: &quot; + tiLock);</span>
+      
+<span class="nc bnc" id="L2244" title="All 2 branches missed.">      if (monitor.hasLockedThreads()){</span>
+<span class="nc" id="L2245">        System.out.println(&quot;lock contenders:&quot;);</span>
+<span class="nc bnc" id="L2246" title="All 2 branches missed.">        for (ThreadInfo ti : monitor.getLockedThreads()){</span>
+<span class="nc" id="L2247">          System.out.println(&quot;  &quot; + ti + &quot; = &quot; + ti.getState());</span>
+        }
+      }
+      
+<span class="nc" id="L2251">      VM.getVM().dumpThreadStates();</span>
+<span class="nc bnc" id="L2252" title="All 2 branches missed.">      assert false;</span>
+    }
+<span class="nc" id="L2254">  }</span>
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

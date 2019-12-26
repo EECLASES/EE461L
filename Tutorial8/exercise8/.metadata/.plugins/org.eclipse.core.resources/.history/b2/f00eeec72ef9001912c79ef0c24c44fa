@@ -1,0 +1,52 @@
+<project name="CircleCalcAnt" default="dist" basedir=".">
+	<property name="src1.dir" value="src1"/>
+	<property name="build.dir" value="build"/>
+	<property name="dist.dir" value="dist"/>
+	<property name="dist.jar.dir" value="${dist.dir}/lib"/>
+	<property name="dist.jarfile" value="${dist.jar.dir}/Project.jar"/>
+	<property name="jar.dir" value="lib"/>
+	
+
+
+	<target name="init">
+	    <mkdir dir="${build.dir}"/>
+	    <mkdir dir="${src1.dir}"/>
+ 	   
+	    
+	    
+
+	   	</target>
+	   
+
+	<target name="compile" depends="init">
+	    <javac srcdir="src" destdir="build"  includeantruntime="false"/>
+	</target>
+
+	<target name="dist" depends="compile">
+		<mkdir dir="${dist.dir}"/>
+		<mkdir dir="${dist.jar.dir}"/>
+
+
+		<jar jarfile="${dist.jarfile}" basedir="build">
+			<manifest>
+				<attribute name="Main-Class" value="HelloWorld"/>
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="run" depends="dist" >
+	    <java jar="dist/lib/Project.jar" fork="true"/>
+	</target>
+	
+	<target name="clean">
+		<delete dir="build"/>
+		<delete dir="src1"/>
+		<delete dir="dist"/>
+		<delete dir="dist/lib"/>
+		<delete file="dist/lib/Project.jar"/>
+		
+
+	</target>
+
+	
+	</project>

@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FinalizerThreadInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">FinalizerThreadInfo.java</span></div><h1>FinalizerThreadInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.vm.choice.BreakGenerator;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ *  
+ * This class represents the finalizer thread in VM which is responsible for
+ * executing finalize() methods upon garbage collection of finalizable objects.
+ * By a finalizable object, we mean an object, the class of which overrides the
+ * Object.finalize() method. By default, we do not allow for processing finalizers, 
+ * to enforce that one needs to set the property &quot;vm.process_finalizers&quot; to true.
+ * 
+ * If &quot;vm.process_finalizers&quot; is set to true, during vm initialization we create
+ * a FinalizerThreadInfo object per process. ApplicationContext keeps a reference
+ * to FinalizerThreadInfo of the process. This thread is alive during the entire
+ * process execution. The finalizer thread is &quot;always&quot; waiting on an internal
+ * private lock. The JPF Thread object corresponding to the FinalizerThreadInfo 
+ * is encapsulated by the model class gov.nasa.jpf.FinalizerThread. The thread 
+ * encapsulated by FinalizerThread has a queue of objects called &quot;finalizeQueue&quot;
+ * which is kept at the SUT level. This queue is initially empty, and it is 
+ * populated during the sweep() phase of the garbage collection. During sweep(), 
+ * before removing unmark objects from the heap, any unmark finalizable object is 
+ * marked and added to finalizeQueue. 
+ * 
+ * In VM.forward(), after each garbage collection, VM checks if finalizeQueue of 
+ * the current process finalizer thread is not empty. If so, VM schedules the
+ * finalizer thread to execute next, i.e. finalizer thread stops waiting and its 
+ * state becomes runnable. To accomplish that, VM replaces the next choiceGenerator 
+ * with a new choice generator from which only finalizer thread can proceed.
+ *  
+ * After finalizer thread processes the finalize() methods of all objects in
+ * finalizeQueue, the queue becomes empty and the thread waits on its internal lock
+ * again. After the process terminates, we still keep the finalizer thread to be 
+ * processed after the last garbage collection involving the process. The runnable
+ * finalizer thread terminates itself when it has processed its finalizeQueue and 
+ * there is no other alive thread in the process.
+ */
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">public class FinalizerThreadInfo extends ThreadInfo {</span>
+  
+  static final String FINALIZER_NAME = &quot;finalizer&quot;;
+  
+  ChoiceGenerator&lt;?&gt; replacedCG;
+  
+  protected FinalizerThreadInfo (VM vm, ApplicationContext appCtx, int id) {
+<span class="fc" id="L65">    super(vm, id, appCtx);</span>
+    
+<span class="fc" id="L67">    ci = appCtx.getSystemClassLoader().getResolvedClassInfo(&quot;gov.nasa.jpf.FinalizerThread&quot;);</span>
+<span class="fc" id="L68">    threadData.name = FINALIZER_NAME;</span>
+    
+<span class="fc" id="L70">    tempFinalizeQueue = new ArrayList&lt;ElementInfo&gt;();</span>
+<span class="fc" id="L71">  }</span>
+  
+  protected void createFinalizerThreadObject (SystemClassLoaderInfo sysCl){
+<span class="fc" id="L74">    Heap heap = getHeap();</span>
+
+<span class="fc" id="L76">    ElementInfo eiThread = heap.newObject( ci, this);</span>
+<span class="fc" id="L77">    objRef = eiThread.getObjectRef();</span>
+    
+<span class="fc" id="L79">    ElementInfo eiName = heap.newString(FINALIZER_NAME, this);</span>
+<span class="fc" id="L80">    int nameRef = eiName.getObjectRef();</span>
+<span class="fc" id="L81">    eiThread.setReferenceField(&quot;name&quot;, nameRef);</span>
+    
+    // Since we create FinalizerThread upon VM initialization, they are assigned to the
+    // same group as the main thread
+<span class="fc" id="L85">    int grpRef = ThreadInfo.getCurrentThread().getThreadGroupRef();</span>
+<span class="fc" id="L86">    eiThread.setReferenceField(&quot;group&quot;, grpRef);</span>
+    
+<span class="fc" id="L88">    eiThread.setIntField(&quot;priority&quot;, Thread.MAX_PRIORITY-2);</span>
+
+<span class="fc" id="L90">    ClassInfo ciPermit = sysCl.getResolvedClassInfo(&quot;java.lang.Thread$Permit&quot;);</span>
+<span class="fc" id="L91">    ElementInfo eiPermit = heap.newObject( ciPermit, this);</span>
+<span class="fc" id="L92">    eiPermit.setBooleanField(&quot;blockPark&quot;, true);</span>
+<span class="fc" id="L93">    eiThread.setReferenceField(&quot;permit&quot;, eiPermit.getObjectRef());</span>
+
+<span class="fc" id="L95">    addToThreadGroup(getElementInfo(grpRef));</span>
+    
+<span class="fc" id="L97">    addId( objRef, id);</span>
+    
+<span class="fc" id="L99">    threadData.name = FINALIZER_NAME;</span>
+
+    // start the thread by pushing Thread.run()
+<span class="fc" id="L102">    startFinalizerThread();</span>
+    
+<span class="fc" id="L104">    eiThread.setBooleanField(&quot;done&quot;, false);</span>
+<span class="fc" id="L105">    ElementInfo finalizeQueue = getHeap().newArray(&quot;Ljava/lang/Object;&quot;, 0, this);</span>
+<span class="fc" id="L106">    eiThread.setReferenceField(&quot;finalizeQueue&quot;, finalizeQueue.getObjectRef());</span>
+    
+    // create an internal private lock used for lock-free wait
+<span class="fc" id="L109">    ElementInfo lock = getHeap().newObject(appCtx.getSystemClassLoader().objectClassInfo, this);</span>
+<span class="fc" id="L110">    eiThread.setReferenceField(&quot;semaphore&quot;, lock.getObjectRef());</span>
+    
+    // make it wait on the internal private lock until its finalizeQueue is populated. This way,
+    // we avoid scheduling points from including FinalizerThreads
+<span class="fc" id="L114">    waitOnSemaphore();</span>
+
+<span class="pc bpc" id="L116" title="2 of 4 branches missed.">    assert this.isWaiting();</span>
+<span class="fc" id="L117">  }</span>
+  
+  /**
+   * Pushes a frame corresponding to Thread.run() into the finalizer thread stack to
+   * start the thread.
+   */
+  protected void startFinalizerThread() {
+<span class="fc" id="L124">    MethodInfo mi = ci.getMethod(&quot;run()V&quot;, false);</span>
+<span class="fc" id="L125">    DirectCallStackFrame frame = mi.createDirectCallStackFrame(this, 0);</span>
+<span class="fc" id="L126">    frame.setReferenceArgument(0, objRef, frame);</span>
+<span class="fc" id="L127">    pushFrame(frame);</span>
+<span class="fc" id="L128">  }</span>
+  
+  public boolean hasQueuedFinalizers() {
+<span class="fc" id="L131">    ElementInfo queue = getFinalizeQueue();</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">    return (queue!=null &amp;&amp; queue.asReferenceArray().length&gt;0);</span>
+  }
+  
+  public ElementInfo getFinalizeQueue() {
+<span class="fc" id="L136">    ElementInfo ei = vm.getModifiableElementInfo(objRef);</span>
+<span class="fc" id="L137">    ElementInfo queue = null;</span>
+    
+<span class="fc bfc" id="L139" title="All 2 branches covered.">    if(ei!=null) {</span>
+<span class="fc" id="L140">      int queueRef = ei.getReferenceField(&quot;finalizeQueue&quot;);</span>
+<span class="fc" id="L141">      queue = vm.getModifiableElementInfo(queueRef);</span>
+<span class="fc" id="L142">      return queue;</span>
+    }
+    
+<span class="fc" id="L145">    return queue;</span>
+  }
+  
+  // all finalizable objects collected during garbage collection are temporarily added to this list
+  // when VM schedule the finalizer thread, it add all elements to FinalizerThread.finalizeQueue at
+  // the SUT level.
+  List&lt;ElementInfo&gt; tempFinalizeQueue;
+  
+  /** 
+   * This method is invoked by the sweep() phase of the garbage collection process (GenericHeap.sweep()).
+   * It adds a given finalizable object to the finalizeQueue array of gov.nasa.jpf.FinalizerThread.
+   * 
+   * NOTE: this might return a new ElementInfo since we have to modify it (setting the finalized flag)
+   */
+  public ElementInfo getFinalizerQueuedInstance(ElementInfo ei) {
+<span class="fc" id="L160">    ei = ei.getModifiableInstance();</span>
+    
+    // make sure we process this object finalizer only once
+<span class="fc" id="L163">    ei.setFinalized();</span>
+    
+<span class="fc" id="L165">    tempFinalizeQueue.add(ei);</span>
+    
+<span class="fc" id="L167">    return ei;</span>
+  }
+  
+  /**
+   * This method adds all finalizable objects observed during the last garbage collection
+   * to finalizeQueue of FinalizerThread corresponding to this thread
+   */
+  void processNewFinalizables() {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    if(!tempFinalizeQueue.isEmpty()) {</span>
+      
+<span class="fc" id="L177">      ElementInfo oldQueue = getFinalizeQueue();</span>
+<span class="fc" id="L178">      int[] oldValues = oldQueue.asReferenceArray();    </span>
+<span class="fc" id="L179">      int len = oldValues.length;</span>
+      
+<span class="fc" id="L181">      int n = tempFinalizeQueue.size();</span>
+      
+<span class="fc" id="L183">      ElementInfo newQueue = getHeap().newArray(&quot;Ljava/lang/Object;&quot;, len+n, this);</span>
+<span class="fc" id="L184">      int[] newValues = newQueue.asReferenceArray();</span>
+      
+<span class="fc" id="L186">      System.arraycopy(oldValues, 0, newValues, 0, len);</span>
+      
+<span class="fc bfc" id="L188" title="All 2 branches covered.">      for(ElementInfo ei: tempFinalizeQueue) {</span>
+<span class="fc" id="L189">        newValues[len++] = ei.getObjectRef();</span>
+<span class="fc" id="L190">      }</span>
+      
+<span class="fc" id="L192">      vm.getModifiableElementInfo(objRef).setReferenceField(&quot;finalizeQueue&quot;, newQueue.getObjectRef());</span>
+<span class="fc" id="L193">      tempFinalizeQueue.clear();</span>
+      
+<span class="pc bpc" id="L195" title="2 of 4 branches missed.">      assert hasQueuedFinalizers();</span>
+    }
+<span class="fc" id="L197">  }</span>
+  
+  public boolean scheduleFinalizer() {
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">    if(hasQueuedFinalizers() &amp;&amp; !isRunnable()) {</span>
+<span class="fc" id="L201">      SystemState ss = vm.getSystemState();</span>
+<span class="fc" id="L202">      replacedCG = ss.getNextChoiceGenerator();</span>
+      
+      // NOTE - before we get here we have already made sure that nextCg is not Cascaded. 
+      // we have to set nextCg to null before setting the nextCG, otherwise, the new CG is 
+      // mistakenly considered as &quot;Cascaded&quot;
+<span class="fc" id="L207">      ss.nextCg = null;</span>
+      
+      // this doesn't have any choice (we need to run the finalizer), and since we don't have
+      // anything to re-execute (this is called from VM.forward()), we need to be in control of 
+      // type and registration of the CG, hence this doesn't go through the Scheduler/SyncPolicy
+<span class="fc" id="L212">      ss.setNextChoiceGenerator(new BreakGenerator(&quot;finalize&quot;, this, false));</span>
+<span class="fc" id="L213">      checkNextChoiceGeneratorSet(&quot;no transition break prior to finalize&quot;);</span>
+      
+      // stop waiting and process finalizers
+<span class="fc" id="L216">      notifyOnSemaphore();</span>
+<span class="pc bpc" id="L217" title="2 of 4 branches missed.">      assert this.isRunnable();</span>
+      
+<span class="fc" id="L219">      return true;</span>
+    } 
+    
+<span class="fc" id="L222">    return false;</span>
+  }
+  
+  protected void waitOnSemaphore() {
+<span class="fc" id="L226">    int lockRef = vm.getElementInfo(objRef).getReferenceField(&quot;semaphore&quot;);</span>
+<span class="fc" id="L227">    ElementInfo lock = vm.getModifiableElementInfo(lockRef);</span>
+    
+<span class="fc" id="L229">    lock.wait(this, 0, false);</span>
+<span class="fc" id="L230">  }</span>
+  
+  protected void notifyOnSemaphore() {
+<span class="fc" id="L233">    int lockRef = vm.getElementInfo(objRef).getReferenceField(&quot;semaphore&quot;);</span>
+<span class="fc" id="L234">    ElementInfo lock = vm.getModifiableElementInfo(lockRef);</span>
+    
+<span class="fc" id="L236">    lock.notifies(vm.getSystemState(), this, false);</span>
+<span class="fc" id="L237">  }</span>
+  
+  // It returns true if the finalizer thread is waiting and do not have any object to
+  // process
+  protected boolean isIdle() {
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">    if(this.isWaiting()) {</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">      if(this.lockRef == vm.getElementInfo(objRef).getReferenceField(&quot;semaphore&quot;)) {</span>
+<span class="fc" id="L244">        return true;</span>
+      }
+    }
+<span class="nc" id="L247">    return false;</span>
+  }
+  
+  @Override
+  public boolean isSystemThread() {
+<span class="fc" id="L252">    return true;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

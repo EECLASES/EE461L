@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IntChoiceFromList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">IntChoiceFromList.java</span></div><h1>IntChoiceFromList.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.vm.IntChoiceGenerator;
+/**
+ * @author jpenix
+ *
+ * choose from a set of values provided in configuration as
+ * xxx.class = IntChoiceFromList
+ * xxx.values = {1, 2, 3, 400}
+ * where &quot;xxx&quot; is the choice id.
+ * 
+ * choices can then made using: getInt(&quot;xxx&quot;);
+ */
+public class IntChoiceFromList extends NumberChoiceFromList&lt;Integer&gt; implements IntChoiceGenerator {
+
+  
+  @Override
+  protected Integer[] createValueArray(int len){
+<span class="fc" id="L38">    return new Integer[len];</span>
+  }
+  @Override
+  protected Integer getDefaultValue() {
+<span class="nc" id="L42">    return 0;</span>
+  }
+    
+  @Override
+  public Class&lt;Integer&gt; getChoiceType(){
+<span class="nc" id="L47">    return Integer.class;</span>
+  }
+  	
+  @Override
+  protected Integer parseLiteral (String literal, int sign){
+<span class="fc" id="L52">    int val = Integer.parseInt(literal);</span>
+<span class="fc" id="L53">    return new Integer( val * sign);</span>
+  }
+  
+  @Override
+  protected Integer newValue (Number num, int sign){
+<span class="fc" id="L58">    return new Integer( num.intValue() * sign);</span>
+  }
+  
+  /**
+   *  super constructor for subclasses that want to configure themselves
+   * @param id name used in choice config
+   */
+  protected IntChoiceFromList(String id){
+<span class="nc" id="L66">    super(id);</span>
+<span class="nc" id="L67">  }</span>
+
+  protected IntChoiceFromList (String id, Integer[] vals){
+<span class="nc" id="L70">    super(id, vals);</span>
+<span class="nc" id="L71">  }</span>
+  
+	public IntChoiceFromList(Config conf, String id) {
+<span class="fc" id="L74">		super(conf, id);</span>
+<span class="fc" id="L75">	}</span>
+
+  public IntChoiceFromList(String id, int... val){
+<span class="fc" id="L78">    super(id);</span>
+
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">    if (val != null){</span>
+<span class="fc" id="L81">      values = new Integer[val.length];</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">      for (int i=0; i&lt;val.length; i++){</span>
+<span class="fc" id="L83">        values[i] = val[i];  // enable use of cached Integer values</span>
+      }
+    } else {
+<span class="nc" id="L86">      throw new JPFException(&quot;empty set for IntChoiceFromList&quot;);</span>
+    }
+
+<span class="fc" id="L89">    count = -1;</span>
+<span class="fc" id="L90">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

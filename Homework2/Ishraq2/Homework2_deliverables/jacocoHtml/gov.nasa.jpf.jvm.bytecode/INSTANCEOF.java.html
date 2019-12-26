@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INSTANCEOF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">INSTANCEOF.java</span></div><h1>INSTANCEOF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.LoadOnJPFRequired;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+
+/**
+ * Determine if object is of given type
+ * ..., objectref =&gt; ..., result
+ */
+public class INSTANCEOF extends Instruction implements JVMInstruction {
+  private String type;
+
+
+  /**
+   * typeName is of a/b/C notation
+   */
+<span class="fc" id="L39">  public INSTANCEOF (String typeName){</span>
+<span class="fc" id="L40">    type = Types.getTypeSignature(typeName, false);</span>
+<span class="fc" id="L41">  }</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">    if(Types.isReferenceSignature(type)) {</span>
+      String t;
+<span class="fc bfc" id="L47" title="All 2 branches covered.">      if(Types.isArray(type)) {</span>
+        // retrieve the component terminal
+<span class="fc" id="L49">        t = Types.getComponentTerminal(type);</span>
+      } else {
+<span class="fc" id="L51">        t = type;</span>
+      }
+
+      // resolve the referenced class
+      try {
+<span class="fc" id="L56">        ti.resolveReferencedClass(t);</span>
+<span class="nc" id="L57">      } catch(LoadOnJPFRequired lre) {</span>
+<span class="nc" id="L58">        return ti.getPC();</span>
+<span class="fc" id="L59">      }</span>
+    }
+
+<span class="fc" id="L62">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L63">    int objref = frame.pop();</span>
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    if (objref == MJIEnv.NULL) {</span>
+<span class="fc" id="L66">      frame.push(0);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    } else if (ti.getElementInfo(objref).instanceOf(type)) {</span>
+<span class="fc" id="L68">      frame.push(1);</span>
+    } else {
+<span class="fc" id="L70">      frame.push(0);</span>
+    }
+
+<span class="fc" id="L73">    return getNext(ti);</span>
+  }
+  
+  public String getType() {
+<span class="nc" id="L77">	  return type;</span>
+  }
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L82">    return 3; // opcode, index1, index2</span>
+  }
+  
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L87">    return 0xC1;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L92">	  insVisitor.visit(this);</span>
+<span class="nc" id="L93">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

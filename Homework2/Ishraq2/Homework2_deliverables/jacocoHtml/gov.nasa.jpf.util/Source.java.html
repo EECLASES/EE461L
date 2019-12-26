@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Source.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">Source.java</span></div><h1>Source.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.logging.Logger;
+
+
+/**
+ * utility class to access arbitrary source files by line number
+ * sources can be files inside of root directories, or
+ * can be entries in jars
+ */
+public class Source {
+
+<span class="fc" id="L47">  static Logger logger = JPF.getLogger(&quot;gov.nasa.jpf.util.Source&quot;);</span>
+
+  static List&lt;SourceRoot&gt; sourceRoots;
+<span class="fc" id="L50">  static Hashtable&lt;String,Source&gt; sources = new Hashtable&lt;String,Source&gt;();</span>
+<span class="fc" id="L51">  static Source noSource = new Source(null, null);</span>
+
+<span class="fc" id="L53">  static abstract class SourceRoot { // common base</span>
+    abstract InputStream getInputStream (String fname);
+  }
+
+  static class DirRoot extends SourceRoot {
+    String path;
+
+<span class="fc" id="L60">    DirRoot (String path){</span>
+<span class="fc" id="L61">      this.path = path;</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+	InputStream getInputStream (String fname) {
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">      if (File.separatorChar != '/'){</span>
+<span class="nc" id="L67">        fname = fname.replace('/', File.separatorChar);</span>
+      }
+
+<span class="fc" id="L70">      File f = new File(path, fname);</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">      if (f.exists()) {</span>
+        try {
+<span class="nc" id="L73">          return new FileInputStream(f);</span>
+<span class="nc" id="L74">        } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L75">          return null;</span>
+        }
+      } else {
+<span class="fc" id="L78">        return null;</span>
+      }
+    }
+
+    @Override
+	public boolean equals (Object other){
+<span class="nc bnc" id="L84" title="All 4 branches missed.">      return (other != null) &amp;&amp; (other instanceof DirRoot) &amp;&amp;</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">              path.equals(((DirRoot)other).path);</span>
+    }
+
+    @Override
+	public String toString() {
+<span class="nc" id="L90">      return path;</span>
+    }
+  }
+
+  static class JarRoot extends SourceRoot {
+    JarFile jar;
+    String  entryPrefix;
+
+<span class="nc" id="L98">    JarRoot (String path, String ep) throws IOException {</span>
+<span class="nc" id="L99">      jar = new JarFile(path);</span>
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">      if (ep == null) {</span>
+<span class="nc" id="L102">        entryPrefix = null;</span>
+      } else {
+<span class="nc" id="L104">        entryPrefix = ep;</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (ep.charAt(ep.length()-1) != '/') {</span>
+<span class="nc" id="L106">          entryPrefix += '/';</span>
+        }
+      }
+<span class="nc" id="L109">    }</span>
+
+    @Override
+	InputStream getInputStream (String fname) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      String en = (entryPrefix != null) ? entryPrefix + fname : fname;</span>
+<span class="nc" id="L114">      JarEntry entry = jar.getJarEntry(en);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      if (entry != null) {</span>
+        try {
+<span class="nc" id="L117">          return jar.getInputStream(entry);</span>
+<span class="nc" id="L118">        } catch (IOException e) {</span>
+<span class="nc" id="L119">          return null;</span>
+        }
+      } else {
+<span class="nc" id="L122">        return null;</span>
+      }
+    }
+
+    @Override
+	public boolean equals (Object other){
+<span class="nc bnc" id="L128" title="All 4 branches missed.">      if ( (other != null) &amp;&amp; (other instanceof JarRoot)){</span>
+
+        // just how hard can it be to check if two JarFiles instances refer to
+        // the same file?
+<span class="nc" id="L132">        JarRoot o = (JarRoot)other;</span>
+<span class="nc" id="L133">        File f = new File(jar.getName());</span>
+<span class="nc" id="L134">        File fOther = new File(o.jar.getName());</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        if (f.getAbsolutePath().equals(fOther.getAbsolutePath())){</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">          if (entryPrefix == null){</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">            return o.entryPrefix == null;</span>
+          } else {
+<span class="nc" id="L139">            entryPrefix.equals(o.entryPrefix);</span>
+          }
+        }
+      }
+
+<span class="nc" id="L144">      return false;</span>
+    }
+
+    @Override
+	public String toString() {
+<span class="nc" id="L149">      return jar.getName();</span>
+    }
+  }
+
+  static void addSourceRoot (Config config, List&lt;SourceRoot&gt; roots, String spec){
+<span class="fc" id="L154">    SourceRoot sr = null;</span>
+
+    try {
+<span class="fc" id="L157">      int i = spec.indexOf(&quot;.jar&quot;);</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">      if (i &gt;= 0) {  // jar</span>
+<span class="nc" id="L159">        String pn = FileUtils.asPlatformPath(spec.substring(0, i + 4));</span>
+<span class="nc" id="L160">        File jar = new File(pn);</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (jar.exists()) {</span>
+<span class="nc" id="L162">          int i0 = i + 5; // scrub the leading path separator</span>
+          // JarFile assumes Unix for archive-internal paths (also on Windows)
+<span class="nc bnc" id="L164" title="All 2 branches missed.">          String ep = (spec.length() &gt; i0) ? FileUtils.asCanonicalUnixPath(spec.substring(i0)) : null;</span>
+          // we should probably check here if there is such a dir in the Jar
+<span class="nc" id="L166">          sr = new JarRoot(pn, ep);</span>
+        }
+
+<span class="nc" id="L169">      } else {       // directory</span>
+<span class="fc" id="L170">        String pn = FileUtils.asPlatformPath(spec);</span>
+<span class="fc" id="L171">        File dir = new File(pn);</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (dir.exists()) {</span>
+<span class="fc" id="L173">          sr = new DirRoot(pn);</span>
+        }
+      }
+<span class="nc" id="L176">    } catch (IOException iox) {</span>
+      // we report this below
+<span class="fc" id="L178">      }</span>
+
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">    if (sr != null) {</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">      if (!roots.contains(sr)){</span>
+<span class="fc" id="L182">        roots.add(sr);</span>
+      }
+    } else {
+<span class="nc" id="L185">      logger.info(&quot;not a valid source root: &quot; + spec);</span>
+    }
+<span class="fc" id="L187">  }</span>
+
+  static String findSrcRoot (String cpEntry){
+<span class="nc bnc" id="L190" title="All 2 branches missed.">    if (cpEntry.endsWith(&quot;.jar&quot;)){</span>
+      // check if there is a 'src' dir in the jar
+      try {
+<span class="nc" id="L193">        JarFile jf = new JarFile(cpEntry);</span>
+<span class="nc" id="L194">        JarEntry srcEntry = jf.getJarEntry(&quot;src&quot;);</span>
+<span class="nc bnc" id="L195" title="All 4 branches missed.">        if (srcEntry != null &amp;&amp; srcEntry.isDirectory()) {</span>
+<span class="nc" id="L196">          return jf.getName() + &quot;/src&quot;; // jar internal paths use '/' separators</span>
+        }
+<span class="nc" id="L198">      } catch (IOException iox){</span>
+<span class="nc" id="L199">        return null;</span>
+<span class="nc" id="L200">      }</span>
+
+    } else { // is it a dir?
+<span class="nc" id="L203">      File cpe = new File(cpEntry);</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">      if (cpe.isDirectory()){</span>
+        // go up until you hit a dir that has a 'src' subdir
+        // remember the traversed path elements
+<span class="nc" id="L207">        LinkedList&lt;String&gt; dirStack = new LinkedList&lt;String&gt;();</span>
+<span class="nc" id="L208">        dirStack.addFirst(cpe.getName());</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        for (File pd = cpe.getParentFile(); pd != null; pd = pd.getParentFile()){</span>
+<span class="nc" id="L210">          File sd = new File(pd,&quot;src&quot;);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">          if (sd.isDirectory()){</span>
+<span class="nc" id="L212">            String srcRoot = sd.getPath();</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">            for (String e : dirStack) {</span>
+<span class="nc" id="L214">              srcRoot = srcRoot + File.separatorChar + e;</span>
+<span class="nc" id="L215">            }</span>
+<span class="nc" id="L216">            sd = new File(srcRoot);</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            if (sd.isDirectory()){</span>
+<span class="nc" id="L218">              return srcRoot;</span>
+            }
+<span class="nc" id="L220">          } else {</span>
+<span class="nc" id="L221">            dirStack.addFirst(pd.getName());</span>
+          }
+        }
+      }
+    }
+
+<span class="nc" id="L227">    return null;</span>
+  }
+
+  public static void init (Config config) {
+<span class="fc" id="L231">    ArrayList&lt;SourceRoot&gt; roots = new ArrayList&lt;SourceRoot&gt;();</span>
+
+<span class="fc" id="L233">    String[] srcPaths = config.getCompactStringArray(&quot;sourcepath&quot;);</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">    if (srcPaths != null){</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">      for (String e : srcPaths){</span>
+<span class="fc" id="L236">        addSourceRoot(config, roots, e);</span>
+      }
+    }
+
+<span class="fc" id="L240">    sourceRoots = roots;</span>
+<span class="fc" id="L241">    sources.clear();</span>
+    
+    //printRoots();
+<span class="fc" id="L244">  }</span>
+
+  // for debugging purposes
+  static void printRoots() {
+<span class="nc" id="L248">    System.out.println(&quot;source roots:&quot;);</span>
+<span class="nc bnc" id="L249" title="All 2 branches missed.">    for (SourceRoot sr : sourceRoots){</span>
+<span class="nc" id="L250">      System.out.println(&quot;  &quot; + sr);</span>
+<span class="nc" id="L251">    }</span>
+<span class="nc" id="L252">  }</span>
+
+  public static Source getSource (String relPathName) {
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">    if (relPathName == null){</span>
+<span class="nc" id="L256">      return null;</span>
+    }
+    
+<span class="fc" id="L259">    Source s = sources.get(relPathName);</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">    if (s == noSource) {</span>
+<span class="fc" id="L261">       return null;</span>
+    }
+
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">    if (s == null) {</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">      for (SourceRoot root : sourceRoots) {</span>
+<span class="fc" id="L266">        InputStream is = root.getInputStream(relPathName);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (is != null) {</span>
+          try {
+<span class="nc" id="L269">          s = new Source(root,relPathName);</span>
+<span class="nc" id="L270">          s.loadLines(is);</span>
+<span class="nc" id="L271">          is.close();</span>
+
+<span class="nc" id="L273">          sources.put(relPathName, s);</span>
+<span class="nc" id="L274">          return s;</span>
+<span class="nc" id="L275">          } catch (IOException iox) {</span>
+<span class="nc" id="L276">            logger.warning(&quot;error reading &quot; + relPathName + &quot; from&quot; + root);</span>
+<span class="nc" id="L277">            return null;</span>
+          }
+        }
+<span class="fc" id="L280">      }</span>
+    } else {
+<span class="nc" id="L282">      return s;</span>
+    }
+
+<span class="fc" id="L285">    sources.put(relPathName, noSource);</span>
+<span class="fc" id="L286">    return null;</span>
+  }
+
+  //--- the Source instance data itself
+  protected SourceRoot root;
+  protected String     fname;
+  protected String[]   lines;
+
+
+<span class="fc" id="L295">  protected Source (SourceRoot root, String fname) {</span>
+<span class="fc" id="L296">    this.root = root;</span>
+<span class="fc" id="L297">    this.fname = fname;</span>
+<span class="fc" id="L298">  }</span>
+
+  protected void loadLines (InputStream is) throws IOException {
+<span class="nc" id="L301">    BufferedReader in = new BufferedReader(new InputStreamReader(is));</span>
+
+<span class="nc" id="L303">    ArrayList&lt;String&gt; l = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">    for (String line = in.readLine(); line != null; line = in.readLine()) {</span>
+<span class="nc" id="L305">      l.add(line);</span>
+    }
+<span class="nc" id="L307">    in.close();</span>
+
+<span class="nc bnc" id="L309" title="All 2 branches missed.">    if (l.size() &gt; 0) {</span>
+<span class="nc" id="L310">      lines = l.toArray(new String[l.size()]);</span>
+    }
+<span class="nc" id="L312">  }</span>
+
+
+  /**
+   * this is our sole purpose in life - answer line strings
+   * line index is 1-based
+   */
+  public String getLine (int i) {
+<span class="nc bnc" id="L320" title="All 6 branches missed.">    if ((lines == null) || (i &lt;= 0) || (i &gt; lines.length)) {</span>
+<span class="nc" id="L321">      return null;</span>
+    } else {
+<span class="nc" id="L323">      return lines[i-1];</span>
+    }
+  }
+
+  public int getLineCount()
+  {
+<span class="nc" id="L329">     return(lines.length);</span>
+  }
+
+  public String getPath() {
+<span class="nc" id="L333">    return root.toString() + File.separatorChar + fname;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IntVector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">IntVector.java</span></div><h1>IntVector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.JPFException;
+
+
+/**
+ * (more efficient?) alternative to Vector&lt;Integer&gt;
+ * @author pcd
+ */
+public final class IntVector implements Comparable&lt;IntVector&gt;, Cloneable {
+  public static final int defaultInitCap = 40;
+
+  
+  /** &lt;i&gt;size&lt;/i&gt; as in a java.util.Vector. */
+  protected int size;
+  
+  /** the backing array. */
+  protected int[] data;
+  
+  /** growth strategy. */
+  protected Growth growth;
+  
+  
+<span class="fc" id="L41">  public IntVector(Growth initGrowth, int initCap) {</span>
+<span class="fc" id="L42">    growth = initGrowth;</span>
+<span class="fc" id="L43">    data = new int[initCap];</span>
+<span class="fc" id="L44">    size = 0;</span>
+<span class="fc" id="L45">  }</span>
+  
+  public IntVector(int... init) {
+<span class="nc" id="L48">    this(Growth.defaultGrowth, init.length);</span>
+<span class="nc" id="L49">    size = init.length;</span>
+<span class="nc" id="L50">    System.arraycopy(init, 0, data, 0, size);</span>
+<span class="nc" id="L51">  }</span>
+  
+<span class="nc" id="L53">  public IntVector(Growth initGrowth) { this(initGrowth,defaultInitCap); }</span>
+  
+<span class="fc" id="L55">  public IntVector(int initCap) { this(Growth.defaultGrowth, initCap); }</span>
+  
+<span class="fc" id="L57">  public IntVector() { this(Growth.defaultGrowth,defaultInitCap); }</span>
+
+  @Override
+  public IntVector clone() {
+    try {
+<span class="fc" id="L62">      IntVector v = (IntVector)super.clone();</span>
+<span class="fc" id="L63">      v.data = data.clone();</span>
+<span class="fc" id="L64">      return v;</span>
+
+<span class="nc" id="L66">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L67">      throw new JPFException(&quot;IntVector clone failed&quot;);</span>
+    }
+  }
+
+  public void add(int x) {
+    try {
+<span class="fc" id="L73">      data[size] = x;</span>
+<span class="fc" id="L74">      size++;</span>
+<span class="fc" id="L75">    } catch (ArrayIndexOutOfBoundsException aobx){</span>
+<span class="fc" id="L76">      ensureCapacity(size+1);</span>
+<span class="fc" id="L77">      data[size] = x;</span>
+<span class="fc" id="L78">      size++;</span>
+<span class="fc" id="L79">    }</span>
+<span class="fc" id="L80">  }</span>
+
+  public boolean addIfAbsent (int x) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    for (int i=0; i&lt;size; i++){</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">      if (data[i] == x){</span>
+<span class="nc" id="L85">        return false;</span>
+      }
+    }
+<span class="nc" id="L88">    add(x);</span>
+<span class="nc" id="L89">    return true;</span>
+  }
+
+  public void add (long x) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">    if (size+2 &gt; data.length) {</span>
+<span class="fc" id="L94">      ensureCapacity(size+2);</span>
+    }
+<span class="fc" id="L96">    data[size] = (int)(x &gt;&gt; 32);</span>
+<span class="fc" id="L97">    size++;</span>
+<span class="fc" id="L98">    data[size] = (int)x;</span>
+<span class="fc" id="L99">    size++;    </span>
+<span class="fc" id="L100">  }</span>
+  
+  public void add(int x1, int x2) {
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (size+2 &gt; data.length) {</span>
+<span class="nc" id="L104">      ensureCapacity(size+2);</span>
+    }
+<span class="nc" id="L106">    data[size] = x1;</span>
+<span class="nc" id="L107">    size++;</span>
+<span class="nc" id="L108">    data[size] = x2;</span>
+<span class="nc" id="L109">    size++;</span>
+<span class="nc" id="L110">  }</span>
+  
+  public void add(int x1, int x2, int x3) {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (size+3 &gt; data.length) {</span>
+<span class="nc" id="L114">      ensureCapacity(size+3);</span>
+    }
+<span class="nc" id="L116">    data[size] = x1;</span>
+<span class="nc" id="L117">    size++;</span>
+<span class="nc" id="L118">    data[size] = x2;</span>
+<span class="nc" id="L119">    size++;</span>
+<span class="nc" id="L120">    data[size] = x3;</span>
+<span class="nc" id="L121">    size++;</span>
+<span class="nc" id="L122">  }</span>
+  
+  public void addZeros (int length) {
+<span class="nc" id="L125">    int newSize = size + length;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L127">      ensureCapacity(size + length);</span>
+    }
+<span class="nc bnc" id="L129" title="All 2 branches missed.">    for (int i = size; i &lt; newSize; i++) {</span>
+<span class="nc" id="L130">      data[i] = 0;</span>
+    }
+<span class="nc" id="L132">    size = newSize;</span>
+<span class="nc" id="L133">  }</span>
+
+  public void append(int[] a) {
+<span class="fc" id="L136">    int newSize = size + a.length;</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L138">      ensureCapacity(newSize);</span>
+    }
+<span class="fc" id="L140">    System.arraycopy(a, 0, data, size, a.length);</span>
+<span class="fc" id="L141">    size = newSize;</span>
+<span class="fc" id="L142">  }</span>
+
+  public void append(int[] x, int pos, int len) {
+<span class="fc" id="L145">    int newSize = size + len;</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L147">      ensureCapacity(newSize);</span>
+    }
+<span class="fc" id="L149">    System.arraycopy(x, pos, data, size, len);</span>
+<span class="fc" id="L150">    size = newSize;</span>
+<span class="fc" id="L151">  }</span>
+
+  public void append(boolean[] a){
+<span class="nc" id="L154">    int newSize = size + a.length;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L156">      ensureCapacity(newSize);</span>
+    }
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    for (int i = size; i &lt; newSize; i++) {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">      data[i] = a[i] ? 1 : 0;</span>
+    }
+<span class="nc" id="L161">    size = newSize;</span>
+<span class="nc" id="L162">  }</span>
+
+  public void appendPacked(boolean[] a){
+<span class="fc" id="L165">    int len = (a.length+31) &gt;&gt; 5;  // new data length, 32 booleans per word</span>
+<span class="fc" id="L166">    int n = a.length &gt;&gt; 5; // number of full data words</span>
+<span class="fc" id="L167">    int len1 = n &lt;&lt; 5;</span>
+<span class="fc" id="L168">    int rem = a.length % 32;</span>
+
+<span class="fc" id="L170">    int newSize = size + len;</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L172">      ensureCapacity(newSize);</span>
+    }
+
+<span class="fc" id="L175">    int k=size;</span>
+<span class="fc" id="L176">    int x=0;</span>
+<span class="fc" id="L177">    int i=0;</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">    while (i&lt;len1){ // store full data words</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">      x = a[i++] ? 1 : 0;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">      for (int j=1; j&lt;32; j++){</span>
+<span class="fc" id="L181">        x &lt;&lt;= 1;</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (a[i++]){</span>
+<span class="fc" id="L183">          x |= 1;</span>
+        }
+      }
+<span class="fc" id="L186">      data[k++] = x;</span>
+    }
+
+<span class="fc bfc" id="L189" title="All 2 branches covered.">    if (rem &gt; 0) { // store partial word</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">      if (i&gt;0){</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">        x = a[i-1] ? 1 : 0;</span>
+      } else {
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        x = a[i++] ? 1 : 0;</span>
+      }
+<span class="fc bfc" id="L195" title="All 2 branches covered.">      while (i &lt; a.length) {</span>
+<span class="fc" id="L196">        x &lt;&lt;= 1;</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (a[i++]) {</span>
+<span class="fc" id="L198">          x |= 1;</span>
+        }
+      }
+<span class="fc" id="L201">      x &lt;&lt;= (32-rem);</span>
+<span class="fc" id="L202">      data[k] = x;</span>
+    }
+
+<span class="fc" id="L205">    size = newSize;</span>
+<span class="fc" id="L206">  }</span>
+
+  public void appendPacked(byte[] a){
+<span class="fc" id="L209">    int len = (a.length+3)/4;  // new data length, 4 bytes per word</span>
+<span class="fc" id="L210">    int n = a.length &gt;&gt; 2; // number of full data words</span>
+<span class="fc" id="L211">    int len1 = n &lt;&lt; 2;</span>
+
+<span class="fc" id="L213">    int newSize = size + len;</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">    if (newSize &gt; data.length) {</span>
+<span class="fc" id="L215">      ensureCapacity(newSize);</span>
+    }
+
+<span class="fc" id="L218">    int j=0;</span>
+<span class="fc" id="L219">    int k=size;</span>
+    int x;
+<span class="fc bfc" id="L221" title="All 2 branches covered.">    while (j&lt;len1){</span>
+<span class="fc" id="L222">      x = a[j++] &amp; 0xff;  x &lt;&lt;= 8;</span>
+<span class="fc" id="L223">      x |= a[j++] &amp; 0xff; x &lt;&lt;= 8;</span>
+<span class="fc" id="L224">      x |= a[j++] &amp; 0xff; x &lt;&lt;= 8;</span>
+<span class="fc" id="L225">      x |= a[j++] &amp; 0xff;</span>
+<span class="fc" id="L226">      data[k++] = x;</span>
+    }
+
+<span class="pc bpc" id="L229" title="1 of 5 branches missed.">    switch (a.length % 4){</span>
+      case 0:
+<span class="fc" id="L231">        break;</span>
+      case 1:
+<span class="fc" id="L233">        data[k] = (a[j] &lt;&lt; 24);</span>
+<span class="fc" id="L234">        break;</span>
+      case 2:
+<span class="fc" id="L236">        x = a[j++] &amp; 0xff;  x &lt;&lt;= 8;</span>
+<span class="fc" id="L237">        x |= a[j] &amp; 0xff;   x &lt;&lt;= 16;</span>
+<span class="fc" id="L238">        data[k] = x;</span>
+<span class="fc" id="L239">        break;</span>
+      case 3:
+<span class="fc" id="L241">        x = a[j++] &amp; 0xff;  x &lt;&lt;= 8;</span>
+<span class="fc" id="L242">        x |= a[j++] &amp; 0xff; x &lt;&lt;= 8;</span>
+<span class="fc" id="L243">        x |= a[j] &amp; 0xff;   x &lt;&lt;= 8;</span>
+<span class="fc" id="L244">        data[k] = x;</span>
+        break;
+    }
+
+<span class="fc" id="L248">    size = newSize;</span>
+<span class="fc" id="L249">  }</span>
+
+
+  public void appendPacked(char[] a){
+<span class="fc" id="L253">    int len = (a.length+1)/2;  // new data length, 2 chars per word</span>
+<span class="fc" id="L254">    int n = a.length &gt;&gt; 1; // number of full data words</span>
+<span class="fc" id="L255">    int len1 = n &lt;&lt; 1;</span>
+
+<span class="fc" id="L257">    int newSize = size + len;</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">    if (newSize &gt; data.length) {</span>
+<span class="fc" id="L259">      ensureCapacity(newSize);</span>
+    }
+
+<span class="fc" id="L262">    int j=0;</span>
+<span class="fc" id="L263">    int k=size;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">    while (j&lt;len1){</span>
+<span class="fc" id="L265">      int x = a[j++] &amp; 0xffff;  x &lt;&lt;= 16;</span>
+<span class="fc" id="L266">      x |= a[j++] &amp; 0xffff;</span>
+<span class="fc" id="L267">      data[k++] = x;</span>
+<span class="fc" id="L268">    }</span>
+
+<span class="fc bfc" id="L270" title="All 2 branches covered.">    if (a.length % 2 &gt; 0){</span>
+<span class="fc" id="L271">      data[k] = (a[j] &amp; 0xffff) &lt;&lt; 16;</span>
+    }
+
+<span class="fc" id="L274">    size = newSize;</span>
+<span class="fc" id="L275">  }</span>
+
+  public void appendPacked(short[] a){
+<span class="fc" id="L278">    int len = (a.length+1)/2;  // new data length, 2 chars per word</span>
+<span class="fc" id="L279">    int n = a.length &gt;&gt; 1; // number of full data words</span>
+<span class="fc" id="L280">    int len1 = n &lt;&lt; 1;</span>
+
+<span class="fc" id="L282">    int newSize = size + len;</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L284">      ensureCapacity(newSize);</span>
+    }
+
+<span class="fc" id="L287">    int j=0;</span>
+<span class="fc" id="L288">    int k=size;</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">    while (j&lt;len1){</span>
+<span class="fc" id="L290">      int x = a[j++] &amp; 0xffff;  x &lt;&lt;= 16;</span>
+<span class="fc" id="L291">      x |= a[j++] &amp; 0xffff;</span>
+<span class="fc" id="L292">      data[k++] = x;</span>
+<span class="fc" id="L293">    }</span>
+
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">    if (a.length % 2 &gt; 0){</span>
+<span class="nc" id="L296">      data[k] = (a[j] &amp; 0xffff) &lt;&lt; 16;</span>
+    }
+
+<span class="fc" id="L299">    size = newSize;</span>
+<span class="fc" id="L300">  }</span>
+
+  public void appendRawBits(float[] a){
+<span class="fc" id="L303">    int newSize = size + a.length;</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L305">      ensureCapacity(newSize);</span>
+    }
+<span class="fc" id="L307">    int k=size;</span>
+<span class="fc bfc" id="L308" title="All 2 branches covered.">    for (int i = 0; i &lt; a.length; i++) {</span>
+<span class="fc" id="L309">      data[k++] = Float.floatToRawIntBits(a[i]);</span>
+    }
+<span class="fc" id="L311">    size = newSize;</span>
+<span class="fc" id="L312">  }</span>
+
+
+  public void appendBits(long[] a){
+<span class="fc" id="L316">    int newSize = size + a.length * 2;</span>
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L318">      ensureCapacity(newSize);</span>
+    }
+    
+<span class="fc" id="L321">    int k = size;</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">    for (int i = 0; i&lt;a.length; i++){</span>
+<span class="fc" id="L323">      long l = a[i];</span>
+<span class="fc" id="L324">      data[k++] = (int) (l &gt;&gt;&gt; 32);</span>
+<span class="fc" id="L325">      data[k++] = (int) (l &amp; 0xffffffff);</span>
+    }
+    
+<span class="fc" id="L328">    size = newSize;    </span>
+<span class="fc" id="L329">  }</span>
+
+  public void appendRawBits(double[] a){
+<span class="fc" id="L332">    int newSize = size + a.length * 2;</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L334">      ensureCapacity(newSize);</span>
+    }
+
+<span class="fc" id="L337">    int k = size;</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">    for (int i = 0; i&lt;a.length; i++){</span>
+<span class="fc" id="L339">      long l = Double.doubleToRawLongBits(a[i]);</span>
+<span class="fc" id="L340">      data[k++] = (int) (l &gt;&gt;&gt; 32);</span>
+<span class="fc" id="L341">      data[k++] = (int) (l &amp; 0xffffffff);</span>
+    }
+
+<span class="fc" id="L344">    size = newSize;</span>
+<span class="fc" id="L345">  }</span>
+
+  
+  public void append(IntVector x) {
+<span class="nc bnc" id="L349" title="All 2 branches missed.">    if (x == null) return;</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">    if (size + x.size &gt; data.length) {</span>
+<span class="nc" id="L351">      ensureCapacity(size + x.size);</span>
+    }
+<span class="nc" id="L353">    System.arraycopy(x.data, 0, data, size, x.size);</span>
+<span class="nc" id="L354">    size += x.size;</span>
+<span class="nc" id="L355">  }</span>
+
+  public boolean removeFirst (int x){
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">      if (data[i] == x){</span>
+<span class="fc" id="L360">        System.arraycopy(data,i+1, data,i, size-i);</span>
+<span class="fc" id="L361">        size--;</span>
+<span class="fc" id="L362">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L366">    return false;</span>
+  }
+
+  public int get(int idx) {
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">    if (idx &gt;= size) {</span>
+<span class="nc" id="L371">      return 0;</span>
+    } else {
+<span class="fc" id="L373">      return data[idx];</span>
+    }
+  }
+  
+  public void set(int idx, int x) {
+<span class="nc" id="L378">    ensureSize(idx + 1);</span>
+<span class="nc" id="L379">    data[idx] = x;</span>
+<span class="nc" id="L380">  }</span>
+
+  public int getFirstIndexOfValue(int x) {
+<span class="nc bnc" id="L383" title="All 2 branches missed.">    for (int i=0; i&lt;size; i++){</span>
+<span class="nc bnc" id="L384" title="All 2 branches missed.">      if (data[i] == x){</span>
+<span class="nc" id="L385">        return i;</span>
+      }
+    }
+<span class="nc" id="L388">    return -1;</span>
+  }
+
+  public boolean contains (int x) {
+<span class="nc bnc" id="L392" title="All 2 branches missed.">    for (int i=0; i&lt;size; i++){</span>
+<span class="nc bnc" id="L393" title="All 2 branches missed.">      if (data[i] == x){</span>
+<span class="nc" id="L394">        return true;</span>
+      }
+    }
+<span class="nc" id="L397">    return false;</span>
+  }
+
+
+  public int[] toArray (int[] dst) {
+<span class="nc" id="L402">    System.arraycopy(data,0,dst,0,size);</span>
+<span class="nc" id="L403">    return dst;</span>
+  }
+
+  public int dumpTo (int[] dst, int pos) {
+<span class="nc" id="L407">    System.arraycopy(data,0,dst,pos,size);</span>
+<span class="nc" id="L408">    return pos + size;</span>
+  }
+
+  public void squeeze() {
+<span class="nc bnc" id="L412" title="All 4 branches missed.">    while (size &gt; 0 &amp;&amp; data[size - 1] == 0) size--;</span>
+<span class="nc" id="L413">  }</span>
+  
+  public void setSize(int sz) {
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">    if (sz &gt; size) {</span>
+<span class="nc" id="L417">      ensureCapacity(sz);</span>
+<span class="nc" id="L418">      size = sz;</span>
+    } else {
+<span class="fc bfc" id="L420" title="All 2 branches covered.">      while (size &gt; sz) {</span>
+<span class="fc" id="L421">        size--;</span>
+<span class="fc" id="L422">        data[size] = 0;</span>
+      }
+    }
+<span class="fc" id="L425">  }</span>
+
+<span class="fc" id="L427">  public void clear() { setSize(0); }</span>
+  
+<span class="fc" id="L429">  public int size() { return size; }</span>
+  
+  public int[] toArray() {
+<span class="fc" id="L432">    int[] out = new int[size];</span>
+<span class="fc" id="L433">    System.arraycopy(data, 0, out, 0, size);</span>
+<span class="fc" id="L434">    return out;</span>
+  }
+
+  public void ensureSize(int sz) {
+<span class="nc bnc" id="L438" title="All 2 branches missed.">    if (size &lt; sz) {</span>
+<span class="nc" id="L439">      ensureCapacity(sz);</span>
+<span class="nc" id="L440">      size = sz;</span>
+    }
+<span class="nc" id="L442">  }</span>
+  
+  public void ensureCapacity(int desiredCap) {
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">    if (data.length &lt; desiredCap) {</span>
+<span class="fc" id="L446">      int[] newData = new int[growth.grow(data.length, desiredCap)];</span>
+<span class="fc" id="L447">      System.arraycopy(data, 0, newData, 0, size);</span>
+<span class="fc" id="L448">      data = newData;</span>
+    }
+<span class="fc" id="L450">  }</span>
+  
+  public static void copy(IntVector src, int srcPos, IntVector dst, int dstPos, int len) {
+<span class="nc bnc" id="L453" title="All 2 branches missed.">    if (len == 0) return;</span>
+<span class="nc" id="L454">    src.ensureCapacity(srcPos + len);</span>
+<span class="nc" id="L455">    dst.ensureSize(dstPos+len);</span>
+<span class="nc" id="L456">    System.arraycopy(src.data, srcPos, dst.data, dstPos, len);</span>
+<span class="nc" id="L457">  }</span>
+
+  public static void copy(int[] src, int srcPos, IntVector dst, int dstPos, int len) {
+<span class="nc bnc" id="L460" title="All 2 branches missed.">    if (len == 0) return;</span>
+<span class="nc" id="L461">    dst.ensureSize(dstPos+len);</span>
+<span class="nc" id="L462">    System.arraycopy(src, srcPos, dst.data, dstPos, len);</span>
+<span class="nc" id="L463">  }</span>
+
+  public static void copy(IntVector src, int srcPos, int[] dst, int dstPos, int len) {
+<span class="nc bnc" id="L466" title="All 2 branches missed.">    if (len == 0) return;</span>
+<span class="nc" id="L467">    src.ensureCapacity(srcPos + len);</span>
+<span class="nc" id="L468">    System.arraycopy(src.data, srcPos, dst, dstPos, len);</span>
+<span class="nc" id="L469">  }</span>
+
+  /** dictionary/lexicographic ordering */
+  @Override
+  public int compareTo (IntVector that) {
+<span class="nc bnc" id="L474" title="All 2 branches missed.">    if (that == null) return this.size; // consider null and 0-length the same</span>
+    
+    int comp;
+<span class="nc" id="L477">    int smaller = Math.min(this.size, that.size);</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">    for (int i = 0; i &lt; smaller; i++) {</span>
+<span class="nc" id="L479">      comp = this.data[i] - that.data[i];</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">      if (comp != 0) return comp;</span>
+    }
+    // same up to shorter length =&gt; compare sizes
+<span class="nc" id="L483">    return this.size - that.size;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MethodAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">MethodAnalyzer.java</span></div><h1>MethodAnalyzer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.InstanceInvocation;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMReturnInstruction;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+import java.io.PrintWriter;
+import java.util.HashMap;
+
+
+/**
+ * analyzes call/execute sequences of methods
+ * closely modeled after the DeadlockAnalyzer, i.e. keeps it's own
+ * log and doesn't require full instruction trace
+ * 
+ * &lt;2do&gt; this needs to be refactored with DeadlockAnalyzer - the whole
+ * trace mgnt (except of the printing) can be made generic
+ */
+public class MethodAnalyzer extends ListenerAdapter {
+  
+<span class="nc" id="L53">  enum OpType { CALL (&quot;&gt;  &quot;),                 // invokeX breaks transition (e.g. blocked sync)</span>
+<span class="nc" id="L54">                EXECUTE (&quot; - &quot;),              // method entered method after transition break</span>
+<span class="nc" id="L55">                CALL_EXECUTE (&quot;&gt;- &quot;),         // call &amp; enter within same transition</span>
+<span class="nc" id="L56">                RETURN (&quot;  &lt;&quot;),               // method returned</span>
+<span class="nc" id="L57">                EXEC_RETURN (&quot; -&lt;&quot;),          // enter &amp; return in consecutive ops</span>
+<span class="nc" id="L58">                CALL_EXEC_RETURN (&quot;&gt;-&lt;&quot;);     // call &amp; enter &amp; return in consecutive ops</span>
+    String code;
+<span class="nc" id="L60">    OpType (String code){ this.code = code; }</span>
+  };
+
+  static class MethodOp {
+    OpType type;
+    
+    ThreadInfo ti;
+    ElementInfo ei;
+    Instruction insn; // the caller
+    MethodInfo mi;    // the callee
+    int stackDepth;
+    
+    // this is used to keep our own trace
+<span class="nc" id="L73">    int stateId = 0;</span>
+    MethodOp prevTransition;
+    MethodOp p;   // prev during execution
+    
+<span class="nc" id="L77">    MethodOp (OpType type, MethodInfo mi, ThreadInfo ti, ElementInfo ei, int stackDepth){</span>
+<span class="nc" id="L78">      this.type = type;</span>
+<span class="nc" id="L79">      this.ti = ti;</span>
+<span class="nc" id="L80">      this.mi = mi;</span>
+<span class="nc" id="L81">      this.ei = ei;</span>
+<span class="nc" id="L82">      this.stackDepth = stackDepth;</span>
+<span class="nc" id="L83">    }</span>
+
+    MethodOp clone (OpType newType){
+<span class="nc" id="L86">      MethodOp op = new MethodOp(newType, mi, ti, ei, stackDepth);</span>
+<span class="nc" id="L87">      op.p = p;</span>
+<span class="nc" id="L88">      return op;</span>
+    }
+
+    boolean isMethodEnter() {
+<span class="nc bnc" id="L92" title="All 4 branches missed.">      return (type == OpType.CALL_EXECUTE) || (type == OpType.EXECUTE);</span>
+    }
+
+    boolean isSameMethod(MethodOp op) {
+<span class="nc bnc" id="L96" title="All 8 branches missed.">      return (mi == op.mi) &amp;&amp; (ti == op.ti) &amp;&amp; (ei == op.ei) &amp;&amp; (stackDepth == op.stackDepth);</span>
+    }
+
+    void printOn(PrintWriter pw, MethodAnalyzer analyzer) {
+<span class="nc" id="L100">      pw.print(ti.getId());</span>
+<span class="nc" id="L101">      pw.print(&quot;: &quot;);</span>
+      
+<span class="nc" id="L103">      pw.print(type.code);</span>
+<span class="nc" id="L104">      pw.print(' ');</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (analyzer.showDepth){</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        for (int i = 0; i &lt; stackDepth; i++) {</span>
+<span class="nc" id="L108">          pw.print('.');</span>
+        }
+<span class="nc" id="L110">        pw.print(' ');</span>
+      }
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      if (!mi.isStatic()){</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (ei.getClassInfo() != mi.getClassInfo()){ // method is in superclass</span>
+<span class="nc" id="L115">          pw.print(mi.getClassName());</span>
+<span class="nc" id="L116">          pw.print('&lt;');</span>
+<span class="nc" id="L117">          pw.print(ei);</span>
+<span class="nc" id="L118">          pw.print('&gt;');</span>
+        } else { // method is in concrete object class
+<span class="nc" id="L120">          pw.print(ei);</span>
+        }
+      } else {
+<span class="nc" id="L123">        pw.print(mi.getClassName());</span>
+      }
+
+<span class="nc" id="L126">      pw.print('.');</span>
+      
+<span class="nc" id="L128">      pw.print(Types.getDequalifiedMethodSignature(mi.getUniqueName()));</span>
+<span class="nc" id="L129">    }</span>
+    
+    @Override
+	public String toString() {
+<span class="nc" id="L133">      return &quot;Op {&quot; + ti.getName() + ',' + type.code +</span>
+<span class="nc" id="L134">                   ',' + mi.getFullName() + ',' + ei + '}';</span>
+    }
+  }
+
+  // report options
+
+<span class="nc" id="L140">  StringSetMatcher includes = null; //  means all</span>
+<span class="nc" id="L141">  StringSetMatcher excludes = null; //  means none</span>
+
+  int maxHistory;
+  String format;
+  boolean skipInit;
+  boolean showDepth;
+  boolean showTransition;
+  boolean showCompleted;
+
+  // execution environment
+
+  VM vm;
+  Search search;
+
+  OpType opType;
+  
+  // this is used to keep our own trace
+  MethodOp lastOp;
+  MethodOp lastTransition;
+<span class="nc" id="L160">  boolean isFirstTransition = true;</span>
+
+  // this is set after we call revertAndFlatten during reporting
+  // (we can't call revertAndFlatten twice since it is destructive, but
+  // we might have to report several times in case we have several publishers)
+<span class="nc" id="L165">  MethodOp firstOp = null;</span>
+  
+  // for HeuristicSearches. Ok, that's braindead but at least no need for cloning
+<span class="nc" id="L168">  HashMap&lt;Integer,MethodOp&gt; storedTransition = new HashMap&lt;Integer,MethodOp&gt;();</span>
+
+  
+<span class="nc" id="L171">  public MethodAnalyzer (Config config, JPF jpf){</span>
+<span class="nc" id="L172">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+    
+<span class="nc" id="L174">    maxHistory = config.getInt(&quot;method.max_history&quot;, Integer.MAX_VALUE);</span>
+<span class="nc" id="L175">    format = config.getString(&quot;method.format&quot;, &quot;raw&quot;);</span>
+<span class="nc" id="L176">    skipInit = config.getBoolean(&quot;method.skip_init&quot;, true);</span>
+<span class="nc" id="L177">    showDepth = config.getBoolean(&quot;method.show_depth&quot;, false);</span>
+<span class="nc" id="L178">    showTransition = config.getBoolean(&quot;method.show_transition&quot;, false);</span>
+    
+<span class="nc" id="L180">    includes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;method.include&quot;));</span>
+<span class="nc" id="L181">    excludes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;method.exclude&quot;));</span>
+    
+<span class="nc" id="L183">    vm = jpf.getVM();</span>
+<span class="nc" id="L184">    search = jpf.getSearch();</span>
+<span class="nc" id="L185">  }</span>
+
+
+  void addOp (VM vm, OpType opType, MethodInfo mi, ThreadInfo ti, ElementInfo ei, int stackDepth){
+<span class="nc bnc" id="L189" title="All 4 branches missed.">    if (!(skipInit &amp;&amp; isFirstTransition)) {</span>
+<span class="nc" id="L190">      MethodOp op = new MethodOp(opType, mi, ti, ei, stackDepth);</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">      if (lastOp == null){</span>
+<span class="nc" id="L192">        lastOp = op;</span>
+      } else {
+<span class="nc" id="L194">        op.p = lastOp;</span>
+<span class="nc" id="L195">        lastOp = op;</span>
+      }
+    }
+<span class="nc" id="L198">  }</span>
+
+  boolean isAnalyzedMethod (MethodInfo mi){
+<span class="nc bnc" id="L201" title="All 2 branches missed.">    if (mi != null){</span>
+<span class="nc" id="L202">      String mthName = mi.getFullName();</span>
+<span class="nc" id="L203">      return StringSetMatcher.isMatch(mthName, includes, excludes);</span>
+    } else {
+<span class="nc" id="L205">      return false;</span>
+    }
+  }
+
+  void printOn (PrintWriter pw) {
+<span class="nc" id="L210">    MethodOp start = firstOp;</span>
+<span class="nc" id="L211">    int lastStateId  = Integer.MIN_VALUE;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">    int transition = skipInit ? 1 : 0;</span>
+<span class="nc" id="L213">    int lastTid = start.ti.getId();</span>
+    
+<span class="nc bnc" id="L215" title="All 2 branches missed.">    for (MethodOp op = start; op != null; op = op.p) {</span>
+
+<span class="nc bnc" id="L217" title="All 2 branches missed.">      if (showTransition) {</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (op.stateId != lastStateId) {</span>
+<span class="nc" id="L219">          lastStateId = op.stateId;</span>
+<span class="nc" id="L220">          pw.print(&quot;------------------------------------------ #&quot;);</span>
+<span class="nc" id="L221">          pw.println(transition++);</span>
+        }
+      } else {
+<span class="nc" id="L224">        int tid = op.ti.getId();</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">        if (tid != lastTid) {</span>
+<span class="nc" id="L226">          lastTid = tid;</span>
+<span class="nc" id="L227">          pw.println(&quot;------------------------------------------&quot;);</span>
+        }
+      }
+      
+<span class="nc" id="L231">      op.printOn(pw, this);</span>
+<span class="nc" id="L232">      pw.println();</span>
+    }
+<span class="nc" id="L234">  }</span>
+
+  // warning - this rotates pointers in situ, i.e. destroys the original structure
+  MethodOp revertAndFlatten (MethodOp start) {
+
+<span class="nc" id="L239">    MethodOp last = null;</span>
+<span class="nc" id="L240">    MethodOp prevTransition = start.prevTransition;</span>
+
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    for (MethodOp op = start; op != null;) {</span>
+<span class="nc" id="L243">      MethodOp opp = op.p;</span>
+<span class="nc" id="L244">      op.p = last;</span>
+      
+<span class="nc bnc" id="L246" title="All 2 branches missed.">      if (opp == null) {</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (prevTransition == null) {</span>
+<span class="nc" id="L248">          return op;</span>
+        } else {
+<span class="nc" id="L250">          last = op;</span>
+<span class="nc" id="L251">          op = prevTransition;</span>
+<span class="nc" id="L252">          prevTransition = op.prevTransition;</span>
+        }
+      } else {
+<span class="nc" id="L255">        last = op;</span>
+<span class="nc" id="L256">        op = opp;</span>
+      }
+<span class="nc" id="L258">    }</span>
+
+<span class="nc" id="L260">    return null;</span>
+  }
+  
+  //--- SearchListener interface
+  // &lt;2do&gt; this is the same as DeadlockAnalyzer, except of xxOp type -&gt; refactor
+  @Override
+  public void stateAdvanced (Search search){
+    
+<span class="nc bnc" id="L268" title="All 4 branches missed.">    if (search.isNewState() &amp;&amp; (lastOp != null)) {</span>
+<span class="nc" id="L269">      int stateId = search.getStateId();</span>
+      
+<span class="nc bnc" id="L271" title="All 2 branches missed.">      for (MethodOp op=lastOp; op != null; op=op.p) {</span>
+<span class="nc" id="L272">        op.stateId = stateId;</span>
+      }
+      
+<span class="nc" id="L275">      lastOp.prevTransition = lastTransition;</span>
+<span class="nc" id="L276">      lastTransition = lastOp;</span>
+    }
+    
+<span class="nc" id="L279">    lastOp = null;</span>
+<span class="nc" id="L280">    isFirstTransition = false;</span>
+<span class="nc" id="L281">  }</span>
+  
+  @Override
+  public void stateBacktracked (Search search){
+<span class="nc" id="L285">    int stateId = search.getStateId();</span>
+<span class="nc bnc" id="L286" title="All 4 branches missed.">    while ((lastTransition != null) &amp;&amp; (lastTransition.stateId &gt; stateId)){</span>
+<span class="nc" id="L287">      lastTransition = lastTransition.prevTransition;</span>
+    }
+<span class="nc" id="L289">    lastOp = null;</span>
+<span class="nc" id="L290">  }</span>
+  
+  @Override
+  public void stateStored (Search search) {
+    // always called after stateAdvanced
+<span class="nc" id="L295">    storedTransition.put(search.getStateId(), lastTransition);</span>
+<span class="nc" id="L296">  }</span>
+  
+  @Override
+  public void stateRestored (Search search) {
+<span class="nc" id="L300">    int stateId = search.getStateId();</span>
+<span class="nc" id="L301">    MethodOp op = storedTransition.get(stateId);</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">    if (op != null) {</span>
+<span class="nc" id="L303">      lastTransition = op;</span>
+<span class="nc" id="L304">      storedTransition.remove(stateId);  // not strictly required, but we don't come back</span>
+    }
+<span class="nc" id="L306">  }</span>
+
+
+  //--- VMlistener interface
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo thread, Instruction nextInsn, Instruction executedInsn) {
+    ThreadInfo ti;
+    MethodInfo mi;
+<span class="nc" id="L314">    ElementInfo ei = null;</span>
+    
+<span class="nc bnc" id="L316" title="All 2 branches missed.">    if (executedInsn instanceof JVMInvokeInstruction) {</span>
+<span class="nc" id="L317">      JVMInvokeInstruction call = (JVMInvokeInstruction)executedInsn;</span>
+<span class="nc" id="L318">      ti = thread;</span>
+<span class="nc" id="L319">      mi = call.getInvokedMethod(ti);</span>
+            
+<span class="nc bnc" id="L321" title="All 2 branches missed.">      if (isAnalyzedMethod(mi)) {</span>
+        OpType type;
+
+        // check if this was actually executed, or is a blocked sync call
+<span class="nc bnc" id="L325" title="All 2 branches missed.">        if (ti.getNextPC() == call) { // re-executed -&gt; blocked or overlayed</span>
+<span class="nc" id="L326">          type = OpType.CALL;</span>
+
+        } else { // executed
+<span class="nc bnc" id="L329" title="All 2 branches missed.">          if (ti.isFirstStepInsn()) {</span>
+<span class="nc" id="L330">            type = OpType.EXECUTE;</span>
+          } else {
+<span class="nc" id="L332">            type = OpType.CALL_EXECUTE;</span>
+          }
+        }
+
+<span class="nc bnc" id="L336" title="All 2 branches missed.">        if (call instanceof InstanceInvocation) {</span>
+<span class="nc" id="L337">          ei = ((InstanceInvocation)call).getThisElementInfo(ti);</span>
+        }
+        
+<span class="nc" id="L340">        addOp(vm,type,mi,ti,ei, ti.getStackDepth());</span>
+      }
+      
+<span class="nc bnc" id="L343" title="All 2 branches missed.">    } else if (executedInsn instanceof JVMReturnInstruction) {</span>
+<span class="nc" id="L344">      JVMReturnInstruction ret = (JVMReturnInstruction)executedInsn;</span>
+<span class="nc" id="L345">      ti = thread;</span>
+<span class="nc" id="L346">      StackFrame frame = ret.getReturnFrame();</span>
+<span class="nc" id="L347">      mi = frame.getMethodInfo();</span>
+
+<span class="nc bnc" id="L349" title="All 2 branches missed.">      if (isAnalyzedMethod(mi)) {</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        if (!mi.isStatic()) {</span>
+<span class="nc" id="L351">          int ref = frame.getThis();</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">          if (ref != MJIEnv.NULL) {</span>
+<span class="nc" id="L353">            ei = ti.getElementInfo(ref);</span>
+          }
+        }
+        
+<span class="nc" id="L357">        addOp(vm,OpType.RETURN,mi,ti,ei, ti.getStackDepth()+1); // postExec-&gt; frame already popped</span>
+      }
+    }
+<span class="nc" id="L360">  }</span>
+  
+  //--- the PubisherExtension part
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {
+
+<span class="nc bnc" id="L366" title="All 4 branches missed.">    if (firstOp == null &amp;&amp; lastTransition != null){ // do this just once</span>
+<span class="nc" id="L367">      firstOp = revertAndFlatten(lastTransition);</span>
+    }
+
+<span class="nc bnc" id="L370" title="All 2 branches missed.">    if (firstOp == null){</span>
+<span class="nc" id="L371">      return;</span>
+    }
+
+<span class="nc" id="L374">    PrintWriter pw = publisher.getOut();</span>
+<span class="nc" id="L375">    publisher.publishTopicStart(&quot;method ops &quot; + publisher.getLastErrorId());</span>
+
+
+<span class="nc" id="L378">    printOn(pw);</span>
+<span class="nc" id="L379">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

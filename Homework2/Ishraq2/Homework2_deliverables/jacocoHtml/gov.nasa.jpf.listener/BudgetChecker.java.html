@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BudgetChecker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">BudgetChecker.java</span></div><h1>BudgetChecker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.annotation.JPFOption;
+import gov.nasa.jpf.annotation.JPFOptions;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
+
+/**
+ * Listener that implements various budget constraints
+ */
+@JPFOptions({
+  @JPFOption(type = &quot;Long&quot;, key = &quot;budget.max_time&quot;, defaultValue= &quot;-1&quot;, comment = &quot;stop search after specified duration [msec]&quot;),
+  @JPFOption(type = &quot;Long&quot;, key = &quot;budget.max_heap&quot;, defaultValue = &quot;-1&quot;, comment=&quot;stop search when VM heapsize reaches specified limit&quot;),
+  @JPFOption(type = &quot;Int&quot;, key = &quot;budget.max_depth&quot;, defaultValue = &quot;-1&quot;, comment = &quot;stop search at specified search depth&quot;),
+  @JPFOption(type = &quot;long&quot;, key = &quot;budget.max_insn&quot;, defaultValue = &quot;-1&quot;, comment = &quot;stop search after specified number of intstructions&quot;),
+  @JPFOption(type = &quot;Int&quot;, key = &quot;budget.max_state&quot;, defaultValue = &quot;-1&quot;, comment = &quot;stop search when reaching specified number of new states&quot;),
+  @JPFOption(type = &quot;Int&quot;, key = &quot;budget.max_new_states&quot;, defaultValue = &quot;-1&quot;, comment=&quot;stop search ater specified number of non-replayed new states&quot;)
+})
+public class BudgetChecker extends ListenerAdapter {
+
+  static final int CHECK_INTERVAL = 10000;
+  static final int CHECK_INTERVAL1 = CHECK_INTERVAL-1;
+    
+  long tStart;
+  MemoryUsage muStart;
+  long mStart;
+  MemoryMXBean mxb;
+  
+  VM vm;
+  Search search;
+  long insnCount;
+
+  //--- the budget thresholds
+  long maxTime;
+  long maxHeap;
+  
+  int maxDepth;
+  long maxInsn;
+  int maxState;
+  int maxNewStates;
+  
+  int newStates;
+  
+  // the message explaining the exceeded budget
+  String message;
+  
+<span class="nc" id="L74">  public BudgetChecker (Config conf, JPF jpf) {</span>
+    
+    //--- get the configured budget limits (0 means not set)
+<span class="nc" id="L77">    maxTime = conf.getDuration(&quot;budget.max_time&quot;, 0);</span>
+<span class="nc" id="L78">    maxHeap = conf.getMemorySize(&quot;budget.max_heap&quot;, 0);</span>
+<span class="nc" id="L79">    maxDepth = conf.getInt(&quot;budget.max_depth&quot;, 0);</span>
+<span class="nc" id="L80">    maxInsn = conf.getLong(&quot;budget.max_insn&quot;, 0);</span>
+<span class="nc" id="L81">    maxState = conf.getInt(&quot;budget.max_state&quot;, 0);</span>
+<span class="nc" id="L82">    maxNewStates = conf.getInt(&quot;budget.max_new_states&quot;, 0);</span>
+    
+<span class="nc" id="L84">    tStart = System.currentTimeMillis();</span>
+    
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    if (maxHeap &gt; 0) {</span>
+<span class="nc" id="L87">      mxb = ManagementFactory.getMemoryMXBean();</span>
+<span class="nc" id="L88">      muStart = mxb.getHeapMemoryUsage();</span>
+<span class="nc" id="L89">      mStart = muStart.getUsed();</span>
+    }
+
+<span class="nc" id="L92">    search = jpf.getSearch();</span>
+<span class="nc" id="L93">    vm = jpf.getVM();</span>
+<span class="nc" id="L94">  }</span>
+      
+  public boolean timeExceeded() {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (maxTime &gt; 0) {</span>
+<span class="nc" id="L98">      long dur = System.currentTimeMillis() - tStart;</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      if (dur &gt; maxTime) {</span>
+<span class="nc" id="L100">        message = &quot;max time exceeded: &quot; + Publisher.formatHMS(dur)</span>
+<span class="nc" id="L101">               + &quot; &gt;= &quot; + Publisher.formatHMS(maxTime);</span>
+<span class="nc" id="L102">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L106">    return false;</span>
+  }
+  
+  public boolean heapExceeded() {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    if (maxHeap &gt; 0) {</span>
+<span class="nc" id="L111">      MemoryUsage mu = mxb.getHeapMemoryUsage();</span>
+<span class="nc" id="L112">      long used = mu.getUsed() - mStart;</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      if (used &gt; maxHeap) {</span>
+<span class="nc" id="L114">        message = &quot;max heap exceeded: &quot; + (used / (1024*1024)) + &quot;MB&quot; </span>
+                      + &quot; &gt;= &quot; + (maxHeap / (1024*1024)) + &quot;MB&quot; ;
+<span class="nc" id="L116">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L120">    return false;</span>
+  }
+  
+  public boolean depthExceeded () {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (maxDepth &gt; 0) {</span>
+<span class="nc" id="L125">      int d = search.getDepth();</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      if (d &gt; maxDepth) {</span>
+<span class="nc" id="L127">        message = &quot;max search depth exceeded: &quot; + maxDepth;</span>
+<span class="nc" id="L128">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L132">    return false;</span>
+  }
+  
+  public boolean statesExceeded () {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    if (maxState &gt; 0) {</span>
+<span class="nc" id="L137">      int stateId = vm.getStateId();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      if (stateId &gt; maxState) {</span>
+<span class="nc" id="L139">        message = &quot;max states exceeded: &quot; + maxState;;</span>
+<span class="nc" id="L140">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L144">    return false;</span>
+  }
+    
+  public boolean insnExceeded () {
+<span class="nc bnc" id="L148" title="All 2 branches missed.">    if (maxInsn &gt; 0) {</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">      if (insnCount &gt; maxInsn) {</span>
+<span class="nc" id="L150">        message = &quot;max instruction count exceeded: &quot; + maxInsn;</span>
+<span class="nc" id="L151">        return true;</span>
+      }
+    }
+<span class="nc" id="L154">    return false;</span>
+  }
+  
+  public boolean newStatesExceeded(){
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    if (maxNewStates &gt; 0){</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">      if (newStates &gt; maxNewStates) {</span>
+<span class="nc" id="L160">        message = &quot;max new state count exceeded: &quot; + maxNewStates;</span>
+<span class="nc" id="L161">        return true;</span>
+      }
+    }
+<span class="nc" id="L164">    return false;</span>
+  }
+  
+  @Override
+  public void stateAdvanced (Search search) {    
+<span class="nc bnc" id="L169" title="All 4 branches missed.">    if (timeExceeded() || heapExceeded()) {</span>
+<span class="nc" id="L170">      search.notifySearchConstraintHit(message);</span>
+<span class="nc" id="L171">      search.terminate();</span>
+    }
+    
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    if (search.isNewState()){</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">      if (!vm.isTraceReplay()){</span>
+<span class="nc" id="L176">        newStates++;</span>
+      }
+<span class="nc bnc" id="L178" title="All 6 branches missed.">      if (statesExceeded() || depthExceeded() || newStatesExceeded()){</span>
+<span class="nc" id="L179">        search.notifySearchConstraintHit(message);</span>
+<span class="nc" id="L180">        search.terminate();        </span>
+      }
+    }
+<span class="nc" id="L183">  }</span>
+      
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+<span class="nc bnc" id="L187" title="All 2 branches missed.">    if ((insnCount++ % CHECK_INTERVAL) == CHECK_INTERVAL1) {</span>
+
+<span class="nc bnc" id="L189" title="All 6 branches missed.">      if (timeExceeded() || heapExceeded() || insnExceeded()) {</span>
+<span class="nc" id="L190">        search.notifySearchConstraintHit(message);</span>
+
+<span class="nc" id="L192">        vm.getCurrentThread().breakTransition(&quot;budgetConstraint&quot;);</span>
+<span class="nc" id="L193">        search.terminate();</span>
+      }    
+    }
+<span class="nc" id="L196">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

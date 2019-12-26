@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativeMethodInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">NativeMethodInfo.java</span></div><h1>NativeMethodInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFNativePeerException;
+import gov.nasa.jpf.util.JPFLogger;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+/**
+ * a MethodInfo for a native peer executed method
+ */
+public class NativeMethodInfo extends MethodInfo {
+
+<span class="fc" id="L33">  static JPFLogger logger = JPF.getLogger(&quot;gov.nasa.jpf.vm.NativePeer&quot;);</span>
+
+  static final int  MAX_NARGS = 6;
+  static Object[][]  argCache;
+
+  static {
+<span class="fc" id="L39">    argCache = new Object[MAX_NARGS][];</span>
+
+<span class="fc bfc" id="L41" title="All 2 branches covered.">    for (int i = 0; i &lt; MAX_NARGS; i++) {</span>
+<span class="fc" id="L42">      argCache[i] = new Object[i];</span>
+    }
+<span class="fc" id="L44">  }</span>
+
+  protected Method mth; // the native method to enter in lieu
+  protected NativePeer peer;
+
+  public NativeMethodInfo (MethodInfo mi, Method mth, NativePeer peer){
+<span class="fc" id="L50">    super(mi);  // &lt;2do&gt; do we want any operands or locals?</span>
+
+<span class="fc" id="L52">    this.peer = peer;</span>
+<span class="fc" id="L53">    this.mth = mth;</span>
+
+<span class="fc" id="L55">    ci.setNativeCallCode(this);</span>
+<span class="fc" id="L56">  }</span>
+
+  public void replace( MethodInfo mi){
+<span class="fc" id="L59">    mthTable.set(mi.globalId, this);</span>
+<span class="fc" id="L60">    mi.ci.putDeclaredMethod(this);</span>
+<span class="fc" id="L61">  }</span>
+  
+  @Override
+  public boolean isUnresolvedNativeMethod() {
+    // we are already a NativeMethodInfo
+<span class="fc" id="L66">    return false;</span>
+  }
+
+  @Override
+  public boolean isMJI () {
+<span class="fc" id="L71">    return true;</span>
+  }
+
+  @Override
+  public boolean hasEmptyBody (){
+    // how would we know
+<span class="nc" id="L77">    return false;</span>
+  }
+
+  @Override
+  public boolean isJPFExecutable(){
+<span class="fc" id="L82">    return true; // that's our only purpose in life</span>
+  }
+
+  public NativePeer getNativePeer() {
+<span class="nc" id="L86">    return peer;</span>
+  }
+
+  public Method getMethod() {
+<span class="fc" id="L90">    return mth;</span>
+  }
+
+  @Override
+  public String getStackTraceSource() {
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">    if (peer != null){</span>
+<span class="fc" id="L96">      return peer.getPeerClassName();</span>
+    } else {
+<span class="nc" id="L98">      return &quot;no peer&quot;;</span>
+    }
+  }
+
+  @Override
+  public int getLineNumber (Instruction pc) {
+<span class="fc" id="L104">    return -1; // we have no line numbers</span>
+  }
+
+  public Instruction executeNative (ThreadInfo ti) {
+<span class="fc" id="L108">    Object   ret = null;</span>
+<span class="fc" id="L109">    Object[] args = null;</span>
+<span class="fc" id="L110">    MJIEnv   env = ti.getMJIEnv();</span>
+        
+<span class="fc" id="L112">    NativeStackFrame nativeFrame = (NativeStackFrame)ti.getTopFrame();</span>
+
+<span class="fc" id="L114">    env.setCallEnvironment(this);</span>
+
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">    if (isUnsatisfiedLinkError(env)) {</span>
+<span class="nc" id="L117">      return ti.createAndThrowException(&quot;java.lang.UnsatisfiedLinkError&quot;,</span>
+<span class="nc" id="L118">                                        &quot;cannot find native &quot; + ci.getName() + '.' + getName());</span>
+    }
+
+    try {
+<span class="fc" id="L122">      args = nativeFrame.getArguments();</span>
+
+      // this is the reflection call into the native peer
+<span class="fc" id="L125">      ret = mth.invoke(peer, args);</span>
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">      if (env.hasException()) {</span>
+        // even though we should prefer throwing normal exceptionHandlers,
+        // sometimes it might be better/required to explicitly throw
+        // something that's not wrapped into a InvocationTargetException
+        // (e.g. InterruptedException), which is why there still is a
+        // MJIEnv.throwException()
+<span class="fc" id="L133">        return ti.throwException( env.popException());</span>
+      }
+
+<span class="fc" id="L136">      StackFrame top = ti.getTopFrame();</span>
+//      if (top == nativeFrame){ // no roundtrips, straight return
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      if (top.originatesFrom(nativeFrame)){ // could have changed attributes</span>
+<span class="fc" id="L139">        NativeStackFrame ntop = (NativeStackFrame)top;</span>
+
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (env.isInvocationRepeated()){</span>
+          // don't advance
+<span class="fc" id="L143">          return ntop.getPC();</span>
+
+        } else {
+          // we don't have to do a ti.topClone() because the last insn left
+          // is NATIVERETURN. Even if a listener creates a CG on it, it won't
+          // modify its StackFrame, which is then popped anyways
+
+<span class="fc" id="L150">          ntop.setReturnValue(ret);</span>
+<span class="fc" id="L151">          ntop.setReturnAttr(env.getReturnAttribute());</span>
+
+<span class="fc" id="L153">          return ntop.getPC().getNext(); // that should be the NATIVERETURN</span>
+        }
+
+      } else {
+        // direct calls from within the native method, i.e. nativeFrame is not
+        // on top anymore, but its current instruction (invoke) will be reexecuted
+        // because DirectCallStackFrames don't advance the pc of the new top top upon return
+<span class="fc" id="L160">        return top.getPC();</span>
+      }
+
+<span class="nc" id="L163">    } catch (IllegalArgumentException iax) {</span>
+<span class="nc" id="L164">      logger.warning(iax.toString());</span>
+<span class="nc" id="L165">      return ti.createAndThrowException(&quot;java.lang.IllegalArgumentException&quot;,</span>
+<span class="nc" id="L166">                                        &quot;calling &quot; + ci.getName() + '.' + getName());</span>
+<span class="nc" id="L167">    } catch (IllegalAccessException ilax) {</span>
+<span class="nc" id="L168">      logger.warning(ilax.toString());</span>
+<span class="nc" id="L169">      return ti.createAndThrowException(&quot;java.lang.IllegalAccessException&quot;,</span>
+<span class="nc" id="L170">                                        &quot;calling &quot; + ci.getName() + '.' + getName());</span>
+<span class="fc" id="L171">    } catch (InvocationTargetException itx) {</span>
+
+      // if loading a class throws an exception
+<span class="fc bfc" id="L174" title="All 2 branches covered.">      if(itx.getTargetException() instanceof ClassInfoException) {</span>
+<span class="fc" id="L175">        ClassInfoException cie = (ClassInfoException) itx.getTargetException();</span>
+<span class="fc" id="L176">        return ti.createAndThrowException(cie.getExceptionClass(), cie.getMessage());</span>
+      }
+
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">      if (itx.getTargetException() instanceof UncaughtException) {  // Native methods could </span>
+<span class="nc" id="L180">        throw (UncaughtException) itx.getTargetException();</span>
+      } 
+       
+      // this will catch all exceptionHandlers thrown by the native method execution
+      // we don't try to hand them back to the application
+<span class="fc" id="L185">      throw new JPFNativePeerException(&quot;exception in native method &quot;</span>
+<span class="fc" id="L186">          + ci.getName() + '.' + getName(), itx.getTargetException());</span>
+    }
+  }
+
+  protected boolean isUnsatisfiedLinkError(MJIEnv env){
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">    return(mth == null);</span>
+  }
+
+  /**
+   * Get and convert the native method parameters off the ThreadInfo stack.
+   * Use the MethodInfo parameter type info for this (not the reflect.Method
+   * type array), or otherwise we won't have any type check
+   */
+  protected Object[] getArguments (ThreadInfo ti) {
+    // these are just local refs to speed up
+<span class="nc" id="L201">    int      nArgs = getNumberOfArguments();</span>
+<span class="nc" id="L202">    byte[]   argTypes = getArgumentTypes();</span>
+
+    //Object[] a = getArgArray(nArgs + 2);
+<span class="nc" id="L205">    Object[] a = new Object[nArgs+2];</span>
+
+    int      stackOffset;
+    int      i, j, k;
+    int      ival;
+    long     lval;
+<span class="nc" id="L211">    StackFrame caller = ti.getTopFrame();</span>
+
+
+<span class="nc" id="L214">    for (i = 0, stackOffset = 0, j = nArgs + 1, k = nArgs - 1;</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">         i &lt; nArgs;</span>
+<span class="nc" id="L216">         i++, j--, k--) {</span>
+<span class="nc bnc" id="L217" title="All 9 branches missed.">      switch (argTypes[k]) {</span>
+      case Types.T_BOOLEAN:
+<span class="nc" id="L219">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L220">        a[j] = Boolean.valueOf(Types.intToBoolean(ival));</span>
+
+<span class="nc" id="L222">        break;</span>
+
+      case Types.T_BYTE:
+<span class="nc" id="L225">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L226">        a[j] = Byte.valueOf((byte) ival);</span>
+
+<span class="nc" id="L228">        break;</span>
+
+      case Types.T_CHAR:
+<span class="nc" id="L231">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L232">        a[j] = Character.valueOf((char) ival);</span>
+
+<span class="nc" id="L234">        break;</span>
+
+      case Types.T_SHORT:
+<span class="nc" id="L237">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L238">        a[j] = new Short((short) ival);</span>
+
+<span class="nc" id="L240">        break;</span>
+
+      case Types.T_INT:
+<span class="nc" id="L243">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L244">        a[j] = new Integer(ival);</span>
+
+<span class="nc" id="L246">        break;</span>
+
+      case Types.T_LONG:
+<span class="nc" id="L249">        lval = caller.peekLong(stackOffset);</span>
+<span class="nc" id="L250">        stackOffset++; // 2 stack words</span>
+<span class="nc" id="L251">        a[j] = new Long(lval);</span>
+
+<span class="nc" id="L253">        break;</span>
+
+      case Types.T_FLOAT:
+<span class="nc" id="L256">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L257">        a[j] = new Float(Types.intToFloat(ival));</span>
+
+<span class="nc" id="L259">        break;</span>
+
+      case Types.T_DOUBLE:
+<span class="nc" id="L262">        lval = caller.peekLong(stackOffset);</span>
+<span class="nc" id="L263">        stackOffset++; // 2 stack words</span>
+<span class="nc" id="L264">        a[j] = new Double(Types.longToDouble(lval));</span>
+
+<span class="nc" id="L266">        break;</span>
+
+      default:
+        // NOTE - we have to store T_REFERENCE as an Integer, because
+        // it shows up in our native method as an 'int'
+<span class="nc" id="L271">        ival = caller.peek(stackOffset);</span>
+<span class="nc" id="L272">        a[j] = new Integer(ival);</span>
+      }
+
+<span class="nc" id="L275">      stackOffset++;</span>
+    }
+
+    //--- set  our standard MJI header arguments
+<span class="nc bnc" id="L279" title="All 2 branches missed.">    if (isStatic()) {</span>
+<span class="nc" id="L280">      a[1] = new Integer(ci.getClassObjectRef());</span>
+    } else {
+<span class="nc" id="L282">      a[1] = new Integer(ti.getCalleeThis(this));</span>
+    }
+
+<span class="nc" id="L285">    a[0] = ti.getMJIEnv();</span>
+
+<span class="nc" id="L287">    return a;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

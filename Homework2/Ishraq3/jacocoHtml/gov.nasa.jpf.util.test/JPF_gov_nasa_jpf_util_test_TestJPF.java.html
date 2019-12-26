@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPF_gov_nasa_jpf_util_test_TestJPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.test</a> &gt; <span class="el_source">JPF_gov_nasa_jpf_util_test_TestJPF.java</span></div><h1>JPF_gov_nasa_jpf_util_test_TestJPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.test;
+
+import gov.nasa.jpf.annotation.MJI;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.DirectCallStackFrame;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NativePeer;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.ArrayList;
+
+/**
+ * native peer for our test class root
+ */
+public class JPF_gov_nasa_jpf_util_test_TestJPF extends NativePeer {
+
+  ClassInfo testClass;
+  MethodInfo testClassCtor;
+
+<span class="fc" id="L40">  MethodInfo[] testMethods = null;</span>
+<span class="fc" id="L41">  int index = 0;</span>
+<span class="fc" id="L42">  int testObjRef = MJIEnv.NULL;</span>
+
+  boolean done;
+
+  private static void pushDirectCallFrame(MJIEnv env, MethodInfo mi, int objRef) {
+<span class="nc" id="L47">    ThreadInfo ti = env.getThreadInfo();</span>
+
+<span class="nc" id="L49">    DirectCallStackFrame frame = mi.createDirectCallStackFrame(ti, 0);</span>
+<span class="nc" id="L50">    frame.setReferenceArgument( 0, objRef, null);</span>
+<span class="nc" id="L51">    ti.pushFrame(frame);</span>
+<span class="nc" id="L52">  }</span>
+
+  private boolean initializeTestMethods(MJIEnv env, String[] selectedTests) {
+<span class="nc bnc" id="L55" title="All 4 branches missed.">    if (selectedTests != null &amp;&amp; selectedTests.length &gt; 0) {</span>
+<span class="nc" id="L56">      testMethods = new MethodInfo[selectedTests.length];</span>
+<span class="nc" id="L57">      int i = 0;</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">      for (String test : selectedTests) {</span>
+<span class="nc" id="L59">        MethodInfo mi = testClass.getMethod(test + &quot;()V&quot;, false);</span>
+<span class="nc bnc" id="L60" title="All 6 branches missed.">        if (mi != null &amp;&amp; mi.isPublic() &amp;&amp; !mi.isStatic()) {</span>
+<span class="nc" id="L61">          testMethods[i++] = mi;</span>
+        } else {
+<span class="nc" id="L63">          env.throwException(&quot;java.lang.RuntimeException&quot;,</span>
+                  &quot;no such test method: public void &quot; + test + &quot;()&quot;);
+<span class="nc" id="L65">          return false;</span>
+        }
+      }
+<span class="nc" id="L68">    } else { // collect all public void test..() methods</span>
+<span class="nc" id="L69">      ArrayList&lt;MethodInfo&gt; list = new ArrayList&lt;MethodInfo&gt;();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">      for (MethodInfo mi : testClass) {</span>
+<span class="nc bnc" id="L71" title="All 6 branches missed.">        if (mi.getName().startsWith(&quot;test&quot;) &amp;&amp; mi.isPublic() &amp;&amp; !mi.isStatic() &amp;&amp;</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">                mi.getSignature().equals(&quot;()V&quot;)) {</span>
+<span class="nc" id="L73">          list.add(mi);</span>
+        }
+<span class="nc" id="L75">      }</span>
+<span class="nc" id="L76">      testMethods = list.toArray(new MethodInfo[list.size()]);</span>
+    }
+
+<span class="nc" id="L79">    return true;</span>
+  }
+
+  //--- our exported native methods
+
+<span class="fc" id="L84">  public JPF_gov_nasa_jpf_util_test_TestJPF () {</span>
+<span class="fc" id="L85">    done = false;</span>
+<span class="fc" id="L86">    index = 0;</span>
+<span class="fc" id="L87">    testObjRef = MJIEnv.NULL;</span>
+<span class="fc" id="L88">    testMethods = null;</span>
+<span class="fc" id="L89">    testClass = null;</span>
+<span class="fc" id="L90">    testClassCtor = null;</span>
+<span class="fc" id="L91">  }</span>
+
+  @MJI
+  public void $init____V (MJIEnv env, int objRef){
+    // nothing
+<span class="fc" id="L96">  }</span>
+
+  @MJI
+  public void runTestsOfThisClass___3Ljava_lang_String_2__V (MJIEnv env, int clsObjRef,
+                                                                    int selectedTestsRef) {
+<span class="nc" id="L101">    ThreadInfo ti = env.getThreadInfo();</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (!done) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (testMethods == null) {</span>
+<span class="nc" id="L105">        StackFrame frame = env.getCallerStackFrame(); // the runTestsOfThisClass() caller</span>
+
+<span class="nc" id="L107">        testClass = frame.getClassInfo();</span>
+<span class="nc" id="L108">        testClassCtor = testClass.getMethod(&quot;&lt;init&gt;()V&quot;, true);</span>
+
+<span class="nc" id="L110">        String[] selectedTests = env.getStringArrayObject(selectedTestsRef);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">        if (initializeTestMethods(env, selectedTests)) {</span>
+<span class="nc" id="L112">          env.repeatInvocation();</span>
+        }
+
+<span class="nc" id="L115">      } else { // this is re-executed</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (testObjRef == MJIEnv.NULL) { // create a new test object</span>
+<span class="nc" id="L117">          testObjRef = env.newObject(testClass);</span>
+
+<span class="nc bnc" id="L119" title="All 2 branches missed.">          if (testClassCtor != null) {</span>
+<span class="nc" id="L120">            pushDirectCallFrame(env, testClassCtor, testObjRef);</span>
+<span class="nc" id="L121">            env.repeatInvocation();</span>
+          }
+
+        } else { // enter the next test
+<span class="nc bnc" id="L125" title="All 4 branches missed.">          if (testMethods != null &amp;&amp; (index &lt; testMethods.length)) {</span>
+<span class="nc" id="L126">            MethodInfo miTest = testMethods[index++];</span>
+<span class="nc" id="L127">            pushDirectCallFrame(env, miTest, testObjRef);</span>
+
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (index &lt; testMethods.length) {</span>
+<span class="nc" id="L130">              testObjRef = MJIEnv.NULL;</span>
+            } else {
+<span class="nc" id="L132">              done = true;</span>
+            }
+
+<span class="nc" id="L135">            env.repeatInvocation();</span>
+          }
+        }
+      }
+    }
+<span class="nc" id="L140">  }</span>
+
+  @MJI
+  public int createAndRunJPF__Ljava_lang_StackTraceElement_2_3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef, int a1, int a2){
+    // don't get recursive
+<span class="nc" id="L145">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public int getProperty__Ljava_lang_String_2__Ljava_lang_String_2 (MJIEnv env, int clsObjRef, int keyRef){
+<span class="fc" id="L150">    String key = env.getStringObject(keyRef);</span>
+<span class="fc" id="L151">    String val = env.getConfig().getString(key);</span>
+    
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">    if (val != null){</span>
+<span class="fc" id="L154">      return env.newString(val);</span>
+    } else {
+<span class="nc" id="L156">      return MJIEnv.NULL;</span>
+    }
+  }
+  
+  /**
+   * if any of our methods are executed, we know that we already run under JPF
+   */
+  @MJI
+  public boolean isJPFRun____Z (MJIEnv env, int clsObjRef){
+<span class="fc" id="L165">    return true;</span>
+  }
+
+  @MJI
+  public boolean isJUnitRun____Z (MJIEnv env, int clsObjRef){
+<span class="nc" id="L170">    return false;</span>
+  }
+
+  @MJI
+  public boolean isRunTestRun____Z (MJIEnv env, int clsObjRef){
+<span class="nc" id="L175">    return false;</span>
+  }
+
+
+  // we need to override these so that the actual test code gets executed
+  // if we fail to intercept, the bytecode will actually start JPF
+  @MJI
+  public int noPropertyViolation___3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef, int jpfArgsRef){
+<span class="fc" id="L183">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public boolean verifyNoPropertyViolation___3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef, int jpfArgsRef){
+<span class="fc" id="L188">    return true;</span>
+  }
+
+  @MJI
+  public boolean verifyAssertionErrorDetails__Ljava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                  int detailsRef, int jpfArgsRef){
+<span class="fc" id="L194">    return true;</span>
+  }
+
+  @MJI
+  public boolean verifyAssertionError___3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef, int jpfArgsRef){
+<span class="fc" id="L199">    return true;</span>
+  }
+
+  @MJI
+  public int unhandledException__Ljava_lang_String_2Ljava_lang_String_2_3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef,
+                                  int xClassNameRef, int detailsRef, int jpfArgsRef){
+<span class="nc" id="L205">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public boolean verifyUnhandledException__Ljava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                  int xClassNameRef, int jpfArgsRef){
+<span class="fc" id="L211">    return true;</span>
+  }
+
+  @MJI
+  public boolean verifyUnhandledExceptionDetails__Ljava_lang_String_2Ljava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                  int xClassNameRef, int detailsRef, int jpfArgsRef){
+<span class="fc" id="L217">    return true;</span>
+  }
+
+  @MJI
+  public int propertyViolation__Ljava_lang_Class_2_3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef,
+                                  int propClsRef, int jpfArgsRef){
+<span class="nc" id="L223">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public boolean verifyPropertyViolation__Lgov_nasa_jpf_util_TypeRef_2_3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                  int propClsRef, int jpfArgsRef){
+<span class="fc" id="L229">    return true;</span>
+  }
+
+  @MJI
+  public int jpfException__Ljava_lang_Class_2_3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef,
+                                  int xClsRef, int jpfArgsRef){
+<span class="nc" id="L235">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public boolean verifyJPFException__Lgov_nasa_jpf_util_TypeRef_2_3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                  int xClsRef, int jpfArgsRef){
+<span class="fc" id="L241">    return true;</span>
+  }
+
+  @MJI
+  public int deadlock___3Ljava_lang_String_2__Lgov_nasa_jpf_JPF_2 (MJIEnv env, int clsObjRef, int jpfArgsRef){
+<span class="nc" id="L246">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public boolean verifyDeadlock___3Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef, int jpfArgsRef){
+<span class="fc" id="L251">    return true;</span>
+  }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

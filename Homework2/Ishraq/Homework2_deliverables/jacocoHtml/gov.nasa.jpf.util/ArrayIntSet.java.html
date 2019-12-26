@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArrayIntSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">ArrayIntSet.java</span></div><h1>ArrayIntSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.NoSuchElementException;
+import gov.nasa.jpf.JPFException;
+
+/**
+ * common base for array based IntSet implementations
+ */
+public abstract class ArrayIntSet implements IntSet, Cloneable {
+    
+  protected int size;
+  protected int[] elements;
+  
+<span class="fc" id="L31">  private class Iterator implements IntIterator {</span>
+<span class="fc" id="L32">    int next = 0;</span>
+
+    @Override
+    public void remove() {
+<span class="fc" id="L36">      int idx = next-1;</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">      if (idx &gt;=0){</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (idx &lt; size-1){</span>
+<span class="fc" id="L39">          System.arraycopy(elements, next, elements, idx, size-idx);</span>
+        }
+<span class="fc" id="L41">        size--;</span>
+<span class="fc" id="L42">        next = idx;</span>
+      }
+<span class="fc" id="L44">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">      return (next &lt; size);</span>
+    }
+
+    @Override
+    public int next() {
+<span class="fc bfc" id="L53" title="All 2 branches covered.">      if (next &lt; size){</span>
+<span class="fc" id="L54">        return elements[next++];</span>
+      } else {
+<span class="fc" id="L56">        throw new NoSuchElementException();</span>
+      }
+    }
+  }
+  
+<span class="fc" id="L61">  protected ArrayIntSet (){</span>
+    // nothing
+<span class="fc" id="L63">  }</span>
+  
+<span class="fc" id="L65">  protected ArrayIntSet (int initialCapacity){</span>
+<span class="fc" id="L66">    elements = new int[initialCapacity];</span>
+<span class="fc" id="L67">  }</span>
+  
+  @Override
+  public  boolean isEmpty(){
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">    return (size == 0);</span>
+  }
+   
+  @Override
+  public int size(){
+<span class="fc" id="L76">    return size;</span>
+  }
+  
+  @Override
+  public void clear(){
+<span class="nc" id="L81">    size = 0;</span>
+<span class="nc" id="L82">    elements = null;</span>
+<span class="nc" id="L83">  }</span>
+  
+  @Override
+  public String toString(){
+<span class="fc" id="L87">    StringBuilder sb = new StringBuilder(/*getClass().getName()*/);</span>
+<span class="fc" id="L88">    sb.append('{');</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">      if (i&gt;0){</span>
+<span class="fc" id="L91">        sb.append(',');</span>
+      }
+<span class="fc" id="L93">      sb.append(elements[i]);</span>
+    }
+<span class="fc" id="L95">    sb.append('}');</span>
+<span class="fc" id="L96">    return sb.toString();</span>
+  }
+  
+  @Override
+  public ArrayIntSet clone(){
+    try {
+<span class="fc" id="L102">      ArrayIntSet other = (ArrayIntSet) super.clone();</span>
+<span class="fc" id="L103">      other.size = size;</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">      if (elements != null) {</span>
+<span class="fc" id="L105">        other.elements = elements.clone();</span>
+      }
+<span class="fc" id="L107">      return other;</span>
+      
+<span class="nc" id="L109">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L110">      throw new JPFException(&quot;clone failed &quot; + this);</span>
+    }
+  }
+  
+  /**
+   * this is probably a bad hash function, but we just need something that
+   * is order independent
+   */
+  @Override
+  public int hashCode(){
+<span class="fc" id="L120">    int[] a = elements;</span>
+<span class="fc" id="L121">    int n = size;</span>
+<span class="fc" id="L122">    int h = (n &lt;&lt; 16) + (n % 3);</span>
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L125">      int e = a[i];</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">      if (e == 0){</span>
+<span class="fc" id="L127">        e = Integer.MAX_VALUE;</span>
+      }
+<span class="fc" id="L129">      int rot = e % 31;</span>
+<span class="fc" id="L130">      h ^= (h &lt;&lt; rot) | (h &gt;&gt;&gt; (32 - rot)); // rotate left</span>
+    }
+    
+<span class="fc" id="L133">    return h;</span>
+  }
+  
+  @Override
+  public boolean equals (Object o){
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">    if (o instanceof IntSet){</span>
+<span class="fc" id="L139">      IntSet other = (IntSet)o;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">      if (size == other.size()){</span>
+<span class="fc" id="L141">        int len = size;</span>
+<span class="fc" id="L142">        int[] a = elements;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        for (int i=0; i&lt;len; i++){</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">          if (!other.contains(a[i])){</span>
+<span class="nc" id="L145">            return false;</span>
+          }
+        }
+<span class="fc" id="L148">        return true;</span>
+      }
+    }
+<span class="fc" id="L151">    return false;</span>
+  }
+
+  @Override
+  public IntIterator intIterator (){
+<span class="fc" id="L156">    return new Iterator();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

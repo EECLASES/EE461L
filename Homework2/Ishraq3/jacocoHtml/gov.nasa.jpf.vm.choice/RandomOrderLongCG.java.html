@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RandomOrderLongCG.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">RandomOrderLongCG.java</span></div><h1>RandomOrderLongCG.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.LongChoiceGenerator;
+
+/**
+ *
+ */
+public class RandomOrderLongCG extends ChoiceGeneratorBase&lt;Long&gt; implements LongChoiceGenerator {
+  protected long[] choices;
+
+  protected int nextIdx;
+
+  public RandomOrderLongCG (LongChoiceGenerator sub) {
+<span class="nc" id="L33">    super(sub.getId());</span>
+<span class="nc" id="L34">    setPreviousChoiceGenerator(sub.getPreviousChoiceGenerator());</span>
+<span class="nc" id="L35">    choices = new long[sub.getTotalNumberOfChoices()];</span>
+<span class="nc bnc" id="L36" title="All 2 branches missed.">    for (int i = 0; i &lt; choices.length; i++) {</span>
+<span class="nc" id="L37">      sub.advance();</span>
+<span class="nc" id="L38">      choices[i] = sub.getNextChoice();</span>
+    }
+<span class="nc bnc" id="L40" title="All 2 branches missed.">    for (int i = choices.length - 1; i &gt; 0; i--) { // all but first</span>
+<span class="nc" id="L41">      int j = random.nextInt(i + 1);</span>
+<span class="nc" id="L42">      long tmp = choices[i];</span>
+<span class="nc" id="L43">      choices[i] = choices[j];</span>
+<span class="nc" id="L44">      choices[j] = tmp;</span>
+    }
+<span class="nc" id="L46">    nextIdx = -1;</span>
+<span class="nc" id="L47">  }</span>
+  
+  @Override
+  public Long getChoice (int idx){
+<span class="nc bnc" id="L51" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; choices.length){</span>
+<span class="nc" id="L52">      return choices[idx];</span>
+    } else {
+<span class="nc" id="L54">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+
+
+  @Override
+  public Long getNextChoice() {
+<span class="nc" id="L61">    return new Long(choices[nextIdx]);</span>
+  }
+
+  @Override
+  public void advance() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    if (nextIdx + 1 &lt; choices.length) nextIdx++;</span>
+<span class="nc" id="L67">  }</span>
+
+  @Override
+  public int getProcessedNumberOfChoices() {
+<span class="nc" id="L71">    return nextIdx+1;</span>
+  }
+
+  @Override
+  public int getTotalNumberOfChoices() {
+<span class="nc" id="L76">    return choices.length;</span>
+  }
+
+  @Override
+  public boolean hasMoreChoices() {
+<span class="nc bnc" id="L81" title="All 4 branches missed.">    return !isDone &amp;&amp; (nextIdx + 1 &lt; choices.length);</span>
+  }
+
+  @Override
+  public void reset() {
+<span class="nc" id="L86">    nextIdx = -1;</span>
+
+<span class="nc" id="L88">    isDone = false;</span>
+<span class="nc" id="L89">  }</span>
+
+  @Override
+  public Class&lt;Long&gt; getChoiceType() {
+<span class="nc" id="L93">    return Long.class;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

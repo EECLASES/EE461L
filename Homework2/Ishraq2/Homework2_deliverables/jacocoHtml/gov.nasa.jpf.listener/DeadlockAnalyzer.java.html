@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeadlockAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">DeadlockAnalyzer.java</span></div><h1>DeadlockAnalyzer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.EXECUTENATIVE;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.ListIterator;
+import java.util.Stack;
+
+/**
+ * example of a listener that creates property specific traces. The interesting
+ * thing is that it does so without the need to store steps, i.e. it maintains
+ * it's own transition stack.
+ * this is still work in progress, analyzing the trace can be much more
+ * elaborate (we just dump up to a max history size for now)
+ * 
+ * &lt;2do&gt; DeadlockAnalyzer output can be confusing if a reorganizing
+ * ThreadList is used (which reassigns thread ids) 
+ */
+<span class="nc bnc" id="L52" title="All 2 branches missed.">public class DeadlockAnalyzer extends ListenerAdapter {</span>
+
+<span class="nc" id="L54">  enum OpType { block, lock, unlock, wait, notify, notifyAll, started, terminated };</span>
+<span class="nc" id="L55">  static String[] opTypeMnemonic = { &quot;B&quot;, &quot;L&quot;, &quot;U&quot;, &quot;W&quot;, &quot;N&quot;, &quot;A&quot;, &quot;S&quot;, &quot;T&quot; };</span>
+  
+  static class ThreadOp {  
+    ThreadInfo ti;
+    ElementInfo ei;
+    Instruction insn;
+    
+    // kind of redundant, but there might be context attributes in addition
+    // to the insn itself
+    OpType opType;
+    
+    // we could identify this with the insn, but only in case this is
+    // a transition boundary, which is far less general than we can be
+    int stateId;
+    ThreadOp prevTransition;
+    ThreadOp prevOp;
+
+<span class="nc" id="L72">    ThreadOp (ThreadInfo ti, ElementInfo ei, OpType type) {</span>
+<span class="nc" id="L73">      this.ti = ti;</span>
+<span class="nc" id="L74">      this.ei = ei;</span>
+<span class="nc" id="L75">      insn = getReportInsn(ti); // we haven't had the executeInsn notification yet</span>
+<span class="nc" id="L76">      opType = type;</span>
+      
+<span class="nc" id="L78">      prevOp = null;</span>
+<span class="nc" id="L79">    }</span>
+
+    Instruction getReportInsn(ThreadInfo ti){
+<span class="nc" id="L82">      StackFrame frame = ti.getTopFrame();</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      if (frame != null) {</span>
+<span class="nc" id="L84">        Instruction insn = frame.getPC();</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        if (insn instanceof EXECUTENATIVE) {</span>
+<span class="nc" id="L86">          frame = frame.getPrevious();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">          if (frame != null) {</span>
+<span class="nc" id="L88">            insn = frame.getPC();</span>
+          }
+        }
+
+<span class="nc" id="L92">        return insn;</span>
+      } else {
+<span class="nc" id="L94">        return null;</span>
+      }
+    }
+
+    void printLocOn (PrintWriter pw) {
+<span class="nc" id="L99">      pw.print(String.format(&quot;%6d&quot;, new Integer(stateId)));</span>
+      
+<span class="nc bnc" id="L101" title="All 2 branches missed.">      if (insn != null) {</span>
+<span class="nc" id="L102">        pw.print(String.format(&quot; %18.18s &quot;, insn.getMnemonic()));</span>
+<span class="nc" id="L103">        pw.print(insn.getFileLocation());</span>
+<span class="nc" id="L104">        String line = insn.getSourceLine();</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (line != null){</span>
+<span class="nc" id="L106">          pw.print( &quot; : &quot;);</span>
+<span class="nc" id="L107">          pw.print(line.trim());</span>
+          //pw.print(insn);
+        }
+      }
+<span class="nc" id="L111">    }</span>
+    
+    void printOn (PrintWriter pw){
+<span class="nc" id="L114">      pw.print( stateId);</span>
+<span class="nc" id="L115">      pw.print( &quot; : &quot;);</span>
+<span class="nc" id="L116">      pw.print( ti.getName());</span>
+<span class="nc" id="L117">      pw.print( &quot; : &quot;);</span>
+<span class="nc" id="L118">      pw.print( opType.name());</span>
+<span class="nc" id="L119">      pw.print( &quot; : &quot;);</span>
+<span class="nc" id="L120">      pw.println(ei);</span>
+<span class="nc" id="L121">    }</span>
+    
+    @Override
+	public String toString() {
+<span class="nc" id="L125">      StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L126">      sb.append( stateId);</span>
+<span class="nc" id="L127">      sb.append( &quot; : &quot;);</span>
+<span class="nc" id="L128">      sb.append( ti.getName());</span>
+<span class="nc" id="L129">      sb.append( &quot; : &quot;);</span>
+<span class="nc" id="L130">      sb.append( opType.name());</span>
+<span class="nc" id="L131">      sb.append( &quot; : &quot;);</span>
+<span class="nc" id="L132">      sb.append(ei);</span>
+<span class="nc" id="L133">      return sb.toString();</span>
+    }
+    
+    void printColumnOn(PrintWriter pw, Collection&lt;ThreadInfo&gt; tlist){
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      for (ThreadInfo t : tlist) {</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (ti == t) {</span>
+<span class="nc bnc" id="L139" title="All 4 branches missed.">          if (opType == OpType.started || opType == OpType.terminated) {</span>
+<span class="nc" id="L140">            pw.print(String.format(&quot;   %1$s    &quot;, opTypeMnemonic[opType.ordinal()]));</span>
+          } else {
+<span class="nc" id="L142">            pw.print(String.format(&quot;%1$s:%2$-5x &quot;, opTypeMnemonic[opType.ordinal()], ei.getObjectRef()));</span>
+          }
+          //break;
+        } else {
+<span class="nc" id="L146">          pw.print(&quot;   |    &quot;);</span>
+        }
+<span class="nc" id="L148">      }      </span>
+<span class="nc" id="L149">    }</span>
+  }
+  
+  ThreadOp lastOp;
+  ThreadOp lastTransition;
+  
+  int maxHistory;
+  String format;
+  
+  VM vm;
+  Search search;
+  
+<span class="nc" id="L161">  public DeadlockAnalyzer (Config config, JPF jpf){</span>
+<span class="nc" id="L162">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+    
+<span class="nc" id="L164">    maxHistory = config.getInt(&quot;deadlock.max_history&quot;, Integer.MAX_VALUE);</span>
+<span class="nc" id="L165">    format = config.getString(&quot;deadlock.format&quot;, &quot;essential&quot;);</span>
+    
+<span class="nc" id="L167">    vm = jpf.getVM();</span>
+<span class="nc" id="L168">    search = jpf.getSearch();</span>
+<span class="nc" id="L169">  }</span>
+  
+  boolean requireAllOps() {
+<span class="nc" id="L172">    return (format.equalsIgnoreCase(&quot;essential&quot;));</span>
+  }
+  
+  void addOp (ThreadInfo ti, ElementInfo ei, OpType opType){
+<span class="nc" id="L176">    ThreadOp op = new ThreadOp(ti, ei, opType);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">    if (lastOp == null){</span>
+<span class="nc" id="L178">      lastOp = op;</span>
+    } else {
+<span class="nc bnc" id="L180" title="All 4 branches missed.">      assert lastOp.stateId == 0;</span>
+      
+<span class="nc" id="L182">      op.prevOp = lastOp;</span>
+<span class="nc" id="L183">      lastOp = op;</span>
+    }
+<span class="nc" id="L185">  }</span>
+  
+  void printRawOps (PrintWriter pw) {
+<span class="nc" id="L188">    int i=0;</span>
+    
+<span class="nc bnc" id="L190" title="All 2 branches missed.">    for (ThreadOp tOp = lastTransition; tOp != null; tOp = tOp.prevTransition){</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">      for (ThreadOp op = tOp; op != null; op=op.prevOp) {</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (i++ &gt;= maxHistory){</span>
+<span class="nc" id="L193">          pw.println(&quot;...&quot;);</span>
+<span class="nc" id="L194">          return;</span>
+        }
+<span class="nc" id="L196">        op.printOn(pw);</span>
+      }
+    }
+<span class="nc" id="L199">  }</span>
+      
+  /**
+   * include all threads that are currently blocked or waiting, and
+   * all the threads that had the last interaction with them. Note that
+   * we do this completely on the basis of the recorded ThreadOps, i.e.
+   * don't rely on when this is called
+   */
+  void printEssentialOps(PrintWriter pw) {
+<span class="nc" id="L208">    LinkedHashSet&lt;ThreadInfo&gt; threads = new LinkedHashSet&lt;ThreadInfo&gt;();</span>
+<span class="nc" id="L209">    ArrayList&lt;ThreadOp&gt; ops = new ArrayList&lt;ThreadOp&gt;();</span>
+<span class="nc" id="L210">    HashMap&lt;ElementInfo,ThreadInfo&gt; waits = new HashMap&lt;ElementInfo,ThreadInfo&gt;();</span>
+<span class="nc" id="L211">    HashMap&lt;ElementInfo,ThreadInfo&gt; blocks = new HashMap&lt;ElementInfo,ThreadInfo&gt;();</span>
+<span class="nc" id="L212">    HashSet&lt;ThreadInfo&gt; runnables = new HashSet&lt;ThreadInfo&gt;();</span>
+    
+    // collect all relevant threads and ops
+<span class="nc bnc" id="L215" title="All 2 branches missed.">    for (ThreadOp trans = lastTransition; trans != null; trans = trans.prevTransition){</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">      for (ThreadOp tOp = trans; tOp != null; tOp = tOp.prevOp) {</span>
+<span class="nc" id="L217">        OpType ot = tOp.opType;</span>
+<span class="nc" id="L218">        ThreadInfo oti = tOp.ti;</span>
+        
+<span class="nc bnc" id="L220" title="All 4 branches missed.">        if (ot == OpType.wait || ot == OpType.block) {</span>
+<span class="nc bnc" id="L221" title="All 4 branches missed.">          if (!runnables.contains(oti) &amp;&amp; !threads.contains(oti)){</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            HashMap&lt;ElementInfo, ThreadInfo&gt; map = (ot == OpType.block) ? blocks : waits;</span>
+<span class="nc" id="L223">            threads.add(oti);</span>
+<span class="nc" id="L224">            map.put(tOp.ei, oti);</span>
+<span class="nc" id="L225">            ops.add(tOp);</span>
+<span class="nc" id="L226">          }</span>
+          
+<span class="nc bnc" id="L228" title="All 6 branches missed.">        } else if (ot == OpType.notify || ot == OpType.notifyAll || ot == OpType.lock) {</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">          HashMap&lt;ElementInfo, ThreadInfo&gt; map = (ot == OpType.lock) ? blocks : waits;</span>
+<span class="nc" id="L230">          ThreadInfo ti = map.get(tOp.ei);</span>
+          
+<span class="nc bnc" id="L232" title="All 4 branches missed.">          if (ti != null &amp;&amp; ti != oti){</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">            if (!threads.contains(oti)){</span>
+<span class="nc" id="L234">              threads.add(oti);</span>
+            }
+<span class="nc" id="L236">            map.remove(tOp.ei);</span>
+<span class="nc" id="L237">            ops.add(tOp);</span>
+          }
+          
+<span class="nc" id="L240">          runnables.add(oti);</span>
+
+<span class="nc bnc" id="L242" title="All 2 branches missed.">        } else if (ot == OpType.unlock) {</span>
+          // not relevant
+<span class="nc" id="L244">          runnables.add(oti);</span>
+          
+<span class="nc bnc" id="L246" title="All 4 branches missed.">        } else if (ot == OpType.terminated || ot == OpType.started) {</span>
+<span class="nc" id="L247">          ops.add(tOp); // might be removed later-on</span>
+        }
+      }
+    }
+
+    // remove all starts/terminates of irrelevant threads
+<span class="nc bnc" id="L253" title="All 2 branches missed.">    for (ListIterator&lt;ThreadOp&gt; it = ops.listIterator(); it.hasNext(); ){</span>
+<span class="nc" id="L254">      ThreadOp tOp = it.next();</span>
+<span class="nc bnc" id="L255" title="All 4 branches missed.">      if (tOp.opType == OpType.terminated || tOp.opType == OpType.started) {</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (!threads.contains(tOp.ti)){</span>
+<span class="nc" id="L257">          it.remove();</span>
+        }
+      }
+<span class="nc" id="L260">    }</span>
+    
+    // now we are ready to print
+<span class="nc" id="L263">    printHeader(pw,threads);</span>
+
+<span class="nc bnc" id="L265" title="All 2 branches missed.">    for (ThreadOp tOp : ops) {</span>
+<span class="nc" id="L266">      tOp.printColumnOn(pw,threads);</span>
+<span class="nc" id="L267">      tOp.printLocOn(pw);</span>
+<span class="nc" id="L268">      pw.println();          </span>
+<span class="nc" id="L269">    }</span>
+<span class="nc" id="L270">  }</span>
+    
+  
+  Collection&lt;ThreadInfo&gt; getThreadList() {
+<span class="nc" id="L274">    ArrayList&lt;ThreadInfo&gt; tcol = new ArrayList&lt;ThreadInfo&gt;();</span>
+<span class="nc" id="L275">    boolean allOps = requireAllOps();</span>
+<span class="nc" id="L276">    int i=0;</span>
+    
+    prevTrans:
+<span class="nc bnc" id="L279" title="All 2 branches missed.">    for (ThreadOp tOp = lastTransition; tOp != null; tOp = tOp.prevTransition){</span>
+<span class="nc" id="L280">      i++;</span>
+<span class="nc bnc" id="L281" title="All 4 branches missed.">      if (!allOps &amp;&amp; (i &gt;= maxHistory)){</span>
+<span class="nc" id="L282">        break;</span>
+      }
+      
+<span class="nc bnc" id="L285" title="All 2 branches missed.">      for (ThreadInfo ti : tcol) {</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (ti == tOp.ti) continue prevTrans;</span>
+<span class="nc" id="L287">      }</span>
+<span class="nc" id="L288">      tcol.add(tOp.ti);</span>
+    }
+    
+<span class="nc" id="L291">    return tcol;</span>
+  }
+  
+  void printHeader (PrintWriter pw, Collection&lt;ThreadInfo&gt; tlist){
+<span class="nc bnc" id="L295" title="All 2 branches missed.">    for (ThreadInfo ti : tlist){</span>
+<span class="nc" id="L296">      pw.print(String.format(&quot;  %1$2d    &quot;, ti.getId()));</span>
+<span class="nc" id="L297">    }</span>
+<span class="nc" id="L298">    pw.print(&quot; trans      insn          loc                : stmt&quot;);</span>
+<span class="nc" id="L299">    pw.println();</span>
+        
+<span class="nc bnc" id="L301" title="All 2 branches missed.">    for (int i=0; i&lt;tlist.size(); i++){</span>
+<span class="nc" id="L302">      pw.print(&quot;------- &quot;);</span>
+    }
+<span class="nc" id="L304">    pw.print(&quot;---------------------------------------------------&quot;);</span>
+<span class="nc" id="L305">    pw.println();</span>
+<span class="nc" id="L306">  }</span>
+
+  
+  void printColumnOps (PrintWriter pw){
+<span class="nc" id="L310">    int i = 0;</span>
+<span class="nc" id="L311">    Collection&lt;ThreadInfo&gt; tlist = getThreadList();</span>
+<span class="nc" id="L312">    printHeader(pw,tlist);</span>
+    
+    // and now the data
+<span class="nc bnc" id="L315" title="All 2 branches missed.">    for (ThreadOp tOp = lastTransition; tOp != null; tOp = tOp.prevTransition){</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">      for (ThreadOp op = tOp; op != null; op=op.prevOp) {</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">        if (i++ &gt;= maxHistory){</span>
+<span class="nc" id="L318">          pw.println(&quot;...&quot;);</span>
+<span class="nc" id="L319">          return;</span>
+        }
+        
+<span class="nc" id="L322">        op.printColumnOn(pw,tlist);</span>
+<span class="nc" id="L323">        op.printLocOn(pw);</span>
+<span class="nc" id="L324">        pw.println();</span>
+      }
+    }
+<span class="nc" id="L327">  }</span>
+    
+  /**
+   * this is the workhorse - filter which ops should be shown, and which
+   * are irrelevant for the deadlock
+   */
+  boolean showOp (ThreadOp op, ThreadInfo[] tlist,
+                  boolean[] waitSeen, boolean[] notifySeen,
+                  boolean[] blockSeen, boolean[] lockSeen,
+                  Stack&lt;ElementInfo&gt;[] unlocked) {
+<span class="nc" id="L337">    ThreadInfo ti = op.ti;</span>
+<span class="nc" id="L338">    ElementInfo ei = op.ei;</span>
+    int idx;
+<span class="nc bnc" id="L340" title="All 2 branches missed.">    for (idx=0; idx &lt; tlist.length; idx++){</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">      if (tlist[idx] == ti) break;</span>
+    }
+    
+    // we could delegate this to the enum type, but let's not be too fancy
+<span class="nc bnc" id="L345" title="All 7 branches missed.">    switch (op.opType) {</span>
+    case block:
+      // only report the last one if thread is blocked
+<span class="nc bnc" id="L348" title="All 2 branches missed.">      if (ti.isBlocked()) {</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">        if (!blockSeen[idx]) {</span>
+<span class="nc" id="L350">          blockSeen[idx] = true;</span>
+<span class="nc" id="L351">          return true;</span>
+        }        
+      }
+<span class="nc" id="L354">      return false;</span>
+    
+    case unlock:
+<span class="nc" id="L357">      unlocked[idx].push(ei);</span>
+<span class="nc" id="L358">      return false;</span>
+      
+    case lock:
+      // if we had a corresponding unlock, ignore
+<span class="nc bnc" id="L362" title="All 4 branches missed.">      if (!unlocked[idx].isEmpty() &amp;&amp; (unlocked[idx].peek() == ei)) {</span>
+<span class="nc" id="L363">        unlocked[idx].pop();</span>
+<span class="nc" id="L364">        return false;</span>
+      }
+      
+      // only report the last one if there is a thread that's currently blocked on it
+<span class="nc bnc" id="L368" title="All 2 branches missed.">      for (int i=0; i&lt;tlist.length; i++){</span>
+<span class="nc bnc" id="L369" title="All 6 branches missed.">        if ((i != idx) &amp;&amp; tlist[i].isBlocked() &amp;&amp; (tlist[i].getLockObject() == ei)) {</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">          if (!lockSeen[i]){</span>
+<span class="nc" id="L371">            lockSeen[i] = true;</span>
+<span class="nc" id="L372">            return true;</span>
+          }
+        }
+      }
+      
+<span class="nc" id="L377">      return false;</span>
+      
+    case wait:
+<span class="nc bnc" id="L380" title="All 2 branches missed.">      if (ti.isWaiting()){ // only show the last one if this is a waiting thread</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (!waitSeen[idx]) {</span>
+<span class="nc" id="L382">          waitSeen[idx] = true;</span>
+<span class="nc" id="L383">          return true;</span>
+        }
+      }
+      
+<span class="nc" id="L387">      return false;</span>
+      
+    case notify:
+    case notifyAll:
+      // only report the last one if there's a thread waiting on it
+<span class="nc bnc" id="L392" title="All 2 branches missed.">      for (int i=0; i&lt;tlist.length; i++){</span>
+<span class="nc bnc" id="L393" title="All 6 branches missed.">        if ((i != idx) &amp;&amp; tlist[i].isWaiting() &amp;&amp; (tlist[i].getLockObject() == ei)) {</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">          if (!notifySeen[i]) {</span>
+<span class="nc" id="L395">            notifySeen[i] = true;</span>
+<span class="nc" id="L396">            return true;</span>
+          }
+        }
+      }
+
+<span class="nc" id="L401">      return false;</span>
+      
+    case started:
+    case terminated:
+<span class="nc" id="L405">      return true;</span>
+    }
+    
+<span class="nc" id="L408">    return false;</span>
+  }
+
+  void storeLastTransition(){
+<span class="nc bnc" id="L412" title="All 2 branches missed.">    if (lastOp != null) {</span>
+<span class="nc" id="L413">      int stateId = search.getStateId();</span>
+<span class="nc" id="L414">      ThreadInfo ti = lastOp.ti;</span>
+
+<span class="nc bnc" id="L416" title="All 2 branches missed.">      for (ThreadOp op = lastOp; op != null; op = op.prevOp) {</span>
+<span class="nc bnc" id="L417" title="All 4 branches missed.">        assert op.stateId == 0;</span>
+
+<span class="nc" id="L419">        op.stateId = stateId;</span>
+      }
+
+<span class="nc" id="L422">      lastOp.prevTransition = lastTransition;</span>
+<span class="nc" id="L423">      lastTransition = lastOp;</span>
+
+<span class="nc" id="L425">      lastOp = null;</span>
+    }
+<span class="nc" id="L427">  }</span>
+
+  //--- VM listener interface
+  
+  @Override
+  public void objectLocked (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L433">    addOp(ti, ei, OpType.lock);</span>
+<span class="nc" id="L434">  }</span>
+
+  @Override
+  public void objectUnlocked (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L438">    addOp(ti, ei, OpType.unlock);</span>
+<span class="nc" id="L439">  }</span>
+
+  @Override
+  public void objectWait (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L443">    addOp(ti, ei, OpType.wait);</span>
+<span class="nc" id="L444">  }</span>
+
+  @Override
+  public void objectNotify (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L448">    addOp(ti, ei, OpType.notify);</span>
+<span class="nc" id="L449">  }</span>
+
+  @Override
+  public void objectNotifyAll (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L453">    addOp(ti, ei, OpType.notifyAll);</span>
+<span class="nc" id="L454">  }</span>
+
+  @Override
+  public void threadBlocked (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="nc" id="L458">    addOp(ti, ei, OpType.block);</span>
+<span class="nc" id="L459">  }</span>
+  
+  @Override
+  public void threadStarted (VM vm, ThreadInfo ti){
+<span class="nc" id="L463">    addOp(ti, null, OpType.started);    </span>
+<span class="nc" id="L464">  }</span>
+  
+  @Override
+  public void threadTerminated (VM vm, ThreadInfo ti){
+<span class="nc" id="L468">    addOp(ti, null, OpType.terminated);</span>
+<span class="nc" id="L469">  }</span>
+  
+  //--- SearchListener interface
+
+  @Override
+  public void stateAdvanced (Search search){
+<span class="nc bnc" id="L475" title="All 2 branches missed.">    if (search.isNewState()) {</span>
+<span class="nc" id="L476">      storeLastTransition();</span>
+    }
+<span class="nc" id="L478">  }</span>
+
+  @Override
+  public void stateBacktracked (Search search){
+<span class="nc" id="L482">    int stateId = search.getStateId();</span>
+<span class="nc bnc" id="L483" title="All 4 branches missed.">    while ((lastTransition != null) &amp;&amp; (lastTransition.stateId &gt; stateId)){</span>
+<span class="nc" id="L484">      lastTransition = lastTransition.prevTransition;</span>
+    }
+<span class="nc" id="L486">    lastOp = null;</span>
+<span class="nc" id="L487">  }</span>
+  
+  // for HeuristicSearches. Ok, that's braindead but at least no need for cloning
+<span class="nc" id="L490">  HashMap&lt;Integer,ThreadOp&gt; storedTransition = new HashMap&lt;Integer,ThreadOp&gt;();</span>
+  
+  @Override
+  public void stateStored (Search search) {
+    // always called after stateAdvanced
+<span class="nc" id="L495">    storedTransition.put(search.getStateId(), lastTransition);</span>
+<span class="nc" id="L496">  }</span>
+  
+  @Override
+  public void stateRestored (Search search) {
+<span class="nc" id="L500">    int stateId = search.getStateId();</span>
+<span class="nc" id="L501">    ThreadOp op = storedTransition.get(stateId);</span>
+<span class="nc bnc" id="L502" title="All 2 branches missed.">    if (op != null) {</span>
+<span class="nc" id="L503">      lastTransition = op;</span>
+<span class="nc" id="L504">      storedTransition.remove(stateId);  // not strictly required, but we don't come back</span>
+    }
+<span class="nc" id="L506">  }</span>
+  
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {
+<span class="nc" id="L510">    PrintWriter pw = publisher.getOut();</span>
+<span class="nc" id="L511">    publisher.publishTopicStart(&quot;thread ops &quot; + publisher.getLastErrorId());</span>
+    
+<span class="nc bnc" id="L513" title="All 2 branches missed.">    if (&quot;column&quot;.equalsIgnoreCase(format)){</span>
+<span class="nc" id="L514">      printColumnOps(pw);</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">    } else if (&quot;essential&quot;.equalsIgnoreCase(format)) {</span>
+<span class="nc" id="L516">      printEssentialOps(pw);</span>
+    } else {
+<span class="nc" id="L518">      printRawOps(pw);</span>
+    }
+<span class="nc" id="L520">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

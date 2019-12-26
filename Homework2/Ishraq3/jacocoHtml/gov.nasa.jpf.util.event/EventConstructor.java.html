@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventConstructor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.event</a> &gt; <span class="el_source">EventConstructor.java</span></div><h1>EventConstructor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.event;
+
+/**
+ * abstract class that hold API to create event trees
+ * 
+ * this factors out constructor methods so that they can be used inside of
+ * EventTrees and EventForests
+ */
+public interface EventConstructor {
+
+  //--- overridable event factory method to facilitate creation of specialized event classes
+
+  default Event event (String name) {
+<span class="fc" id="L32">    return new Event(name, this);</span>
+  }
+  
+  default Event event (String name, Object... arguments){
+<span class="nc" id="L36">    return new Event(name, arguments, this);</span>
+  }
+
+  //--- compound constructors that create sets of events
+  
+  default Event alternatives (Event... events){
+<span class="fc" id="L42">    Event last = events[0];</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">    for (int i = 1; i &lt; events.length; i++) {</span>
+<span class="fc" id="L44">      Event e = events[i];</span>
+<span class="fc" id="L45">      last.setAlt(e);</span>
+<span class="fc" id="L46">      last = e;</span>
+    }
+<span class="fc" id="L48">    return events[0];</span>
+  }
+
+  default Event sequence (Event... events) {
+<span class="fc" id="L52">    Event base = events[0];</span>
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">    for (int i = 1; i &lt; events.length; i++) {</span>
+<span class="fc" id="L55">      base.addNext(events[i]);</span>
+    }
+<span class="fc" id="L57">    return base;</span>
+  }
+
+  default Event iteration (int count, Event... events) {
+<span class="fc" id="L61">    Event seq = sequence(events);</span>
+<span class="fc" id="L62">    Event[] it = new Event[count];</span>
+
+<span class="fc" id="L64">    it[0] = seq;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    for (int i=1; i&lt;count; i++){</span>
+<span class="fc" id="L66">      it[i] = seq.deepClone();</span>
+    }
+
+<span class="fc" id="L69">    return sequence(it);</span>
+  }
+
+  /**
+   * an alterative of all combinations of the specified events (regardless of order) 
+   */
+  default Event anyCombination (Event... events){
+<span class="fc" id="L76">    int n = events.length;</span>
+<span class="fc" id="L77">    int max = 0;</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++){</span>
+<span class="fc" id="L79">      max = (max &lt;&lt; 1) | 1;</span>
+    }
+    
+<span class="fc" id="L82">    Event[] pathBuffer = new Event[n];</span>
+    
+    // we use the no-event as the anchor
+<span class="fc" id="L85">    Event eFirst = new NoEvent();</span>
+    
+    // now fill in all the remaining combinations
+<span class="fc bfc" id="L88" title="All 2 branches covered.">    for (int i=1; i&lt;=max; i++){</span>
+      // init the path buffer
+<span class="fc" id="L90">      int pathLength=0;</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">      for (int j=0, m=i; m != 0; j++){</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if ((m &amp; 1) != 0){</span>
+<span class="fc" id="L93">          pathBuffer[pathLength++] = events[j];</span>
+        }
+<span class="fc" id="L95">        m&gt;&gt;&gt;=1;</span>
+      }
+      
+<span class="fc" id="L98">      eFirst.addPath( pathLength, pathBuffer);</span>
+    }
+      
+<span class="fc" id="L101">    return eFirst;</span>
+  }
+  
+  
+  default void generatePermutation (int length, Event[] events, Event anchor, Event perm){
+<span class="fc bfc" id="L106" title="All 2 branches covered.">    if (length == 0){</span>
+<span class="fc" id="L107">      anchor.addAlternative(perm);</span>
+      
+    } else {
+      outer:
+<span class="fc bfc" id="L111" title="All 2 branches covered.">      for (Event e : events){</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (perm != null){</span>
+          // check if e is already in there
+<span class="fc bfc" id="L114" title="All 2 branches covered.">          for (Event ee = perm; ee != null; ee = ee.getNext()){</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (ee.equals(e)){</span>
+<span class="fc" id="L116">              continue outer;</span>
+            }
+          }          
+<span class="fc" id="L119">          e = perm.deepClone().addNext(e.deepClone());</span>
+          
+        } else {
+<span class="fc" id="L122">          e = e.deepClone();</span>
+        }
+        
+<span class="fc" id="L125">        generatePermutation( length-1, events, anchor, e);</span>
+      }
+    }
+<span class="fc" id="L128">  }</span>
+  
+  /**
+   * generate tree with all event permutations without repetitions.
+   * &lt;2do&gt; this is not particularly optimized
+   */
+  default Event anyPermutation (Event... events){
+<span class="fc" id="L135">    Event a = new NoEvent();</span>
+<span class="fc" id="L136">    generatePermutation( events.length, events, a, null);</span>
+<span class="fc" id="L137">    return a.getAlt();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

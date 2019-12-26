@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DoubleThresholdGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">DoubleThresholdGenerator.java</span></div><h1>DoubleThresholdGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.DoubleChoiceGenerator;
+
+/**
+ * ChoiceGenerator instance that produces a simple 3 value enumeration
+ * 
+ */
+public class DoubleThresholdGenerator extends ChoiceGeneratorBase&lt;Double&gt; implements DoubleChoiceGenerator {
+
+<span class="nc" id="L30">  protected double[] values = new double[3];</span>
+  protected int count;
+
+  public DoubleThresholdGenerator(Config conf, String id) {
+<span class="nc" id="L34">    super(id);</span>
+
+<span class="nc" id="L36">    values[0] = conf.getDouble(id + &quot;.low&quot;);</span>
+<span class="nc" id="L37">    values[1] = conf.getDouble(id + &quot;.threshold&quot;);</span>
+<span class="nc" id="L38">    values[2] = conf.getDouble(id + &quot;.high&quot;);</span>
+<span class="nc" id="L39">    count = -1;</span>
+<span class="nc" id="L40">  }</span>
+
+  @Override
+  public Double getChoice (int idx){
+<span class="nc bnc" id="L44" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; 3){</span>
+<span class="nc" id="L45">      return values[idx];</span>
+    } else {
+<span class="nc" id="L47">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+  
+  @Override
+  public void reset () {
+<span class="nc" id="L53">    count = -1;</span>
+
+<span class="nc" id="L55">    isDone = false;</span>
+<span class="nc" id="L56">  }</span>
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="nc bnc" id="L60" title="All 4 branches missed.">    return !isDone &amp;&amp; (count &lt; 2);</span>
+  }
+
+  @Override
+  public Double getNextChoice () {
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    if (count &gt;=0) {</span>
+<span class="nc" id="L66">      return new Double(values[count]);</span>
+    } else {
+<span class="nc" id="L68">      return new Double(values[0]);</span>
+    }
+  }
+
+  @Override
+  public void advance () {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (count &lt; 2)</span>
+<span class="nc" id="L75">      count++;</span>
+<span class="nc" id="L76">  }</span>
+
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="nc" id="L80">    return 3;</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="nc" id="L85">    return count + 1;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L90">    StringBuilder sb = new StringBuilder(getClass().getName());</span>
+<span class="nc" id="L91">    sb.append(&quot;[id=\&quot;&quot;);</span>
+<span class="nc" id="L92">    sb.append(id);</span>
+<span class="nc" id="L93">    sb.append(&quot;\&quot;,&quot;);</span>
+    
+<span class="nc bnc" id="L95" title="All 2 branches missed.">    for (int i=0; i&lt;3; i++) {</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">      if (count == i) {</span>
+<span class="nc" id="L97">        sb.append(MARKER);</span>
+      }
+<span class="nc" id="L99">      sb.append(values[i]);</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">      if (count &lt; 2) {</span>
+<span class="nc" id="L101">        sb.append(',');</span>
+      }
+    }
+<span class="nc" id="L104">    sb.append(']');</span>
+<span class="nc" id="L105">    return sb.toString();</span>
+  }
+  
+  @Override
+  public DoubleThresholdGenerator randomize () {
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    for (int i = values.length - 1; i &gt; 0; i--) {</span>
+<span class="nc" id="L111">      int j = random.nextInt(i + 1);</span>
+<span class="nc" id="L112">      double tmp = values[i];</span>
+<span class="nc" id="L113">      values[i] = values[j];</span>
+<span class="nc" id="L114">      values[j] = tmp;</span>
+    }    
+<span class="nc" id="L116">    return this;</span>
+  }
+
+  @Override
+  public Class&lt;Double&gt; getChoiceType() {
+<span class="nc" id="L121">    return Double.class;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

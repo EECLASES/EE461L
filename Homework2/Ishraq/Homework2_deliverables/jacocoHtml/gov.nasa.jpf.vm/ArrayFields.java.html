@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArrayFields.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ArrayFields.java</span></div><h1>ArrayFields.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+
+import java.io.PrintStream;
+
+
+
+/**
+ *a Field (data value) store for array objects
+ */
+<span class="fc" id="L29">public abstract class ArrayFields extends Fields {</span>
+
+  int getNumberOfFieldsOrElements () {
+<span class="nc" id="L32">    return arrayLength(); // we have no fields</span>
+  }
+
+  public abstract int arrayLength ();
+
+  @Override
+  public abstract int getHeapSize ();
+
+  @Override
+  public boolean isReferenceArray(){
+<span class="fc" id="L42">    return false;</span>
+  }
+
+  public int getNumberOfFields() {
+    // has none
+<span class="nc" id="L47">    return 0;</span>
+  } 
+  
+  public abstract void copyElements (ArrayFields src, int srcPos, int dstPos, int len);
+  
+  public void printElements( PrintStream ps, int max){
+<span class="nc" id="L53">    int len = arrayLength();</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">    if (max &lt; 0) max = len;</span>
+    int i;
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    for (i=0; i&lt;max; i++){</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L58">        ps.print(',');</span>
+      }
+<span class="nc" id="L60">      printValue(ps, i);</span>
+    }
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (i &lt; len){</span>
+<span class="nc" id="L63">      ps.print(&quot;...&quot;);</span>
+    }
+<span class="nc" id="L65">  }  </span>
+  
+  protected abstract void printValue (PrintStream ps, int idx);
+  
+  public abstract Object getValues();
+
+  @Override
+  public boolean getBooleanValue (int pos) {
+  // overridden by subclass
+<span class="nc" id="L74">      throw new JPFException( &quot;not a boolean[]&quot;);</span>
+  }
+  @Override
+  public byte getByteValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L79">    throw new JPFException( &quot;not a byte[]&quot;);</span>
+  }
+  @Override
+  public char getCharValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L84">    throw new JPFException( &quot;not a char[]&quot;);</span>
+  }
+  @Override
+  public short getShortValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L89">    throw new JPFException( &quot;not a short[]&quot;);</span>
+  }
+  @Override
+  public int getIntValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L94">    throw new JPFException( &quot;not an int[]&quot;);</span>
+  }
+  @Override
+  public long getLongValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L99">    throw new JPFException( &quot;not a long[]&quot;);</span>
+  }
+  @Override
+  public float getFloatValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L104">    throw new JPFException( &quot;not a float[]&quot;);</span>
+  }
+  @Override
+  public double getDoubleValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L109">    throw new JPFException( &quot;not a double[]&quot;);</span>
+  }
+  @Override
+  public int getReferenceValue (int pos) {
+    // overridden by subclass
+<span class="nc" id="L114">    throw new JPFException( &quot;not a reference array&quot;);</span>
+  }
+
+  @Override
+  public void setBooleanValue (int pos, boolean newValue) {
+    // overridden by subclass
+<span class="nc" id="L120">    throw new JPFException( &quot;not a boolean[]&quot;);</span>
+  }
+  @Override
+  public void setByteValue (int pos, byte newValue) {
+    // overridden by subclass
+<span class="nc" id="L125">    throw new JPFException( &quot;not a byte[]&quot;);</span>
+  }
+  @Override
+  public void setCharValue (int pos, char newValue) {
+    // overridden by subclass
+<span class="nc" id="L130">    throw new JPFException( &quot;not a char[]&quot;);</span>
+  }
+  @Override
+  public void setShortValue (int pos, short newValue) {
+    // overridden by subclass
+<span class="nc" id="L135">    throw new JPFException( &quot;not a short[]&quot;);</span>
+  }
+  @Override
+  public void setIntValue (int pos, int newValue) {
+    // overridden by subclass
+<span class="nc" id="L140">    throw new JPFException( &quot;not an int[]&quot;);</span>
+  }
+  @Override
+  public void setFloatValue (int pos, float newValue){
+    // overridden by subclass
+<span class="nc" id="L145">    throw new JPFException( &quot;not a float[]&quot;);</span>
+  }
+  @Override
+  public void setLongValue (int pos, long newValue) {
+    // overridden by subclass
+<span class="nc" id="L150">    throw new JPFException( &quot;not a long[]&quot;);</span>
+  }
+  @Override
+  public void setDoubleValue (int pos, double newValue){
+    // overridden by subclass
+<span class="nc" id="L155">    throw new JPFException( &quot;not a double[]&quot;);</span>
+  }
+  @Override
+  public void setReferenceValue (int pos, int newValue){
+    // overridden by subclass
+<span class="nc" id="L160">    throw new JPFException( &quot;not a reference array&quot;);</span>
+  }
+
+
+  public boolean[] asBooleanArray () {
+    // overridden by subclass
+<span class="nc" id="L166">    throw new JPFException(&quot;not a boolean[]&quot;);</span>
+  }
+  public byte[] asByteArray () {
+    // overridden by subclass
+<span class="nc" id="L170">    throw new JPFException(&quot;not a byte[]&quot;);</span>
+  }
+  public char[] asCharArray () {
+    // overridden by subclass
+<span class="nc" id="L174">    throw new JPFException(&quot;not a char[]&quot;);</span>
+  }
+  public char[] asCharArray (int offset, int length) {
+    // overridden by subclass
+<span class="nc" id="L178">    throw new JPFException(&quot;not a char[]&quot;);</span>
+  }
+  public short[] asShortArray () {
+    // overridden by subclass
+<span class="nc" id="L182">    throw new JPFException(&quot;not a short[]&quot;);</span>
+  }
+  public int[] asIntArray () {
+    // overridden by subclass
+<span class="nc" id="L186">    throw new JPFException(&quot;not a int[]&quot;);</span>
+  }
+  public int[] asReferenceArray () {
+    // overridden by subclass
+<span class="nc" id="L190">    throw new JPFException(&quot;not a reference array&quot;);</span>
+  }
+  public long[] asLongArray () {
+    // overridden by subclass
+<span class="nc" id="L194">    throw new JPFException(&quot;not a long[]&quot;);</span>
+  }
+  public float[] asFloatArray () {
+    // overridden by subclass
+<span class="nc" id="L198">    throw new JPFException(&quot;not a float[]&quot;);</span>
+  }
+  public double[] asDoubleArray () {
+    // overridden by subclass
+<span class="nc" id="L202">    throw new JPFException(&quot;not a double[]&quot;);</span>
+  }
+
+  @Override
+  public int[] asFieldSlots() {
+<span class="nc" id="L207">    throw new JPFException(&quot;array has no field slots&quot;);</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

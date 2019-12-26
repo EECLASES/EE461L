@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">StateTracker.java</span></div><h1>StateTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+
+import java.io.PrintWriter;
+
+/**
+ * simple tool to log state changes
+ */
+public class StateTracker extends ListenerAdapter {
+
+  private final PrintWriter out;
+  private final int logPeriod;
+  volatile private String operation;
+  volatile private String detail;
+  volatile private int depth;
+  volatile private int id;
+
+<span class="nc" id="L39">  public StateTracker (Config conf, JPF jpf) {</span>
+<span class="nc" id="L40">    out = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L41">    logPeriod = conf.getInt(&quot;jpf.state_tracker.log_period&quot;, 0);</span>
+<span class="nc" id="L42">    Runnable task = new Runnable() {@Override</span>
+<span class="nc" id="L43">	public void run() {logger();}};</span>
+<span class="nc" id="L44">    Thread thread = new Thread(task);</span>
+<span class="nc" id="L45">    thread.setDaemon(true);</span>
+<span class="nc" id="L46">    thread.setName(&quot;StateTracker Logger&quot;);</span>
+<span class="nc" id="L47">    thread.start();</span>
+<span class="nc" id="L48">  }</span>
+
+  private void logger() {
+<span class="nc" id="L51">    StringBuilder buffer = new StringBuilder();</span>
+
+<span class="nc" id="L53">    buffer.append(&quot;----------------------------------- [&quot;);</span>
+<span class="nc" id="L54">    int len = buffer.length();</span>
+
+    while (true) {
+      try {
+<span class="nc" id="L58">        Thread.sleep(logPeriod);</span>
+<span class="nc" id="L59">      } catch (InterruptedException e) {</span>
+<span class="nc" id="L60">        e.printStackTrace();</span>
+<span class="nc" id="L61">      }</span>
+
+<span class="nc" id="L63">      buffer.append(depth);</span>
+<span class="nc" id="L64">      buffer.append(']');</span>
+<span class="nc" id="L65">      buffer.append(operation);</span>
+<span class="nc" id="L66">      buffer.append(&quot;: &quot;);</span>
+<span class="nc" id="L67">      buffer.append(id);</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">      if (detail != null) {</span>
+<span class="nc" id="L70">        buffer.append(' ');</span>
+<span class="nc" id="L71">        buffer.append(detail);</span>
+      }
+
+<span class="nc" id="L74">      out.println(buffer.toString());</span>
+
+<span class="nc" id="L76">      buffer.setLength(len);</span>
+    }
+  }
+
+  @Override
+  public void stateRestored(Search search) {
+<span class="nc" id="L82">    id = search.getStateId();</span>
+<span class="nc" id="L83">    depth = search.getDepth();</span>
+<span class="nc" id="L84">    operation = &quot;restored&quot;;</span>
+<span class="nc" id="L85">    detail = null;</span>
+<span class="nc" id="L86">  }</span>
+
+  //--- the ones we are interested in
+  @Override
+  public void searchStarted(Search search) {
+<span class="nc" id="L91">    out.println(&quot;----------------------------------- search started&quot;);</span>
+<span class="nc" id="L92">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="nc" id="L96">    id = search.getStateId();</span>
+<span class="nc" id="L97">    depth = search.getDepth();</span>
+<span class="nc" id="L98">    operation = &quot;forward&quot;;</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">    if (search.isNewState()) {</span>
+<span class="nc" id="L100">      detail = &quot;new&quot;;</span>
+    } else {
+<span class="nc" id="L102">      detail = &quot;visited&quot;;</span>
+    }
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (search.isEndState()) {</span>
+<span class="nc" id="L106">      detail += &quot; end&quot;;</span>
+    }
+<span class="nc" id="L108">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+<span class="nc" id="L112">    id = search.getStateId();</span>
+<span class="nc" id="L113">    depth = search.getDepth();</span>
+<span class="nc" id="L114">    operation = &quot;backtrack&quot;;</span>
+<span class="nc" id="L115">    detail = null;</span>
+<span class="nc" id="L116">  }</span>
+
+  @Override
+  public void searchFinished(Search search) {
+<span class="nc" id="L120">    out.println(&quot;----------------------------------- search finished&quot;);</span>
+<span class="nc" id="L121">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,1327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMCodeBuilder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMCodeBuilder.java</span></div><h1>JVMCodeBuilder.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.Invocation;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.bytecode.LookupSwitchInstruction;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NativeMethodInfo;
+import gov.nasa.jpf.vm.bytecode.TableSwitchInstruction;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * a special JVMByteCodeReader implementation that builds code arrays for
+ * MethodInfos, setting index and pc on the fly
+ */
+public class JVMCodeBuilder implements JVMByteCodeReader {
+
+  protected JVMInstructionFactory insnFactory;
+  
+  protected ClassFile cf;
+  protected MethodInfo mi;
+
+  // have to cache these to set switch entries
+  // &lt;2do&gt; these should use interface types to avoid hardwiring our own instruction classes
+  protected TableSwitchInstruction tableswitchInsn;
+  protected LookupSwitchInstruction lookupswitchInsn;
+
+  protected ArrayList&lt;Instruction&gt; code;
+
+  protected int pc; // bytecode position within method code
+  protected int idx; // instruction index within MethodInfo
+
+  // flag to remember wide immediate operand modification
+  boolean isWide;
+  
+  //--- for testing purposes
+<span class="fc" id="L58">  protected JVMCodeBuilder (JVMInstructionFactory ifact){</span>
+<span class="fc" id="L59">    this.code = new ArrayList&lt;Instruction&gt;(64);</span>
+<span class="fc" id="L60">    this.insnFactory = ifact;</span>
+<span class="fc" id="L61">  }</span>
+
+  
+  
+  // this is dangerous - it enables reuse of CodeBuilders, but
+  // you better make sure this does not get recursive or is used concurrently
+  public void reset (ClassFile classFile, MethodInfo targetMethod){
+<span class="fc" id="L68">    this.cf = classFile;</span>
+<span class="fc" id="L69">    this.mi = targetMethod;</span>
+
+<span class="fc" id="L71">    pc = 0;</span>
+<span class="fc" id="L72">    idx = 0;</span>
+<span class="fc" id="L73">    isWide = false;</span>
+
+<span class="fc" id="L75">    tableswitchInsn = null;</span>
+<span class="fc" id="L76">    lookupswitchInsn = null;</span>
+
+<span class="fc" id="L78">    code.clear();</span>
+<span class="fc" id="L79">  }</span>
+  
+  protected void add(Instruction insn){
+<span class="fc" id="L82">    insn.setMethodInfo(mi);</span>
+<span class="fc" id="L83">    insn.setLocation(idx++, pc);</span>
+<span class="fc" id="L84">    code.add(insn);</span>
+<span class="fc" id="L85">  }</span>
+
+  public void installCode(){
+<span class="fc" id="L88">    Instruction[] a = code.toArray( new Instruction[code.size()]);</span>
+<span class="fc" id="L89">    mi.setCode(a);</span>
+<span class="fc" id="L90">  }</span>
+
+  public int getCodeSize(){
+<span class="nc" id="L93">    return code.size();</span>
+  }
+
+  //--- the factory methods
+
+  @Override public void aconst_null() {
+<span class="fc" id="L99">    add( insnFactory.aconst_null());</span>
+<span class="fc" id="L100">    pc++;</span>
+<span class="fc" id="L101">  }</span>
+
+  @Override public void aload(int localVarIndex) {
+<span class="fc" id="L104">    add( insnFactory.aload(localVarIndex));</span>
+<span class="fc" id="L105">    pc+=2;</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L107">      pc++;</span>
+<span class="nc" id="L108">      isWide = false;</span>
+    }
+<span class="fc" id="L110">  }</span>
+
+  @Override public void aload_0() {
+<span class="fc" id="L113">    add( insnFactory.aload(0));</span>
+<span class="fc" id="L114">    pc++;</span>
+<span class="fc" id="L115">  }</span>
+
+  @Override public void aload_1() {
+<span class="fc" id="L118">    add( insnFactory.aload(1));</span>
+<span class="fc" id="L119">    pc++;</span>
+<span class="fc" id="L120">  }</span>
+
+  @Override public void aload_2() {
+<span class="fc" id="L123">    add( insnFactory.aload(2));</span>
+<span class="fc" id="L124">    pc++;</span>
+<span class="fc" id="L125">  }</span>
+
+  @Override public void aload_3() {
+<span class="fc" id="L128">    add( insnFactory.aload(3));</span>
+<span class="fc" id="L129">    pc++;</span>
+<span class="fc" id="L130">  }</span>
+
+  @Override public void aaload() {
+<span class="fc" id="L133">    add( insnFactory.aaload());</span>
+<span class="fc" id="L134">    pc++;</span>
+<span class="fc" id="L135">  }</span>
+
+  @Override public void astore(int localVarIndex) {
+<span class="fc" id="L138">    add( insnFactory.astore(localVarIndex));</span>
+<span class="fc" id="L139">    pc+=2;</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L141">      pc++;</span>
+<span class="nc" id="L142">      isWide = false;</span>
+    }
+<span class="fc" id="L144">  }</span>
+
+  @Override public void astore_0() {
+<span class="fc" id="L147">    add( insnFactory.astore(0));</span>
+<span class="fc" id="L148">    pc++;</span>
+<span class="fc" id="L149">  }</span>
+
+  @Override public void astore_1() {
+<span class="fc" id="L152">    add( insnFactory.astore(1));</span>
+<span class="fc" id="L153">    pc++;</span>
+<span class="fc" id="L154">  }</span>
+
+  @Override public void astore_2() {
+<span class="fc" id="L157">    add( insnFactory.astore(2));</span>
+<span class="fc" id="L158">    pc++;</span>
+<span class="fc" id="L159">  }</span>
+
+  @Override public void astore_3() {
+<span class="fc" id="L162">    add( insnFactory.astore(3));</span>
+<span class="fc" id="L163">    pc++;</span>
+<span class="fc" id="L164">  }</span>
+
+  @Override public void aastore() {
+<span class="fc" id="L167">    add( insnFactory.aastore());</span>
+<span class="fc" id="L168">    pc++;</span>
+<span class="fc" id="L169">  }</span>
+
+  @Override public void areturn() {
+<span class="fc" id="L172">    add( insnFactory.areturn());</span>
+<span class="fc" id="L173">    pc++;</span>
+<span class="fc" id="L174">  }</span>
+
+  @Override public void anewarray(int cpClassIndex) {
+<span class="fc" id="L177">    String clsName = cf.classNameAt(cpClassIndex);</span>
+<span class="fc" id="L178">    add( insnFactory.anewarray(clsName));</span>
+<span class="fc" id="L179">    pc+=3;</span>
+<span class="fc" id="L180">  }</span>
+
+  @Override public void arraylength() {
+<span class="fc" id="L183">    add( insnFactory.arraylength());</span>
+<span class="fc" id="L184">    pc++;</span>
+<span class="fc" id="L185">  }</span>
+
+  @Override public void athrow() {
+<span class="fc" id="L188">    add( insnFactory.athrow());</span>
+<span class="fc" id="L189">    pc++;</span>
+<span class="fc" id="L190">  }</span>
+
+  @Override public void baload() {
+<span class="fc" id="L193">    add( insnFactory.baload());</span>
+<span class="fc" id="L194">    pc++;</span>
+<span class="fc" id="L195">  }</span>
+
+  @Override public void bastore() {
+<span class="fc" id="L198">    add( insnFactory.bastore());</span>
+<span class="fc" id="L199">    pc++;</span>
+<span class="fc" id="L200">  }</span>
+
+  @Override public void bipush(int b) {
+<span class="fc" id="L203">    add( insnFactory.bipush(b));</span>
+<span class="fc" id="L204">    pc+=2;</span>
+<span class="fc" id="L205">  }</span>
+
+  @Override public void caload() {
+<span class="fc" id="L208">    add( insnFactory.caload());</span>
+<span class="fc" id="L209">    pc++;</span>
+<span class="fc" id="L210">  }</span>
+
+  @Override public void castore() {
+<span class="fc" id="L213">    add( insnFactory.castore());</span>
+<span class="fc" id="L214">    pc++;</span>
+<span class="fc" id="L215">  }</span>
+
+  @Override public void checkcast(int cpClassIndex) {
+<span class="fc" id="L218">    String clsName = cf.classNameAt(cpClassIndex);</span>
+<span class="fc" id="L219">    add( insnFactory.checkcast(clsName));</span>
+<span class="fc" id="L220">    pc+=3;</span>
+<span class="fc" id="L221">  }</span>
+
+  @Override public void d2f() {
+<span class="fc" id="L224">    add( insnFactory.d2f());</span>
+<span class="fc" id="L225">    pc++;</span>
+<span class="fc" id="L226">  }</span>
+
+  @Override public void d2i() {
+<span class="fc" id="L229">    add( insnFactory.d2i());</span>
+<span class="fc" id="L230">    pc++;</span>
+<span class="fc" id="L231">  }</span>
+
+  @Override public void d2l() {
+<span class="fc" id="L234">    add( insnFactory.d2l());</span>
+<span class="fc" id="L235">    pc++;</span>
+<span class="fc" id="L236">  }</span>
+
+  @Override public void dadd() {
+<span class="fc" id="L239">    add( insnFactory.dadd());</span>
+<span class="fc" id="L240">    pc++;</span>
+<span class="fc" id="L241">  }</span>
+
+  @Override public void daload() {
+<span class="fc" id="L244">    add( insnFactory.daload());</span>
+<span class="fc" id="L245">    pc++;</span>
+<span class="fc" id="L246">  }</span>
+
+  @Override public void dastore() {
+<span class="fc" id="L249">    add( insnFactory.dastore());</span>
+<span class="fc" id="L250">    pc++;</span>
+<span class="fc" id="L251">  }</span>
+
+  @Override public void dcmpg() {
+<span class="fc" id="L254">    add( insnFactory.dcmpg());</span>
+<span class="fc" id="L255">    pc++;</span>
+<span class="fc" id="L256">  }</span>
+
+  @Override public void dcmpl() {
+<span class="fc" id="L259">    add( insnFactory.dcmpl());</span>
+<span class="fc" id="L260">    pc++;</span>
+<span class="fc" id="L261">  }</span>
+
+  @Override public void dconst_0() {
+<span class="fc" id="L264">    add( insnFactory.dconst_0());</span>
+<span class="fc" id="L265">    pc++;</span>
+<span class="fc" id="L266">  }</span>
+
+  @Override public void dconst_1() {
+<span class="fc" id="L269">    add( insnFactory.dconst_1());</span>
+<span class="fc" id="L270">    pc++;</span>
+<span class="fc" id="L271">  }</span>
+
+  @Override public void ddiv() {
+<span class="fc" id="L274">    add( insnFactory.ddiv());</span>
+<span class="fc" id="L275">    pc++;</span>
+<span class="fc" id="L276">  }</span>
+
+  @Override public void dload(int localVarIndex) {
+<span class="fc" id="L279">    add( insnFactory.dload(localVarIndex));</span>
+<span class="fc" id="L280">    pc+=2;</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L282">      pc++;</span>
+<span class="nc" id="L283">      isWide = false;</span>
+    }
+<span class="fc" id="L285">  }</span>
+
+  @Override public void dload_0() {
+<span class="fc" id="L288">    add( insnFactory.dload(0));</span>
+<span class="fc" id="L289">    pc++;</span>
+<span class="fc" id="L290">  }</span>
+
+  @Override public void dload_1() {
+<span class="fc" id="L293">    add( insnFactory.dload(1));</span>
+<span class="fc" id="L294">    pc++;</span>
+<span class="fc" id="L295">  }</span>
+
+  @Override public void dload_2() {
+<span class="fc" id="L298">    add( insnFactory.dload(2));</span>
+<span class="fc" id="L299">    pc++;</span>
+<span class="fc" id="L300">  }</span>
+
+  @Override public void dload_3() {
+<span class="fc" id="L303">    add( insnFactory.dload(3));</span>
+<span class="fc" id="L304">    pc++;</span>
+<span class="fc" id="L305">  }</span>
+
+  @Override public void dmul() {
+<span class="fc" id="L308">    add( insnFactory.dmul());</span>
+<span class="fc" id="L309">    pc++;</span>
+<span class="fc" id="L310">  }</span>
+
+  @Override public void dneg() {
+<span class="fc" id="L313">    add( insnFactory.dneg());</span>
+<span class="fc" id="L314">    pc++;</span>
+<span class="fc" id="L315">  }</span>
+
+  @Override public void drem() {
+<span class="nc" id="L318">    add( insnFactory.drem());</span>
+<span class="nc" id="L319">    pc++;</span>
+<span class="nc" id="L320">  }</span>
+
+  @Override public void dreturn() {
+<span class="fc" id="L323">    add( insnFactory.dreturn());</span>
+<span class="fc" id="L324">    pc++;</span>
+<span class="fc" id="L325">  }</span>
+
+  @Override public void dstore(int localVarIndex) {
+<span class="fc" id="L328">    add( insnFactory.dstore(localVarIndex));</span>
+<span class="fc" id="L329">    pc+=2;</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L331">      pc++;</span>
+<span class="nc" id="L332">      isWide = false;</span>
+    }
+<span class="fc" id="L334">  }</span>
+
+  @Override public void dstore_0() {
+<span class="fc" id="L337">    add( insnFactory.dstore(0));</span>
+<span class="fc" id="L338">    pc++;</span>
+<span class="fc" id="L339">  }</span>
+
+  @Override public void dstore_1() {
+<span class="fc" id="L342">    add( insnFactory.dstore(1));</span>
+<span class="fc" id="L343">    pc++;</span>
+<span class="fc" id="L344">  }</span>
+
+  @Override public void dstore_2() {
+<span class="fc" id="L347">    add( insnFactory.dstore(2));</span>
+<span class="fc" id="L348">    pc++;</span>
+<span class="fc" id="L349">  }</span>
+
+  @Override public void dstore_3() {
+<span class="fc" id="L352">    add( insnFactory.dstore(3));</span>
+<span class="fc" id="L353">    pc++;</span>
+<span class="fc" id="L354">  }</span>
+
+  @Override public void dsub() {
+<span class="fc" id="L357">    add( insnFactory.dsub());</span>
+<span class="fc" id="L358">    pc++;</span>
+<span class="fc" id="L359">  }</span>
+
+  @Override public void dup() {
+<span class="fc" id="L362">    add( insnFactory.dup());</span>
+<span class="fc" id="L363">    pc++;</span>
+<span class="fc" id="L364">  }</span>
+
+  @Override public void dup_x1() {
+<span class="fc" id="L367">    add( insnFactory.dup_x1());</span>
+<span class="fc" id="L368">    pc++;</span>
+<span class="fc" id="L369">  }</span>
+
+  @Override public void dup_x2() {
+<span class="fc" id="L372">    add( insnFactory.dup_x2());</span>
+<span class="fc" id="L373">    pc++;</span>
+<span class="fc" id="L374">  }</span>
+
+  @Override public void dup2() {
+<span class="fc" id="L377">    add( insnFactory.dup2());</span>
+<span class="fc" id="L378">    pc++;</span>
+<span class="fc" id="L379">  }</span>
+
+  @Override public void dup2_x1() {
+<span class="fc" id="L382">    add( insnFactory.dup2_x1());</span>
+<span class="fc" id="L383">    pc++;</span>
+<span class="fc" id="L384">  }</span>
+
+  @Override public void dup2_x2() {
+<span class="nc" id="L387">    add( insnFactory.dup2_x2());</span>
+<span class="nc" id="L388">    pc++;</span>
+<span class="nc" id="L389">  }</span>
+
+  @Override public void f2d() {
+<span class="fc" id="L392">    add( insnFactory.f2d());</span>
+<span class="fc" id="L393">    pc++;</span>
+<span class="fc" id="L394">  }</span>
+
+  @Override public void f2i() {
+<span class="fc" id="L397">    add( insnFactory.f2i());</span>
+<span class="fc" id="L398">    pc++;</span>
+<span class="fc" id="L399">  }</span>
+
+  @Override public void f2l() {
+<span class="fc" id="L402">    add( insnFactory.f2l());</span>
+<span class="fc" id="L403">    pc++;</span>
+<span class="fc" id="L404">  }</span>
+
+  @Override public void fadd() {
+<span class="fc" id="L407">    add( insnFactory.fadd());</span>
+<span class="fc" id="L408">    pc++;</span>
+<span class="fc" id="L409">  }</span>
+
+  @Override public void faload() {
+<span class="fc" id="L412">    add( insnFactory.faload());</span>
+<span class="fc" id="L413">    pc++;</span>
+<span class="fc" id="L414">  }</span>
+
+  @Override public void fastore() {
+<span class="fc" id="L417">    add( insnFactory.fastore());</span>
+<span class="fc" id="L418">    pc++;</span>
+<span class="fc" id="L419">  }</span>
+
+  @Override public void fcmpg() {
+<span class="fc" id="L422">    add( insnFactory.fcmpg());</span>
+<span class="fc" id="L423">    pc++;</span>
+<span class="fc" id="L424">  }</span>
+
+  @Override public void fcmpl() {
+<span class="fc" id="L427">    add( insnFactory.fcmpl());</span>
+<span class="fc" id="L428">    pc++;</span>
+<span class="fc" id="L429">  }</span>
+
+  @Override public void fconst_0() {
+<span class="fc" id="L432">    add( insnFactory.fconst_0());</span>
+<span class="fc" id="L433">    pc++;</span>
+<span class="fc" id="L434">  }</span>
+
+  @Override public void fconst_1() {
+<span class="fc" id="L437">    add( insnFactory.fconst_1());</span>
+<span class="fc" id="L438">    pc++;</span>
+<span class="fc" id="L439">  }</span>
+
+  @Override public void fconst_2() {
+<span class="fc" id="L442">    add( insnFactory.fconst_2());</span>
+<span class="fc" id="L443">    pc++;</span>
+<span class="fc" id="L444">  }</span>
+
+  @Override public void fdiv() {
+<span class="fc" id="L447">    add( insnFactory.fdiv());</span>
+<span class="fc" id="L448">    pc++;</span>
+<span class="fc" id="L449">  }</span>
+
+  @Override public void fload(int localVarIndex) {
+<span class="fc" id="L452">    add( insnFactory.fload(localVarIndex));</span>
+<span class="fc" id="L453">    pc+=2;</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L455">      pc++;</span>
+<span class="nc" id="L456">      isWide = false;</span>
+    }
+<span class="fc" id="L458">  }</span>
+
+  @Override public void fload_0() {
+<span class="fc" id="L461">    add( insnFactory.fload(0));</span>
+<span class="fc" id="L462">    pc++;</span>
+<span class="fc" id="L463">  }</span>
+
+  @Override public void fload_1() {
+<span class="fc" id="L466">    add( insnFactory.fload(1));</span>
+<span class="fc" id="L467">    pc++;</span>
+<span class="fc" id="L468">  }</span>
+
+  @Override public void fload_2() {
+<span class="fc" id="L471">    add( insnFactory.fload(2));</span>
+<span class="fc" id="L472">    pc++;</span>
+<span class="fc" id="L473">  }</span>
+
+  @Override public void fload_3() {
+<span class="fc" id="L476">    add( insnFactory.fload(3));</span>
+<span class="fc" id="L477">    pc++;</span>
+<span class="fc" id="L478">  }</span>
+
+  @Override public void fmul() {
+<span class="fc" id="L481">    add( insnFactory.fmul());</span>
+<span class="fc" id="L482">    pc++;</span>
+<span class="fc" id="L483">  }</span>
+
+  @Override public void fneg() {
+<span class="fc" id="L486">    add( insnFactory.fneg());</span>
+<span class="fc" id="L487">    pc++;</span>
+<span class="fc" id="L488">  }</span>
+
+  @Override public void frem() {
+<span class="nc" id="L491">    add( insnFactory.frem());</span>
+<span class="nc" id="L492">    pc++;</span>
+<span class="nc" id="L493">  }</span>
+
+  @Override public void freturn() {
+<span class="fc" id="L496">    add( insnFactory.freturn());</span>
+<span class="fc" id="L497">    pc++;</span>
+<span class="fc" id="L498">  }</span>
+
+  @Override public void fstore(int localVarIndex) {
+<span class="fc" id="L501">    add( insnFactory.fstore(localVarIndex));</span>
+<span class="fc" id="L502">    pc+=2;</span>
+<span class="pc bpc" id="L503" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L504">      pc++;</span>
+<span class="nc" id="L505">      isWide = false;</span>
+    }
+<span class="fc" id="L507">  }</span>
+
+  @Override public void fstore_0() {
+<span class="fc" id="L510">    add( insnFactory.fstore(0));</span>
+<span class="fc" id="L511">    pc++;</span>
+<span class="fc" id="L512">  }</span>
+
+  @Override public void fstore_1() {
+<span class="fc" id="L515">    add( insnFactory.fstore(1));</span>
+<span class="fc" id="L516">    pc++;</span>
+<span class="fc" id="L517">  }</span>
+
+  @Override public void fstore_2() {
+<span class="fc" id="L520">    add( insnFactory.fstore(2));</span>
+<span class="fc" id="L521">    pc++;</span>
+<span class="fc" id="L522">  }</span>
+
+  @Override public void fstore_3() {
+<span class="fc" id="L525">    add( insnFactory.fstore(3));</span>
+<span class="fc" id="L526">    pc++;</span>
+<span class="fc" id="L527">  }</span>
+
+  @Override public void fsub() {
+<span class="fc" id="L530">    add( insnFactory.fsub());</span>
+<span class="fc" id="L531">    pc++;</span>
+<span class="fc" id="L532">  }</span>
+
+  @Override public void getfield(int cpFieldRefIndex) {
+<span class="fc" id="L535">    String fieldName = cf.fieldNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L536">    String clsName = cf.fieldClassNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L537">    String fieldDescriptor = cf.fieldDescriptorAt(cpFieldRefIndex);</span>
+
+<span class="fc" id="L539">    add( insnFactory.getfield(fieldName, clsName, fieldDescriptor));</span>
+<span class="fc" id="L540">    pc+=3;</span>
+<span class="fc" id="L541">  }</span>
+  public void getfield(String fieldName, String clsName, String fieldDescriptor){
+<span class="fc" id="L543">    add( insnFactory.getfield(fieldName, clsName, fieldDescriptor));</span>
+<span class="fc" id="L544">    pc+=3;</span>
+<span class="fc" id="L545">  }</span>
+
+  @Override public void getstatic(int cpFieldRefIndex) {
+<span class="fc" id="L548">    String fieldName = cf.fieldNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L549">    String clsName = cf.fieldClassNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L550">    String fieldDescriptor = cf.fieldDescriptorAt(cpFieldRefIndex);</span>
+
+<span class="fc" id="L552">    add( insnFactory.getstatic(fieldName, clsName, fieldDescriptor));</span>
+<span class="fc" id="L553">    pc+=3;</span>
+<span class="fc" id="L554">  }</span>
+  public void getstatic(String fieldName, String clsName, String fieldDescriptor){
+<span class="nc" id="L556">    add( insnFactory.getstatic(fieldName, clsName, fieldDescriptor));</span>
+<span class="nc" id="L557">    pc+=3;</span>
+<span class="nc" id="L558">  }</span>
+
+  @Override public void goto_(int pcOffset) {
+<span class="fc" id="L561">    add( insnFactory.goto_(pc + pcOffset));</span>
+<span class="fc" id="L562">    pc+=3;</span>
+<span class="fc" id="L563">  }</span>
+
+  @Override public void goto_w(int pcOffset) {
+<span class="fc" id="L566">    add( insnFactory.goto_w(pc + pcOffset));</span>
+<span class="fc" id="L567">    pc+=5;</span>
+<span class="fc" id="L568">  }</span>
+
+  @Override public void i2b() {
+<span class="fc" id="L571">    add( insnFactory.i2b());</span>
+<span class="fc" id="L572">    pc++;</span>
+<span class="fc" id="L573">  }</span>
+
+  @Override public void i2c() {
+<span class="fc" id="L576">    add( insnFactory.i2c());</span>
+<span class="fc" id="L577">    pc++;</span>
+<span class="fc" id="L578">  }</span>
+
+  @Override public void i2d() {
+<span class="fc" id="L581">    add( insnFactory.i2d());</span>
+<span class="fc" id="L582">    pc++;</span>
+<span class="fc" id="L583">  }</span>
+
+  @Override public void i2f() {
+<span class="fc" id="L586">    add( insnFactory.i2f());</span>
+<span class="fc" id="L587">    pc++;</span>
+<span class="fc" id="L588">  }</span>
+
+  @Override public void i2l() {
+<span class="fc" id="L591">    add( insnFactory.i2l());</span>
+<span class="fc" id="L592">    pc++;</span>
+<span class="fc" id="L593">  }</span>
+
+  @Override public void i2s() {
+<span class="fc" id="L596">    add( insnFactory.i2s());</span>
+<span class="fc" id="L597">    pc++;</span>
+<span class="fc" id="L598">  }</span>
+
+  @Override public void iadd() {
+<span class="fc" id="L601">    add( insnFactory.iadd());</span>
+<span class="fc" id="L602">    pc++;</span>
+<span class="fc" id="L603">  }</span>
+
+  @Override public void iaload() {
+<span class="fc" id="L606">    add( insnFactory.iaload());</span>
+<span class="fc" id="L607">    pc++;</span>
+<span class="fc" id="L608">  }</span>
+
+  @Override public void iand() {
+<span class="fc" id="L611">    add( insnFactory.iand());</span>
+<span class="fc" id="L612">    pc++;</span>
+<span class="fc" id="L613">  }</span>
+
+  @Override public void iastore() {
+<span class="fc" id="L616">    add( insnFactory.iastore());</span>
+<span class="fc" id="L617">    pc++;</span>
+<span class="fc" id="L618">  }</span>
+
+  @Override public void iconst_m1() {
+<span class="fc" id="L621">    add( insnFactory.iconst_m1());</span>
+<span class="fc" id="L622">    pc++;</span>
+<span class="fc" id="L623">  }</span>
+
+  @Override public void iconst_0() {
+<span class="fc" id="L626">    add( insnFactory.iconst_0());</span>
+<span class="fc" id="L627">    pc++;</span>
+<span class="fc" id="L628">  }</span>
+
+  @Override public void iconst_1() {
+<span class="fc" id="L631">    add( insnFactory.iconst_1());</span>
+<span class="fc" id="L632">    pc++;</span>
+<span class="fc" id="L633">  }</span>
+
+  @Override public void iconst_2() {
+<span class="fc" id="L636">    add( insnFactory.iconst_2());</span>
+<span class="fc" id="L637">    pc++;</span>
+<span class="fc" id="L638">  }</span>
+
+  @Override public void iconst_3() {
+<span class="fc" id="L641">    add( insnFactory.iconst_3());</span>
+<span class="fc" id="L642">    pc++;</span>
+<span class="fc" id="L643">  }</span>
+
+  @Override public void iconst_4() {
+<span class="fc" id="L646">    add( insnFactory.iconst_4());</span>
+<span class="fc" id="L647">    pc++;</span>
+<span class="fc" id="L648">  }</span>
+
+  @Override public void iconst_5() {
+<span class="fc" id="L651">    add( insnFactory.iconst_5());</span>
+<span class="fc" id="L652">    pc++;</span>
+<span class="fc" id="L653">  }</span>
+
+  @Override public void idiv() {
+<span class="fc" id="L656">    add( insnFactory.idiv());</span>
+<span class="fc" id="L657">    pc++;</span>
+<span class="fc" id="L658">  }</span>
+
+  @Override public void if_acmpeq(int pcOffset) {
+<span class="fc" id="L661">    add( insnFactory.if_acmpeq(pc + pcOffset));</span>
+<span class="fc" id="L662">    pc+=3;</span>
+<span class="fc" id="L663">  }</span>
+
+  @Override public void if_acmpne(int pcOffset) {
+<span class="fc" id="L666">    add( insnFactory.if_acmpne(pc + pcOffset));</span>
+<span class="fc" id="L667">    pc+=3;</span>
+<span class="fc" id="L668">  }</span>
+
+  @Override public void if_icmpeq(int pcOffset) {
+<span class="fc" id="L671">    add( insnFactory.if_icmpeq(pc + pcOffset));</span>
+<span class="fc" id="L672">    pc+=3;</span>
+<span class="fc" id="L673">  }</span>
+
+  @Override public void if_icmpne(int pcOffset) {
+<span class="fc" id="L676">    add( insnFactory.if_icmpne(pc + pcOffset));</span>
+<span class="fc" id="L677">    pc+=3;</span>
+<span class="fc" id="L678">  }</span>
+
+  @Override public void if_icmplt(int pcOffset) {
+<span class="fc" id="L681">    add( insnFactory.if_icmplt(pc + pcOffset));</span>
+<span class="fc" id="L682">    pc+=3;</span>
+<span class="fc" id="L683">  }</span>
+
+  @Override public void if_icmpge(int pcOffset) {
+<span class="fc" id="L686">    add( insnFactory.if_icmpge(pc + pcOffset));</span>
+<span class="fc" id="L687">    pc+=3;</span>
+<span class="fc" id="L688">  }</span>
+
+  @Override public void if_icmpgt(int pcOffset) {
+<span class="fc" id="L691">    add( insnFactory.if_icmpgt(pc + pcOffset));</span>
+<span class="fc" id="L692">    pc+=3;</span>
+<span class="fc" id="L693">  }</span>
+
+  @Override public void if_icmple(int pcOffset) {
+<span class="fc" id="L696">    add( insnFactory.if_icmple(pc + pcOffset));</span>
+<span class="fc" id="L697">    pc+=3;</span>
+<span class="fc" id="L698">  }</span>
+
+  @Override public void ifeq(int pcOffset) {
+<span class="fc" id="L701">    add( insnFactory.ifeq(pc + pcOffset));</span>
+<span class="fc" id="L702">    pc+=3;</span>
+<span class="fc" id="L703">  }</span>
+
+  @Override public void ifne(int pcOffset) {
+<span class="fc" id="L706">    add( insnFactory.ifne(pc + pcOffset));</span>
+<span class="fc" id="L707">    pc+=3;</span>
+<span class="fc" id="L708">  }</span>
+
+  @Override public void iflt(int pcOffset) {
+<span class="fc" id="L711">    add( insnFactory.iflt(pc + pcOffset));</span>
+<span class="fc" id="L712">    pc+=3;</span>
+<span class="fc" id="L713">  }</span>
+
+  @Override public void ifge(int pcOffset) {
+<span class="fc" id="L716">    add( insnFactory.ifge(pc + pcOffset));</span>
+<span class="fc" id="L717">    pc+=3;</span>
+<span class="fc" id="L718">  }</span>
+
+  @Override public void ifgt(int pcOffset) {
+<span class="fc" id="L721">    add( insnFactory.ifgt(pc + pcOffset));</span>
+<span class="fc" id="L722">    pc+=3;</span>
+<span class="fc" id="L723">  }</span>
+
+  @Override public void ifle(int pcOffset) {
+<span class="fc" id="L726">    add( insnFactory.ifle(pc + pcOffset));</span>
+<span class="fc" id="L727">    pc+=3;</span>
+<span class="fc" id="L728">  }</span>
+
+  @Override public void ifnonnull(int pcOffset) {
+<span class="fc" id="L731">    add( insnFactory.ifnonnull(pc + pcOffset));</span>
+<span class="fc" id="L732">    pc+=3;</span>
+<span class="fc" id="L733">  }</span>
+
+  @Override public void ifnull(int pcOffset) {
+<span class="fc" id="L736">    add( insnFactory.ifnull(pc + pcOffset));</span>
+<span class="fc" id="L737">    pc+=3;</span>
+<span class="fc" id="L738">  }</span>
+
+  @Override public void iinc(int localVarIndex, int incConstant) {
+<span class="fc" id="L741">    add( insnFactory.iinc(localVarIndex, incConstant));</span>
+<span class="fc" id="L742">    pc+=3;</span>
+<span class="fc bfc" id="L743" title="All 2 branches covered.">    if (isWide){</span>
+<span class="fc" id="L744">      pc+=2;</span>
+<span class="fc" id="L745">      isWide = false;</span>
+    }
+<span class="fc" id="L747">  }</span>
+
+  @Override public void iload(int localVarIndex) {
+<span class="fc" id="L750">    add( insnFactory.iload(localVarIndex));</span>
+<span class="fc" id="L751">    pc+=2;</span>
+<span class="pc bpc" id="L752" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L753">      pc++;</span>
+<span class="nc" id="L754">      isWide = false;</span>
+    }
+<span class="fc" id="L756">  }</span>
+
+  @Override public void iload_0() {
+<span class="fc" id="L759">    add( insnFactory.iload(0));</span>
+<span class="fc" id="L760">    pc++;</span>
+<span class="fc" id="L761">  }</span>
+
+  @Override public void iload_1() {
+<span class="fc" id="L764">    add( insnFactory.iload(1));</span>
+<span class="fc" id="L765">    pc++;</span>
+<span class="fc" id="L766">  }</span>
+
+  @Override public void iload_2() {
+<span class="fc" id="L769">    add( insnFactory.iload(2));</span>
+<span class="fc" id="L770">    pc++;</span>
+<span class="fc" id="L771">  }</span>
+
+  @Override public void iload_3() {
+<span class="fc" id="L774">    add( insnFactory.iload(3));</span>
+<span class="fc" id="L775">    pc++;</span>
+<span class="fc" id="L776">  }</span>
+
+  @Override public void imul() {
+<span class="fc" id="L779">    add( insnFactory.imul());</span>
+<span class="fc" id="L780">    pc++;</span>
+<span class="fc" id="L781">  }</span>
+
+  @Override public void ineg() {
+<span class="fc" id="L784">    add( insnFactory.ineg());</span>
+<span class="fc" id="L785">    pc++;</span>
+<span class="fc" id="L786">  }</span>
+
+  @Override public void instanceof_(int cpClassIndex) {
+<span class="fc" id="L789">    String clsName = cf.classNameAt(cpClassIndex);</span>
+<span class="fc" id="L790">    add( insnFactory.instanceof_(clsName));</span>
+<span class="fc" id="L791">    pc+=3;</span>
+<span class="fc" id="L792">  }</span>
+
+  @Override public void invokeinterface(int cpInterfaceMethodRefIndex, int count, int zero) {
+<span class="fc" id="L795">    String clsName = cf.interfaceMethodClassNameAt(cpInterfaceMethodRefIndex);</span>
+<span class="fc" id="L796">    String methodName = cf.interfaceMethodNameAt(cpInterfaceMethodRefIndex);</span>
+<span class="fc" id="L797">    String methodSignature = cf.interfaceMethodDescriptorAt(cpInterfaceMethodRefIndex);</span>
+
+<span class="fc" id="L799">    add( insnFactory.invokeinterface(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L800">    pc+=5;</span>
+<span class="fc" id="L801">  }</span>
+  public void invokeinterface(String clsName, String methodName, String methodSignature){
+<span class="nc" id="L803">    add( insnFactory.invokeinterface(clsName, methodName, methodSignature));</span>
+<span class="nc" id="L804">    pc+=5;</span>
+<span class="nc" id="L805">  }</span>
+
+  @Override
+  public void invokedynamic (int cpInvokeDynamicIndex){
+<span class="fc" id="L809">    int bootstrapMethodIndex = cf.bootstrapMethodIndex(cpInvokeDynamicIndex);</span>
+<span class="fc" id="L810">    String samMethodName = cf.samMethodNameAt(cpInvokeDynamicIndex);</span>
+<span class="fc" id="L811">    String callSiteDescriptor = cf.callSiteDescriptor(cpInvokeDynamicIndex);</span>
+<span class="fc" id="L812">    add( insnFactory.invokedynamic(bootstrapMethodIndex, samMethodName, callSiteDescriptor));</span>
+<span class="fc" id="L813">    pc+=5;</span>
+<span class="fc" id="L814">  }</span>
+  
+  @Override public void invokespecial(int cpMethodRefIndex) {
+<span class="fc" id="L817">    String clsName = cf.methodClassNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L818">    String methodName = cf.methodNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L819">    String methodSignature = cf.methodDescriptorAt(cpMethodRefIndex);</span>
+
+<span class="fc" id="L821">    add( insnFactory.invokespecial(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L822">    pc+=3;</span>
+<span class="fc" id="L823">  }</span>
+  public void invokespecial(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L825">    add( insnFactory.invokespecial(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L826">    pc+=3;</span>
+<span class="fc" id="L827">  }</span>
+
+  @Override public void invokestatic(int cpMethodRefIndex) {
+<span class="fc" id="L830">    String clsName = cf.methodClassNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L831">    String methodName = cf.methodNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L832">    String methodSignature = cf.methodDescriptorAt(cpMethodRefIndex);</span>
+
+<span class="fc" id="L834">    add( insnFactory.invokestatic(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L835">    pc+=3;</span>
+<span class="fc" id="L836">  }</span>
+  public void invokestatic(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L838">    add( insnFactory.invokestatic(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L839">    pc+=3;</span>
+<span class="fc" id="L840">  }</span>
+
+  @Override public void invokevirtual(int cpMethodRefIndex) {
+<span class="fc" id="L843">    String clsName = cf.methodClassNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L844">    String methodName = cf.methodNameAt(cpMethodRefIndex);</span>
+<span class="fc" id="L845">    String methodSignature = cf.methodDescriptorAt(cpMethodRefIndex);</span>
+
+<span class="fc" id="L847">    add( insnFactory.invokevirtual(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L848">    pc+=3;</span>
+<span class="fc" id="L849">  }</span>
+  public void invokevirtual(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L851">    add( insnFactory.invokevirtual(clsName, methodName, methodSignature));</span>
+<span class="fc" id="L852">    pc+=3;</span>
+<span class="fc" id="L853">  }</span>
+
+  @Override public void ior() {
+<span class="fc" id="L856">    add( insnFactory.ior());</span>
+<span class="fc" id="L857">    pc++;</span>
+<span class="fc" id="L858">  }</span>
+
+  @Override public void irem() {
+<span class="fc" id="L861">    add( insnFactory.irem());</span>
+<span class="fc" id="L862">    pc++;</span>
+<span class="fc" id="L863">  }</span>
+
+  @Override public void ireturn() {
+<span class="fc" id="L866">    add( insnFactory.ireturn());</span>
+<span class="fc" id="L867">    pc++;</span>
+<span class="fc" id="L868">  }</span>
+
+  @Override public void ishl() {
+<span class="fc" id="L871">    add( insnFactory.ishl());</span>
+<span class="fc" id="L872">    pc++;</span>
+<span class="fc" id="L873">  }</span>
+
+  @Override public void ishr() {
+<span class="fc" id="L876">    add( insnFactory.ishr());</span>
+<span class="fc" id="L877">    pc++;</span>
+<span class="fc" id="L878">  }</span>
+
+  @Override public void istore(int localVarIndex) {
+<span class="fc" id="L881">    add( insnFactory.istore(localVarIndex));</span>
+<span class="fc" id="L882">    pc+=2;</span>
+<span class="pc bpc" id="L883" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L884">      pc++;</span>
+<span class="nc" id="L885">      isWide = false;</span>
+    }
+<span class="fc" id="L887">  }</span>
+
+  @Override public void istore_0() {
+<span class="fc" id="L890">    add( insnFactory.istore(0));</span>
+<span class="fc" id="L891">    pc++;</span>
+<span class="fc" id="L892">  }</span>
+
+  @Override public void istore_1() {
+<span class="fc" id="L895">    add( insnFactory.istore(1));</span>
+<span class="fc" id="L896">    pc++;</span>
+<span class="fc" id="L897">  }</span>
+
+  @Override public void istore_2() {
+<span class="fc" id="L900">    add( insnFactory.istore(2));</span>
+<span class="fc" id="L901">    pc++;</span>
+<span class="fc" id="L902">  }</span>
+
+  @Override public void istore_3() {
+<span class="fc" id="L905">    add( insnFactory.istore(3));</span>
+<span class="fc" id="L906">    pc++;</span>
+<span class="fc" id="L907">  }</span>
+
+  @Override public void isub() {
+<span class="fc" id="L910">    add( insnFactory.isub());</span>
+<span class="fc" id="L911">    pc++;</span>
+<span class="fc" id="L912">  }</span>
+
+  @Override public void iushr() {
+<span class="fc" id="L915">    add( insnFactory.iushr());</span>
+<span class="fc" id="L916">    pc++;</span>
+<span class="fc" id="L917">  }</span>
+
+  @Override public void ixor() {
+<span class="fc" id="L920">    add( insnFactory.ixor());</span>
+<span class="fc" id="L921">    pc++;</span>
+<span class="fc" id="L922">  }</span>
+
+  @Override public void jsr(int pcOffset) {
+<span class="nc" id="L925">    add( insnFactory.jsr(pc + pcOffset));</span>
+<span class="nc" id="L926">    pc+=3;</span>
+<span class="nc" id="L927">  }</span>
+
+  @Override public void jsr_w(int pcOffset) {
+<span class="nc" id="L930">    add( insnFactory.jsr_w(pc + pcOffset));</span>
+<span class="nc" id="L931">    pc+=5;</span>
+<span class="nc" id="L932">  }</span>
+
+  @Override public void l2d() {
+<span class="fc" id="L935">    add( insnFactory.l2d());</span>
+<span class="fc" id="L936">    pc++;</span>
+<span class="fc" id="L937">  }</span>
+
+  @Override public void l2f() {
+<span class="fc" id="L940">    add( insnFactory.l2f());</span>
+<span class="fc" id="L941">    pc++;</span>
+<span class="fc" id="L942">  }</span>
+
+  @Override public void l2i() {
+<span class="fc" id="L945">    add( insnFactory.l2i());</span>
+<span class="fc" id="L946">    pc++;</span>
+<span class="fc" id="L947">  }</span>
+
+  @Override public void ladd() {
+<span class="fc" id="L950">    add( insnFactory.ladd());</span>
+<span class="fc" id="L951">    pc++;</span>
+<span class="fc" id="L952">  }</span>
+
+  @Override public void laload() {
+<span class="fc" id="L955">    add( insnFactory.laload());</span>
+<span class="fc" id="L956">    pc++;</span>
+<span class="fc" id="L957">  }</span>
+
+  @Override public void land() {
+<span class="fc" id="L960">    add( insnFactory.land());</span>
+<span class="fc" id="L961">    pc++;</span>
+<span class="fc" id="L962">  }</span>
+
+  @Override public void lastore() {
+<span class="fc" id="L965">    add( insnFactory.lastore());</span>
+<span class="fc" id="L966">    pc++;</span>
+<span class="fc" id="L967">  }</span>
+
+  @Override public void lcmp() {
+<span class="fc" id="L970">    add( insnFactory.lcmp());</span>
+<span class="fc" id="L971">    pc++;</span>
+<span class="fc" id="L972">  }</span>
+
+  @Override public void lconst_0() {
+<span class="fc" id="L975">    add( insnFactory.lconst_0());</span>
+<span class="fc" id="L976">    pc++;</span>
+<span class="fc" id="L977">  }</span>
+
+  @Override public void lconst_1() {
+<span class="fc" id="L980">    add( insnFactory.lconst_1());</span>
+<span class="fc" id="L981">    pc++;</span>
+<span class="fc" id="L982">  }</span>
+
+  @Override public void ldc_(int cpIntOrFloatOrStringOrClassIndex) {
+<span class="fc" id="L985">    Object v = cf.getCpValue(cpIntOrFloatOrStringOrClassIndex);</span>
+<span class="pc bpc" id="L986" title="1 of 5 branches missed.">    switch (cf.getCpTag(cpIntOrFloatOrStringOrClassIndex)){</span>
+      case ClassFile.CONSTANT_INTEGER:
+<span class="fc" id="L988">        add( insnFactory.ldc((Integer)v)); break;</span>
+      case ClassFile.CONSTANT_FLOAT:
+<span class="fc" id="L990">        add( insnFactory.ldc((Float)v)); break;</span>
+      case ClassFile.CONSTANT_STRING:
+<span class="fc" id="L992">        add( insnFactory.ldc((String)v, false)); break;</span>
+      case ClassFile.CONSTANT_CLASS:
+<span class="fc" id="L994">        add( insnFactory.ldc((String)v, true)); break;</span>
+    }
+<span class="fc" id="L996">    pc+=2;</span>
+<span class="fc" id="L997">  }</span>
+
+  @Override public void ldc_w_(int cpIntOrFloatOrStringOrClassIndex) {
+<span class="fc" id="L1000">    Object v = cf.getCpValue(cpIntOrFloatOrStringOrClassIndex);</span>
+<span class="pc bpc" id="L1001" title="1 of 5 branches missed.">    switch (cf.getCpTag(cpIntOrFloatOrStringOrClassIndex)){</span>
+      case ClassFile.CONSTANT_INTEGER:
+<span class="fc" id="L1003">        add( insnFactory.ldc_w((Integer) v)); break;</span>
+      case ClassFile.CONSTANT_FLOAT:
+<span class="fc" id="L1005">        add( insnFactory.ldc_w((Float) v)); break;</span>
+      case ClassFile.CONSTANT_STRING:
+<span class="fc" id="L1007">        add( insnFactory.ldc_w((String) v, false)); break;</span>
+      case ClassFile.CONSTANT_CLASS:
+<span class="fc" id="L1009">        add( insnFactory.ldc_w((String) v, true)); break;</span>
+    }
+<span class="fc" id="L1011">    pc+=3;</span>
+<span class="fc" id="L1012">  }</span>
+
+  @Override public void ldc2_w(int cpLongOrDoubleIndex) {
+<span class="fc" id="L1015">    Object v = cf.getCpValue(cpLongOrDoubleIndex);</span>
+<span class="fc bfc" id="L1016" title="All 2 branches covered.">    if (v instanceof Long){</span>
+<span class="fc" id="L1017">      add( insnFactory.ldc2_w((Long)v));</span>
+    } else {
+<span class="fc" id="L1019">      add( insnFactory.ldc2_w((Double)v));</span>
+    }
+<span class="fc" id="L1021">    pc+=3;</span>
+<span class="fc" id="L1022">  }</span>
+
+  @Override public void ldiv() {
+<span class="fc" id="L1025">    add( insnFactory.ldiv());</span>
+<span class="fc" id="L1026">    pc++;</span>
+<span class="fc" id="L1027">  }</span>
+
+  @Override public void lload(int localVarIndex) {
+<span class="fc" id="L1030">    add( insnFactory.lload(localVarIndex));</span>
+<span class="fc" id="L1031">    pc+=2;</span>
+<span class="pc bpc" id="L1032" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L1033">      pc++;</span>
+<span class="nc" id="L1034">      isWide = false;</span>
+    }
+<span class="fc" id="L1036">  }</span>
+
+  @Override public void lload_0() {
+<span class="fc" id="L1039">    add( insnFactory.lload(0));</span>
+<span class="fc" id="L1040">    pc++;</span>
+<span class="fc" id="L1041">  }</span>
+
+  @Override public void lload_1() {
+<span class="fc" id="L1044">    add( insnFactory.lload(1));</span>
+<span class="fc" id="L1045">    pc++;</span>
+<span class="fc" id="L1046">  }</span>
+
+  @Override public void lload_2() {
+<span class="fc" id="L1049">    add( insnFactory.lload(2));</span>
+<span class="fc" id="L1050">    pc++;</span>
+<span class="fc" id="L1051">  }</span>
+
+  @Override public void lload_3() {
+<span class="fc" id="L1054">    add( insnFactory.lload(3));</span>
+<span class="fc" id="L1055">    pc++;</span>
+<span class="fc" id="L1056">  }</span>
+
+  @Override public void lmul() {
+<span class="fc" id="L1059">    add( insnFactory.lmul());</span>
+<span class="fc" id="L1060">    pc++;</span>
+<span class="fc" id="L1061">  }</span>
+
+  @Override public void lneg() {
+<span class="fc" id="L1064">    add( insnFactory.lneg());</span>
+<span class="fc" id="L1065">    pc++;</span>
+<span class="fc" id="L1066">  }</span>
+
+
+  @Override public void lookupswitch(int defaultPcOffset, int nEntries) {
+<span class="fc" id="L1070">    Instruction insn = insnFactory.lookupswitch(pc + defaultPcOffset, nEntries);</span>
+<span class="fc" id="L1071">    add( insn);</span>
+
+<span class="fc" id="L1073">    lookupswitchInsn = (LookupSwitchInstruction)insn;</span>
+
+<span class="pc bpc" id="L1075" title="1 of 2 branches missed.">    if (cf != null){</span>
+<span class="fc" id="L1076">      cf.parseLookupSwitchEntries(this, nEntries);</span>
+    }
+
+<span class="fc" id="L1079">    pc = ((pc+4)&gt;&gt;2)&lt;&lt;2; // opcode and padding</span>
+<span class="fc" id="L1080">    pc += 8 + nEntries*8; // arguments and lookup table</span>
+<span class="fc" id="L1081">  }</span>
+  @Override public void lookupswitchEntry(int index, int match, int pcOffset) {
+<span class="fc" id="L1083">    lookupswitchInsn.setTarget(index, match, pc + pcOffset);</span>
+<span class="fc" id="L1084">  }</span>
+
+  @Override public void lor() {
+<span class="fc" id="L1087">    add( insnFactory.lor());</span>
+<span class="fc" id="L1088">    pc++;</span>
+<span class="fc" id="L1089">  }</span>
+
+  @Override public void lrem() {
+<span class="fc" id="L1092">    add( insnFactory.lrem());</span>
+<span class="fc" id="L1093">    pc++;</span>
+<span class="fc" id="L1094">  }</span>
+
+  @Override public void lreturn() {
+<span class="fc" id="L1097">    add( insnFactory.lreturn());</span>
+<span class="fc" id="L1098">    pc++;</span>
+<span class="fc" id="L1099">  }</span>
+
+  @Override public void lshl() {
+<span class="fc" id="L1102">    add( insnFactory.lshl());</span>
+<span class="fc" id="L1103">    pc++;</span>
+<span class="fc" id="L1104">  }</span>
+
+  @Override public void lshr() {
+<span class="fc" id="L1107">    add( insnFactory.lshr());</span>
+<span class="fc" id="L1108">    pc++;</span>
+<span class="fc" id="L1109">  }</span>
+
+  @Override public void lstore(int localVarIndex) {
+<span class="fc" id="L1112">    add( insnFactory.lstore(localVarIndex));</span>
+<span class="fc" id="L1113">    pc+=2;</span>
+<span class="pc bpc" id="L1114" title="1 of 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L1115">      pc++;</span>
+<span class="nc" id="L1116">      isWide = false;</span>
+    }
+<span class="fc" id="L1118">  }</span>
+
+  @Override public void lstore_0() {
+<span class="fc" id="L1121">    add( insnFactory.lstore(0));</span>
+<span class="fc" id="L1122">    pc++;</span>
+<span class="fc" id="L1123">  }</span>
+
+  @Override public void lstore_1() {
+<span class="fc" id="L1126">    add( insnFactory.lstore(1));</span>
+<span class="fc" id="L1127">    pc++;</span>
+<span class="fc" id="L1128">  }</span>
+
+  @Override public void lstore_2() {
+<span class="fc" id="L1131">    add( insnFactory.lstore(2));</span>
+<span class="fc" id="L1132">    pc++;</span>
+<span class="fc" id="L1133">  }</span>
+
+  @Override public void lstore_3() {
+<span class="fc" id="L1136">    add( insnFactory.lstore(3));</span>
+<span class="fc" id="L1137">    pc++;</span>
+<span class="fc" id="L1138">  }</span>
+
+  @Override public void lsub() {
+<span class="fc" id="L1141">    add( insnFactory.lsub());</span>
+<span class="fc" id="L1142">    pc++;</span>
+<span class="fc" id="L1143">  }</span>
+
+  @Override public void lushr() {
+<span class="fc" id="L1146">    add( insnFactory.lushr());</span>
+<span class="fc" id="L1147">    pc++;</span>
+<span class="fc" id="L1148">  }</span>
+
+  @Override public void lxor() {
+<span class="fc" id="L1151">    add( insnFactory.lxor());</span>
+<span class="fc" id="L1152">    pc++;</span>
+<span class="fc" id="L1153">  }</span>
+
+  @Override public void monitorenter() {
+<span class="fc" id="L1156">    add( insnFactory.monitorenter());</span>
+<span class="fc" id="L1157">    pc++;</span>
+<span class="fc" id="L1158">  }</span>
+
+  @Override public void monitorexit() {
+<span class="fc" id="L1161">    add( insnFactory.monitorexit());</span>
+<span class="fc" id="L1162">    pc++;</span>
+<span class="fc" id="L1163">  }</span>
+
+  @Override public void multianewarray(int cpClassIndex, int dimensions) {
+<span class="fc" id="L1166">    add( insnFactory.multianewarray(cf.classNameAt(cpClassIndex), dimensions));</span>
+<span class="fc" id="L1167">    pc+=4;</span>
+<span class="fc" id="L1168">  }</span>
+
+  @Override public void new_(int cpClassIndex) {
+<span class="fc" id="L1171">    add( insnFactory.new_(cf.classNameAt(cpClassIndex)));</span>
+<span class="fc" id="L1172">    pc+=3;</span>
+<span class="fc" id="L1173">  }</span>
+  public void new_(String className) {
+<span class="fc" id="L1175">    add( insnFactory.new_(className));</span>
+<span class="fc" id="L1176">    pc+=3;</span>
+<span class="fc" id="L1177">  }</span>
+
+  @Override public void newarray(int typeCode) {
+<span class="fc" id="L1180">    add( insnFactory.newarray(typeCode));</span>
+<span class="fc" id="L1181">    pc+=2;</span>
+<span class="fc" id="L1182">  }</span>
+
+  @Override public void nop() {
+<span class="nc" id="L1185">    add( insnFactory.nop());</span>
+<span class="nc" id="L1186">    pc++;</span>
+<span class="nc" id="L1187">  }</span>
+
+  @Override public void pop() {
+<span class="fc" id="L1190">    add( insnFactory.pop());</span>
+<span class="fc" id="L1191">    pc++;</span>
+<span class="fc" id="L1192">  }</span>
+
+  @Override public void pop2() {
+<span class="fc" id="L1195">    add( insnFactory.pop2());</span>
+<span class="fc" id="L1196">    pc++;</span>
+<span class="fc" id="L1197">  }</span>
+
+  @Override public void putfield(int cpFieldRefIndex) {
+<span class="fc" id="L1200">    String fieldName = cf.fieldNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L1201">    String clsName = cf.fieldClassNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L1202">    String fieldDescriptor = cf.fieldDescriptorAt(cpFieldRefIndex);</span>
+
+<span class="fc" id="L1204">    add( insnFactory.putfield(fieldName, clsName, fieldDescriptor));</span>
+<span class="fc" id="L1205">    pc+=3;</span>
+<span class="fc" id="L1206">  }</span>
+  public void putfield(String fieldName, String clsName, String fieldDescriptor){
+<span class="nc" id="L1208">    add( insnFactory.putfield(fieldName, clsName, fieldDescriptor));</span>
+<span class="nc" id="L1209">    pc+=3;</span>
+<span class="nc" id="L1210">  }</span>
+
+
+  @Override public void putstatic(int cpFieldRefIndex) {
+<span class="fc" id="L1214">    String fieldName = cf.fieldNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L1215">    String clsName = cf.fieldClassNameAt(cpFieldRefIndex);</span>
+<span class="fc" id="L1216">    String fieldDescriptor = cf.fieldDescriptorAt(cpFieldRefIndex);</span>
+
+<span class="fc" id="L1218">    add( insnFactory.putstatic(fieldName, clsName, fieldDescriptor));</span>
+<span class="fc" id="L1219">    pc+=3;</span>
+<span class="fc" id="L1220">  }</span>
+  public void putstatic(String fieldName, String clsName, String fieldDescriptor){
+<span class="nc" id="L1222">    add( insnFactory.putstatic(fieldName, clsName, fieldDescriptor));</span>
+<span class="nc" id="L1223">    pc+=3;</span>
+<span class="nc" id="L1224">  }</span>
+
+
+  @Override public void ret(int localVarIndex) {
+<span class="nc" id="L1228">    add( insnFactory.ret(localVarIndex));</span>
+<span class="nc" id="L1229">    pc+=2;</span>
+<span class="nc bnc" id="L1230" title="All 2 branches missed.">    if (isWide){</span>
+<span class="nc" id="L1231">      pc++;</span>
+<span class="nc" id="L1232">      isWide = false;</span>
+    }
+<span class="nc" id="L1234">  }</span>
+
+  @Override public void return_() {
+<span class="fc" id="L1237">    add( insnFactory.return_());</span>
+<span class="fc" id="L1238">    pc++;</span>
+<span class="fc" id="L1239">  }</span>
+
+  @Override public void saload() {
+<span class="fc" id="L1242">    add( insnFactory.saload());</span>
+<span class="fc" id="L1243">    pc++;</span>
+<span class="fc" id="L1244">  }</span>
+
+  @Override public void sastore() {
+<span class="fc" id="L1247">    add( insnFactory.sastore());</span>
+<span class="fc" id="L1248">    pc++;</span>
+<span class="fc" id="L1249">  }</span>
+
+  @Override public void sipush(int val) {
+<span class="fc" id="L1252">    add( insnFactory.sipush(val));</span>
+<span class="fc" id="L1253">    pc+=3;</span>
+<span class="fc" id="L1254">  }</span>
+
+  @Override public void swap() {
+<span class="nc" id="L1257">    add( insnFactory.swap());</span>
+<span class="nc" id="L1258">    pc++;</span>
+<span class="nc" id="L1259">  }</span>
+
+  @Override public void tableswitch(int defaultPcOffset, int low, int high) {
+<span class="fc" id="L1262">    Instruction insn = insnFactory.tableswitch(pc + defaultPcOffset, low, high);</span>
+<span class="fc" id="L1263">    add( insn);</span>
+    
+<span class="fc" id="L1265">    tableswitchInsn = (TableSwitchInstruction)insn;</span>
+
+<span class="pc bpc" id="L1267" title="1 of 2 branches missed.">    if (cf != null){</span>
+<span class="fc" id="L1268">      cf.parseTableSwitchEntries(this, low, high);</span>
+    }
+
+<span class="fc" id="L1271">    pc = ((pc+4)&gt;&gt;2)&lt;&lt;2; // opcode and padding</span>
+<span class="fc" id="L1272">    pc+=12 + (high-low+1)*4; // the fixed args and jump table</span>
+<span class="fc" id="L1273">  }</span>
+
+  @Override public void tableswitchEntry(int value, int pcOffset) {
+<span class="fc" id="L1276">    tableswitchInsn.setTarget(value, pc + pcOffset);</span>
+<span class="fc" id="L1277">  }</span>
+
+  @Override public void wide() {
+<span class="fc" id="L1280">    add( insnFactory.wide());</span>
+<span class="fc" id="L1281">    pc++;</span>
+<span class="fc" id="L1282">    isWide = true;</span>
+<span class="fc" id="L1283">  }</span>
+
+  @Override public void unknown(int bytecode) {
+<span class="nc" id="L1286">    throw new JPFException(&quot;unknown bytecode: &quot; + Integer.toHexString(bytecode));</span>
+  }
+
+
+  //--- the JPF specific ones (only used in synthetic methods)
+  public void invokecg(List&lt;Invocation&gt; invokes) {
+<span class="nc" id="L1292">    add (insnFactory.invokecg(invokes));</span>
+<span class="nc" id="L1293">    pc++;</span>
+<span class="nc" id="L1294">  }</span>
+
+  public void invokeclinit(ClassInfo ci) {
+<span class="fc" id="L1297">    add( insnFactory.invokeclinit(ci));</span>
+<span class="fc" id="L1298">    pc++;</span>
+<span class="fc" id="L1299">  }</span>
+
+  public void finishclinit (ClassInfo ci){
+<span class="fc" id="L1302">    add (insnFactory.finishclinit(ci));</span>
+<span class="fc" id="L1303">    pc++;</span>
+<span class="fc" id="L1304">  }</span>
+
+  public void directcallreturn(){
+<span class="fc" id="L1307">    add( insnFactory.directcallreturn());</span>
+<span class="fc" id="L1308">    pc++;</span>
+<span class="fc" id="L1309">  }</span>
+
+  public void executenative(NativeMethodInfo mi){
+<span class="fc" id="L1312">    add( insnFactory.executenative(mi));</span>
+<span class="fc" id="L1313">    pc++;</span>
+<span class="fc" id="L1314">  }</span>
+
+  public void nativereturn(){
+<span class="fc" id="L1317">    add( insnFactory.nativereturn());</span>
+<span class="fc" id="L1318">    pc++;</span>
+<span class="fc" id="L1319">  }</span>
+
+  public void runStart (MethodInfo mi){
+<span class="fc" id="L1322">    add( insnFactory.runstart(mi));</span>
+<span class="fc" id="L1323">    pc++;</span>
+<span class="fc" id="L1324">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

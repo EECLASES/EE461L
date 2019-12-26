@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RunTest.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.tool</a> &gt; <span class="el_source">RunTest.java</span></div><h1>RunTest.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.tool;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFClassLoader;
+import gov.nasa.jpf.util.FileUtils;
+import gov.nasa.jpf.util.JPFSiteUtils;
+import java.io.File;
+import java.lang.reflect.Field;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * tool to run JPF test with configured classpath
+ *
+ * arguments are supposed to be of type
+ *
+ *   {&lt;config-option&gt;} &lt;JPF-test-class&gt; {&lt;test-method&gt;}
+ *
+ * all leading config options are used to create the initial Config, but be
+ * aware of that each test (TestJPF.verifyX() invocation) uses its own
+ * Config and JPF object, i.e. can have different path settings
+ *
+ * This automatically adds &lt;project&gt;.test_classpath to the startup classpath
+ */
+<span class="nc" id="L47">public class RunTest extends Run {</span>
+
+  public static final int HELP  = 0x1;
+  public static final int SHOW  = 0x2;
+  public static final int LOG   = 0x4;
+  public static final int QUIET = 0x8;
+
+  static final String TESTJPF_CLS = &quot;gov.nasa.jpf.util.test.TestJPF&quot;;
+  
+  static Config config;
+
+  public static Config getConfig(){
+<span class="fc" id="L59">    return config;</span>
+  }
+
+  public static class Failed extends RuntimeException {
+<span class="nc" id="L63">    public Failed (){</span>
+<span class="nc" id="L64">    }</span>
+  }
+
+  public static int getOptions (String[] args){
+<span class="nc" id="L68">    int mask = 0;</span>
+
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    if (args != null){</span>
+
+<span class="nc bnc" id="L72" title="All 2 branches missed.">      for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L73">        String a = args[i];</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (&quot;-help&quot;.equals(a)){</span>
+<span class="nc" id="L75">          args[i] = null;</span>
+<span class="nc" id="L76">          mask |= HELP;</span>
+
+<span class="nc bnc" id="L78" title="All 2 branches missed.">        } else if (&quot;-show&quot;.equals(a)) {</span>
+<span class="nc" id="L79">          args[i] = null;</span>
+<span class="nc" id="L80">          mask |= SHOW;</span>
+
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        } else if (&quot;-log&quot;.equals(a)){</span>
+<span class="nc" id="L83">          args[i] = null;</span>
+<span class="nc" id="L84">          mask |= LOG;</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        } else if (&quot;-quiet&quot;.equals(a)){</span>
+<span class="nc" id="L87">          args[i] = null;</span>
+<span class="nc" id="L88">          mask |= QUIET;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L93">    return mask;</span>
+  }
+
+  public static boolean isOptionEnabled (int option, int mask){
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    return ((mask &amp; option) != 0);</span>
+  }
+
+  public static void showUsage() {
+<span class="nc" id="L101">    System.out.println(&quot;Usage: \&quot;java [&lt;vm-option&gt;..] -jar ...RunTest.jar [&lt;jpf-option&gt;..] [&lt;class&gt; [&lt;app-arg&gt;..]]&quot;);</span>
+<span class="nc" id="L102">    System.out.println(&quot;  &lt;jpf-option&gt; : -help : print usage information and exit&quot;);</span>
+<span class="nc" id="L103">    System.out.println(&quot;               | -log : print configuration initialization steps&quot;);</span>
+<span class="nc" id="L104">    System.out.println(&quot;               | -show : print configuration dictionary contents&quot;); </span>
+<span class="nc" id="L105">    System.out.println(&quot;               | -quiet : don't show System.out test output&quot;);</span>
+<span class="nc" id="L106">    System.out.println(&quot;               | +&lt;key&gt;=&lt;value&gt;  : add or override &lt;key&gt;/&lt;value&gt; pair to global config&quot;);</span>
+<span class="nc" id="L107">    System.out.println(&quot;               | +test.&lt;key&gt;=&lt;value&gt;  : add or override &lt;key&gt;/&lt;value&gt; pair in test config&quot;);</span>
+<span class="nc" id="L108">    System.out.println(&quot;  &lt;class&gt;      : application class name&quot;);</span>
+<span class="nc" id="L109">    System.out.println(&quot;  &lt;methods&gt;    : test methods of application class&quot;);</span>
+<span class="nc" id="L110">  }</span>
+  
+  public static void main(String[] args) {
+<span class="nc" id="L113">    int options = getOptions( args);</span>
+    
+<span class="nc bnc" id="L115" title="All 2 branches missed.">    if (isOptionEnabled(HELP, options)) {</span>
+<span class="nc" id="L116">      showUsage();</span>
+<span class="nc" id="L117">      return;</span>
+    }
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (isOptionEnabled(LOG, options)) {</span>
+<span class="nc" id="L121">      Config.enableLogging(true);</span>
+    }
+
+<span class="nc" id="L124">    config = new Config(args);</span>
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">    if (isOptionEnabled(SHOW, options)) {</span>
+<span class="nc" id="L127">      config.printEntries();</span>
+    }
+    
+<span class="nc" id="L130">    args = removeConfigArgs( args);</span>
+<span class="nc" id="L131">    String testClsName = getTestClassName(args);</span>
+<span class="nc" id="L132">    String[] testArgs = getTestArgs(args);</span>
+    
+<span class="nc" id="L134">    String[] testPathElements = getTestPathElements(config);</span>
+<span class="nc" id="L135">    JPFClassLoader cl = config.initClassLoader(RunTest.class.getClassLoader());</span>
+<span class="nc" id="L136">    addTestClassPath( cl, testPathElements);</span>
+
+<span class="nc" id="L138">    Class&lt;?&gt; testJpfCls = null;</span>
+    try {
+<span class="nc" id="L140">      testJpfCls = cl.loadClass( TESTJPF_CLS);</span>
+      
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (isOptionEnabled(QUIET, options)){</span>
+<span class="nc" id="L143">        Field f = testJpfCls.getDeclaredField(&quot;quiet&quot;);</span>
+<span class="nc" id="L144">        f.setAccessible(true);</span>
+<span class="nc" id="L145">        f.setBoolean( null, true);</span>
+      }
+      
+<span class="nc" id="L148">    } catch (NoClassDefFoundError ncfx) {</span>
+<span class="nc" id="L149">      error(&quot;class did not resolve: &quot; + ncfx.getMessage());</span>
+<span class="nc" id="L150">      return;</span>
+<span class="nc" id="L151">    } catch (ClassNotFoundException cnfx) {</span>
+<span class="nc" id="L152">      error(&quot;class not found &quot; + cnfx.getMessage() + &quot;, check native_classpath in jpf.properties&quot;);</span>
+<span class="nc" id="L153">      return;</span>
+      
+    // we let these pass for now since it only means the quiet option is not going to work
+<span class="nc" id="L156">    } catch (NoSuchFieldException ex) {</span>
+<span class="nc" id="L157">      warning(&quot;incompatible &quot; + TESTJPF_CLS + &quot; version, quiet mode will not work&quot;);</span>
+<span class="nc" id="L158">    } catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L159">      warning(&quot;incompatible &quot; + TESTJPF_CLS + &quot; version, quiet mode will not work&quot;);</span>
+<span class="nc" id="L160">    }</span>
+    
+    // &lt;2do&gt; refactor - each test class should be (optionally) loaded through a new ClassLoader instance
+    // to make sure tests don't have static field carry-over
+    
+<span class="nc" id="L165">    List&lt;Class&lt;?&gt;&gt; testClasses = getTestClasses(cl, testJpfCls, testPathElements, testClsName);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">    if (testClasses.isEmpty()){</span>
+<span class="nc" id="L167">      System.out.println(&quot;no test classes found&quot;);</span>
+<span class="nc" id="L168">      return;</span>
+    }
+    
+<span class="nc" id="L171">    int nTested = 0;</span>
+<span class="nc" id="L172">    int nPass = 0;</span>
+    
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    for (Class&lt;?&gt; testCls : testClasses){</span>
+<span class="nc" id="L175">      nTested++;</span>
+      
+      try {
+        try {
+          try { // check if there is a main(String[]) method
+<span class="nc" id="L180">            Method mainEntry = testCls.getDeclaredMethod(&quot;main&quot;, String[].class);</span>
+<span class="nc" id="L181">            mainEntry.invoke(null, (Object) testArgs);</span>
+
+<span class="nc" id="L183">          } catch (NoSuchMethodException x) { // no main(String[]), call TestJPF.runTests(testCls,args) directly</span>
+<span class="nc" id="L184">            Method mainEntry = testJpfCls.getDeclaredMethod(&quot;runTests&quot;, Class.class, String[].class);</span>
+<span class="nc" id="L185">            mainEntry.invoke(null, new Object[]{testCls, testArgs});</span>
+<span class="nc" id="L186">          }</span>
+          
+<span class="nc" id="L188">          nPass++;</span>
+          
+<span class="nc" id="L190">        } catch (NoSuchMethodException x) {</span>
+<span class="nc" id="L191">          error(&quot;no suitable main() or runTests() in &quot; + testCls.getName());</span>
+<span class="nc" id="L192">        } catch (IllegalAccessException iax) {</span>
+<span class="nc" id="L193">          error(iax.getMessage());</span>
+<span class="nc" id="L194">        }</span>
+        
+<span class="nc" id="L196">      } catch (NoClassDefFoundError ncfx) {</span>
+<span class="nc" id="L197">        error(&quot;class did not resolve: &quot; + ncfx.getMessage());</span>
+<span class="nc" id="L198">      } catch (InvocationTargetException ix) {</span>
+<span class="nc" id="L199">        Throwable cause = ix.getCause();</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (cause instanceof Failed){</span>
+          // no need to report - the test did run and reported why it failed
+<span class="nc" id="L202">          System.exit(1);</span>
+        } else {
+<span class="nc" id="L204">          error(ix.getCause().getMessage());</span>
+        }
+<span class="nc" id="L206">      }</span>
+<span class="nc" id="L207">    }    </span>
+        
+<span class="nc" id="L209">    System.out.println();</span>
+<span class="nc" id="L210">    System.out.printf(&quot;tested classes: %d, passed: %d\n&quot;, nTested, nPass);</span>
+<span class="nc" id="L211">  }</span>
+
+  static Class&lt;?&gt; loadTestClass (JPFClassLoader cl, Class&lt;?&gt; testJpfCls, String testClsName){
+    try {
+<span class="nc" id="L215">      Class&lt;?&gt; testCls = cl.loadClass(testClsName);</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">      if (testJpfCls.isAssignableFrom(testCls)){</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (!Modifier.isAbstract(testCls.getModifiers())){</span>
+<span class="nc" id="L218">          return testCls;</span>
+        }
+      }
+      
+<span class="nc" id="L222">      return null;</span>
+      
+<span class="nc" id="L224">    } catch (NoClassDefFoundError ncfx) {</span>
+<span class="nc" id="L225">      error(&quot;class did not resolve: &quot; + ncfx.getMessage());</span>
+<span class="nc" id="L226">      return null;</span>
+      
+<span class="nc" id="L228">    } catch (ClassNotFoundException cnfx) {</span>
+<span class="nc" id="L229">      error(&quot;class not found &quot; + cnfx.getMessage() + &quot;, check test_classpath in jpf.properties&quot;);</span>
+<span class="nc" id="L230">      return null;</span>
+    }
+  }
+  
+  static boolean hasWildcard (String pattern){
+<span class="nc bnc" id="L235" title="All 2 branches missed.">    return (pattern.indexOf('*') &gt;= 0);</span>
+  }
+  
+  static List&lt;Class&lt;?&gt;&gt; getTestClasses (JPFClassLoader cl, Class&lt;?&gt; testJpfCls, String[] testPathElements, String testClsPattern ){
+<span class="nc" id="L239">    List&lt;Class&lt;?&gt;&gt; testClasses = new ArrayList&lt;Class&lt;?&gt;&gt;();</span>
+    
+<span class="nc bnc" id="L241" title="All 2 branches missed.">    if (testClsPattern.startsWith(&quot;.&quot;)){</span>
+<span class="nc" id="L242">      testClsPattern = &quot;gov.nasa.jpf&quot; + testClsPattern;</span>
+    }
+    
+<span class="nc bnc" id="L245" title="All 2 branches missed.">    if (!hasWildcard(testClsPattern)){ // that's simple, no need to look into dirs</span>
+<span class="nc" id="L246">      Class&lt;?&gt; testCls = loadTestClass( cl, testJpfCls, testClsPattern);</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">      if (testCls == null){ // error if this was an explicit classname</span>
+<span class="nc" id="L248">        error (&quot;specified class name not found or no TestJPF derived class: &quot; + testClsPattern);  </span>
+      }
+<span class="nc" id="L250">      testClasses.add(testCls);</span>
+      
+<span class="nc" id="L252">    } else { // we have to recursively look into the testPathElements for potential test classes</span>
+<span class="nc" id="L253">      List&lt;String&gt; classFileList = getClassFileList( testPathElements, testClsPattern);</span>
+      
+<span class="nc bnc" id="L255" title="All 2 branches missed.">      for (String candidate : classFileList){        </span>
+<span class="nc" id="L256">        Class&lt;?&gt; testCls = loadTestClass( cl, testJpfCls, candidate);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (testCls != null){</span>
+<span class="nc" id="L258">          testClasses.add(testCls);</span>
+        }
+<span class="nc" id="L260">      }</span>
+    }
+    
+<span class="nc" id="L263">    return testClasses;</span>
+  }
+  
+  static void collectMatchingFiles (int nPrefix, File dir, List&lt;String&gt; list, String pattern){
+<span class="nc bnc" id="L267" title="All 2 branches missed.">    for (File e : dir.listFiles()){</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">      if (e.isDirectory()){</span>
+<span class="nc" id="L269">        collectMatchingFiles(nPrefix, e, list, pattern);</span>
+        
+<span class="nc bnc" id="L271" title="All 2 branches missed.">      } else if (e.isFile()){</span>
+<span class="nc" id="L272">        String pn = e.getPath().substring(nPrefix);</span>
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        if (pn.matches(pattern)){</span>
+<span class="nc" id="L274">          String clsName = pn.substring(0, pn.length() - 6); // strip cp entry and &quot;.class&quot;</span>
+<span class="nc" id="L275">          clsName = clsName.replace( File.separatorChar, '.');</span>
+<span class="nc" id="L276">          list.add(clsName);</span>
+        }
+      }
+    }
+<span class="nc" id="L280">  }</span>
+  
+  static List&lt;String&gt; getClassFileList (String[] testPathElements, String testClsPattern){
+<span class="nc" id="L283">    List&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+<span class="nc" id="L284">    String tcp = testClsPattern.replace('.', File.separatorChar);</span>
+<span class="nc" id="L285">    tcp = tcp.replace(&quot;*&quot;, &quot;.*&quot;) + &quot;\\.class&quot;;</span>
+    
+<span class="nc bnc" id="L287" title="All 2 branches missed.">    for (String tpe : testPathElements){</span>
+<span class="nc" id="L288">      File tp = new File(tpe);</span>
+<span class="nc" id="L289">      int nPrefix = tp.getPath().length()+1;</span>
+<span class="nc" id="L290">      collectMatchingFiles( nPrefix, tp, list, tcp);</span>
+    }
+    
+<span class="nc" id="L293">    return list;</span>
+  }
+  
+  static boolean isPublicStatic (Method m){
+<span class="nc" id="L297">    int mod = m.getModifiers();</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">    return ((mod &amp; (Modifier.PUBLIC | Modifier.STATIC)) == (Modifier.PUBLIC | Modifier.STATIC));</span>
+  }
+  
+  static String[] getTestPathElements (Config conf){
+<span class="nc" id="L302">    String projectId = JPFSiteUtils.getCurrentProjectId();</span>
+    
+<span class="nc bnc" id="L304" title="All 2 branches missed.">    if (projectId != null) {</span>
+<span class="nc" id="L305">      String testCpKey = projectId + &quot;.test_classpath&quot;;</span>
+<span class="nc" id="L306">      return  config.getCompactTrimmedStringArray(testCpKey);</span>
+      
+    } else {
+<span class="nc" id="L309">      return new String[0];</span>
+    }    
+  }
+  
+  static void addTestClassPath (JPFClassLoader cl, String[] testPathElements){
+<span class="nc bnc" id="L314" title="All 2 branches missed.">    if (testPathElements != null) {</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">      for (String pe : testPathElements) {</span>
+        try {
+<span class="nc" id="L317">          cl.addURL(FileUtils.getURL(pe));</span>
+<span class="nc" id="L318">        } catch (Throwable x) {</span>
+<span class="nc" id="L319">          error(&quot;malformed test_classpath URL: &quot; + pe);</span>
+<span class="nc" id="L320">        }</span>
+      }
+    }
+<span class="nc" id="L323">  }</span>
+
+  static boolean isOptionArg(String a){
+<span class="nc bnc" id="L326" title="All 4 branches missed.">    if (a != null &amp;&amp; !a.isEmpty()){</span>
+<span class="nc" id="L327">      char c = a.charAt(0);</span>
+<span class="nc bnc" id="L328" title="All 4 branches missed.">      if ((c == '+') || (c == '-')){</span>
+<span class="nc" id="L329">        return true;</span>
+      }
+    }
+<span class="nc" id="L332">    return false;</span>
+  }
+  
+  static String getTestClassName(String[] args){
+<span class="nc bnc" id="L336" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc" id="L337">      String a = args[i];</span>
+<span class="nc bnc" id="L338" title="All 4 branches missed.">      if (a != null &amp;&amp; !isOptionArg(a)){</span>
+<span class="nc" id="L339">        return a;</span>
+      }
+    }
+
+<span class="nc" id="L343">    return null;</span>
+  }
+
+  // return everything after the first free arg
+  static String[] getTestArgs(String[] args){
+    int i;
+
+<span class="nc bnc" id="L350" title="All 2 branches missed.">    for (i=0; i&lt;args.length; i++){</span>
+<span class="nc" id="L351">      String a = args[i];</span>
+<span class="nc bnc" id="L352" title="All 4 branches missed.">      if (a != null &amp;&amp; !isOptionArg(a)){</span>
+<span class="nc" id="L353">        break;</span>
+      }
+    }
+
+<span class="nc bnc" id="L357" title="All 2 branches missed.">    if (i &gt;= args.length-1){</span>
+<span class="nc" id="L358">      return new String[0];</span>
+    } else {
+<span class="nc" id="L360">      String[] testArgs = new String[args.length-i-1];</span>
+<span class="nc" id="L361">      System.arraycopy(args,i+1, testArgs, 0, testArgs.length);</span>
+<span class="nc" id="L362">      return testArgs;</span>
+    }
+  }
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

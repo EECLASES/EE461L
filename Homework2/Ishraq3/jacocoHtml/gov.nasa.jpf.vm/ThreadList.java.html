@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadList.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ThreadList.java</span></div><h1>ThreadList.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.Predicate;
+
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+/**
+ * Contains the list of all ThreadInfos for live java.lang.Thread objects
+ * 
+ * We add a thread upon creation (within the ThreadInfo ctor), and remove it
+ * when the corresponding java.lang.Thread object gets recycled by JPF. This means
+ * that:
+ *   * the thread list can contain terminated threads
+ *   * terminated and recycled threads are (eventually) removed from the list
+ *   * the list can shrink along a given path
+ *   * thread ids don't have to correspond with storing order !!
+ *   * thread ids can be re-used
+ *
+ * Per default, thread ids are re-used in order to be packed (which is required to efficiently
+ * keep track of referencing threads in ElementInfo reftids). If there is a need
+ * to avoid recycled thread ids, set 'vm.reuse_tid=false'.
+ * 
+ * NOTE - this ThreadList implementation doubles up as a thread object -&gt; ThreadInfo
+ * map, which is for instance heavily used by the JPF_java_lang_Thread peer.
+ * 
+ * This implies that ThreadList is still not fully re-organized in case something
+ * keeps terminated thread objects alive. We could avoid this by having a separate
+ * map for live threads&lt;-&gt;ThreadInfos, but this would also have to be a backrackable
+ * container that is highly redundant to ThreadList (the only difference being
+ * that terminated threads could be removed from ThreadList).
+ * 
+ */
+public class ThreadList implements Cloneable, Iterable&lt;ThreadInfo&gt;, Restorable&lt;ThreadList&gt; {
+
+  public static class Count {
+    public final int alive;
+    public final int runnableNonDaemons;
+    public final int runnableDaemons;
+    public final int blocked;
+    
+<span class="nc" id="L65">    Count (int alive, int runnableNonDaemons, int runnableDaemons, int blocked){</span>
+<span class="nc" id="L66">      this.alive = alive;</span>
+<span class="nc" id="L67">      this.runnableNonDaemons = runnableNonDaemons;</span>
+<span class="nc" id="L68">      this.runnableDaemons = runnableDaemons;</span>
+<span class="nc" id="L69">      this.blocked = blocked;</span>
+<span class="nc" id="L70">    }</span>
+  }
+  
+  protected boolean reuseTid;
+  
+  // ThreadInfos for all created but not terminated threads
+  protected ThreadInfo[] threads;
+  
+  // the highest ID created so far along this path
+  protected int maxTid;
+
+
+  static class TListMemento implements Memento&lt;ThreadList&gt; {
+    // note that we don't clone/deepcopy ThreadInfos
+    Memento&lt;ThreadInfo&gt;[] tiMementos;
+    int maxTid;
+
+<span class="fc" id="L87">    TListMemento(ThreadList tl) {</span>
+<span class="fc" id="L88">      ThreadInfo[] threads = tl.threads;</span>
+<span class="fc" id="L89">      int len = threads.length;</span>
+
+<span class="fc" id="L91">      maxTid = tl.maxTid;</span>
+<span class="fc" id="L92">      tiMementos = new Memento[len];</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">      for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L94">        ThreadInfo ti = threads[i];</span>
+<span class="fc" id="L95">        Memento&lt;ThreadInfo&gt; m = null;</span>
+
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!ti.hasChanged()){</span>
+<span class="fc" id="L98">          m = ti.cachedMemento;</span>
+        }
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (m == null){</span>
+<span class="fc" id="L101">          m = ti.getMemento();</span>
+<span class="fc" id="L102">          ti.cachedMemento = m;</span>
+        }
+<span class="fc" id="L104">        tiMementos[i] = m;</span>
+      }
+<span class="fc" id="L106">    }</span>
+
+    @Override
+	public ThreadList restore(ThreadList tl){
+<span class="fc" id="L110">      int len = tiMementos.length;</span>
+<span class="fc" id="L111">      ThreadInfo[] threads = new ThreadInfo[len];</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">      for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L113">        Memento&lt;ThreadInfo&gt; m = tiMementos[i];</span>
+<span class="fc" id="L114">        ThreadInfo ti = m.restore(null);</span>
+<span class="fc" id="L115">        ti.cachedMemento = m;</span>
+<span class="fc" id="L116">        threads[i] = ti;</span>
+<span class="fc" id="L117">        ti.tlIdx = i;</span>
+      }
+<span class="fc" id="L119">      tl.threads = threads;</span>
+<span class="fc" id="L120">      tl.maxTid = maxTid;</span>
+
+<span class="fc" id="L122">      return tl;</span>
+    }
+  }
+
+
+<span class="fc" id="L127">  protected ThreadList() {</span>
+    // nothing here
+<span class="fc" id="L129">  }</span>
+
+  /**
+   * Creates a new empty thread list.
+   */
+<span class="fc" id="L134">  public ThreadList (Config config, KernelState ks) {</span>
+<span class="fc" id="L135">    threads = new ThreadInfo[0];</span>
+    
+<span class="fc" id="L137">    reuseTid = config.getBoolean(&quot;vm.reuse_tid&quot;, false);</span>
+<span class="fc" id="L138">  }</span>
+
+  @Override
+  public Memento&lt;ThreadList&gt; getMemento(MementoFactory factory) {
+<span class="nc" id="L142">    return factory.getMemento(this);</span>
+  }
+  public Memento&lt;ThreadList&gt; getMemento(){
+<span class="fc" id="L145">    return new TListMemento(this);</span>
+  }
+
+  @Override
+  public Object clone() {
+<span class="fc" id="L150">    ThreadList other = new ThreadList();</span>
+<span class="fc" id="L151">    other.threads = new ThreadInfo[threads.length];</span>
+
+<span class="fc bfc" id="L153" title="All 2 branches covered.">    for (int i=0; i&lt;threads.length; i++) {</span>
+<span class="fc" id="L154">      other.threads[i] = (ThreadInfo) threads[i].clone();</span>
+    }
+
+<span class="fc" id="L157">    return other;</span>
+  }
+
+  /**
+   * add a new ThreadInfo if it isn't already in the list.
+   * Note: the returned id is NOT our internal storage index
+   * 
+   * @return (path specific) Thread id
+   */
+  public int add (ThreadInfo ti) {
+<span class="fc" id="L167">    int n = threads.length;</span>
+
+<span class="fc" id="L169">    BitSet ids = new BitSet();   </span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="fc" id="L171">      ThreadInfo t = threads[i];</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">      if (t == ti) {</span>
+<span class="fc" id="L173">        return t.getId();</span>
+      }
+      
+<span class="fc" id="L176">      ids.set( t.getId());</span>
+    }
+
+    // append it
+<span class="fc" id="L180">    ThreadInfo[] newThreads = new ThreadInfo[n+1];</span>
+<span class="fc" id="L181">    System.arraycopy(threads, 0, newThreads, 0, n);</span>
+    
+<span class="fc" id="L183">    newThreads[n] = ti;</span>
+<span class="fc" id="L184">    ti.tlIdx = n;</span>
+    
+<span class="fc" id="L186">    threads = newThreads;</span>
+    
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">    if (reuseTid){</span>
+<span class="nc" id="L189">      return ids.nextClearBit(0);</span>
+    } else {
+<span class="fc" id="L191">      return maxTid++;</span>
+    }
+  }
+  
+  public boolean remove (ThreadInfo ti){
+<span class="fc" id="L196">    int n = threads.length;</span>
+    
+<span class="fc bfc" id="L198" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">      if (ti == threads[i]){</span>
+<span class="fc" id="L200">        int n1 = n-1;</span>
+<span class="fc" id="L201">        ThreadInfo[] newThreads = new ThreadInfo[n1];</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        if (i&gt;0){</span>
+<span class="fc" id="L203">          System.arraycopy(threads, 0, newThreads, 0, i);</span>
+        }
+<span class="fc bfc" id="L205" title="All 2 branches covered.">        if (i&lt;n1){</span>
+<span class="fc" id="L206">          System.arraycopy(threads, i+1, newThreads, i, (n1-i));</span>
+          
+          // update the tlIdx values
+<span class="fc bfc" id="L209" title="All 2 branches covered.">          for (int j=i; j&lt;n1; j++){</span>
+<span class="fc" id="L210">            ThreadInfo t = threads[j];</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            if (t != null){</span>
+<span class="fc" id="L212">              t.tlIdx = j;</span>
+            }
+          }
+        }
+        
+<span class="fc" id="L217">        threads = newThreads;        </span>
+<span class="fc" id="L218">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L222">    return false;</span>
+  }
+
+  /**
+   * Returns the array of threads.
+   */
+  public ThreadInfo[] getThreads() {
+<span class="fc" id="L229">    return threads.clone();</span>
+  }
+
+  public void hash (HashData hd) {
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    for (int i=0; i&lt;threads.length; i++){</span>
+<span class="nc" id="L234">      threads[i].hash(hd);</span>
+    }
+<span class="nc" id="L236">  }</span>
+  
+  public ThreadInfo getThreadInfoForId (int tid){
+<span class="fc bfc" id="L239" title="All 2 branches covered.">    for (int i=0; i&lt;threads.length; i++){</span>
+<span class="fc" id="L240">      ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">      if (ti.getId() == tid){</span>
+<span class="fc" id="L242">        return ti;</span>
+      }
+    }
+    
+<span class="fc" id="L246">    return null;</span>
+  }
+
+  public ThreadInfo getThreadInfoForObjRef (int objRef){
+<span class="fc bfc" id="L250" title="All 2 branches covered.">    for (int i=0; i&lt;threads.length; i++){</span>
+<span class="fc" id="L251">      ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">      if (ti.getThreadObjectRef() == objRef){</span>
+<span class="fc" id="L253">        return ti;</span>
+      }
+    }
+    
+<span class="fc" id="L257">    return null;</span>
+  }
+  
+  public boolean contains (ThreadInfo ti){
+<span class="nc" id="L261">    int idx = ti.tlIdx;</span>
+    
+<span class="nc bnc" id="L263" title="All 2 branches missed.">    if (idx &lt; threads.length){</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">      return threads[idx] == ti;</span>
+    }
+    
+<span class="nc" id="L267">    return false;</span>
+  }
+  
+  /**
+   * Returns the length of the list.
+   */
+  public int length () {
+<span class="fc" id="L274">    return threads.length;</span>
+  }
+
+  /**
+   * Replaces the array of ThreadInfos.
+   */
+  public void setAll(ThreadInfo[] threads) {
+<span class="nc" id="L281">    this.threads = threads;</span>
+<span class="nc" id="L282">  }</span>
+
+  public ThreadInfo locate (int objref) {
+<span class="nc bnc" id="L285" title="All 2 branches missed.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="nc bnc" id="L286" title="All 2 branches missed.">      if (threads[i].getThreadObjectRef() == objref) {</span>
+<span class="nc" id="L287">        return threads[i];</span>
+      }
+    }
+
+<span class="nc" id="L291">    return null;</span>
+  }
+
+  public void markRoots (Heap heap) {
+<span class="fc bfc" id="L295" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">      if (threads[i].isAlive()) {</span>
+<span class="fc" id="L297">        threads[i].markRoots(heap);</span>
+      }
+    }
+<span class="fc" id="L300">  }</span>
+  
+  public boolean hasProcessTimeoutRunnables (ApplicationContext appCtx){
+<span class="fc bfc" id="L303" title="All 2 branches covered.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="fc" id="L304">      ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L305" title="All 4 branches covered.">      if (ti.isTimeoutRunnable() &amp;&amp; ti.getApplicationContext() == appCtx) {</span>
+<span class="fc" id="L306">        return true;</span>
+      }
+    }
+<span class="fc" id="L309">    return false;</span>
+  }
+  
+  public ThreadInfo[] getProcessTimeoutRunnables (ApplicationContext appCtx){
+<span class="fc" id="L313">    ArrayList&lt;ThreadInfo&gt; list = new ArrayList&lt;ThreadInfo&gt;();</span>
+    
+<span class="fc bfc" id="L315" title="All 2 branches covered.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="fc" id="L316">      ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L317" title="All 4 branches covered.">      if (ti.isTimeoutRunnable() &amp;&amp; ti.getApplicationContext() == appCtx) {</span>
+<span class="fc" id="L318">        list.add(ti);</span>
+      }
+    }
+    
+<span class="fc" id="L322">    return list.toArray( new ThreadInfo[list.size()]);</span>
+  }
+  
+  public boolean hasLiveThreads(){
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">      if (threads[i].isAlive()) {</span>
+<span class="fc" id="L328">        return true;</span>
+      }
+    }
+<span class="nc" id="L331">    return false;    </span>
+  }
+  
+  public boolean hasTimeoutRunnables (){
+<span class="nc bnc" id="L335" title="All 2 branches missed.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">      if (threads[i].isRunnable()) {</span>
+<span class="nc" id="L337">        return true;</span>
+      }
+    }
+<span class="nc" id="L340">    return false;</span>
+  }
+  
+  public boolean hasUnblockedThreads(){
+<span class="nc bnc" id="L344" title="All 2 branches missed.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">      if (threads[i].isUnblocked()) {</span>
+<span class="nc" id="L346">        return true;</span>
+      }
+    }
+<span class="nc" id="L349">    return false;    </span>
+  }
+
+  public ThreadInfo[] getTimeoutRunnables (){
+<span class="fc" id="L353">    ArrayList&lt;ThreadInfo&gt; list = new ArrayList&lt;ThreadInfo&gt;();</span>
+    
+<span class="fc bfc" id="L355" title="All 2 branches covered.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="fc" id="L356">      ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">      if (ti.isTimeoutRunnable()) {</span>
+<span class="fc" id="L358">        list.add(ti);</span>
+      }
+    }
+    
+<span class="fc" id="L362">    return list.toArray( new ThreadInfo[list.size()]);</span>
+  }
+
+  
+
+  public boolean hasAnyMatching(Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="fc bfc" id="L368" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">      if (predicate.isTrue(threads[i])) {</span>
+<span class="fc" id="L370">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L374">    return false;</span>
+  }
+  
+  public boolean hasAnyMatchingOtherThan(ThreadInfo ti, Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="fc bfc" id="L378" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">      if(ti != threads[i]) {</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">        if (predicate.isTrue(threads[i])) {</span>
+<span class="fc" id="L381">          return true;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L386">    return false;</span>
+  }
+  
+  public boolean hasOnlyMatching(Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="nc bnc" id="L390" title="All 2 branches missed.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">      if (!predicate.isTrue(threads[i])) {</span>
+<span class="nc" id="L392">        return false;</span>
+      }
+    }
+    
+<span class="nc" id="L396">    return true;</span>
+  }
+  
+  public boolean hasOnlyMatchingOtherThan(ThreadInfo ti, Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="fc" id="L400">    int n=0;</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">      if(ti != threads[i]) {</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">        if (!predicate.isTrue(threads[i])) {</span>
+<span class="fc" id="L404">          return false;</span>
+        } else {
+<span class="fc" id="L406">          n++;</span>
+        }
+      }
+    }
+    
+<span class="fc bfc" id="L411" title="All 2 branches covered.">    return (n&gt;0);</span>
+  }
+  
+  public ThreadInfo[] getAllMatching(Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="fc" id="L415">    List&lt;ThreadInfo&gt; list = new ArrayList&lt;ThreadInfo&gt;();</span>
+    
+<span class="fc" id="L417">    int n = 0;</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc" id="L419">      ThreadInfo ti = threads[i];</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">      if (predicate.isTrue(ti)) {</span>
+<span class="fc" id="L421">        list.add(ti);</span>
+<span class="fc" id="L422">        n++;</span>
+      }
+    }
+    
+<span class="fc" id="L426">    return list.toArray(new ThreadInfo[n]);</span>
+  }
+
+  public ThreadInfo[] getAllMatchingWith(final ThreadInfo ti, Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="nc" id="L430">    List&lt;ThreadInfo&gt; list = new ArrayList&lt;ThreadInfo&gt;();</span>
+    
+<span class="nc" id="L432">    int n = 0;</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="nc" id="L434">      ThreadInfo t = threads[i];</span>
+<span class="nc bnc" id="L435" title="All 4 branches missed.">      if (predicate.isTrue(t) || (ti==t)) {</span>
+<span class="nc" id="L436">        list.add(t);</span>
+<span class="nc" id="L437">        n++;</span>
+      }
+    }
+    
+<span class="nc" id="L441">    return list.toArray(new ThreadInfo[n]);</span>
+  }
+  
+  public ThreadInfo[] getAllMatchingWithout(final ThreadInfo ti, Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="nc" id="L445">    List&lt;ThreadInfo&gt; list = new ArrayList&lt;ThreadInfo&gt;();</span>
+    
+<span class="nc" id="L447">    int n = 0;</span>
+<span class="nc bnc" id="L448" title="All 2 branches missed.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="nc" id="L449">      ThreadInfo t = threads[i];</span>
+<span class="nc bnc" id="L450" title="All 4 branches missed.">      if (predicate.isTrue(t) &amp;&amp; (ti != t)) {</span>
+<span class="nc" id="L451">        list.add(t);</span>
+<span class="nc" id="L452">        n++;</span>
+      }
+    }
+    
+<span class="nc" id="L456">    return list.toArray(new ThreadInfo[n]);</span>
+  }
+  
+  public int getMatchingCount(Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="fc" id="L460">    int n = 0;</span>
+<span class="fc bfc" id="L461" title="All 2 branches covered.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="fc" id="L462">      ThreadInfo ti = threads[i];</span>
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">      if (predicate.isTrue(ti)) {</span>
+<span class="nc" id="L464">        n++;</span>
+      }
+    }
+    
+<span class="fc" id="L468">    return n;</span>
+  }
+  
+  public ThreadInfo getFirstMatching(Predicate&lt;ThreadInfo&gt; predicate) {
+<span class="nc bnc" id="L472" title="All 2 branches missed.">    for (int i = 0, l = threads.length; i &lt; l; i++) {</span>
+<span class="nc" id="L473">      ThreadInfo t = threads[i];</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">      if (predicate.isTrue(t)) {</span>
+<span class="nc" id="L475">        return t;</span>
+      }
+    }
+    
+<span class="nc" id="L479">    return null;</span>
+  }
+  
+  public Count getCountWithout (ThreadInfo tiExclude){
+<span class="nc" id="L483">    int alive=0, runnableNonDaemons=0, runnableDaemons=0, blocked=0;</span>
+    
+<span class="nc bnc" id="L485" title="All 2 branches missed.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="nc" id="L486">      ThreadInfo ti = threads[i];</span>
+  
+<span class="nc bnc" id="L488" title="All 2 branches missed.">      if (ti != tiExclude){</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">        if (ti.isAlive()) {</span>
+<span class="nc" id="L490">          alive++;</span>
+
+<span class="nc bnc" id="L492" title="All 2 branches missed.">          if (ti.isRunnable()) {</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">            if (ti.isDaemon()) {</span>
+<span class="nc" id="L494">              runnableDaemons++;</span>
+            } else {
+<span class="nc" id="L496">              runnableNonDaemons++;</span>
+            }
+          } else {
+<span class="nc" id="L499">            blocked++;</span>
+          }
+        }
+      }
+    }
+    
+<span class="nc" id="L505">    return new Count(alive, runnableNonDaemons, runnableDaemons, blocked);</span>
+  }
+
+  public Count getCount(){
+<span class="nc" id="L509">    return getCountWithout(null);</span>
+  }
+
+  public void dump () {
+<span class="nc" id="L513">    int i=0;</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">    for (ThreadInfo t : threads) {</span>
+<span class="nc" id="L515">      System.err.println(&quot;[&quot; + i++ + &quot;] &quot; + t);</span>
+    }
+<span class="nc" id="L517">  }</span>
+
+  @Override
+  public Iterator&lt;ThreadInfo&gt; iterator() {
+<span class="fc" id="L521">    return new Iterator&lt;ThreadInfo&gt;() {</span>
+<span class="fc" id="L522">      int i = 0;</span>
+
+      @Override
+	public boolean hasNext() {
+<span class="pc bpc" id="L526" title="1 of 6 branches missed.">        return threads != null &amp;&amp; threads.length&gt;0 &amp;&amp; i&lt;threads.length;</span>
+      }
+
+      @Override
+	public ThreadInfo next() {
+<span class="pc bpc" id="L531" title="3 of 6 branches missed.">        if (threads != null &amp;&amp; threads.length&gt;0 &amp;&amp; i&lt;threads.length){</span>
+<span class="fc" id="L532">          return threads[i++];</span>
+        } else {
+<span class="nc" id="L534">          throw new NoSuchElementException();</span>
+        }
+      }
+
+      @Override
+	public void remove() {
+<span class="nc" id="L540">        throw new UnsupportedOperationException(&quot;Iterator&lt;ThreadInfo&gt;.remove()&quot;);</span>
+      }
+    };
+  }
+
+  
+  class CanonicalLiveIterator implements Iterator&lt;ThreadInfo&gt; {
+    
+<span class="fc" id="L548">    int nextGid = -1;</span>
+<span class="fc" id="L549">    int nextIdx = -1;</span>
+    
+<span class="fc" id="L551">    CanonicalLiveIterator(){</span>
+<span class="fc" id="L552">      setNext();</span>
+<span class="fc" id="L553">    }</span>
+    
+    // &lt;2do&gt; not overly efficient, but we assume small thread lists anyways
+    void setNext (){
+<span class="fc" id="L557">      int lastGid = nextGid;</span>
+<span class="fc" id="L558">      int nextGid = Integer.MAX_VALUE;</span>
+<span class="fc" id="L559">      int nextIdx = -1;</span>
+      
+<span class="fc bfc" id="L561" title="All 2 branches covered.">      for (int i=0; i&lt;threads.length; i++){</span>
+<span class="fc" id="L562">        ThreadInfo ti = threads[i];</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">        if (ti.isAlive()){</span>
+<span class="fc" id="L564">          int gid = ti.getGlobalId();</span>
+<span class="fc bfc" id="L565" title="All 4 branches covered.">          if ((gid &gt; lastGid) &amp;&amp; (gid &lt; nextGid)){</span>
+<span class="fc" id="L566">            nextGid = gid;</span>
+<span class="fc" id="L567">            nextIdx = i;</span>
+          }
+        }
+      }
+      
+<span class="fc" id="L572">      CanonicalLiveIterator.this.nextGid = nextGid;</span>
+<span class="fc" id="L573">      CanonicalLiveIterator.this.nextIdx = nextIdx;</span>
+<span class="fc" id="L574">    }</span>
+    
+    @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L578" title="All 2 branches covered.">      return (nextIdx &gt;= 0);</span>
+    }
+
+    @Override
+	public ThreadInfo next() {
+<span class="pc bpc" id="L583" title="1 of 2 branches missed.">      if (nextIdx &gt;= 0){</span>
+<span class="fc" id="L584">        ThreadInfo tiNext = threads[nextIdx];</span>
+<span class="fc" id="L585">        setNext();</span>
+<span class="fc" id="L586">        return tiNext;</span>
+        
+      } else {
+<span class="nc" id="L589">        throw new NoSuchElementException();</span>
+      }
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L595">      throw new UnsupportedOperationException(&quot;Iterator&lt;ThreadInfo&gt;.remove()&quot;);</span>
+    }
+  }
+  
+  /**
+   * an iterator for a canonical order over all live threads
+   */
+  public Iterator&lt;ThreadInfo&gt; canonicalLiveIterator(){
+<span class="fc" id="L603">    return new CanonicalLiveIterator();     </span>
+  }
+  
+  
+  /**
+   * only for debugging purposes, this is expensive
+   */
+  public void checkConsistency(boolean isStore) {
+<span class="nc bnc" id="L611" title="All 2 branches missed.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="nc" id="L612">      ThreadInfo ti = threads[i];</span>
+      
+<span class="nc" id="L614">      ti.checkConsistency(isStore);</span>
+    }
+<span class="nc" id="L616">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

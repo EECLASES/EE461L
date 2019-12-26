@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventGeneratorFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.script</a> &gt; <span class="el_source">EventGeneratorFactory.java</span></div><h1>EventGeneratorFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.script;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.DynamicObjectArray;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.SystemState;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+
+/**
+ * abstract root for backtrackable event generator factories
+ *
+ * &lt;2do&gt; - we don't support backtracking for sections yet! needs to be implemented for
+ * state charts
+ */
+public abstract class EventGeneratorFactory extends ListenerAdapter
+                                         implements ElementProcessor, Iterable&lt;EventGenerator&gt; {
+
+  static final String DEFAULT = &quot;default&quot;;
+
+  // helper class to store our internal state. For a simple script based system,
+  // storing the 'cur' index (into the queue) would do, but the queue might have been
+  // generated dynamically, so we need some container to store both
+  static class Memento {
+    ArrayList&lt;EventGenerator&gt; queue;
+    int cur; // cursor into queue
+
+<span class="nc" id="L51">    Memento (EventGeneratorFactory fact) {</span>
+<span class="nc" id="L52">      queue = fact.queue;</span>
+<span class="nc" id="L53">      cur = fact.cur;</span>
+<span class="nc" id="L54">    }</span>
+
+    void restore (EventGeneratorFactory fact) {
+<span class="nc" id="L57">      fact.queue = queue;</span>
+<span class="nc" id="L58">      fact.cur = cur;</span>
+<span class="nc" id="L59">    }</span>
+  }
+
+
+  // &lt;2do&gt; this is lame - if we really want 'instructions' in the queue, rather
+  // than data (== CGs), then we should have a queue of general EventOp entries
+  // this is only used for unbounded REPEATs so far
+  // &lt;2do&gt; the nextCG is currently unconditionally reset in getNextChoiceGenerator()
+  // so we have to make sure we don't jump back if the jump target state was already
+  // visited, which we have to store in the Jump
+  static class Loop extends EventGenerator {
+
+    int startPos, endPos;
+
+    Loop (String id, int startPos,  int endPos){
+<span class="nc" id="L74">      super(id);</span>
+      
+<span class="nc" id="L76">      this.startPos = startPos;</span>
+<span class="nc" id="L77">      this.endPos = endPos;</span>
+<span class="nc" id="L78">    }</span>
+
+    int getStartPos() {
+<span class="nc" id="L81">      return startPos;</span>
+    }
+
+    //--- those are all dummies - this isn't really a choice
+    @Override
+<span class="nc" id="L86">	public void advance() {}</span>
+
+    @Override
+	public Class getChoiceType() {
+<span class="nc" id="L90">      return null;</span>
+    }
+
+    @Override
+	public Object getNextChoice() {
+<span class="nc" id="L95">      return null;</span>
+    }
+
+    @Override
+	public int getProcessedNumberOfChoices() {
+<span class="nc" id="L100">      return 0;</span>
+    }
+
+    @Override
+	public int getTotalNumberOfChoices() {
+<span class="nc" id="L105">      return 0;</span>
+    }
+
+    @Override
+	public boolean hasMoreChoices() {
+<span class="nc" id="L110">      return false;</span>
+    }
+
+    @Override
+	public ChoiceGenerator randomize() {
+<span class="nc" id="L115">      return null;</span>
+    }
+
+    @Override
+<span class="nc" id="L119">	public void reset() {}</span>
+
+  }
+
+  /** the last returned position in the generator stream */
+  protected int cur;
+
+  /** this is where we store the cur positions for backtracking and restoring states */
+  DynamicObjectArray&lt;Memento&gt; states;
+
+  protected String scriptFileName;
+  protected Script script;
+  protected Config conf;
+
+  protected LinkedHashMap&lt;String,ArrayList&lt;EventGenerator&gt;&gt; sections;
+  protected ArrayList&lt;EventGenerator&gt; queue;
+
+  EventFactory efact;
+
+<span class="nc" id="L138">  protected EventGeneratorFactory () {</span>
+<span class="nc" id="L139">    efact = null;</span>
+<span class="nc" id="L140">  }</span>
+
+<span class="nc" id="L142">  protected EventGeneratorFactory (EventFactory efact) {</span>
+<span class="nc" id="L143">    this.efact = efact;</span>
+<span class="nc" id="L144">  }</span>
+
+  protected void init (String fname) throws ESParser.Exception {
+<span class="nc" id="L147">    cur = 0;</span>
+<span class="nc" id="L148">    states = new DynamicObjectArray&lt;Memento&gt;();</span>
+
+<span class="nc" id="L150">    sections = new LinkedHashMap&lt;String,ArrayList&lt;EventGenerator&gt;&gt;();</span>
+<span class="nc" id="L151">    queue = new ArrayList&lt;EventGenerator&gt;();</span>
+<span class="nc" id="L152">    sections.put(DEFAULT, queue);</span>
+
+<span class="nc" id="L154">    ESParser parser= new ESParser(fname, efact);</span>
+<span class="nc" id="L155">    script = parser.parse();</span>
+<span class="nc" id="L156">    scriptFileName = fname;</span>
+
+<span class="nc" id="L158">    script.process(this);</span>
+<span class="nc" id="L159">  }</span>
+
+  @Override
+  public Iterator&lt;EventGenerator&gt; iterator() {
+<span class="nc" id="L163">    return queue.iterator();</span>
+  }
+
+  protected void addLoop (int startPos) {
+<span class="nc" id="L167">    queue.add( new Loop( &quot;loop&quot;, startPos, queue.size()-1));</span>
+<span class="nc" id="L168">  }</span>
+
+  public abstract Class&lt;?&gt; getEventType();
+
+  /**
+   * reset the enumeration state of this factory
+   */
+  public void reset () {
+<span class="nc" id="L176">    cur = 0;</span>
+<span class="nc" id="L177">  }</span>
+
+  public String getScriptFileName() {
+<span class="nc" id="L180">    return scriptFileName;</span>
+  }
+
+  public Script getScript() {
+<span class="nc" id="L184">    return script;</span>
+  }
+
+  public boolean hasSection (String id) {
+<span class="nc" id="L188">    return sections.containsKey(id);</span>
+  }
+
+  public ArrayList&lt;EventGenerator&gt; getSection (String id) {
+<span class="nc" id="L192">    return sections.get(id);</span>
+  }
+
+  public ArrayList&lt;EventGenerator&gt; getDefaultSection () {
+<span class="nc" id="L196">    return sections.get(DEFAULT);</span>
+  }
+
+  protected void setQueue (ArrayList&lt;EventGenerator&gt; q) {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">    if (queue != q) {</span>
+<span class="nc" id="L201">      queue = q;</span>
+<span class="nc" id="L202">      cur = 0;</span>
+    }
+<span class="nc" id="L204">  }</span>
+
+  protected EventGenerator getNextEventGenerator() {
+    EventGenerator cg;
+<span class="nc" id="L208">    int n = queue.size();</span>
+
+<span class="nc bnc" id="L210" title="All 2 branches missed.">    if (n == 0) {</span>
+<span class="nc" id="L211">      return null; // nothing to do</span>
+    }
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    if (cur &lt; n) {</span>
+<span class="nc" id="L215">      cg = getQueueItem(cur); // might clone the queue item</span>
+
+      // &lt;2do&gt; - this is a BAD hot fix, but it's going away soon!
+<span class="nc bnc" id="L218" title="All 2 branches missed.">      if (cg instanceof Loop) {</span>
+<span class="nc" id="L219">        int tgtPos = ((Loop)cg).getStartPos();</span>
+<span class="nc" id="L220">        cg = queue.get(tgtPos);</span>
+
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if (!cg.hasMoreChoices()) {</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">          for (int i=tgtPos; i&lt;cur; i++) {</span>
+<span class="nc" id="L224">            queue.get(i).reset();</span>
+          }
+        }
+
+<span class="nc" id="L228">        cur = tgtPos;</span>
+      }
+
+<span class="nc" id="L231">      cg.setId(Integer.toString(cur));</span>
+
+      // might be reused if we re-enter a section sequence or REPEAT body, so we have to reset
+      // &lt;2do&gt; - commenting this out leads to premature state matching on model loops
+      // (will be fixed by the revamped environment modeling)
+      //cg.reset();
+
+<span class="nc" id="L238">      cur++;</span>
+<span class="nc" id="L239">      return cg;</span>
+
+    } else {
+<span class="nc" id="L242">      return null; // nothing left</span>
+    }
+  }
+
+  // we encapsulate this because it might require cloning
+  protected EventGenerator getQueueItem (int i) {
+<span class="nc" id="L248">    return queue.get(i);</span>
+  }
+
+
+  public int getTotalNumberOfEvents() {
+<span class="nc" id="L253">    int total=0;</span>
+<span class="nc" id="L254">    int last = 1;</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">    for (EventGenerator cg : queue) {</span>
+<span class="nc" id="L257">       int level = cg.getTotalNumberOfChoices() * last;</span>
+<span class="nc" id="L258">       total += level;</span>
+<span class="nc" id="L259">       last = level;</span>
+<span class="nc" id="L260">    }</span>
+
+<span class="nc" id="L262">    return total;</span>
+  }
+
+  public void printOn (PrintWriter pw) {
+<span class="nc bnc" id="L266" title="All 2 branches missed.">    for (EventGenerator eg : queue) {</span>
+<span class="nc" id="L267">      pw.println(eg);</span>
+<span class="nc" id="L268">    }</span>
+<span class="nc" id="L269">  }</span>
+
+  /************************************** SearchListener interface **************/
+  /* we need this after a backtrack and restore to determine the next CG to return
+   */
+
+  @Override
+  public void searchStarted (Search search) {
+<span class="nc" id="L277">    cur = 0;</span>
+<span class="nc" id="L278">  }</span>
+
+  @Override
+  public void stateAdvanced (Search search) {
+<span class="nc" id="L282">    int idx = search.getStateId();</span>
+
+<span class="nc bnc" id="L284" title="All 2 branches missed.">    if (idx &gt;= 0) { // &lt;??&gt; why would it be notified for the init state?</span>
+<span class="nc" id="L285">      Memento m = new Memento(this);</span>
+<span class="nc" id="L286">      states.set(idx, m);</span>
+    }
+<span class="nc" id="L288">  }</span>
+
+  @Override
+  public void stateBacktracked (Search search) {
+<span class="nc" id="L292">    Memento m = states.get(search.getStateId());</span>
+<span class="nc" id="L293">    m.restore(this);</span>
+    // nextCg will be re-computed (-&gt;getNext), so there is no need to reset
+<span class="nc" id="L295">  }</span>
+
+  @Override
+  public void stateRestored (Search search) {
+<span class="nc" id="L299">    Memento m = states.get(search.getStateId());</span>
+<span class="nc" id="L300">    m.restore(this);</span>
+
+    // nextCg is restored (not re-computed), so we need to reset
+<span class="nc" id="L303">    SystemState ss = search.getVM().getSystemState();</span>
+<span class="nc" id="L304">    ChoiceGenerator cgNext = ss.getNextChoiceGenerator();</span>
+<span class="nc" id="L305">    cgNext.reset();</span>
+<span class="nc" id="L306">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

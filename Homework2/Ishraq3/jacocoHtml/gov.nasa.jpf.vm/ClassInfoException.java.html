@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassInfoException.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ClassInfoException.java</span></div><h1>ClassInfoException.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ *
+ * This unchecked exception is thrown by the host VM. It captures all errors
+ * and exceptions that can occur at the load of a JPF class, which includes 
+ * defining, and resolving it. Here are some of the scenarios that this 
+ * exception is thrown and captures the corresponding exception:
+ *
+ *    * if the representation does not represent a class with the requested 
+ *      name, loading throws an instance of NoClassDefFoundError
+ *
+ *    * if any of the superclasses of a class, is the class itself, or if 
+ *      any of the superinterfaces of an interface, is the interface itself, 
+ *      loading throws an instance of ClassCircularityError
+ *
+ *    * if the representation is not a ClassFile structure, loading throws an
+ *      instance of ClassFormatError
+ * 
+ * If this exception is thrown during the initialization of VM, and the failed
+ * class is a system class, or creating of the main thread in not successful, we 
+ * immediately bail out by throwing JPFException.
+ * 
+ * While JPF is running, this error is handled by throwing an exception at the 
+ * SUT level. This exception is handled if it is thrown by 
+ * 
+ *    1. a native peer method,  
+ *    2. Intruction.execute(),
+ *    3. ThreadInfo.creatAndThrowException()
+ *    4. VM.initialize() // here it is handled only if it a non-system class
+ * 
+ * If this exception is thrown by a Listener, the host VM throws JPFListenerException.
+ * 
+ */
+public class ClassInfoException extends RuntimeException{
+
+  ClassLoaderInfo classLoader;
+  String exceptionClass; // how we map this into the SUT (i.e. the JPF side)
+  String failedClass;
+
+  public ClassInfoException(String details, ClassLoaderInfo cl, String exceptionClass, String faildClass) {
+<span class="fc" id="L60">    super(details);</span>
+<span class="fc" id="L61">    this.classLoader = cl;</span>
+<span class="fc" id="L62">    this.exceptionClass = exceptionClass;</span>
+<span class="fc" id="L63">    this.failedClass = faildClass;</span>
+<span class="fc" id="L64">  }</span>
+
+  public ClassInfoException (String details, ClassLoaderInfo cl, String exceptionClass, String faildClass, Throwable cause) {
+<span class="nc" id="L67">    super(details, cause);</span>
+<span class="nc" id="L68">    this.classLoader = cl;</span>
+<span class="nc" id="L69">    this.exceptionClass = exceptionClass;</span>
+<span class="nc" id="L70">    this.failedClass = faildClass;</span>
+<span class="nc" id="L71">  }</span>
+
+  
+  public boolean checkSystemClassFailure() {
+<span class="nc" id="L75">    return (failedClass.startsWith(&quot;java.&quot;));</span>
+  }
+
+  public ClassLoaderInfo getClassLoaderInfo() {
+<span class="nc" id="L79">    return classLoader;</span>
+  }
+
+  public String getFailedClass() {
+<span class="nc" id="L83">    return failedClass;</span>
+  }
+
+  public String getExceptionClass() {
+<span class="fc" id="L87">    return exceptionClass;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

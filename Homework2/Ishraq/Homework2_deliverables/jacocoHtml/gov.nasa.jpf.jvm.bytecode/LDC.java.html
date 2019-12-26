@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LDC.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">LDC.java</span></div><h1>LDC.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.LoadOnJPFRequired;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+
+/**
+ * Push item from runtime constant pool
+ * ... =&gt; ..., value
+ */
+public class LDC extends Instruction implements JVMInstruction {
+
+<span class="fc" id="L35">  public enum Type {STRING, CLASS, INT, FLOAT};</span>
+
+  Type type;
+
+  protected String  string;  // the string value if Type.STRING, classname if Type.CLASS
+  protected int     value;
+
+<span class="nc" id="L42">  public LDC() {}</span>
+
+<span class="fc" id="L44">  public LDC (String s, boolean isClass){</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    if (isClass){</span>
+<span class="fc" id="L46">      string = Types.getClassNameFromTypeName(s);</span>
+<span class="fc" id="L47">      type = Type.CLASS;</span>
+    } else {
+<span class="fc" id="L49">      string = s;</span>
+<span class="fc" id="L50">      type = Type.STRING;</span>
+    }
+<span class="fc" id="L52">  }</span>
+
+<span class="fc" id="L54">  public LDC (int v){</span>
+<span class="fc" id="L55">    value = v;</span>
+<span class="fc" id="L56">    type = Type.INT;</span>
+<span class="fc" id="L57">  }</span>
+
+<span class="fc" id="L59">  public LDC (float f){</span>
+<span class="fc" id="L60">    value = Float.floatToIntBits(f);</span>
+<span class="fc" id="L61">    type = Type.FLOAT;</span>
+<span class="fc" id="L62">  }</span>
+
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L67">    StackFrame frame = ti.getModifiableTopFrame();</span>
+    
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">    switch (type){</span>
+      case STRING:
+        // too bad we can't cache it, since location might change between different paths
+<span class="fc" id="L72">        ElementInfo eiValue = ti.getHeap().newInternString(string, ti); </span>
+<span class="fc" id="L73">        value = eiValue.getObjectRef();</span>
+<span class="fc" id="L74">        frame.pushRef(value);</span>
+<span class="fc" id="L75">        break;</span>
+
+      case INT:
+      case FLOAT:
+<span class="fc" id="L79">        frame.push(value);</span>
+<span class="fc" id="L80">        break;</span>
+
+      case CLASS:
+        ClassInfo ci;
+        // resolve the referenced class
+        try {
+<span class="fc" id="L86">          ci = ti.resolveReferencedClass(string);</span>
+<span class="nc" id="L87">        } catch(LoadOnJPFRequired lre) {</span>
+<span class="nc" id="L88">          return frame.getPC();</span>
+<span class="fc" id="L89">        }</span>
+
+        // LDC doesn't cause a &lt;clinit&gt; - we only register all required classes
+        // to make sure we have class objects. &lt;clinit&gt;s are called prior to
+        // GET/PUT or INVOKE
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (!ci.isRegistered()) {</span>
+<span class="fc" id="L95">          ci.registerClass(ti);</span>
+        }
+
+<span class="fc" id="L98">        frame.pushRef( ci.getClassObjectRef());</span>
+
+        break;
+    }
+    
+<span class="fc" id="L103">    return getNext(ti);</span>
+  }
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L108">    return 2; // opcode, index</span>
+  }
+
+  @Override
+  public int getByteCode () {
+<span class="fc" id="L113">    return 0x12;</span>
+  }
+  
+  public int getValue() {
+<span class="nc" id="L117">    return value;</span>
+  }
+  
+  public Type getType() {
+<span class="nc" id="L121">    return type;</span>
+  }
+  
+  public boolean isString() {
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    return (type == Type.STRING);</span>
+  }
+  
+  public float getFloatValue(){
+<span class="nc bnc" id="L129" title="All 2 branches missed.">	  if(type!=Type.FLOAT){</span>
+<span class="nc" id="L130">      throw new IllegalStateException();</span>
+	  }
+    
+<span class="nc" id="L133">	  return Float.intBitsToFloat(value);</span>
+	}
+
+  public String getStringValue() { // if it is a String (not acquired from the class const pool)
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (type == Type.STRING) {</span>
+<span class="nc" id="L138">      return string;</span>
+    } else {
+<span class="nc" id="L140">      return null;</span>
+    }
+  }
+  
+  public String getClassValue() { // if it is the name of a Class (acquired from the class const pool)
+<span class="nc bnc" id="L145" title="All 2 branches missed.">	    if (type == Type.CLASS) {</span>
+<span class="nc" id="L146">	      return string;</span>
+	    } else {
+<span class="nc" id="L148">	      return null;</span>
+	    }
+	  }
+
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L155">	  insVisitor.visit(this);</span>
+<span class="fc" id="L156">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

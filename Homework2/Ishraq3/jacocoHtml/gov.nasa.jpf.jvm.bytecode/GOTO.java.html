@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GOTO.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">GOTO.java</span></div><h1>GOTO.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+
+/**
+ * Branch always
+ * No change
+ *
+ * &lt;2do&gt; store this as code insnIndex, not as bytecode position
+ */
+public class GOTO extends Instruction implements JVMInstruction {
+  protected int targetPosition;
+  Instruction target;
+
+<span class="fc" id="L35">  public GOTO (int targetPosition){</span>
+<span class="fc" id="L36">    this.targetPosition = targetPosition;</span>
+<span class="fc" id="L37">  }</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc bfc" id="L41" title="All 4 branches covered.">    if (isBackJump() &amp;&amp; ti.maxTransitionLengthExceeded()){</span>
+      // this is a rather simplistic attempt to terminate the search in
+      // endless loops that do not change program state.
+      // &lt;2do&gt; this does not handle nested loops yet
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">      if (ti.breakTransition(&quot;MAX_TRANSITION_LENGTH&quot;)){</span>
+<span class="fc" id="L46">        return this; // re-execute after giving state matching a chance to prune the search</span>
+      }
+    }
+    
+<span class="fc" id="L50">    return getTarget();</span>
+  }
+
+  @Override
+  public boolean isBackJump () {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">    return (targetPosition &lt;= position);</span>
+  }
+  
+  public Instruction getTarget() {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">    if (target == null) {</span>
+<span class="fc" id="L60">      target = mi.getInstructionAt(targetPosition);</span>
+    }
+<span class="fc" id="L62">    return target;</span>
+  }
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L67">    return 3; // opcode, bb1, bb2</span>
+  }
+  
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L72">    return 0xA7;</span>
+  }
+  
+  @Override
+  public String toString () {
+<span class="fc" id="L77">    return getMnemonic() + &quot; &quot; + targetPosition;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L82">	  insVisitor.visit(this);</span>
+<span class="fc" id="L83">  }</span>
+
+  @Override
+  public Instruction typeSafeClone(MethodInfo mi) {
+<span class="fc" id="L87">    GOTO clone = null;</span>
+
+    try {
+<span class="fc" id="L90">      clone = (GOTO) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L93">      clone.mi = mi;</span>
+
+<span class="fc" id="L95">      clone.target = null;</span>
+<span class="nc" id="L96">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L97">      e.printStackTrace();</span>
+<span class="fc" id="L98">    }</span>
+
+<span class="fc" id="L100">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

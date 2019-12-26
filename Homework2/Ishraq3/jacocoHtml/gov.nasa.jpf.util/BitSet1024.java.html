@@ -1,0 +1,897 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitSet1024.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">BitSet1024.java</span></div><h1>BitSet1024.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+
+/**
+ * a fixed size BitSet with 1024 bits.
+ *
+ * The main motivation for this class is to minimize memory size while maximizing
+ * performance and keeping a java.util.BitSet compatible interface. The only
+ * deviation from the standard BitSet is that we assume more cardinality() calls
+ * than set()/clear() calls, i.e. we want to cache this value
+ *
+ * Instances of this class do not allocate any additional memory, we keep all
+ * data in builtin type fields
+ */
+public class BitSet1024 extends AbstractFixedBitSet {
+
+  public static final int INDEX_MASK = 0xfffffc00;
+
+  long l0, l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11, l12, l13, l14, l15;
+
+<span class="fc" id="L39">  public BitSet1024 (){</span>
+    // nothing in here
+<span class="fc" id="L41">  }</span>
+
+<span class="nc" id="L43">  public BitSet1024 (int i){</span>
+<span class="nc" id="L44">    set(i);</span>
+<span class="nc" id="L45">  }</span>
+
+<span class="nc" id="L47">  public BitSet1024 (int... idx){</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    for (int i : idx){</span>
+<span class="nc" id="L49">      set(i);</span>
+    }
+<span class="nc" id="L51">  }</span>
+
+  private final int computeCardinality (){
+<span class="nc" id="L54">    int n= Long.bitCount(l0);</span>
+<span class="nc" id="L55">    n += Long.bitCount(l1);</span>
+<span class="nc" id="L56">    n += Long.bitCount(l2);</span>
+<span class="nc" id="L57">    n += Long.bitCount(l3);</span>
+<span class="nc" id="L58">    n += Long.bitCount(l4);</span>
+<span class="nc" id="L59">    n += Long.bitCount(l5);</span>
+<span class="nc" id="L60">    n += Long.bitCount(l6);</span>
+<span class="nc" id="L61">    n += Long.bitCount(l7);</span>
+<span class="nc" id="L62">    n += Long.bitCount(l8);</span>
+<span class="nc" id="L63">    n += Long.bitCount(l9);</span>
+<span class="nc" id="L64">    n += Long.bitCount(l10);</span>
+<span class="nc" id="L65">    n += Long.bitCount(l11);</span>
+<span class="nc" id="L66">    n += Long.bitCount(l12);</span>
+<span class="nc" id="L67">    n += Long.bitCount(l13);</span>
+<span class="nc" id="L68">    n += Long.bitCount(l14);</span>
+<span class="nc" id="L69">    n += Long.bitCount(l15);   </span>
+<span class="nc" id="L70">    return n;</span>
+  }
+
+  //--- public interface (much like java.util.BitSet)
+
+  @Override
+  public void set (int i){
+<span class="fc bfc" id="L77" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L78">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L80" title="6 of 17 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">          if ((l0 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L83">            cardinality++;</span>
+<span class="fc" id="L84">            l0 |= bitPattern;</span>
+          }
+          break;
+        case 1:
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">          if ((l1 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L89">            cardinality++;</span>
+<span class="fc" id="L90">            l1 |= bitPattern;</span>
+          }
+          break;
+        case 2:
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">          if ((l2 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L95">            cardinality++;</span>
+<span class="fc" id="L96">            l2 |= bitPattern;</span>
+          }
+          break;
+        case 3:
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">          if ((l3 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L101">            cardinality++;</span>
+<span class="fc" id="L102">            l3 |= bitPattern;</span>
+          }
+          break;
+        case 4:
+<span class="nc bnc" id="L106" title="All 2 branches missed.">            if ((l4 &amp; bitPattern) == 0L) {</span>
+<span class="nc" id="L107">              cardinality++;</span>
+<span class="nc" id="L108">              l4 |= bitPattern;</span>
+            }
+            break;
+        case 5:
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if ((l5 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L113">              cardinality++;</span>
+<span class="fc" id="L114">              l5 |= bitPattern;</span>
+            }
+            break;
+        case 6:
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if ((l6 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L119">              cardinality++;</span>
+<span class="fc" id="L120">              l6 |= bitPattern;</span>
+            }
+            break;
+        case 7:
+<span class="nc bnc" id="L124" title="All 2 branches missed.">            if ((l7 &amp; bitPattern) == 0L) {</span>
+<span class="nc" id="L125">              cardinality++;</span>
+<span class="nc" id="L126">              l7 |= bitPattern;</span>
+            }
+            break;
+        case 8:
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if ((l8 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L131">              cardinality++;</span>
+<span class="fc" id="L132">              l8 |= bitPattern;</span>
+            }
+            break;
+        case 9:
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">            if ((l9 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L137">              cardinality++;</span>
+<span class="fc" id="L138">              l9 |= bitPattern;</span>
+            }
+            break;
+        case 10:
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if ((l10 &amp; bitPattern) == 0L) {</span>
+<span class="nc" id="L143">              cardinality++;</span>
+<span class="nc" id="L144">              l10 |= bitPattern;</span>
+            }
+            break;
+        case 11:
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if ((l11 &amp; bitPattern) == 0L) {</span>
+<span class="nc" id="L149">              cardinality++;</span>
+<span class="nc" id="L150">              l11 |= bitPattern;</span>
+            }
+            break;
+        case 12:
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">            if ((l12 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L155">              cardinality++;</span>
+<span class="fc" id="L156">              l12 |= bitPattern;</span>
+            }
+            break;
+        case 13:
+<span class="nc bnc" id="L160" title="All 2 branches missed.">            if ((l13 &amp; bitPattern) == 0L) {</span>
+<span class="nc" id="L161">              cardinality++;</span>
+<span class="nc" id="L162">              l13 |= bitPattern;</span>
+            }
+            break;
+        case 14:
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">            if ((l14 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L167">              cardinality++;</span>
+<span class="fc" id="L168">              l14 |= bitPattern;</span>
+            }
+            break;
+        case 15:
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">            if ((l15 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L173">              cardinality++;</span>
+<span class="fc" id="L174">              l15 |= bitPattern;</span>
+            }
+      }
+<span class="fc" id="L177">    } else {</span>
+<span class="fc" id="L178">      throw new IndexOutOfBoundsException(&quot;BitSet1024 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L180">  }</span>
+
+  @Override
+  public void clear (int i){
+<span class="fc bfc" id="L184" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L185">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L187" title="15 of 17 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">          if ((l0 &amp; bitPattern) != 0L) {</span>
+<span class="fc" id="L190">            cardinality--;</span>
+<span class="fc" id="L191">            l0 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 1:
+<span class="nc bnc" id="L195" title="All 2 branches missed.">          if ((l1 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L196">            cardinality--;</span>
+<span class="nc" id="L197">            l1 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 2:
+<span class="nc bnc" id="L201" title="All 2 branches missed.">          if ((l2 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L202">            cardinality--;</span>
+<span class="nc" id="L203">            l2 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 3:
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">          if ((l3 &amp; bitPattern) != 0L) {</span>
+<span class="fc" id="L208">            cardinality--;</span>
+<span class="fc" id="L209">            l3 &amp;= ~bitPattern;</span>
+          }
+        case 4:
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">            if ((l4 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L213">              cardinality--;</span>
+<span class="nc" id="L214">              l4 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 5:
+<span class="nc bnc" id="L218" title="All 2 branches missed.">            if ((l5 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L219">              cardinality--;</span>
+<span class="nc" id="L220">              l5 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 6:
+<span class="nc bnc" id="L224" title="All 2 branches missed.">            if ((l6 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L225">              cardinality--;</span>
+<span class="nc" id="L226">              l6 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 7:
+<span class="nc bnc" id="L230" title="All 2 branches missed.">            if ((l7 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L231">              cardinality--;</span>
+<span class="nc" id="L232">              l7 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 8:
+<span class="nc bnc" id="L236" title="All 2 branches missed.">            if ((l8 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L237">              cardinality--;</span>
+<span class="nc" id="L238">              l8 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 9:
+<span class="nc bnc" id="L242" title="All 2 branches missed.">            if ((l9 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L243">              cardinality--;</span>
+<span class="nc" id="L244">              l9 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 10:
+<span class="nc bnc" id="L248" title="All 2 branches missed.">            if ((l10 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L249">              cardinality--;</span>
+<span class="nc" id="L250">              l10 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 11:
+<span class="nc bnc" id="L254" title="All 2 branches missed.">            if ((l11 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L255">              cardinality--;</span>
+<span class="nc" id="L256">              l11 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 12:
+<span class="nc bnc" id="L260" title="All 2 branches missed.">            if ((l12 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L261">              cardinality--;</span>
+<span class="nc" id="L262">              l12 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 13:
+<span class="nc bnc" id="L266" title="All 2 branches missed.">            if ((l13 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L267">              cardinality--;</span>
+<span class="nc" id="L268">              l13 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 14:
+<span class="nc bnc" id="L272" title="All 2 branches missed.">            if ((l14 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L273">              cardinality--;</span>
+<span class="nc" id="L274">              l14 &amp;= ~bitPattern;</span>
+            }
+            break;
+        case 15:
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if ((l15 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L279">              cardinality--;</span>
+<span class="nc" id="L280">              l15 &amp;= ~bitPattern;</span>
+            }
+      }
+<span class="fc" id="L283">    } else {</span>
+<span class="fc" id="L284">      throw new IndexOutOfBoundsException(&quot;BitSet1024 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L286">  }</span>
+
+  @Override
+  public boolean get (int i){
+<span class="fc bfc" id="L290" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L291">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L293" title="13 of 17 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="fc bfc" id="L295" title="All 2 branches covered.">          return ((l0 &amp; bitPattern) != 0);</span>
+        case 1:
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">          return ((l1 &amp; bitPattern) != 0);</span>
+        case 2:
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">          return ((l2 &amp; bitPattern) != 0);</span>
+        case 3:
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">          return ((l3 &amp; bitPattern) != 0);</span>
+        case 4:
+<span class="nc bnc" id="L303" title="All 2 branches missed.">            return ((l4 &amp; bitPattern) != 0);</span>
+        case 5:
+<span class="nc bnc" id="L305" title="All 2 branches missed.">            return ((l5 &amp; bitPattern) != 0);</span>
+        case 6:
+<span class="nc bnc" id="L307" title="All 2 branches missed.">            return ((l6 &amp; bitPattern) != 0);</span>
+        case 7:
+<span class="nc bnc" id="L309" title="All 2 branches missed.">            return ((l7 &amp; bitPattern) != 0);</span>
+        case 8:
+<span class="nc bnc" id="L311" title="All 2 branches missed.">            return ((l8 &amp; bitPattern) != 0);</span>
+        case 9:
+<span class="nc bnc" id="L313" title="All 2 branches missed.">            return ((l9 &amp; bitPattern) != 0);</span>
+        case 10:
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            return ((l10 &amp; bitPattern) != 0);</span>
+        case 11:
+<span class="nc bnc" id="L317" title="All 2 branches missed.">            return ((l11 &amp; bitPattern) != 0);</span>
+        case 12:
+<span class="nc bnc" id="L319" title="All 2 branches missed.">            return ((l12 &amp; bitPattern) != 0);</span>
+        case 13:
+<span class="nc bnc" id="L321" title="All 2 branches missed.">            return ((l13 &amp; bitPattern) != 0);</span>
+        case 14:
+<span class="nc bnc" id="L323" title="All 2 branches missed.">            return ((l14 &amp; bitPattern) != 0);</span>
+        case 15:
+<span class="nc bnc" id="L325" title="All 2 branches missed.">            return ((l15 &amp; bitPattern) != 0);</span>
+      }
+    }
+
+<span class="fc" id="L329">    throw new IndexOutOfBoundsException(&quot;BitSet1024 index out of range: &quot; + i);</span>
+  }
+
+  @Override
+  public int size() {
+<span class="nc" id="L334">    return 1024;</span>
+  }
+
+  /**
+   * number of bits we can store
+   */
+  @Override
+  public int capacity() {
+<span class="nc" id="L342">    return 1024;</span>
+  }
+
+  /**
+   * index of highest set bit + 1
+   */
+  @Override
+  public int length() {
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">   if (l15 != 0){</span>
+<span class="nc" id="L351">	  return 1024 - Long.numberOfLeadingZeros(l15);</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">   } else if (l14 != 0) {</span>
+<span class="nc" id="L353">	  return 960 - Long.numberOfLeadingZeros(l14);</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">   } else if (l13 != 0) {</span>
+<span class="nc" id="L355">	  return 896 - Long.numberOfLeadingZeros(l13);</span>
+<span class="pc bpc" id="L356" title="1 of 2 branches missed.">   } else if (l12 != 0) {</span>
+<span class="nc" id="L357">	  return 832 - Long.numberOfLeadingZeros(l12);</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">   } else if (l11 != 0) {</span>
+<span class="nc" id="L359">	  return 768 - Long.numberOfLeadingZeros(l11);</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">   } else if (l10 != 0) {</span>
+<span class="nc" id="L361">	  return 704 - Long.numberOfLeadingZeros(l10);</span>
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">   } else if (l9 != 0) {</span>
+<span class="nc" id="L363">	  return 640 - Long.numberOfLeadingZeros(l9);</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">   } else if (l8 != 0) {</span>
+<span class="nc" id="L365">	  return 576 - Long.numberOfLeadingZeros(l8);</span>
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">   } else if (l7 != 0) {</span>
+<span class="nc" id="L367">	  return 512 - Long.numberOfLeadingZeros(l7);</span>
+<span class="pc bpc" id="L368" title="1 of 2 branches missed.">   } else if (l6 != 0) {</span>
+<span class="nc" id="L369">	  return 448 - Long.numberOfLeadingZeros(l6);</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">   } else if (l5 != 0) {</span>
+<span class="nc" id="L371">	  return 384 - Long.numberOfLeadingZeros(l5);</span>
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">   } else if (l4 != 0) {</span>
+<span class="nc" id="L373">	  return 320 - Long.numberOfLeadingZeros(l4);</span>
+<span class="pc bpc" id="L374" title="1 of 2 branches missed.">   } else if (l3 != 0){</span>
+<span class="fc" id="L375">      return 256 - Long.numberOfLeadingZeros(l3);</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">   } else if (l2 != 0){</span>
+<span class="nc" id="L377">      return 192 - Long.numberOfLeadingZeros(l2);</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">   } else if (l1 != 0){</span>
+<span class="nc" id="L379">      return 128 - Long.numberOfLeadingZeros(l1);</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">   } else if (l1 != 0){</span>
+<span class="nc" id="L381">      return 64 - Long.numberOfLeadingZeros(l0);</span>
+   } else {
+<span class="nc" id="L383">      return 0;</span>
+   }
+  }
+
+  @Override
+  public void clear() {
+<span class="fc" id="L389">    l0 = l1 = l2 = l3 = l4 = l5 = l6 = l7</span>
+    = l8 = l9= l10 = l11 = l12 = l13 = l14
+    = l15 =0L;
+<span class="fc" id="L392">    cardinality = 0;</span>
+<span class="fc" id="L393">  }</span>
+
+
+  @Override
+  public int nextSetBit (int fromIdx){
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0) {</span>
+      int i;
+<span class="fc" id="L400">      int i0 = fromIdx &amp; 0x3f;</span>
+<span class="pc bpc" id="L401" title="10 of 17 branches missed.">      switch (fromIdx &gt;&gt; 6){</span>
+        case 0:
+<span class="fc bfc" id="L403" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l0 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i;</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l1)) &lt;64) return i + 64;</span>
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2)) &lt;64) return i + 128;</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l4)) &lt;64) return i + 256;</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l5)) &lt;64) return i + 320;</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="pc bpc" id="L410" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="fc bfc" id="L411" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="fc bfc" id="L412" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="pc bpc" id="L416" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="fc bfc" id="L418" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 1:
+<span class="nc bnc" id="L421" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l1 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L423" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L424" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L425" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L426" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L427" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L429" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L430" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L431" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L432" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L434" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L435" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 2:
+<span class="nc bnc" id="L438" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L440" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L444" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L445" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L446" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L448" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 3:
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L458" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L459" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L460" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 4:
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">        	  if ((i=Long.numberOfTrailingZeros(l4 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 256;</span>
+<span class="pc bpc" id="L470" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L473" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L477" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 5:
+<span class="pc bpc" id="L483" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l5 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 320;</span>
+<span class="pc bpc" id="L484" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l6)) &lt;64) return i + 384;</span>
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="pc bpc" id="L486" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L487" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L490" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L491" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+          break;
+        case 6:
+<span class="nc bnc" id="L496" title="All 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(l6 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L497" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L498" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L500" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L502" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L503" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 7:
+<span class="nc bnc" id="L508" title="All 2 branches missed.">       	  if ((i=Long.numberOfTrailingZeros(l7 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L513" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L514" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 8:
+<span class="pc bpc" id="L519" title="1 of 2 branches missed.">       	  if ((i=Long.numberOfTrailingZeros(l8 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 512;</span>
+<span class="pc bpc" id="L520" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L521" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L525" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L526" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 9:
+<span class="pc bpc" id="L529" title="1 of 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(l9 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 576;</span>
+<span class="pc bpc" id="L530" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l10)) &lt;64) return i + 640;</span>
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="pc bpc" id="L532" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L534" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 10:
+<span class="nc bnc" id="L538" title="All 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(l10 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L540" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L541" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L542" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 11:
+<span class="nc bnc" id="L546" title="All 2 branches missed.">         	  if ((i=Long.numberOfTrailingZeros(l11 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L549" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L550" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 12:
+<span class="pc bpc" id="L553" title="1 of 2 branches missed.">        	  if ((i=Long.numberOfTrailingZeros(l12 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 768;</span>
+<span class="pc bpc" id="L554" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l13)) &lt;64) return i + 832;</span>
+<span class="pc bpc" id="L555" title="1 of 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 13:
+<span class="nc bnc" id="L559" title="All 2 branches missed.">        	 if ((i=Long.numberOfTrailingZeros(l13 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L560" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 14:
+<span class="nc bnc" id="L564" title="All 2 branches missed.">        	 if ((i=Long.numberOfTrailingZeros(l14 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L565" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(l15)) &lt;64) return i + 960;</span>
+            break;
+        case 15:
+<span class="nc bnc" id="L568" title="All 2 branches missed.">       	 if ((i=Long.numberOfTrailingZeros(l15 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 960;</span>
+            break;
+      }
+<span class="fc" id="L571">      return -1;</span>
+
+    }
+<span class="nc" id="L574">    return -1;</span>
+  }
+
+  @Override
+  public int nextClearBit (int fromIdx){
+<span class="nc bnc" id="L579" title="All 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0) {</span>
+      int i;
+<span class="nc" id="L581">      int i0 = fromIdx &amp; 0x3f;</span>
+<span class="nc bnc" id="L582" title="All 17 branches missed.">      switch (fromIdx &gt;&gt; 6){</span>
+        case 0:
+<span class="nc bnc" id="L584" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l0 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i;</span>
+<span class="nc bnc" id="L585" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l1)) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L586" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L587" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L588" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L589" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L590" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L591" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L592" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L593" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L594" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L595" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L597" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L598" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L599" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 1:
+<span class="nc bnc" id="L602" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l1 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L604" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L605" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L606" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L607" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L608" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L614" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L615" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 2:
+<span class="nc bnc" id="L619" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L620" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L622" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L623" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L624" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L627" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L629" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L630" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L632" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 3:
+<span class="nc bnc" id="L635" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 192;</span>
+<span class="nc bnc" id="L636" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l4)) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L637" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L638" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L640" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L642" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L643" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L644" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L645" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L646" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L647" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 4:
+<span class="nc bnc" id="L650" title="All 2 branches missed.">        	  if ((i=Long.numberOfTrailingZeros(~l4 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 256;</span>
+<span class="nc bnc" id="L651" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l5)) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L652" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L654" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L655" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L656" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L657" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L658" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L659" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L660" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L661" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 5:
+<span class="nc bnc" id="L664" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l5 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 320;</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l6)) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L666" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L667" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L670" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L671" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L672" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L673" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L674" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+          break;
+        case 6:
+<span class="nc bnc" id="L677" title="All 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(~l6 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 384;</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l7)) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L679" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L680" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L682" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L683" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L684" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L686" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 7:
+<span class="nc bnc" id="L689" title="All 2 branches missed.">       	  if ((i=Long.numberOfTrailingZeros(~l7 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 448;</span>
+<span class="nc bnc" id="L690" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l8)) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L691" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L692" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L693" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L694" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L697" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 8:
+<span class="nc bnc" id="L700" title="All 2 branches missed.">       	  if ((i=Long.numberOfTrailingZeros(~l8 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 512;</span>
+<span class="nc bnc" id="L701" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l9)) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L702" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L703" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L704" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L705" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L706" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L707" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 9:
+<span class="nc bnc" id="L710" title="All 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(~l9 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 576;</span>
+<span class="nc bnc" id="L711" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l10)) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L712" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L713" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L714" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L715" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L716" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 10:
+<span class="nc bnc" id="L719" title="All 2 branches missed.">      	  if ((i=Long.numberOfTrailingZeros(~l10 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 640;</span>
+<span class="nc bnc" id="L720" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l11)) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L721" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L722" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L723" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L724" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 11:
+<span class="nc bnc" id="L727" title="All 2 branches missed.">         	  if ((i=Long.numberOfTrailingZeros(~l11 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 704;</span>
+<span class="nc bnc" id="L728" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l12)) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L729" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L730" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L731" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 12:
+<span class="nc bnc" id="L734" title="All 2 branches missed.">        	  if ((i=Long.numberOfTrailingZeros(~l12 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 768;</span>
+<span class="nc bnc" id="L735" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l13)) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L736" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L737" title="All 2 branches missed.">              if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 13:
+<span class="nc bnc" id="L740" title="All 2 branches missed.">        	 if ((i=Long.numberOfTrailingZeros(~l13 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 832;</span>
+<span class="nc bnc" id="L741" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(~l14)) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L742" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 14:
+<span class="nc bnc" id="L745" title="All 2 branches missed.">        	 if ((i=Long.numberOfTrailingZeros(~l14 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 896;</span>
+<span class="nc bnc" id="L746" title="All 2 branches missed.">             if ((i=Long.numberOfTrailingZeros(~l15)) &lt;64) return i + 960;</span>
+            break;
+        case 15:
+<span class="nc bnc" id="L749" title="All 2 branches missed.">       	 if ((i=Long.numberOfTrailingZeros(~l15 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 960;</span>
+            break;
+      }
+
+<span class="nc" id="L753">      return -1;</span>
+
+    } else {
+      //throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + fromIdx);
+<span class="nc" id="L757">      return -1;</span>
+    }
+  }
+
+  public void and (BitSet1024 other){
+<span class="nc" id="L762">    l0 &amp;= other.l0;</span>
+<span class="nc" id="L763">    l1 &amp;= other.l1;</span>
+<span class="nc" id="L764">    l2 &amp;= other.l2;</span>
+<span class="nc" id="L765">    l3 &amp;= other.l3;</span>
+<span class="nc" id="L766">    l4 &amp;= other.l4;</span>
+<span class="nc" id="L767">    l5 &amp;= other.l5;</span>
+<span class="nc" id="L768">    l6 &amp;= other.l6;</span>
+<span class="nc" id="L769">    l7 &amp;= other.l7;</span>
+<span class="nc" id="L770">    l8 &amp;= other.l8;</span>
+<span class="nc" id="L771">    l9 &amp;= other.l9;</span>
+<span class="nc" id="L772">    l10 &amp;= other.l10;</span>
+<span class="nc" id="L773">    l11 &amp;= other.l11;</span>
+<span class="nc" id="L774">    l12 &amp;= other.l12;</span>
+<span class="nc" id="L775">    l13 &amp;= other.l13;</span>
+<span class="nc" id="L776">    l14 &amp;= other.l14;</span>
+<span class="nc" id="L777">    l15 &amp;= other.l15;</span>
+
+<span class="nc" id="L779">    cardinality = computeCardinality();</span>
+<span class="nc" id="L780">  }</span>
+
+  public void andNot (BitSet1024 other){
+<span class="nc" id="L783">    l0 &amp;= ~other.l0;</span>
+<span class="nc" id="L784">    l1 &amp;= ~other.l1;</span>
+<span class="nc" id="L785">    l2 &amp;= ~other.l2;</span>
+<span class="nc" id="L786">    l3 &amp;= ~other.l3;</span>
+<span class="nc" id="L787">    l4 &amp;= ~other.l4;</span>
+<span class="nc" id="L788">    l5 &amp;= ~other.l5;</span>
+<span class="nc" id="L789">    l6 &amp;= ~other.l6;</span>
+<span class="nc" id="L790">    l7 &amp;= ~other.l7;</span>
+<span class="nc" id="L791">    l8 &amp;= ~other.l8;</span>
+<span class="nc" id="L792">    l9 &amp;= ~other.l9;</span>
+<span class="nc" id="L793">    l10 &amp;= ~other.l10;</span>
+<span class="nc" id="L794">    l11 &amp;= ~other.l11;</span>
+<span class="nc" id="L795">    l12 &amp;= ~other.l12;</span>
+<span class="nc" id="L796">    l13 &amp;= ~other.l13;</span>
+<span class="nc" id="L797">    l14 &amp;= ~other.l14;</span>
+<span class="nc" id="L798">    l15 &amp;= ~other.l15;</span>
+
+<span class="nc" id="L800">    cardinality = computeCardinality();</span>
+<span class="nc" id="L801">  }</span>
+
+  public void or (BitSet1024 other){
+<span class="nc" id="L804">    l0 |= other.l0;</span>
+<span class="nc" id="L805">    l1 |= other.l1;</span>
+<span class="nc" id="L806">    l2 |= other.l2;</span>
+<span class="nc" id="L807">    l3 |= other.l3;</span>
+<span class="nc" id="L808">    l4 |= other.l4;</span>
+<span class="nc" id="L809">    l5 |= other.l5;</span>
+<span class="nc" id="L810">    l6 |= other.l6;</span>
+<span class="nc" id="L811">    l7 |= other.l7;</span>
+<span class="nc" id="L812">    l8 |= other.l8;</span>
+<span class="nc" id="L813">    l9 |= other.l9;</span>
+<span class="nc" id="L814">    l10 |= other.l10;</span>
+<span class="nc" id="L815">    l11 |= other.l11;</span>
+<span class="nc" id="L816">    l12 |= other.l12;</span>
+<span class="nc" id="L817">    l13 |= other.l13;</span>
+<span class="nc" id="L818">    l14 |= other.l14;</span>
+<span class="nc" id="L819">    l15 |= other.l15;</span>
+
+<span class="nc" id="L821">    cardinality = computeCardinality();</span>
+<span class="nc" id="L822">  }</span>
+
+  @Override
+  public boolean equals (Object o){
+<span class="nc bnc" id="L826" title="All 2 branches missed.">    if (o instanceof BitSet1024){</span>
+<span class="nc" id="L827">      BitSet1024 other = (BitSet1024)o;</span>
+<span class="nc bnc" id="L828" title="All 2 branches missed.">      if (l0 != other.l0) return false;</span>
+<span class="nc bnc" id="L829" title="All 2 branches missed.">      if (l1 != other.l1) return false;</span>
+<span class="nc bnc" id="L830" title="All 2 branches missed.">      if (l2 != other.l2) return false;</span>
+<span class="nc bnc" id="L831" title="All 2 branches missed.">      if (l3 != other.l3) return false;</span>
+<span class="nc bnc" id="L832" title="All 2 branches missed.">      if (l4 != other.l4) return false;</span>
+<span class="nc bnc" id="L833" title="All 2 branches missed.">      if (l5 != other.l5) return false;</span>
+<span class="nc bnc" id="L834" title="All 2 branches missed.">      if (l6 != other.l6) return false;</span>
+<span class="nc bnc" id="L835" title="All 2 branches missed.">      if (l7 != other.l7) return false;</span>
+<span class="nc bnc" id="L836" title="All 2 branches missed.">      if (l8 != other.l8) return false;</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">      if (l9 != other.l9) return false;</span>
+<span class="nc bnc" id="L838" title="All 2 branches missed.">      if (l10 != other.l10) return false;</span>
+<span class="nc bnc" id="L839" title="All 2 branches missed.">      if (l11 != other.l11) return false;</span>
+<span class="nc bnc" id="L840" title="All 2 branches missed.">      if (l12 != other.l12) return false;</span>
+<span class="nc bnc" id="L841" title="All 2 branches missed.">      if (l13 != other.l13) return false;</span>
+<span class="nc bnc" id="L842" title="All 2 branches missed.">      if (l14 != other.l14) return false;</span>
+<span class="nc bnc" id="L843" title="All 2 branches missed.">      if (l15 != other.l15) return false;</span>
+
+<span class="nc" id="L845">      return true;</span>
+    } else {
+      // &lt;2do&gt; we could compare to a normal java.util.BitSet here
+<span class="nc" id="L848">      return false;</span>
+    }
+  }
+
+  /**
+   * answer the same hashCodes as java.util.BitSet
+   */
+  @Override
+  public int hashCode() {
+<span class="nc" id="L857">    long hc = 1234;</span>
+<span class="nc" id="L858">    hc ^= l0;</span>
+<span class="nc" id="L859">    hc ^= l1*2;</span>
+<span class="nc" id="L860">    hc ^= l2*3;</span>
+<span class="nc" id="L861">    hc ^= l4*4;</span>
+<span class="nc" id="L862">    hc ^= l5*5;</span>
+<span class="nc" id="L863">    hc ^= l6*6;</span>
+<span class="nc" id="L864">    hc ^= l7*7;</span>
+<span class="nc" id="L865">    hc ^= l8*8;</span>
+<span class="nc" id="L866">    hc ^= l9*9;</span>
+<span class="nc" id="L867">    hc ^= l10*10;</span>
+<span class="nc" id="L868">    hc ^= l11*11;</span>
+<span class="nc" id="L869">    hc ^= l12*12;</span>
+<span class="nc" id="L870">    hc ^= l13*13;</span>
+<span class="nc" id="L871">    hc ^= l14*14;</span>
+<span class="nc" id="L872">    hc ^= l15*15;</span>
+<span class="nc" id="L873">    return (int) ((hc &gt;&gt;32) ^ hc);</span>
+  }
+
+
+  @Override
+  public void hash (HashData hd){
+<span class="nc" id="L879">    hd.add(l0);</span>
+<span class="nc" id="L880">    hd.add(l1);</span>
+<span class="nc" id="L881">    hd.add(l2);</span>
+<span class="nc" id="L882">    hd.add(l3);</span>
+<span class="nc" id="L883">    hd.add(l4);</span>
+<span class="nc" id="L884">    hd.add(l5);</span>
+<span class="nc" id="L885">    hd.add(l6);</span>
+<span class="nc" id="L886">    hd.add(l7);</span>
+<span class="nc" id="L887">    hd.add(l8);</span>
+<span class="nc" id="L888">    hd.add(l9);</span>
+<span class="nc" id="L889">    hd.add(l10);</span>
+<span class="nc" id="L890">    hd.add(l11);</span>
+<span class="nc" id="L891">    hd.add(l12);</span>
+<span class="nc" id="L892">    hd.add(l13);</span>
+<span class="nc" id="L893">    hd.add(l14);</span>
+<span class="nc" id="L894">    hd.add(l15);</span>
+<span class="nc" id="L895">  }  </span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

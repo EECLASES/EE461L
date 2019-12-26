@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Verify.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Verify.java</span></div><h1>Verify.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.BitSet;
+import java.util.Random;
+
+
+/**
+ * Verify is the programmatic interface of JPF that can be used from inside of
+ * applications. In order to enable programs to run outside of the JPF
+ * environment, we provide (mostly empty) bodies for the methods that are
+ * otherwise intercepted by the native peer class
+ */
+<span class="nc" id="L34">public class Verify {</span>
+  static final int MAX_COUNTERS = 10;
+  static int[] counter;  // only here so that we don't pull in all JPF classes at RT
+
+  private static Random random;
+
+  /*
+   * only set if this was used from within a JPF context. This is mainly to
+   * enable encapsulation of JPF specific types so that they only get
+   * pulled in on demand, and we otherwise can still use the same Verify class
+   * for JPF-external execution. We use a class object to make sure it doesn't
+   * get recycled once JPF is terminated.
+   */
+  static Class&lt;?&gt; peer;
+
+  private static Random getRandom() {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">    if (random == null) {</span>
+<span class="nc" id="L51">      random = new Random(42);</span>
+    }
+<span class="nc" id="L53">    return random;</span>
+  }
+
+  /*
+   * register the peer class, which is only done from within a JPF execution
+   * context. Be aware of that this migh actually load the real Verify class.
+   * The sequence usually is
+   *   JPF(Verify) -&gt; VM(JPF_gov_nasa_jpf_vm_Verify) -&gt; VM(Verify)
+   */
+  public static void setPeerClass (Class&lt;?&gt; cls) {
+<span class="fc" id="L63">    peer = cls;</span>
+<span class="fc" id="L64">  }</span>
+
+  // note this is NOT marked native because we might also call it from host VM code
+  // (beware that Verify is a different class there!). When executed by JPF,
+  // this is an MJI method
+  public static int getCounter (int id) {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">    if (peer != null) {</span>
+      // this is executed if we are in a JPF context
+<span class="fc" id="L72">      return JPF_gov_nasa_jpf_vm_Verify.getCounter__I__I(null, 0, id);</span>
+    } else {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">      if (counter == null) {</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        counter = new int[id &gt;= MAX_COUNTERS ? (id+1) : MAX_COUNTERS];</span>
+      }
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">      if ((id &lt; 0) || (id &gt;= counter.length)) {</span>
+<span class="nc" id="L78">        return 0;</span>
+      }
+
+<span class="fc" id="L81">      return counter[id];</span>
+    }
+  }
+
+  public static void resetCounter (int id) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">    if (peer != null){</span>
+<span class="fc" id="L87">      JPF_gov_nasa_jpf_vm_Verify.resetCounter__I__V(null, 0, id);</span>
+    } else {
+<span class="pc bpc" id="L89" title="5 of 6 branches missed.">      if ((counter != null) &amp;&amp; (id &gt;= 0) &amp;&amp; (id &lt; counter.length)) {</span>
+<span class="nc" id="L90">        counter[id] = 0;</span>
+      }
+    }
+<span class="fc" id="L93">  }</span>
+
+  public static void setCounter (int id, int val) {
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (peer != null){</span>
+<span class="nc" id="L97">      JPF_gov_nasa_jpf_vm_Verify.setCounter__II__V(null, 0, id, val);</span>
+    } else {
+<span class="nc bnc" id="L99" title="All 6 branches missed.">      if ((counter != null) &amp;&amp; (id &gt;= 0) &amp;&amp; (id &lt; counter.length)) {</span>
+<span class="nc" id="L100">        counter[id] = val;</span>
+      }
+    }
+<span class="nc" id="L103">  }</span>
+
+  
+  public static int incrementCounter (int id) {
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">    if (peer != null){</span>
+<span class="nc" id="L108">      return JPF_gov_nasa_jpf_vm_Verify.incrementCounter__I__I(null, 0, id);</span>
+    } else {
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">      if (counter == null) {</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        counter = new int[(id &gt;= MAX_COUNTERS) ? id+1 : MAX_COUNTERS];</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">      } else if (id &gt;= counter.length) {</span>
+<span class="nc" id="L113">        int[] newCounter = new int[id+1];</span>
+<span class="nc" id="L114">        System.arraycopy(counter, 0, newCounter, 0, counter.length);</span>
+<span class="nc" id="L115">        counter = newCounter;</span>
+      }
+
+<span class="pc bpc" id="L118" title="2 of 4 branches missed.">      if ((id &gt;= 0) &amp;&amp; (id &lt; counter.length)) {</span>
+<span class="fc" id="L119">        return ++counter[id];</span>
+      }
+
+<span class="nc" id="L122">      return 0;</span>
+    }
+  }
+
+  public static final int NO_VALUE = -1;
+  
+  public static void putValue (String key, int value) {
+<span class="nc" id="L129">    throw new UnsupportedOperationException(&quot;putValue requires JPF execution&quot;);</span>
+  }
+  
+  public static int getValue (String key) {
+<span class="nc" id="L133">    throw new UnsupportedOperationException(&quot;getValue requires JPF execution&quot;);    </span>
+  }
+  
+  // same mechanism and purpose as the counters, but with BitSets, which is
+  // more convenient if we have a lot of different events to check
+
+  static BitSet[] bitSets;
+
+  private static void checkBitSetId(int id) {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    if (bitSets == null) {</span>
+<span class="nc" id="L143">      bitSets = new BitSet[id + 1];</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    } else if (id &gt;= bitSets.length) {</span>
+<span class="nc" id="L145">      BitSet[] newBitSets = new BitSet[id + 1];</span>
+<span class="nc" id="L146">      System.arraycopy(bitSets, 0, newBitSets, 0, bitSets.length);</span>
+<span class="nc" id="L147">      bitSets = newBitSets;</span>
+    }
+
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (bitSets[id] == null) {</span>
+<span class="nc" id="L151">      bitSets[id] = new BitSet();</span>
+    }
+<span class="nc" id="L153">  }</span>
+
+
+  public static void setBitInBitSet(int id, int bit, boolean value) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">    if (peer != null){</span>
+      // this is executed if we did run JPF
+<span class="nc" id="L159">      JPF_gov_nasa_jpf_vm_Verify.setBitInBitSet__IIZ__V(null, 0, id, bit, value);</span>
+    } else {
+      // this is executed if we run this without previously executing JPF
+<span class="nc" id="L162">      checkBitSetId(id);</span>
+<span class="nc" id="L163">      bitSets[id].set(bit, value);</span>
+    }
+<span class="nc" id="L165">  }</span>
+
+  public static boolean getBitInBitSet(int id, int bit) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">    if (peer != null){</span>
+      // this is executed if we did run JPF
+<span class="fc" id="L170">      return JPF_gov_nasa_jpf_vm_Verify.getBitInBitSet__II__Z(null, 0, id, bit);</span>
+
+    } else {
+      // this is executed if we run this without previously executing JPF
+<span class="nc" id="L174">      checkBitSetId(id);</span>
+<span class="nc" id="L175">      return bitSets[id].get(bit);</span>
+    }
+  }
+
+  /**
+   * Adds a comment to the error trace, which will be printed and saved.
+   */
+<span class="nc" id="L182">  public static void addComment (String s) {}</span>
+
+  /**
+   * Backwards compatibility START
+   * @deprecated use &quot;assert cond : msg&quot;
+   */
+  @Deprecated
+  public static void assertTrue (String s, boolean cond) {
+<span class="nc bnc" id="L190" title="All 2 branches missed.">    if (!cond) {</span>
+<span class="nc" id="L191">      System.out.println(s);</span>
+<span class="nc" id="L192">      assertTrue(cond);</span>
+    }
+<span class="nc" id="L194">  }</span>
+
+  /**
+   * Checks that the condition is true.
+   * @deprecated use 'assert' directly
+   */
+  @Deprecated
+  public static void assertTrue (boolean cond) {
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    if (!cond) {</span>
+<span class="nc" id="L203">      throw new AssertionError(&quot;Verify.assertTrue failed&quot;);</span>
+    }
+<span class="nc" id="L205">  }</span>
+
+<span class="nc" id="L207">  public static void atLabel (String label) {}</span>
+
+<span class="nc" id="L209">  public static void atLabel (int label) {}</span>
+
+  /**
+   * Marks the beginning of an atomic block.
+   * THIS IS EVIL, DON'T USE IT FOR OPTIMIZATION - THAT'S WHAT POR IS FOR!
+   * (it's mostly here to support model classes that need to execute atomic)
+   */
+<span class="nc" id="L216">  public static void beginAtomic () {}</span>
+
+  /**
+   * Marks the end of an atomic block.
+   * EVIL - see beginAtomic()
+   */
+<span class="nc" id="L222">  public static void endAtomic () {}</span>
+
+<span class="nc" id="L224">  public static void boring (boolean cond) {}</span>
+
+  public static void busyWait (long duration) {
+    // this gets only executed outside of JPF
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    while (duration &gt; 0) {</span>
+<span class="nc" id="L229">      duration--;</span>
+    }
+<span class="nc" id="L231">  }</span>
+
+  public static boolean isCalledFromClass (String refClsName) {
+<span class="nc" id="L234">    Throwable t = new Throwable();</span>
+<span class="nc" id="L235">    StackTraceElement[] st = t.getStackTrace();</span>
+
+<span class="nc bnc" id="L237" title="All 2 branches missed.">    if (st.length &lt; 3) {</span>
+      // main() or run()
+<span class="nc" id="L239">      return false;</span>
+    }
+
+    try {
+<span class="nc" id="L243">      Class&lt;?&gt; refClazz = Class.forName(refClsName);</span>
+<span class="nc" id="L244">      Class&lt;?&gt; callClazz = Class.forName(st[2].getClassName());</span>
+
+<span class="nc" id="L246">      return (refClazz.isAssignableFrom(callClazz));</span>
+
+<span class="nc" id="L248">    } catch (ClassNotFoundException cfnx) {</span>
+<span class="nc" id="L249">      return false;</span>
+    }
+  }
+
+<span class="nc" id="L253">  public static void ignoreIf (boolean cond) {}</span>
+
+<span class="nc" id="L255">  public static void instrumentPoint (String label) {}</span>
+
+<span class="nc" id="L257">  public static void instrumentPointDeep (String label) {}</span>
+
+<span class="nc" id="L259">  public static void instrumentPointDeepRecur (String label, int depth) {}</span>
+
+<span class="nc" id="L261">  public static void interesting (boolean cond) {}</span>
+
+<span class="nc" id="L263">  public static void breakTransition (String reason) {}</span>
+
+ /** for testing and debugging purposes */
+  public static int breakTransition (String reason, int min, int max) {
+<span class="nc" id="L267">    return -1;</span>
+  }
+
+  /**
+   * simple debugging aids to imperatively print the current path output of the SUT
+   * (to be used with vm.path_output)
+   */
+<span class="nc" id="L274">  public static void printPathOutput(String msg) {}</span>
+<span class="nc" id="L275">  public static void printPathOutput(boolean cond, String msg) {}</span>
+
+  public static void threadPrint (String s) {
+<span class="nc" id="L278">    System.out.print( Thread.currentThread().getName());</span>
+<span class="nc" id="L279">    System.out.print(&quot;: &quot;);</span>
+<span class="nc" id="L280">    System.out.print(s);</span>
+<span class="nc" id="L281">  }</span>
+
+  public static void threadPrintln (String s) {
+<span class="nc" id="L284">    threadPrint(s);</span>
+<span class="nc" id="L285">    System.out.println();</span>
+<span class="nc" id="L286">  }</span>
+  
+  public static void print (String s) {
+<span class="nc" id="L289">    System.out.print(s);</span>
+<span class="nc" id="L290">  }</span>
+
+  public static void println (String s) {
+<span class="nc" id="L293">    System.out.println(s);</span>
+<span class="nc" id="L294">  }</span>
+  
+  public static void print (String s, int i) {
+<span class="nc" id="L297">    System.out.print(s + &quot; : &quot; + i);</span>
+<span class="nc" id="L298">  }</span>
+
+  public static void print (String s, boolean b) {
+<span class="nc" id="L301">    System.out.print(s + &quot; : &quot; + b);</span>
+<span class="nc" id="L302">  }</span>
+
+  public static void println() {
+<span class="nc" id="L305">    System.out.println();</span>
+<span class="nc" id="L306">  }</span>
+
+  /**
+   * this is to avoid StringBuilders
+   */
+  public static void print (String... args){
+<span class="nc bnc" id="L312" title="All 2 branches missed.">    for (String s : args){</span>
+<span class="nc" id="L313">      System.out.print(s);</span>
+    }
+<span class="nc" id="L315">  }</span>
+
+  /**
+   * note - these are mostly for debugging purposes (to see if attributes get
+   * propagated correctly, w/o having to write a listener), since attributes are
+   * supposed to be created at the native side, and hence can't be accessed from
+   * the application
+   */
+  
+  //--- use these if you know there are single attributes
+<span class="nc" id="L325">  public static void setFieldAttribute (Object o, String fieldName, int val) {}</span>
+<span class="nc" id="L326">  public static int getFieldAttribute (Object o, String fieldName) { return 0; }</span>
+  
+  //--- use these for multiple attributes
+<span class="nc" id="L329">  public static void addFieldAttribute (Object o, String fieldName, int val) {}</span>
+<span class="nc" id="L330">  public static int[] getFieldAttributes (Object o, String fieldName) { return new int[0]; }</span>
+
+<span class="nc" id="L332">  public static void setLocalAttribute (String varName, int val) {}</span>
+<span class="nc" id="L333">  public static int getLocalAttribute (String varName) { return 0; }</span>
+
+<span class="nc" id="L335">  public static void addLocalAttribute (String varName, int val) {}</span>
+<span class="nc" id="L336">  public static int[] getLocalAttributes (String varName) { return new int[0]; }</span>
+
+<span class="nc" id="L338">  public static void setElementAttribute (Object arr, int idx, int val){}</span>
+<span class="nc" id="L339">  public static int getElementAttribute (Object arr, int idx) { return 0; }</span>
+  
+<span class="nc" id="L341">  public static void addElementAttribute (Object arr, int idx, int val){}</span>
+<span class="nc" id="L342">  public static int[] getElementAttributes (Object arr, int idx) { return new int[0]; }</span>
+
+<span class="nc" id="L344">  public static void setObjectAttribute (Object o, int val) {}</span>
+<span class="nc" id="L345">  public static int getObjectAttribute (Object o) { return 0; }</span>
+  
+<span class="nc" id="L347">  public static void addObjectAttribute (Object o, int val) {}</span>
+<span class="nc" id="L348">  public static int[] getObjectAttributes (Object o) { return new int[0]; }</span>
+
+  
+  /**
+   * this is the new boolean choice generator. Since there's no real
+   * heuristic involved with boolean values, we skip the id (it's a
+   * hardwired &quot;boolean&quot;)
+   */
+  public static boolean getBoolean () {
+    // just executed when not running inside JPF, native otherwise
+<span class="nc bnc" id="L358" title="All 2 branches missed.">    return ((System.currentTimeMillis() &amp; 1) != 0);</span>
+  }
+
+  /**
+   * new boolean choice generator that also tells jpf which value to
+   * use first by default in a search.
+   */
+  public static boolean getBoolean (boolean falseFirst) {
+    // this is only executed when not running JPF
+<span class="nc" id="L367">    return getBoolean();</span>
+  }
+
+
+  /**
+   * Returns int nondeterministically between (and including) min and max.
+   */
+  public static int getInt (int min, int max) {
+    // this is only executed when not running JPF, native otherwise
+<span class="nc" id="L376">    return getRandom().nextInt((max-min+1)) + min;</span>
+  }
+
+  public static int getIntFromList (int... values){
+<span class="nc bnc" id="L380" title="All 4 branches missed.">    if (values != null &amp;&amp; values.length &gt; 0) {</span>
+<span class="nc" id="L381">      int i = getRandom().nextInt(values.length);</span>
+<span class="nc" id="L382">      return values[i];</span>
+    } else {
+<span class="nc" id="L384">      return getRandom().nextInt();</span>
+    }
+  }
+
+  public static Object getObject (String key) {
+<span class="nc" id="L389">    return &quot;?&quot;;</span>
+  }
+
+  /**
+   * this is the API for int value choice generators. 'id' is used to identify
+   * both the corresponding ChoiceGenerator subclass, and the application specific
+   * ctor parameters from the normal JPF configuration mechanism
+   */
+  public static int getInt (String key){
+    // this is only executed when not running JPF, native otherwise
+<span class="nc" id="L399">    return getRandom().nextInt();</span>
+  }
+
+  /**
+   * this is the API for double value choice generators. 'id' is used to identify
+   * both the corresponding ChoiceGenerator subclass, and the application specific
+   * ctor parameters from the normal JPF configuration mechanism
+   */
+  public static double getDouble (String key){
+    // this is only executed when not running JPF, native otherwise
+<span class="nc" id="L409">    return getRandom().nextDouble();</span>
+  }
+
+  public static double getDoubleFromList (double... values){
+<span class="nc bnc" id="L413" title="All 4 branches missed.">    if (values != null &amp;&amp; values.length &gt; 0) {</span>
+<span class="nc" id="L414">      int i = getRandom().nextInt(values.length);</span>
+<span class="nc" id="L415">      return values[i];</span>
+    } else {
+<span class="nc" id="L417">      return getRandom().nextDouble();</span>
+    }
+  }
+  
+  public static long getLongFromList (long...values){
+<span class="nc bnc" id="L422" title="All 4 branches missed.">    if (values != null &amp;&amp; values.length &gt; 0) {</span>
+<span class="nc" id="L423">      int i = getRandom().nextInt(values.length);</span>
+<span class="nc" id="L424">      return values[i];</span>
+    } else {
+<span class="nc" id="L426">      return getRandom().nextLong();</span>
+    }    
+  }
+
+  public static float getFloatFromList (float...values){
+<span class="nc bnc" id="L431" title="All 4 branches missed.">    if (values != null &amp;&amp; values.length &gt; 0) {</span>
+<span class="nc" id="L432">      int i = getRandom().nextInt(values.length);</span>
+<span class="nc" id="L433">      return values[i];</span>
+    } else {
+<span class="nc" id="L435">      return getRandom().nextFloat();</span>
+    }    
+  }
+
+  
+  /**
+   * Returns a random number between 0 and max inclusive.
+   */
+  public static int random (int max) {
+    // this is only executed when not running JPF
+<span class="nc" id="L445">    return getRandom().nextInt(max + 1);</span>
+  }
+
+  /**
+   * Returns a random boolean value, true or false. Note this gets
+   * handled by the native peer, and is just here to enable running
+   * instrumented applications w/o JPF
+   */
+  public static boolean randomBool () {
+    // this is only executed when not running JPF
+<span class="nc" id="L455">    return getRandom().nextBoolean();</span>
+  }
+
+  public static long currentTimeMillis () {
+<span class="nc" id="L459">    return System.currentTimeMillis();</span>
+  }
+
+  // Backwards compatibility START
+  public static Object randomObject (String type) {
+<span class="nc" id="L464">    return null;</span>
+  }
+
+  public static boolean isRunningInJPF() {
+<span class="fc" id="L468">    return false;</span>
+  }
+
+  /**
+   * USE CAREFULLY - returns true if the virtual machine this code is
+   * running under is doing state matching.  This can be used as a hint
+   * as to whether data structures (that are known to be correct!)
+   * should be configured to use a canonical representation.  For example,
+   * &lt;pre&gt;&lt;code&gt;
+   * Vector v = new Vector();
+   * v.add(obj1);
+   * if (Verify.getBoolean()) {
+   *     v.addAll(eleventyBillionObjectCollection);
+   *     v.setSize(1);
+   * }
+   * // compare states here
+   * &lt;/code&gt;&lt;/pre&gt;
+   * To the programmer, the states are (almost certainly) the same.  To
+   * the VM, they could be different (capacity inside the Vector).  For
+   * the sake of speed, Vector does not store things canonically, but this
+   * can cause (probably mild) state explosion if matching states.  If
+   * you know whether states are being matched, you can choose the right
+   * structure--as long as those structures aren't what you're looking for
+   * bugs in!
+   */
+  public static boolean vmIsMatchingStates() {
+<span class="nc" id="L494">    return false;</span>
+  }
+
+  public static void storeTrace (String fileName, String comment) {
+    // intercepted in NativePeer
+<span class="nc" id="L499">  }</span>
+
+  public static void storeTraceIf (boolean cond, String fileName, String comment) {
+<span class="nc bnc" id="L502" title="All 2 branches missed.">    if (cond) {</span>
+<span class="nc" id="L503">      storeTrace(fileName, comment);</span>
+    }
+<span class="nc" id="L505">  }</span>
+
+  public static void storeTraceAndTerminate (String fileName, String comment) {
+<span class="nc" id="L508">    storeTrace(fileName, comment);</span>
+<span class="nc" id="L509">    terminateSearch();</span>
+<span class="nc" id="L510">  }</span>
+
+  public static void storeTraceAndTerminateIf (boolean cond, String fileName, String comment) {
+<span class="nc bnc" id="L513" title="All 2 branches missed.">    if (cond) {</span>
+<span class="nc" id="L514">      storeTrace(fileName, comment);</span>
+<span class="nc" id="L515">      terminateSearch();</span>
+    }
+<span class="nc" id="L517">  }</span>
+
+  public static boolean isTraceReplay () {
+<span class="nc" id="L520">    return false; // native</span>
+  }
+
+  public static boolean isShared (Object o){
+<span class="nc" id="L524">    return false; // native</span>
+  }
+  
+  public static void setShared (Object o, boolean isShared) {
+    // native
+<span class="nc" id="L529">  }</span>
+  
+  public static void freezeSharedness (Object o, boolean freeze) {
+    // native
+<span class="nc" id="L533">  }</span>
+  
+  public static void terminateSearch () {
+    // native
+<span class="nc" id="L537">  }</span>
+
+  public static void setHeuristicSearchValue (int n){
+    // native - to control UserHeuristic
+<span class="nc" id="L541">  }</span>
+
+  public static void resetHeuristicSearchValue (){
+    // native - to control UserHeuristic
+<span class="nc" id="L545">  }</span>
+
+  public static int getHeuristicSearchValue (){
+    // native - to control UserHeuristic
+<span class="nc" id="L549">    return 0;</span>
+  }
+
+  public static void setProperties (String... p) {
+    // native
+<span class="fc" id="L554">  }</span>
+
+  public static String getProperty (String key) {
+    // native
+<span class="nc" id="L558">    return null;</span>
+  }
+
+  public static &lt;T&gt; T createFromJSON(Class&lt;T&gt; clazz, String json){
+<span class="nc" id="L562">    return null;</span>
+  }
+
+  public static void writeObjectToFile(Object object, String fileName) {
+    try {
+<span class="fc" id="L567">      FileOutputStream fso = new FileOutputStream(fileName);</span>
+<span class="fc" id="L568">      ObjectOutputStream oos = new ObjectOutputStream(fso);</span>
+<span class="fc" id="L569">      oos.writeObject(object);</span>
+<span class="fc" id="L570">      oos.flush();</span>
+<span class="fc" id="L571">      oos.close();</span>
+
+<span class="nc" id="L573">    } catch (Exception ex) {</span>
+<span class="nc" id="L574">      throw new RuntimeException(ex);</span>
+<span class="fc" id="L575">    }</span>
+
+<span class="fc" id="L577">  }</span>
+
+  public static &lt;T&gt; T readObjectFromFile(Class&lt;T&gt; clazz, String fileName) {
+    try
+    {
+<span class="nc" id="L582">      FileInputStream fis = new FileInputStream(fileName);</span>
+<span class="nc" id="L583">      ObjectInputStream ois = new ObjectInputStream(fis);</span>
+
+<span class="nc" id="L585">      Object read = ois.readObject();</span>
+      
+<span class="nc" id="L587">      return (T) read;</span>
+      
+    }
+<span class="nc" id="L590">    catch (Exception ex) {</span>
+<span class="nc" id="L591">      throw new RuntimeException(ex);</span>
+    }
+
+  }
+  
+  
+  //--- model logging support
+  
+  /*
+   * we add these here so that we don't need to pull in any java.util.logging classes
+   * Note - these need to be kept in sync with our native peer
+   */
+  public static final int SEVERE = 1;
+  public static final int WARNING = 2;
+  public static final int INFO = 3;
+  public static final int FINE = 4;
+  public static final int FINER = 5;
+  public static final int FINEST = 6;
+  
+  public static void log( String loggerId, int logLevel, String msg){
+<span class="nc" id="L611">    System.err.println(msg);</span>
+<span class="nc" id="L612">  }</span>
+
+  // to avoid construction of strings on the model side
+  public static void log( String loggerId, int logLevel, String msg, String arg){
+<span class="nc" id="L616">    System.err.println(msg);</span>
+<span class="nc" id="L617">  }</span>
+
+  public static void log( String loggerId, int logLevel, String format, Object... args){
+<span class="nc" id="L620">    System.err.printf(format, args);</span>
+<span class="nc" id="L621">  }</span>
+
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

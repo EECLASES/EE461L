@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LockSetThresholdFli.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">LockSetThresholdFli.java</span></div><h1>LockSetThresholdFli.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+/**
+ * a threshold FieldLockInfo with a set of lock candidates
+ * 
+ * this is the destructive update version. Override singleLockThresholdFli() and lockSetthresholdFli() for
+ * a persistent version
+ */
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">public class LockSetThresholdFli extends ThresholdFieldLockInfo {</span>
+
+  protected int[] lockRefSet;
+
+  // this is only used once during prototype generation
+  public LockSetThresholdFli(ThreadInfo ti, int[] currentLockRefs, int checkThreshold) {
+<span class="fc" id="L32">    super(checkThreshold);</span>
+
+<span class="fc" id="L34">    tiLastCheck = ti;</span>
+<span class="fc" id="L35">    lockRefSet = currentLockRefs;</span>
+<span class="fc" id="L36">  }</span>
+
+  @Override
+  protected int[] getCandidateLockSet() {
+<span class="nc" id="L40">    return lockRefSet;</span>
+  }
+
+  /**
+   * override this for search global FieldLockInfos
+   */
+  protected SingleLockThresholdFli singleLockThresholdFli (ThreadInfo ti, int lockRef, int remainingChecks) {
+<span class="nc" id="L47">    return new SingleLockThresholdFli(ti, lockRef, remainingChecks);</span>
+  }
+  
+  protected LockSetThresholdFli lockSetThresholdFli (ThreadInfo ti, int[] lockRefs, int remainingChecks){
+<span class="nc" id="L51">    this.lockRefSet = lockRefs;</span>
+<span class="nc" id="L52">    this.tiLastCheck = ti;</span>
+<span class="nc" id="L53">    this.remainingChecks = remainingChecks;</span>
+    
+<span class="nc" id="L55">    return this;</span>
+  }
+  
+  @Override
+  public FieldLockInfo checkProtection(ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="fc" id="L60">    int[] currentLockRefs = ti.getLockedObjectReferences();</span>
+<span class="fc" id="L61">    int nLocks = currentLockRefs.length;</span>
+<span class="fc" id="L62">    int nRemaining = Math.max(0, remainingChecks--);</span>
+
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">    if (nLocks == 0) { // no current locks, so intersection is empty</span>
+<span class="nc" id="L65">      checkFailedLockAssumption(ti, ei, fi);</span>
+<span class="nc" id="L66">      return empty;</span>
+
+    } else { // we had a lock set, and there currently is at least one lock held
+<span class="fc" id="L69">      int l = 0;</span>
+<span class="fc" id="L70">      int[] newLset = new int[lockRefSet.length];</span>
+
+<span class="fc bfc" id="L72" title="All 2 branches covered.">      for (int i = 0; i &lt; nLocks; i++) { // get the set intersection</span>
+<span class="fc" id="L73">        int leidx = currentLockRefs[i];</span>
+
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        for (int j = 0; j &lt; lockRefSet.length; j++) {</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">          if (lockRefSet[j] == leidx) {</span>
+<span class="fc" id="L77">            newLset[l++] = leidx;</span>
+<span class="fc" id="L78">            break; // sets don't contain duplicates</span>
+          }
+        }
+      }
+
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">      if (l == 0) { // intersection empty</span>
+<span class="nc" id="L84">        checkFailedLockAssumption(ti, ei, fi);</span>
+<span class="nc" id="L85">        return empty;</span>
+
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">      } else if (l == 1) { // only one candidate left </span>
+<span class="nc" id="L88">        return singleLockThresholdFli(ti, newLset[0], nRemaining);</span>
+
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">      } else if (l &lt; newLset.length) { // candidate set did shrink</span>
+<span class="nc" id="L91">        int[] newLockRefSet = new int[l];</span>
+<span class="nc" id="L92">        System.arraycopy(newLset, 0, newLockRefSet, 0, l);</span>
+<span class="nc" id="L93">        return lockSetThresholdFli(ti, newLockRefSet, nRemaining);</span>
+
+      } else {
+<span class="fc" id="L96">        return lockSetThresholdFli(ti, lockRefSet, nRemaining);</span>
+      }
+    }
+  }
+
+  /**
+   * only called at the end of the gc on all live objects. The recycled ones are
+   * either already nulled in the heap, or are not marked as live
+   */
+  @Override
+  public FieldLockInfo cleanUp(Heap heap) {
+<span class="fc" id="L107">    int[] newSet = null;</span>
+<span class="fc" id="L108">    int l = 0;</span>
+
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">    if (lockRefSet != null) {</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">      for (int i = 0; i &lt; lockRefSet.length; i++) {</span>
+<span class="fc" id="L112">        ElementInfo ei = heap.get(lockRefSet[i]);</span>
+
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (!heap.isAlive(ei)) { // we got a stale one, so we have to change us</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">          if (newSet == null) { // first one, copy everything up to it</span>
+<span class="nc" id="L116">            newSet = new int[lockRefSet.length - 1];</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (i &gt; 0) {</span>
+<span class="nc" id="L118">              System.arraycopy(lockRefSet, 0, newSet, 0, i);</span>
+<span class="nc" id="L119">              l = i;</span>
+            }
+          }
+
+        } else {
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">          if (newSet != null) { // we already had a dangling ref, now copy the live ones</span>
+<span class="nc" id="L125">            newSet[l++] = lockRefSet[i];</span>
+          }
+        }
+      }
+    }
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">    if (l == 1) {</span>
+<span class="nc bnc" id="L132" title="All 4 branches missed.">      assert (newSet != null);</span>
+<span class="nc" id="L133">      return new SingleLockThresholdFli(tiLastCheck, newSet[0], remainingChecks);</span>
+
+    } else {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">      if (newSet != null) {</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (l == newSet.length) { // we just had one stale ref</span>
+<span class="nc" id="L138">          lockRefSet = newSet;</span>
+        } else { // several stales - make a new copy
+<span class="nc bnc" id="L140" title="All 2 branches missed.">          if (l == 0) {</span>
+<span class="nc" id="L141">            return empty;</span>
+          } else {
+<span class="nc" id="L143">            lockRefSet = new int[l];</span>
+<span class="nc" id="L144">            System.arraycopy(newSet, 0, lockRefSet, 0, l);</span>
+          }
+        }
+      }
+<span class="fc" id="L148">      return this;</span>
+    }
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L154">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L155">    sb.append(&quot;LockSetThresholdFli {&quot;);</span>
+<span class="nc" id="L156">    sb.append(&quot;remainingChecks=&quot;);</span>
+<span class="nc" id="L157">    sb.append(remainingChecks);</span>
+<span class="nc" id="L158">    sb.append(&quot;,lset=[&quot;);</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (lockRefSet != null) {</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">      for (int i = 0; i &lt; lockRefSet.length; i++) {</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (i &gt; 0) {</span>
+<span class="nc" id="L162">          sb.append(',');</span>
+        }
+<span class="nc" id="L164">        sb.append(lockRefSet[i]);</span>
+      }
+    }
+<span class="nc" id="L167">    sb.append(&quot;]}&quot;);</span>
+
+<span class="nc" id="L169">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

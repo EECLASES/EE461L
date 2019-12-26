@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMSystemClassLoaderInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMSystemClassLoaderInfo.java</span></div><h1>JVMSystemClassLoaderInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.vm.ClassFileContainer;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ClassParseException;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.SystemClassLoaderInfo;
+import gov.nasa.jpf.vm.VM;
+import java.io.File;
+import java.io.IOException;
+
+/**
+ * a SystemClassLoaderInfo that reads standard Java classfiles from *.class and *.jar files, and creates code using a concrete
+ * value JVM instruction set
+ */
+public class JVMSystemClassLoaderInfo extends SystemClassLoaderInfo {
+
+<span class="fc" id="L39">  static JPFLogger log = JPF.getLogger(&quot;class&quot;);</span>
+  protected JVMCodeBuilder defaultCodeBuilder;
+
+  public JVMSystemClassLoaderInfo (VM vm, int appId) {
+<span class="fc" id="L43">    super(vm, appId);</span>
+
+<span class="fc" id="L45">    defaultCodeBuilder = createDefaultCodeBuilder(config, appId);</span>
+
+<span class="fc" id="L47">    JVMClassInfo.init(config);</span>
+
+    // now we can notify
+<span class="fc" id="L50">    vm.registerClassLoader(this);</span>
+<span class="fc" id="L51">  }</span>
+
+  /**
+   * override this if you need a different default CodeBuilder
+   */
+  protected JVMCodeBuilder createDefaultCodeBuilder (Config config, int appId) {
+<span class="fc" id="L57">    String key = config.getIndexableKey(&quot;jvm.insn_factory.class&quot;, appId);</span>
+<span class="fc" id="L58">    JVMInstructionFactory insnFactory = config.getEssentialInstance(key, JVMInstructionFactory.class);</span>
+<span class="fc" id="L59">    return new JVMCodeBuilder(insnFactory);</span>
+  }
+
+  @Override
+  protected ClassFileContainer createClassFileContainer (String spec) {
+<span class="fc" id="L64">    int i = spec.indexOf(&quot;.jar&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    if (i &gt; 0) {</span>
+      // its a jar
+<span class="fc" id="L67">      int j = i + 4;</span>
+<span class="fc" id="L68">      int len = spec.length();</span>
+      String jarPath;
+<span class="fc" id="L70">      String pathPrefix = null;</span>
+      File jarFile;
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">      if (j == len) {</span>
+        // no path prefix, plain jar
+<span class="fc" id="L74">        jarPath = spec;</span>
+      } else {
+<span class="nc bnc" id="L76" title="All 2 branches missed.">        if (spec.charAt(j) == '/') {</span>
+<span class="nc" id="L77">          pathPrefix = spec.substring(j);</span>
+<span class="nc" id="L78">          jarPath = spec.substring(0, j);</span>
+        } else {
+<span class="nc" id="L80">          return null;</span>
+        }
+      }
+<span class="fc" id="L83">      jarFile = new File(jarPath);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">      if (jarFile.isFile()) {</span>
+        try {
+<span class="fc" id="L86">          return new JarClassFileContainer(jarFile, pathPrefix);</span>
+<span class="nc" id="L87">        } catch (IOException ix) {</span>
+<span class="nc" id="L88">          return null;</span>
+        }
+      } else {
+<span class="fc" id="L91">        return null;</span>
+      }
+
+    } else {
+      // a dir
+<span class="fc" id="L96">      File dir = new File(spec);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">      if (dir.isDirectory()) {</span>
+<span class="fc" id="L98">        return new DirClassFileContainer(dir);</span>
+      } else {
+<span class="fc" id="L100">        return null;</span>
+      }
+    }
+  }
+
+  protected void addSystemBootClassPath () {
+<span class="fc" id="L106">    String v = System.getProperty(&quot;sun.boot.class.path&quot;);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">    if (v != null) {</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">      for (String pn : v.split(File.pathSeparator)) {</span>
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        if (pn != null &amp;&amp; !pn.isEmpty()) {</span>
+<span class="fc" id="L110">          ClassFileContainer cfc = createClassFileContainer(pn);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">          if (cfc != null) {</span>
+<span class="fc" id="L112">            cp.addClassFileContainer(cfc);</span>
+          }
+        }
+      }
+    } else {
+      // Hmm, maybe we are not executing on OpenJDK
+    }
+<span class="fc" id="L119">  }</span>
+
+  /**
+   * this is the main method to create the ClassPath, which is called from the ctor
+   */
+  @Override
+  protected void initializeSystemClassPath (VM vm, int appId) {
+<span class="fc" id="L126">    Config conf = vm.getConfig();</span>
+    File[] pathElements;
+
+    // explicit &quot;classpath[.id]&quot; settings have precedence
+<span class="fc" id="L130">    pathElements = getPathElements(conf, &quot;classpath&quot;, appId);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">    if (pathElements != null) {</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">      for (File f : pathElements) {</span>
+<span class="fc" id="L133">        addClassPathElement(f.getAbsolutePath());</span>
+      }
+    }
+
+    // we optionally append boot_classpath
+<span class="fc" id="L138">    pathElements = getPathElements(conf, &quot;vm.boot_classpath&quot;, appId);</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">    if (pathElements != null) {</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">      for (File f : pathElements) {</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (f.getName().equals(&quot;&lt;system&gt;&quot;)) {</span>
+<span class="fc" id="L142">          addSystemBootClassPath();</span>
+        } else {
+<span class="nc" id="L144">          addClassPathElement( f.getAbsolutePath());</span>
+        }
+      }
+    }
+
+<span class="fc" id="L149">    log.info(&quot;collected system classpath: &quot;, cp);</span>
+<span class="fc" id="L150">  }</span>
+
+  /**
+   * override this if you have different CodeBuilders for different types
+   * NOTE - this CodeBuilder is not completely initialized yet, clients still have to call startMethod(mi) on it
+   */
+  protected JVMCodeBuilder getCodeBuilder (String clsName) {
+<span class="fc" id="L157">    return defaultCodeBuilder;</span>
+  }
+
+  /**
+   * used for automatically created code such as AnnotationProxies, direct calls, native calls and run starts
+   * NOTE - this cannot be called recursively or concurrently
+   */
+  protected JVMCodeBuilder getSystemCodeBuilder (ClassFile cf, MethodInfo mi) {
+<span class="fc" id="L165">    defaultCodeBuilder.reset(cf, mi);</span>
+<span class="fc" id="L166">    return defaultCodeBuilder;</span>
+  }
+  
+  @Override
+  protected ClassInfo createClassInfo (String clsName, String url, byte[] data, ClassLoaderInfo definingLoader) throws ClassParseException {
+<span class="fc" id="L171">    ClassFile cf = new ClassFile(data);</span>
+<span class="fc" id="L172">    JVMCodeBuilder cb = getCodeBuilder(clsName);</span>
+<span class="fc" id="L173">    ClassInfo ci = new JVMClassInfo(clsName, definingLoader, cf, url, cb);</span>
+<span class="fc" id="L174">    setAttributes(ci);</span>
+    
+<span class="fc" id="L176">    return ci;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMInstructionVisitorAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">JVMInstructionVisitorAdapter.java</span></div><h1>JVMInstructionVisitorAdapter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+
+<span class="fc" id="L22">public abstract class JVMInstructionVisitorAdapter </span>
+							implements JVMInstructionVisitor {
+
+<span class="fc" id="L25">  @Override public void visit(Instruction ins) {}</span>
+
+<span class="fc" id="L27">  @Override public void visit(AALOAD ins) {}</span>
+
+<span class="fc" id="L29">  @Override public void visit(AASTORE ins) {}</span>
+
+<span class="fc" id="L31">  @Override public void visit(ACONST_NULL ins) {}</span>
+
+<span class="fc" id="L33">  @Override public void visit(ALOAD ins) {}</span>
+
+<span class="fc" id="L35">  @Override public void visit(ANEWARRAY ins) {}</span>
+
+<span class="fc" id="L37">  @Override public void visit(ARETURN ins) {}</span>
+
+<span class="nc" id="L39">  @Override public void visit(JVMArrayElementInstruction ins) {}</span>
+  
+<span class="fc" id="L41">  @Override public void visit(ARRAYLENGTH ins) {}</span>
+
+<span class="nc" id="L43">  @Override public void visit(ArrayLoadInstruction ins) {}</span>
+
+<span class="nc" id="L45">  @Override public void visit(ArrayStoreInstruction ins) {}</span>
+
+<span class="fc" id="L47">  @Override public void visit(ASTORE ins) {}</span>
+
+<span class="nc" id="L49">  @Override public void visit(ATHROW ins) {}</span>
+
+<span class="nc" id="L51">  @Override public void visit(BALOAD ins) {}</span>
+
+<span class="nc" id="L53">  @Override public void visit(BASTORE ins) {}</span>
+
+<span class="fc" id="L55">  @Override public void visit(BIPUSH ins) {}</span>
+
+<span class="nc" id="L57">  @Override public void visit(CALOAD ins) {}</span>
+
+<span class="fc" id="L59">  @Override public void visit(CASTORE ins) {}</span>
+
+<span class="nc" id="L61">  @Override public void visit(CHECKCAST ins) {}</span>
+
+<span class="nc" id="L63">  @Override public void visit(D2F ins) {}</span>
+
+<span class="nc" id="L65">  @Override public void visit(D2I ins) {}</span>
+
+<span class="nc" id="L67">  @Override public void visit(D2L ins) {}</span>
+
+<span class="nc" id="L69">  @Override public void visit(DADD ins) {}</span>
+
+<span class="nc" id="L71">  @Override public void visit(DALOAD ins) {}</span>
+
+<span class="nc" id="L73">  @Override public void visit(DASTORE ins) {}</span>
+
+<span class="nc" id="L75">  @Override public void visit(DCMPG ins) {}</span>
+
+<span class="nc" id="L77">  @Override public void visit(DCMPL ins) {}</span>
+
+<span class="fc" id="L79">  @Override public void visit(DCONST ins) {}</span>
+
+<span class="nc" id="L81">  @Override public void visit(DDIV ins) {}</span>
+
+<span class="fc" id="L83">  @Override public void visit(DIRECTCALLRETURN ins) {}</span>
+
+<span class="fc" id="L85">  @Override public void visit(DLOAD ins) {}</span>
+
+<span class="nc" id="L87">  @Override public void visit(DMUL ins) {}</span>
+
+<span class="nc" id="L89">  @Override public void visit(DNEG ins) {}</span>
+
+<span class="nc" id="L91">  @Override public void visit(DREM ins) {}</span>
+
+<span class="fc" id="L93">  @Override public void visit(DRETURN ins) {}</span>
+
+<span class="nc" id="L95">  @Override public void visit(DSTORE ins) {}</span>
+
+<span class="nc" id="L97">  @Override public void visit(DSUB ins) {}</span>
+
+<span class="nc" id="L99">  @Override public void visit(DUP_X1 ins) {}</span>
+
+<span class="nc" id="L101">  @Override public void visit(DUP_X2 ins) {}</span>
+
+<span class="fc" id="L103">  @Override public void visit(DUP ins) {}</span>
+
+<span class="nc" id="L105">  @Override public void visit(DUP2_X1 ins) {}</span>
+
+<span class="nc" id="L107">  @Override public void visit(DUP2_X2 ins) {}</span>
+
+<span class="nc" id="L109">  @Override public void visit(DUP2 ins) {}</span>
+
+<span class="nc" id="L111">  @Override public void visit(F2D ins) {}</span>
+
+<span class="fc" id="L113">  @Override public void visit(F2I ins) {}</span>
+
+<span class="nc" id="L115">  @Override public void visit(FADD ins) {}</span>
+
+<span class="nc" id="L117">  @Override public void visit(FALOAD ins) {}</span>
+
+<span class="nc" id="L119">  @Override public void visit(FASTORE ins) {}</span>
+
+<span class="nc" id="L121">  @Override public void visit(FCMPL ins) {}</span>
+
+<span class="fc" id="L123">  @Override public void visit(FCONST ins) {}</span>
+
+<span class="nc" id="L125">  @Override public void visit(FDIV ins) {}</span>
+
+<span class="nc" id="L127">  @Override public void visit(JVMFieldInstruction ins) {}</span>
+
+<span class="fc" id="L129">  @Override public void visit(FLOAD ins) {}</span>
+
+<span class="fc" id="L131">  @Override public void visit(FMUL ins) {}</span>
+
+<span class="nc" id="L133">  @Override public void visit(FNEG ins) {}</span>
+
+<span class="nc" id="L135">  @Override public void visit(FREM ins) {}</span>
+
+<span class="nc" id="L137">  @Override public void visit(FRETURN ins) {}</span>
+
+<span class="nc" id="L139">  @Override public void visit(FSTORE ins) {}</span>
+
+<span class="nc" id="L141">  @Override public void visit(FSUB ins) {}</span>
+
+<span class="fc" id="L143">  @Override public void visit(GETFIELD ins) {}</span>
+
+<span class="fc" id="L145">  @Override public void visit(GETSTATIC ins) {}</span>
+
+<span class="nc" id="L147">  @Override public void visit(GOTO_W ins) {}</span>
+
+<span class="fc" id="L149">  @Override public void visit(GOTO ins) {}</span>
+
+<span class="nc" id="L151">  @Override public void visit(I2B ins) {}</span>
+
+<span class="nc" id="L153">  @Override public void visit(I2C ins) {}</span>
+
+<span class="nc" id="L155">  @Override public void visit(I2D ins) {}</span>
+
+<span class="fc" id="L157">  @Override public void visit(I2F ins) {}</span>
+
+<span class="fc" id="L159">  @Override public void visit(I2L ins) {}</span>
+
+<span class="nc" id="L161">  @Override public void visit(I2S ins) {}</span>
+
+<span class="fc" id="L163">  @Override public void visit(IADD ins) {}</span>
+
+<span class="nc" id="L165">  @Override public void visit(IALOAD ins) {}</span>
+
+<span class="fc" id="L167">  @Override public void visit(IAND ins) {}</span>
+
+<span class="fc" id="L169">  @Override public void visit(IASTORE ins) {}</span>
+
+<span class="fc" id="L171">  @Override public void visit(ICONST ins) {}</span>
+
+<span class="nc" id="L173">  @Override public void visit(IDIV ins) {}</span>
+
+<span class="nc" id="L175">  @Override public void visit(IF_ACMPEQ ins) {}</span>
+
+<span class="nc" id="L177">  @Override public void visit(IF_ACMPNE ins) {}</span>
+
+<span class="nc" id="L179">  @Override public void visit(IF_ICMPEQ ins) {}</span>
+
+<span class="fc" id="L181">  @Override public void visit(IF_ICMPGE ins) {}</span>
+
+<span class="nc" id="L183">  @Override public void visit(IF_ICMPGT ins) {}</span>
+
+<span class="fc" id="L185">  @Override public void visit(IF_ICMPLE ins) {}</span>
+
+<span class="fc" id="L187">  @Override public void visit(IF_ICMPLT ins) {}</span>
+
+<span class="fc" id="L189">  @Override public void visit(IF_ICMPNE ins) {}</span>
+
+<span class="fc" id="L191">  @Override public void visit(IFEQ ins) {}</span>
+
+<span class="fc" id="L193">  @Override public void visit(IFGE ins) {}</span>
+
+<span class="nc" id="L195">  @Override public void visit(IFGT ins) {}</span>
+
+<span class="nc" id="L197">  @Override public void visit(IfInstruction ins) {}</span>
+
+<span class="fc" id="L199">  @Override public void visit(IFLE ins) {}</span>
+
+<span class="nc" id="L201">  @Override public void visit(IFLT ins) {}</span>
+
+<span class="fc" id="L203">  @Override public void visit(IFNE ins) {}</span>
+
+<span class="fc" id="L205">  @Override public void visit(IFNONNULL ins) {}</span>
+
+<span class="fc" id="L207">  @Override public void visit(IFNULL ins) {}</span>
+
+<span class="fc" id="L209">  @Override public void visit(IINC ins) {}</span>
+
+<span class="fc" id="L211">  @Override public void visit(ILOAD ins) {}</span>
+
+<span class="nc" id="L213">  @Override public void visit(IMUL ins) {}</span>
+
+<span class="nc" id="L215">  @Override public void visit(INEG ins) {}</span>
+
+<span class="nc" id="L217">  @Override public void visit(JVMInstanceFieldInstruction ins) {}</span>
+
+<span class="nc" id="L219">  @Override public void visit(InstanceInvocation ins){}</span>
+	
+<span class="nc" id="L221">  @Override public void visit(INSTANCEOF ins){}</span>
+	
+<span class="nc" id="L223">  @Override public void visit(INVOKECG ins){}</span>
+	
+<span class="fc" id="L225">  @Override public void visit(INVOKECLINIT ins){}</span>
+	
+<span class="nc" id="L227">  @Override public void visit(JVMInvokeInstruction ins){}</span>
+	
+<span class="nc" id="L229">  @Override public void visit(INVOKEINTERFACE ins){}</span>
+	
+<span class="fc" id="L231">  @Override public void visit(INVOKESPECIAL ins){}</span>
+	
+<span class="fc" id="L233">  @Override public void visit(INVOKESTATIC ins){}</span>
+	
+<span class="fc" id="L235">  @Override public void visit(INVOKEVIRTUAL ins){}</span>
+
+<span class="fc" id="L237">  @Override public void visit(EXECUTENATIVE ins){}</span>
+	
+<span class="nc" id="L239">  @Override public void visit(IOR ins){}</span>
+	
+<span class="fc" id="L241">  @Override public void visit(IREM ins){}</span>
+	
+<span class="nc" id="L243">  @Override public void visit(IRETURN ins){}</span>
+	
+<span class="fc" id="L245">  @Override public void visit(ISHL ins){}</span>
+	
+<span class="nc" id="L247">  @Override public void visit(ISHR ins){}</span>
+	
+<span class="nc" id="L249">  @Override public void visit(ISTORE ins){}</span>
+	
+<span class="fc" id="L251">  @Override public void visit(ISUB ins){}</span>
+	
+<span class="nc" id="L253">  @Override public void visit(IUSHR ins){}</span>
+	
+<span class="nc" id="L255">  @Override public void visit(IXOR ins){}</span>
+	
+<span class="nc" id="L257">  @Override public void visit(JSR_W ins){}</span>
+	
+<span class="nc" id="L259">  @Override public void visit(JSR ins){}</span>
+	
+<span class="nc" id="L261">  @Override public void visit(L2D ins){}</span>
+	
+<span class="nc" id="L263">  @Override public void visit(L2F ins){}</span>
+	
+<span class="nc" id="L265">  @Override public void visit(L2I ins){}</span>
+	
+<span class="fc" id="L267">  @Override public void visit(LADD ins){}</span>
+	
+<span class="nc" id="L269">  @Override public void visit(LALOAD ins){}</span>
+	
+<span class="fc" id="L271">  @Override public void visit(LAND ins){}</span>
+	
+<span class="nc" id="L273">  @Override public void visit(LASTORE ins){}</span>
+	
+<span class="nc" id="L275">  @Override public void visit(LCMP ins){}</span>
+	
+<span class="nc" id="L277">  @Override public void visit(LCONST ins){}</span>
+	
+<span class="nc" id="L279">  @Override public void visit(LDC_W ins){}</span>
+	
+<span class="fc" id="L281">  @Override public void visit(LDC ins){}</span>
+	
+<span class="fc" id="L283">  @Override public void visit(LDC2_W ins){}</span>
+	
+<span class="nc" id="L285">  @Override public void visit(LDIV ins){}</span>
+	
+<span class="nc" id="L287">  @Override public void visit(LLOAD ins){}</span>
+	
+<span class="nc" id="L289">  @Override public void visit(LMUL ins){}</span>
+	
+<span class="nc" id="L291">  @Override public void visit(LNEG ins){}</span>
+	
+<span class="nc" id="L293">  @Override public void visit(JVMLocalVariableInstruction ins){}</span>
+	
+<span class="nc" id="L295">  @Override public void visit(LockInstruction ins){}</span>
+	
+<span class="nc" id="L297">  @Override public void visit(LongArrayLoadInstruction ins){}</span>
+	
+<span class="nc" id="L299">  @Override public void visit(LongArrayStoreInstruction ins){}</span>
+	
+<span class="nc" id="L301">  @Override public void visit(LOOKUPSWITCH ins){}</span>
+	
+<span class="nc" id="L303">  @Override public void visit(LOR ins){}</span>
+	
+<span class="nc" id="L305">  @Override public void visit(LREM ins){}</span>
+	
+<span class="nc" id="L307">  @Override public void visit(LRETURN ins){}</span>
+	
+<span class="fc" id="L309">  @Override public void visit(LSHL ins){}</span>
+	
+<span class="nc" id="L311">  @Override public void visit(LSHR ins){}</span>
+	
+<span class="nc" id="L313">  @Override public void visit(LSTORE ins){}</span>
+	
+<span class="nc" id="L315">  @Override public void visit(LSUB ins){}</span>
+	
+<span class="nc" id="L317">  @Override public void visit(LUSHR ins){}</span>
+	
+<span class="nc" id="L319">  @Override public void visit(LXOR ins){}</span>
+	
+<span class="nc" id="L321">  @Override public void visit(MONITORENTER ins){}</span>
+	
+<span class="nc" id="L323">  @Override public void visit(MONITOREXIT ins){}</span>
+	
+<span class="nc" id="L325">  @Override public void visit(MULTIANEWARRAY ins){}</span>
+
+<span class="fc" id="L327">  @Override public void visit(NATIVERETURN ins) {}</span>
+	
+<span class="fc" id="L329">  @Override public void visit(NEW ins){}</span>
+	
+<span class="fc" id="L331">  @Override public void visit(NEWARRAY ins){}</span>
+	
+<span class="nc" id="L333">  @Override public void visit(NOP ins){}</span>
+	
+<span class="fc" id="L335">  @Override public void visit(POP ins){}</span>
+	
+<span class="nc" id="L337">  @Override public void visit(POP2 ins){}</span>
+	
+<span class="nc" id="L339">  @Override public void visit(PUTFIELD ins){}</span>
+	
+<span class="nc" id="L341">  @Override public void visit(PUTSTATIC ins){}</span>
+	
+<span class="nc" id="L343">  @Override public void visit(RET ins){}</span>
+	
+<span class="fc" id="L345">  @Override public void visit(RETURN ins){}</span>
+	
+<span class="nc" id="L347">  @Override public void visit(JVMReturnInstruction ins){}</span>
+	
+<span class="nc" id="L349">  @Override public void visit(SALOAD ins){}</span>
+	
+<span class="nc" id="L351">  @Override public void visit(SASTORE ins){}</span>
+	
+<span class="fc" id="L353">  @Override public void visit(SIPUSH ins){}</span>
+	
+<span class="nc" id="L355">  @Override public void visit(JVMStaticFieldInstruction ins){}</span>
+
+<span class="nc" id="L357">  @Override public void visit(SWAP ins){}</span>
+	
+<span class="nc" id="L359">  @Override public void visit(SwitchInstruction ins){}</span>
+	
+<span class="nc" id="L361">  @Override public void visit(TABLESWITCH ins){}</span>
+	
+<span class="nc" id="L363">  @Override public void visit(VirtualInvocation ins){}</span>
+	
+<span class="nc" id="L365">  @Override public void visit(WIDE ins){}</span>
+	
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

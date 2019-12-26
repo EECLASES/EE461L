@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DynamicIntArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">DynamicIntArray.java</span></div><h1>DynamicIntArray.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+
+/**
+ * simplistic dynamic array that differentiates from ArrayList by
+ *  - using chunks instead of exponential growth, thus efficiently dealing
+ *    with sparse arrays
+ *  - managing primitive 'int' types, i.e. not requiring box objects
+ *
+ * the motivation for this class is memory optimization, i.e. space efficient
+ * storage of potentially huge arrays without good a-priori size guesses
+ *
+ * the API of this class is between a primitive array and a AbstractList. It's
+ * not a Collection implementation because it handles primitive types, but the
+ * API could be extended to support iterators and the like.
+ *
+ * NOTE: like standard Collection implementations/arrays, this class is not
+ * synchronized
+ */
+public final class DynamicIntArray implements Iterable&lt;Integer&gt; {
+  final static int DEFAULT_CHUNKBITS = 8;
+  final static int INIT_CHUNKS = 16;
+
+<span class="nc" id="L42">  class DynIntIterator implements Iterator&lt;Integer&gt; {</span>
+    int i;
+    
+    @Override
+	public boolean hasNext() {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">      return (i&lt;size());</span>
+    }
+
+    @Override
+	public Integer next() {
+<span class="nc" id="L52">      return new Integer(get(i++));</span>
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L57">      throw new UnsupportedOperationException();</span>
+    }
+  }
+  
+  /** growth strategy */
+  Growth growth;
+  
+  /** our allocation sizes */
+  int chunkBits;
+  int nPerChunk; // just a cache for (1&lt;&lt;chunkBits)
+  
+  /** mask for index within chunk */
+  int chunkMask;
+  
+  /** the real data. limitations in generics prevent use of E[][] */
+  int[][] data;
+  
+  /** the maximum index set so far */
+<span class="nc" id="L75">  int maxIndex = -1;</span>
+  
+  public DynamicIntArray () {
+<span class="nc" id="L78">    this(Growth.defaultGrowth, DEFAULT_CHUNKBITS, INIT_CHUNKS);</span>
+<span class="nc" id="L79">  }</span>
+
+  public DynamicIntArray (int size) {
+<span class="nc" id="L82">    this(Growth.defaultGrowth, DEFAULT_CHUNKBITS,</span>
+        (size + (1&lt;&lt;DEFAULT_CHUNKBITS)-1) / (1&lt;&lt;DEFAULT_CHUNKBITS));
+<span class="nc" id="L84">  }</span>
+  
+  /**
+   * Creates a DynamicIntArray in which each chunk has 2**chunkBits elements
+   * and initChunks chunks are initially allocated. 
+   */
+  public DynamicIntArray (int chunkBits, int initChunks) {
+<span class="nc" id="L91">    this(Growth.defaultGrowth, chunkBits, initChunks);</span>
+<span class="nc" id="L92">  }</span>
+  
+<span class="nc" id="L94">  public DynamicIntArray (Growth strategy, int chunkBits, int initChunks) {</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">    if (chunkBits &gt; 20) throw new IllegalArgumentException();</span>
+<span class="nc" id="L96">    this.chunkBits = chunkBits;</span>
+<span class="nc" id="L97">    nPerChunk = 1&lt;&lt;chunkBits;</span>
+<span class="nc" id="L98">    this.chunkMask = nPerChunk - 1;</span>
+<span class="nc" id="L99">    data = new int[initChunks][];</span>
+<span class="nc" id="L100">    growth = strategy;</span>
+<span class="nc" id="L101">  }</span>
+
+  public int get (int index) {
+<span class="nc" id="L104">    int i = index &gt;&gt; chunkBits;</span>
+<span class="nc bnc" id="L105" title="All 4 branches missed.">    if (i &lt; data.length &amp;&amp; data[i] != null) {</span>
+<span class="nc" id="L106">      int j = index &amp; chunkMask;</span>
+<span class="nc" id="L107">      return data[i][j];</span>
+    } else {
+<span class="nc" id="L109">      return 0;</span>
+    }
+  }
+
+  // this is only the max size, not the max index that was accessed/set
+  public int size() {
+<span class="nc" id="L115">    return data.length * nPerChunk;</span>
+  }
+  
+  public int getMaxIndex() {
+<span class="nc" id="L119">    return maxIndex;</span>
+  }
+  
+  public void set (int index, int value) {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">    if (index &gt; maxIndex) {</span>
+<span class="nc" id="L124">      maxIndex = index;</span>
+    }
+    
+<span class="nc" id="L127">    int i = index &gt;&gt; chunkBits;</span>
+<span class="nc" id="L128">    int j = index &amp; chunkMask;</span>
+    
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    if (i &gt;= data.length) {</span>
+<span class="nc" id="L131">      int nChunks = growth.grow(data.length, i+1);</span>
+<span class="nc" id="L132">      int[][] newChunks = new int[nChunks][];</span>
+<span class="nc" id="L133">      System.arraycopy(data, 0, newChunks, 0, data.length);</span>
+<span class="nc" id="L134">      data = newChunks;</span>
+    }
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    if (data[i] == null) {</span>
+<span class="nc" id="L137">      data[i] = new int[nPerChunk];</span>
+    }
+    
+<span class="nc" id="L140">    data[i][j] = value;</span>
+<span class="nc" id="L141">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L145">    int length = data.length * nPerChunk;</span>
+<span class="nc bnc" id="L146" title="All 4 branches missed.">    while (length &gt; 1 &amp;&amp; get(length-1) == 0) length--;</span>
+
+<span class="nc" id="L148">    StringBuilder sb = new StringBuilder(length);</span>
+    
+<span class="nc" id="L150">    sb.append('{');</span>
+<span class="nc" id="L151">    int l = length-1;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">    for (int i=0; i&lt;l; i++) {</span>
+<span class="nc" id="L153">      sb.append(get(i));</span>
+<span class="nc" id="L154">      sb.append(',');</span>
+    }
+<span class="nc" id="L156">    sb.append(get(l));</span>
+<span class="nc" id="L157">    sb.append('}');</span>
+    
+<span class="nc" id="L159">    return sb.toString();</span>
+  }
+
+  @Override
+  public Iterator&lt;Integer&gt; iterator() {
+<span class="nc" id="L164">    return new DynIntIterator();</span>
+  }
+
+
+  /**************************** debug &amp; test ************
+  public void dump () {
+    int i, j;
+    for (i=0; i&lt;data.length; i++) {
+      System.out.print( &quot;[&quot; + i + &quot;]: &quot;);
+      if (data[i] != null) {
+        System.out.print(&quot;{&quot;);
+        int l = data[i].length-1;
+        for (j=0; j&lt;l; j++) {
+          System.out.print(data[i][j]);
+          System.out.print(',');
+        }
+        System.out.print( data[i][j]);
+        System.out.println(&quot;}&quot;);
+      } else {
+        System.out.println( &quot;null&quot;);
+      }
+    }
+  }
+
+  public static void main (String[] args) {
+    int i;
+    DynamicIntArray a = new DynamicIntArray(8);
+
+    a.set(0, 42);
+    a.set(13,13);
+    a.set(24, 42);
+
+    a.set(600, -1);
+    System.out.println(a.get(599));
+    System.out.println(a.get(600));
+    
+    System.out.println( &quot;--------- &quot; + a.size());
+    //System.out.println(a);
+    System.out.println(); System.out.println();
+    //a.dump();
+  }
+  
+  ***************************** end debug &amp; test *********/
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

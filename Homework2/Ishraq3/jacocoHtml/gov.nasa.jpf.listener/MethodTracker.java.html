@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MethodTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">MethodTracker.java</span></div><h1>MethodTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.INVOKESPECIAL;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.VirtualInvocation;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+
+/**
+ * simple tool to log method invocations
+ *
+ * at this point, it doesn't do fancy things yet, but gives a more high
+ * level idea of what got executed by JPF than the ExecTracker
+ */
+public class MethodTracker extends ListenerAdapter {
+
+  static final String INDENT = &quot;  &quot;;
+
+  MethodInfo lastMi;
+  PrintWriter out;
+
+<span class="nc" id="L48">  public MethodTracker (Config conf, JPF jpf) {</span>
+<span class="nc" id="L49">    out = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L50">  }</span>
+
+  void logMethodCall(ThreadInfo ti, MethodInfo mi, int stackDepth) {
+<span class="nc" id="L53">    out.print(ti.getId());</span>
+<span class="nc" id="L54">    out.print(&quot;:&quot;);</span>
+
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    for (int i=0; i&lt;stackDepth%80; i++) {</span>
+<span class="nc" id="L57">      out.print(INDENT);</span>
+    }
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">    if (mi.isMJI()) {</span>
+<span class="nc" id="L61">      out.print(&quot;native &quot;);</span>
+    }
+
+<span class="nc" id="L64">    out.print(mi.getFullName());</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    if (ti.isFirstStepInsn()) {</span>
+<span class="nc" id="L67">      out.print(&quot;...&quot;);</span>
+    }
+
+<span class="nc" id="L70">    out.println();</span>
+<span class="nc" id="L71">  }</span>
+
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insnToExecute) {
+<span class="nc" id="L75">    MethodInfo mi = insnToExecute.getMethodInfo();</span>
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    if (mi != lastMi) {</span>
+<span class="nc" id="L78">      logMethodCall(ti, mi, ti.getStackDepth());</span>
+<span class="nc" id="L79">      lastMi = mi;</span>
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    } else if (insnToExecute instanceof JVMInvokeInstruction) {</span>
+      MethodInfo callee;
+
+      // that's the only little gist of it - if this is a VirtualInvocation,
+      // we have to dig the callee out by ourselves (it's not known
+      // before execution)
+
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (insnToExecute instanceof VirtualInvocation) {</span>
+<span class="nc" id="L89">        VirtualInvocation callInsn = (VirtualInvocation)insnToExecute;</span>
+<span class="nc" id="L90">        int objref = callInsn.getCalleeThis(ti);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (objref != MJIEnv.NULL){</span>
+<span class="nc" id="L92">          callee = callInsn.getInvokedMethod(ti, objref);</span>
+        } else {
+<span class="nc" id="L94">          return; // this is causing a NPE, so don't report it as a unknown callee</span>
+        }
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      } else if (insnToExecute instanceof INVOKESPECIAL) {</span>
+<span class="nc" id="L98">        INVOKESPECIAL callInsn = (INVOKESPECIAL)insnToExecute;</span>
+<span class="nc" id="L99">        callee = callInsn.getInvokedMethod(ti);</span>
+
+<span class="nc" id="L101">      } else {</span>
+<span class="nc" id="L102">        JVMInvokeInstruction callInsn = (JVMInvokeInstruction)insnToExecute;</span>
+<span class="nc" id="L103">        callee = callInsn.getInvokedMethod(ti);</span>
+      }
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (callee != null) {</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (callee.isMJI()) {</span>
+<span class="nc" id="L108">          logMethodCall(ti, callee, ti.getStackDepth()+1);</span>
+        }
+      } else {
+<span class="nc" id="L111">        out.println(&quot;ERROR: unknown callee of: &quot; + insnToExecute);</span>
+      }
+    }
+<span class="nc" id="L114">  }</span>
+
+  /*
+   * those are not really required, but mark the transition boundaries
+   */
+  @Override
+  public void stateRestored(Search search) {
+<span class="nc" id="L121">    int id = search.getStateId();</span>
+<span class="nc" id="L122">    out.println(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L123">                       search.getDepth() + &quot;] restored: &quot; + id);</span>
+<span class="nc" id="L124">  }</span>
+
+  //--- the ones we are interested in
+  @Override
+  public void searchStarted(Search search) {
+<span class="nc" id="L129">    out.println(&quot;----------------------------------- search started&quot;);</span>
+<span class="nc" id="L130">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="nc" id="L134">    int id = search.getStateId();</span>
+
+<span class="nc" id="L136">    out.print(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L137">                     search.getDepth() + &quot;] forward: &quot; + id);</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">    if (search.isNewState()) {</span>
+<span class="nc" id="L139">      out.print(&quot; new&quot;);</span>
+    } else {
+<span class="nc" id="L141">      out.print(&quot; visited&quot;);</span>
+    }
+
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    if (search.isEndState()) {</span>
+<span class="nc" id="L145">      out.print(&quot; end&quot;);</span>
+    }
+
+<span class="nc" id="L148">    out.println();</span>
+
+<span class="nc" id="L150">    lastMi = null;</span>
+<span class="nc" id="L151">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+<span class="nc" id="L155">    int id = search.getStateId();</span>
+
+<span class="nc" id="L157">    lastMi = null;</span>
+
+<span class="nc" id="L159">    out.println(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L160">                       search.getDepth() + &quot;] backtrack: &quot; + id);</span>
+<span class="nc" id="L161">  }</span>
+
+  @Override
+  public void searchFinished(Search search) {
+<span class="nc" id="L165">    out.println(&quot;----------------------------------- search finished&quot;);</span>
+<span class="nc" id="L166">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

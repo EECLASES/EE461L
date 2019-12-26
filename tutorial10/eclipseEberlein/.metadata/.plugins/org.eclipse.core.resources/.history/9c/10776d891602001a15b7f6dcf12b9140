@@ -1,0 +1,11 @@
+package observer2;
+
+import java.awt.Color;
+
+public interface Observer {
+	
+
+	public void Update(Color newColor, Color complemenataryColor);
+	
+	
+}

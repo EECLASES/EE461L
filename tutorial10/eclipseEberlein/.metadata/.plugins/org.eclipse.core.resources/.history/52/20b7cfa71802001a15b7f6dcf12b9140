@@ -1,0 +1,27 @@
+package observer3;
+
+import javax.swing.*;
+import java.awt.*;
+
+public class ComplementaryColorPanel extends ColorPanel {
+
+    public ComplementaryColorPanel(Color initialColor) {
+    	super(initialColor);
+    }
+
+    @Override
+    public void Update(float newHue, float newSaturation, float newBrightness) {
+    	
+        Color newColor = Color.getHSBColor(newHue, newSaturation, newBrightness);
+
+    	float complementaryHue = newColor - (float) 0.5;
+        if (complementaryHue < 0) {
+            complementaryHue = complementaryHue + 1;
+        }
+        Color complementaryColor = Color.getHSBColor(complementaryHue, newSaturation, newBrightness);
+
+    	super.setColor(complementaryColor);
+    }
+
+ 
+}

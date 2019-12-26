@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RestorableVMState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">RestorableVMState.java</span></div><h1>RestorableVMState.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+
+/**
+ * NOTE - making VMStates fully restorable is currently very
+ * expensive and should only be done on a selective basis
+ */
+public class RestorableVMState {
+  
+  /** the set of last executed insns */
+  Transition lastTransition;
+  
+  /* these are the icky parts - the history is kept as stacks inside the
+   * VM (for restoration reasons), hence we have to copy it if we want
+   * to restore a state. Since this is really expensive, it has to be done
+   * on demand, with varying degrees of information
+   */
+  Path path;
+  
+  Backtracker.RestorableState bkstate;
+  
+  VM vm;
+  
+<span class="fc" id="L41">  RestorableVMState (VM vm) {</span>
+<span class="fc" id="L42">    this.vm = vm;</span>
+
+<span class="fc" id="L44">    path = vm.getClonedPath();</span>
+<span class="fc" id="L45">    bkstate = vm.getBacktracker().getRestorableState();</span>
+<span class="fc" id="L46">    lastTransition = vm.lastTrailInfo;</span>
+<span class="fc" id="L47">  }</span>
+  
+  public Backtracker.RestorableState getBkState() {
+<span class="fc" id="L50">    return bkstate;</span>
+  }
+  
+  public Transition getLastTransition () {
+<span class="nc" id="L54">    return lastTransition;</span>
+  }
+  
+  public Path getPath () {
+<span class="nc" id="L58">    return path;</span>
+  }
+  
+  public int getThread () {
+<span class="nc" id="L62">    return lastTransition.getThreadIndex();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JSONObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">JSONObject.java</span></div><h1>JSONObject.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.ObjectConverter;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClinitRequired;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Fields;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.HashMap;
+import java.util.Set;
+
+/**
+ * Object parsed from JSON document.
+ * @author Ivan Mushketik
+ */
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">public class JSONObject{</span>
+
+<span class="fc" id="L43">  private static final JPFLogger logger = JPF.getLogger(&quot;gov.nasa.jpf.util.json.JSONObject&quot;);</span>
+
+<span class="fc" id="L45">  private HashMap&lt;String, Value&gt; keyValues = new HashMap&lt;String, Value&gt;();</span>
+<span class="fc" id="L46">  private HashMap&lt;String, CGCall&gt; cgCalls = new HashMap&lt;String, CGCall&gt;();</span>
+
+  void addValue(String key, Value value) {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">    if (keyValues.containsKey(key)) {</span>
+<span class="nc" id="L50">      throw new JPFException(&quot;Attempt to add two nodes with the same key in JSON object&quot;);</span>
+    }
+
+<span class="fc" id="L53">    keyValues.put(key, value);</span>
+<span class="fc" id="L54">  }</span>
+
+  /**
+   * Get value read from JSON document with specified key.
+   * @param key - value's key.
+   * @return read value.
+   */
+  public Value getValue(String key) {
+<span class="fc" id="L62">    return keyValues.get(key);</span>
+  }
+
+  public String[] getValuesKeys() {
+<span class="fc" id="L66">    Set&lt;String&gt; valuesKeys = keyValues.keySet();</span>
+<span class="fc" id="L67">    String[] result = new String[keyValues.size()];</span>
+
+<span class="fc" id="L69">    valuesKeys.toArray(result);</span>
+<span class="fc" id="L70">    return result;</span>
+  }
+
+  public void addCGCall(String key, CGCall cgCall) {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">    if (cgCalls.containsKey(key)) {</span>
+<span class="nc" id="L75">      throw new JPFException(&quot;Attempt to add two CG with the same key in JSON object&quot;);</span>
+    }
+
+<span class="fc" id="L78">    cgCalls.put(key, cgCall);</span>
+<span class="fc" id="L79">  }</span>
+
+  public CGCall getCGCall(String key) {
+<span class="fc" id="L82">    return cgCalls.get(key);</span>
+  }
+
+  public String[] getCGCallsKeys() {
+<span class="fc" id="L86">    Set&lt;String&gt; cgKeys = cgCalls.keySet();</span>
+<span class="fc" id="L87">    String[] result = new String[cgKeys.size()];</span>
+
+<span class="fc" id="L89">    cgKeys.toArray(result);</span>
+<span class="fc" id="L90">    return result;</span>
+  }
+
+  /**
+   * check if all required ClassInfos for this object have been initialized so
+   * that the caller can decide if it has to re-execute before proceeding 
+   * 
+   * NOTE - this currently does not support concrete field types that are subtypes
+   * of the respective field types
+   */
+  public boolean requiresClinitExecution (ClassInfo ci, ThreadInfo ti){
+<span class="fc bfc" id="L101" title="All 2 branches covered.">    while (ci != null){</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">      if (ci.initializeClass(ti)){</span>
+<span class="nc" id="L103">        return true;</span>
+      }
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">      for (FieldInfo fi : ci.getDeclaredInstanceFields()) {</span>
+<span class="fc" id="L107">        ClassInfo ciField = fi.getTypeClassInfo();</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (requiresClinitExecution(ciField, ti)){</span>
+<span class="nc" id="L109">          return true;</span>
+        }
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (ciField.isArray()){</span>
+<span class="fc" id="L112">          ClassInfo ciComp = ciField.getComponentClassInfo();</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">          if (requiresClinitExecution(ciComp, ti)) {</span>
+<span class="nc" id="L114">            return true;</span>
+          }
+        }
+      }
+      
+<span class="fc" id="L119">      ci = ci.getSuperClass();</span>
+    }
+    
+<span class="fc" id="L122">    return false;</span>
+  }
+  
+  //--- the fillers
+  
+  // NOTE - (pcm) before calling this method you have to make sure all required
+  // types are initialized
+  
+  public int fillObject (MJIEnv env, ClassInfo ci, ChoiceGenerator&lt;?&gt;[] cgs, String prefix) throws ClinitRequired {
+<span class="fc" id="L131">    int newObjRef = env.newObject(ci);</span>
+<span class="fc" id="L132">    ElementInfo ei = env.getHeap().getModifiable(newObjRef);</span>
+
+    // Fill all fields for this class until it has a super class
+<span class="fc bfc" id="L135" title="All 2 branches covered.">    while (ci != null) {</span>
+<span class="fc" id="L136">      FieldInfo[] fields = ci.getDeclaredInstanceFields();</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      for (FieldInfo fi : fields) {</span>
+<span class="fc" id="L139">        String fieldName = fi.getName();</span>
+<span class="fc" id="L140">        Value val = getValue(fieldName);</span>
+<span class="fc" id="L141">        CGCall cgCall = getCGCall(fieldName);</span>
+
+        // If a value was defined in JSON document
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (val != null) {</span>
+<span class="fc" id="L145">          fillFromValue(fi, ei, val, env, cgs, prefix);</span>
+          
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        } else if (cgCall != null) {</span>
+          // Value of this field should be taken from CG
+<span class="fc" id="L149">          String cgId = prefix + fieldName;</span>
+<span class="fc" id="L150">          ChoiceGenerator&lt;?&gt; cg = getCGByID(cgs, cgId);</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">          assert cg != null : &quot;Expected CG with id &quot; + cgId;</span>
+          
+<span class="fc" id="L153">          Object cgResult = cg.getNextChoice();</span>
+
+<span class="fc bfc" id="L155" title="All 2 branches covered.">          if (!fi.isReference()) {</span>
+<span class="fc" id="L156">            convertPrimititve(ei, fi, cgResult);</span>
+          } else {
+<span class="fc" id="L158">            int newFieldRef = ObjectConverter.JPFObjectFromJavaObject(env, cgResult);</span>
+<span class="fc" id="L159">            ei.setReferenceField(fi, newFieldRef);</span>
+          }
+<span class="fc" id="L161">        } else {</span>
+<span class="fc" id="L162">          logger.warning(&quot;Value for field &quot;, fi.getFullName(), &quot; isn't specified&quot;);</span>
+        }
+      }
+
+<span class="fc" id="L166">      ci = ci.getSuperClass();</span>
+<span class="fc" id="L167">    }</span>
+
+<span class="fc" id="L169">    return newObjRef;</span>
+  }
+
+  private void fillFromValue(FieldInfo fi, ElementInfo ei, Value val, MJIEnv env, ChoiceGenerator&lt;?&gt;[] cgs, String prefix) {
+<span class="fc" id="L173">    String fieldName = fi.getName();</span>
+    // Handle primitive types
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    if (!fi.isReference()) {</span>
+<span class="fc" id="L176">      fillPrimitive(ei, fi, val);</span>
+      
+    } else {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">      if (isArrayType(fi.getType())) {</span>
+<span class="fc" id="L180">        int newArrRef = createArray(env, fi.getTypeClassInfo(), val, cgs, prefix + fieldName);</span>
+<span class="fc" id="L181">        ei.setReferenceField(fi, newArrRef);</span>
+
+<span class="fc" id="L183">      } else {</span>
+<span class="fc" id="L184">        Creator creator = CreatorsFactory.getCreator(fi.getType());</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (creator != null) {</span>
+<span class="fc" id="L186">          int newSubObjRef = creator.create(env, fi.getType(), val);</span>
+<span class="fc" id="L187">          ei.setReferenceField(fi, newSubObjRef);</span>
+          
+<span class="fc" id="L189">        } else {</span>
+          // Not a special case. Fill it recursively
+<span class="fc" id="L191">          ClassInfo ciField = fi.getTypeClassInfo();</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">          if (ciField.initializeClass(env.getThreadInfo())){</span>
+<span class="nc" id="L193">            throw new ClinitRequired(ciField);</span>
+          }
+          
+<span class="fc" id="L196">          JSONObject jsonObj = val.getObject();</span>
+<span class="fc" id="L197">          int fieldRef = MJIEnv.NULL;</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">          if (jsonObj != null) {</span>
+<span class="fc" id="L199">            fieldRef = jsonObj.fillObject(env, ciField, cgs, prefix + fieldName);</span>
+          }
+<span class="fc" id="L201">          ei.setReferenceField(fi.getName(), fieldRef);</span>
+        }
+      }
+    }
+<span class="fc" id="L205">  }</span>
+
+
+  private static void fillPrimitive(ElementInfo ei, FieldInfo fi, Value val) {
+<span class="fc" id="L209">    String primitiveName = fi.getType();</span>
+
+<span class="fc bfc" id="L211" title="All 2 branches covered.">    if (primitiveName.equals(&quot;boolean&quot;)) {</span>
+<span class="fc" id="L212">      ei.setBooleanField(fi, val.getBoolean());</span>
+
+<span class="fc bfc" id="L214" title="All 2 branches covered.">    } else if (primitiveName.equals(&quot;byte&quot;)) {</span>
+<span class="fc" id="L215">      ei.setByteField(fi, val.getDouble().byteValue());</span>
+
+<span class="fc bfc" id="L217" title="All 2 branches covered.">    } else if (primitiveName.equals(&quot;short&quot;)) {</span>
+<span class="fc" id="L218">      ei.setShortField(fi, val.getDouble().shortValue());</span>
+
+<span class="fc bfc" id="L220" title="All 2 branches covered.">    } else if (primitiveName.equals(&quot;int&quot;)) {</span>
+<span class="fc" id="L221">      ei.setIntField(fi, val.getDouble().intValue());</span>
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">    } else if (primitiveName.equals(&quot;long&quot;)) {</span>
+<span class="fc" id="L224">      ei.setLongField(fi, val.getDouble().longValue());</span>
+
+<span class="fc bfc" id="L226" title="All 2 branches covered.">    } else if (primitiveName.equals(&quot;float&quot;)) {</span>
+<span class="fc" id="L227">      ei.setFloatField(fi, val.getDouble().floatValue());</span>
+
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">    } else if (primitiveName.equals(&quot;double&quot;)) {</span>
+<span class="fc" id="L230">      ei.setDoubleField(fi, val.getDouble());</span>
+    }
+<span class="fc" id="L232">  }</span>
+
+  public int createArray(MJIEnv env, ClassInfo ciArray, Value value, ChoiceGenerator&lt;?&gt;[] cgs, String prefix) {
+<span class="fc" id="L235">    Value vals[] = value.getArray();</span>
+
+<span class="fc" id="L237">    ClassInfo ciElement = ciArray.getComponentClassInfo();</span>
+<span class="fc" id="L238">    String arrayElementType = ciElement.getName();</span>
+    int arrayRef;
+
+    // Handle arrays of primitive types
+<span class="fc bfc" id="L242" title="All 2 branches covered.">    if (arrayElementType.equals(&quot;boolean&quot;)) {</span>
+<span class="fc" id="L243">       arrayRef = env.newBooleanArray(vals.length);</span>
+<span class="fc" id="L244">       ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L245">       boolean bools[] = arrayEI.asBooleanArray();</span>
+
+<span class="fc bfc" id="L247" title="All 2 branches covered.">       for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L248">        bools[i] = vals[i].getBoolean();</span>
+      }
+<span class="fc bfc" id="L250" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;byte&quot;)) {</span>
+<span class="fc" id="L251">       arrayRef = env.newByteArray(vals.length);</span>
+<span class="fc" id="L252">       ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L253">       byte bytes[] = arrayEI.asByteArray();</span>
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">       for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L256">        bytes[i] = vals[i].getDouble().byteValue();</span>
+      }
+<span class="fc bfc" id="L258" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;short&quot;)) {</span>
+<span class="fc" id="L259">       arrayRef = env.newShortArray(vals.length);</span>
+<span class="fc" id="L260">       ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L261">       short shorts[] = arrayEI.asShortArray();</span>
+
+<span class="fc bfc" id="L263" title="All 2 branches covered.">       for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L264">        shorts[i] = vals[i].getDouble().shortValue();</span>
+      }
+<span class="fc bfc" id="L266" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;int&quot;)) {</span>
+<span class="fc" id="L267">      arrayRef = env.newIntArray(vals.length);</span>
+<span class="fc" id="L268">      ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L269">      int[] ints = arrayEI.asIntArray();</span>
+
+<span class="fc bfc" id="L271" title="All 2 branches covered.">      for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L272">        ints[i] = vals[i].getDouble().intValue();</span>
+      }
+<span class="fc bfc" id="L274" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;long&quot;)) {</span>
+<span class="fc" id="L275">      arrayRef = env.newLongArray(vals.length);</span>
+<span class="fc" id="L276">      ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L277">      long[] longs = arrayEI.asLongArray();</span>
+
+<span class="fc bfc" id="L279" title="All 2 branches covered.">      for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L280">        longs[i] = vals[i].getDouble().longValue();</span>
+      }
+<span class="fc bfc" id="L282" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;float&quot;)) {</span>
+<span class="fc" id="L283">      arrayRef = env.newFloatArray(vals.length);</span>
+<span class="fc" id="L284">      ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L285">      float[] floats = arrayEI.asFloatArray();</span>
+
+<span class="fc bfc" id="L287" title="All 2 branches covered.">      for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L288">        floats[i] = vals[i].getDouble().floatValue();</span>
+      }
+<span class="fc bfc" id="L290" title="All 2 branches covered.">    } else if (arrayElementType.equals(&quot;double&quot;)) {</span>
+<span class="fc" id="L291">      arrayRef = env.newDoubleArray(vals.length);</span>
+<span class="fc" id="L292">      ElementInfo arrayEI = env.getHeap().getModifiable(arrayRef);</span>
+<span class="fc" id="L293">      double[] doubles = arrayEI.asDoubleArray();</span>
+
+<span class="fc bfc" id="L295" title="All 2 branches covered.">      for (int i = 0; i &lt; vals.length; i++) {</span>
+<span class="fc" id="L296">        doubles[i] = vals[i].getDouble();</span>
+      }
+<span class="fc" id="L298">    } else {</span>
+      // Not an array of primitive types
+<span class="fc" id="L300">      arrayRef = env.newObjectArray(arrayElementType, vals.length);</span>
+<span class="fc" id="L301">      ElementInfo arrayEI = env.getModifiableElementInfo(arrayRef);</span>
+
+<span class="fc" id="L303">      Fields fields = arrayEI.getFields();</span>
+
+<span class="fc" id="L305">      Creator creator = CreatorsFactory.getCreator(arrayElementType);</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">      for (int i = 0; i &lt; vals.length; i++) {</span>
+
+        int newObjRef;
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        if (creator != null) {</span>
+<span class="fc" id="L310">          newObjRef = creator.create(env, arrayElementType, vals[i]);</span>
+        } else{
+<span class="fc bfc" id="L312" title="All 2 branches covered.">          if (isArrayType(arrayElementType)) {</span>
+<span class="fc" id="L313">            newObjRef = createArray(env, ciElement, vals[i], cgs, prefix + &quot;[&quot; + i);</span>
+          } else {
+<span class="fc" id="L315">            JSONObject jsonObj = vals[i].getObject();</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">            if (jsonObj != null) {</span>
+<span class="fc" id="L317">              newObjRef = jsonObj.fillObject(env, ciElement, cgs, prefix + &quot;[&quot; + i);</span>
+            } else {
+<span class="nc" id="L319">              newObjRef = MJIEnv.NULL;</span>
+            }
+          }
+        }
+
+<span class="fc" id="L324">        fields.setReferenceValue(i, newObjRef);</span>
+      }
+    }
+
+<span class="fc" id="L328">    return arrayRef;</span>
+  }
+
+
+  private boolean isArrayType(String typeName) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">    return typeName.lastIndexOf('[') &gt;= 0;</span>
+  }
+
+  /**
+   * This is method is used to set field of primitive type from CG result object
+   * @param ei - ElementInfo to set field in
+   * @param fi - FieldInfo of a field we want to set
+   * @param cgResult - result of CG call
+   */
+  private void convertPrimititve(ElementInfo ei, FieldInfo fi, Object cgResult) {
+<span class="fc" id="L343">    String primitiveName = fi.getType();</span>
+
+<span class="pc bpc" id="L345" title="1 of 4 branches missed.">    if (primitiveName.equals(&quot;boolean&quot;) &amp;&amp; cgResult instanceof Boolean) {</span>
+<span class="fc" id="L346">      Boolean bool = (Boolean) cgResult;</span>
+<span class="fc" id="L347">      ei.setBooleanField(fi, bool.booleanValue());</span>
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">    } else if (cgResult instanceof Number) {</span>
+<span class="fc" id="L349">      Number number = (Number) cgResult;</span>
+
+<span class="fc bfc" id="L351" title="All 2 branches covered.">      if (primitiveName.equals(&quot;byte&quot;)) {</span>
+<span class="fc" id="L352">        ei.setByteField(fi, number.byteValue());</span>
+
+<span class="fc bfc" id="L354" title="All 2 branches covered.">      } else if (primitiveName.equals(&quot;short&quot;)) {</span>
+<span class="fc" id="L355">        ei.setShortField(fi, number.shortValue());</span>
+
+<span class="fc bfc" id="L357" title="All 2 branches covered.">      } else if (primitiveName.equals(&quot;int&quot;)) {</span>
+<span class="fc" id="L358">        ei.setIntField(fi, number.intValue());</span>
+
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">      } else if (primitiveName.equals(&quot;long&quot;)) {</span>
+<span class="fc" id="L361">        ei.setLongField(fi, number.longValue());</span>
+
+<span class="nc bnc" id="L363" title="All 2 branches missed.">      } else if (primitiveName.equals(&quot;float&quot;)) {</span>
+<span class="nc" id="L364">        ei.setFloatField(fi, number.floatValue());</span>
+
+<span class="nc bnc" id="L366" title="All 2 branches missed.">      } else if (primitiveName.equals(&quot;double&quot;)) {</span>
+<span class="nc" id="L367">        ei.setDoubleField(fi, number.doubleValue());</span>
+      }
+<span class="pc bnc" id="L369" title="All 2 branches missed.">    } else if (cgResult instanceof Character) {</span>
+<span class="nc" id="L370">      Character c = (Character) cgResult;</span>
+<span class="nc" id="L371">      ei.setCharField(fi, c);</span>
+      
+<span class="nc" id="L373">    } else {</span>
+<span class="nc" id="L374">      throw new JPFException(&quot;Can't convert &quot; + cgResult.getClass().getCanonicalName() +</span>
+                             &quot; to &quot; + primitiveName);
+    }
+<span class="fc" id="L377">  }</span>
+
+  /**
+   * Get CG from current state CG list by it's ID
+   * @param cgs - array of CG from current state
+   * @param id - id of the CG that we search for
+   * @return - CG with a specified id or null if no id with such name found
+   */
+  private ChoiceGenerator&lt;?&gt; getCGByID(ChoiceGenerator&lt;?&gt;[] cgs, String id) {
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">    if (cgs == null) {</span>
+<span class="nc" id="L387">      return null;</span>
+    }
+    
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">    for (int i = 0; i &lt; cgs.length; i++) {</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">      if (cgs[i].getId().equals(id)) {</span>
+<span class="fc" id="L392">        return cgs[i];</span>
+      }
+    }
+
+<span class="nc" id="L396">    return null;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

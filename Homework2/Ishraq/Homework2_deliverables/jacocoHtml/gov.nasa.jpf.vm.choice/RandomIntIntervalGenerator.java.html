@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RandomIntIntervalGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">RandomIntIntervalGenerator.java</span></div><h1>RandomIntIntervalGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.IntChoiceGenerator;
+
+import java.util.Random;
+
+/**
+ * a IntChoiceGenerator that randomly chooses a configured number
+ * of values from a specified range
+ * this is usually configured through app properties
+ * 
+ * &lt;2do&gt; this is too redundant to RandomOrderIntCG - replace
+ */
+public class RandomIntIntervalGenerator extends ChoiceGeneratorBase&lt;Integer&gt; implements IntChoiceGenerator {
+
+  protected int min, max; // both inclusive
+  protected int nChoices;
+  protected long seed;
+
+  protected Random random;
+  protected int range;
+
+  protected int next;
+<span class="nc" id="L45">  protected int count = 0;</span>
+
+  public RandomIntIntervalGenerator (String id, int min, int max, int nChoices){
+<span class="nc" id="L48">    this(id, min,max,nChoices,0L);</span>
+<span class="nc" id="L49">  }</span>
+
+  public RandomIntIntervalGenerator (String id, int min, int max, int nChoices, long seed){
+<span class="nc" id="L52">    super(id);</span>
+
+<span class="nc" id="L54">    this.min = min;</span>
+<span class="nc" id="L55">    this.max = max;</span>
+<span class="nc" id="L56">    this.nChoices = nChoices;</span>
+<span class="nc" id="L57">    this.seed = seed;</span>
+
+<span class="nc" id="L59">    range = max - min;</span>
+<span class="nc" id="L60">    random = new Random(seed);</span>
+<span class="nc" id="L61">  }</span>
+
+  public RandomIntIntervalGenerator(Config conf, String id) {
+<span class="nc" id="L64">    super(id);</span>
+
+<span class="nc" id="L66">    min = conf.getInt(id + &quot;.min&quot;);</span>
+<span class="nc" id="L67">    max = conf.getInt(id + &quot;.max&quot;);</span>
+<span class="nc" id="L68">    nChoices = conf.getInt(id + &quot;.n&quot;, 1);</span>
+<span class="nc" id="L69">    seed = conf.getLong(id + &quot;.seed&quot;, 1);</span>
+
+<span class="nc" id="L71">    range = max - min;</span>
+<span class="nc" id="L72">    random = new Random(seed);</span>
+<span class="nc" id="L73">  }</span>
+
+  @Override
+  public Integer getChoice (int idx){
+<span class="nc bnc" id="L77" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; nChoices){</span>
+      // Ok, this is really not efficient - use only for non-performance critical operations
+<span class="nc" id="L79">      Random r = new Random(seed);</span>
+<span class="nc" id="L80">      int v=0;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">      for (int i=0; i&lt;idx; i++){</span>
+<span class="nc" id="L82">        v = r.nextInt(range);</span>
+      }
+<span class="nc" id="L84">      return v + min;</span>
+      
+    } else {
+<span class="nc" id="L87">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+
+  @Override
+  public void reset () {
+<span class="nc" id="L93">    random = new Random(seed);</span>
+<span class="nc" id="L94">    count = 0;</span>
+
+<span class="nc" id="L96">    isDone = false;</span>
+<span class="nc" id="L97">  }</span>
+
+	@Override
+	public boolean hasMoreChoices() {
+<span class="nc bnc" id="L101" title="All 4 branches missed.">    return !isDone &amp;&amp; (count &lt; nChoices);</span>
+	}
+
+  @Override
+  public void advance (){
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    if (count &lt; nChoices){</span>
+<span class="nc" id="L107">      count++;</span>
+<span class="nc" id="L108">      next = random.nextInt(range) + min;</span>
+    }
+<span class="nc" id="L110">  }</span>
+
+  @Override
+  public Integer getNextChoice () {
+<span class="nc" id="L114">    return new Integer(next);</span>
+  }
+
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="nc" id="L119">    return nChoices;</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="nc" id="L124">    return count;</span>
+  }
+
+  @Override
+  public String toString () {
+<span class="nc" id="L129">    StringBuilder sb = new StringBuilder(getClass().getName());</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    if (id == null) {</span>
+<span class="nc" id="L131">      sb.append('[');</span>
+    } else {
+<span class="nc" id="L133">      sb.append(&quot;[id=\&quot;&quot;);</span>
+<span class="nc" id="L134">      sb.append(id);</span>
+<span class="nc" id="L135">      sb.append(&quot;\&quot;,&quot;);</span>
+    }
+<span class="nc" id="L137">    sb.append(min);</span>
+<span class="nc" id="L138">    sb.append(&quot;..&quot;);</span>
+<span class="nc" id="L139">    sb.append(max);</span>
+<span class="nc" id="L140">    sb.append(&quot;,n=&quot;);</span>
+<span class="nc" id="L141">    sb.append(nChoices);</span>
+<span class="nc" id="L142">    sb.append(&quot;,cur=&quot;);</span>
+<span class="nc" id="L143">    sb.append(getNextChoice());</span>
+<span class="nc" id="L144">    sb.append(&quot;,count=&quot;);</span>
+<span class="nc" id="L145">    sb.append(count);</span>
+<span class="nc" id="L146">    sb.append(']');</span>
+<span class="nc" id="L147">    return sb.toString();</span>
+  }
+
+  @Override
+  public Class&lt;Integer&gt; getChoiceType() {
+<span class="nc" id="L152">    return Integer.class;</span>
+  }
+
+  @Override
+  public ChoiceGenerator&lt;Integer&gt; randomize() {
+<span class="nc" id="L157">    return this;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

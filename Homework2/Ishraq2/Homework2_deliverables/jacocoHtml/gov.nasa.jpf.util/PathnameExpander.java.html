@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PathnameExpander.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">PathnameExpander.java</span></div><h1>PathnameExpander.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * utility to perform pathname expansion
+ * the following patterns are supported so far:
+ *
+ * (1) brace expansion ala bash: foo{Boo,Shoo} =&gt; fooBoo, fooShoo
+ *     (this doesn't check for existence, its simply lexical)
+ *
+ * (2) '*' wildcard pathname expansion ala bash: &quot;*.java&quot; | &quot;*\Main*.java&quot;
+ *     (supports wildcards in mutiple path elements and within file/dir name)
+ *
+ * (3) recursive dir expansion ala Ant: &quot;**\*.jar&quot;
+ *
+ */
+<span class="nc" id="L38">public class PathnameExpander {</span>
+
+  public String[] expandPath (String s) {
+<span class="nc bnc" id="L41" title="All 4 branches missed.">    if (s == null || s.length() == 0) {</span>
+<span class="nc" id="L42">      return null;</span>
+    }
+
+<span class="nc bnc" id="L45" title="All 2 branches missed.">    boolean hasWildcards = (s.indexOf('*') &gt;= 0);</span>
+
+<span class="nc" id="L47">    int i = s.indexOf('{');</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    if (i &gt;= 0){</span>
+<span class="nc" id="L49">      ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="nc" id="L51">      int j=0, jLast = s.length();</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">      for (; (i = s.indexOf('{', j)) &gt;= 0;) {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if ((j = s.indexOf('}', i)) &gt; 0) {</span>
+<span class="nc" id="L54">          String[] choices = s.substring(i + 1, j).split(&quot;,&quot;);</span>
+
+<span class="nc bnc" id="L56" title="All 2 branches missed.">          if (list.isEmpty()) {</span>
+<span class="nc" id="L57">            String prefix = s.substring(0, i);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">            for (String c : choices) {</span>
+<span class="nc" id="L59">              list.add(prefix + c);</span>
+            }
+<span class="nc" id="L61">          } else {</span>
+<span class="nc" id="L62">            String prefix = s.substring(jLast, i);</span>
+<span class="nc" id="L63">            ArrayList&lt;String&gt; newList = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">            for (String e : list) {</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">              for (String c : choices) {</span>
+<span class="nc" id="L66">                newList.add(e + prefix + c);</span>
+              }
+<span class="nc" id="L68">            }</span>
+<span class="nc" id="L69">            list = newList;</span>
+          }
+<span class="nc" id="L71">          jLast = j+1;</span>
+<span class="nc" id="L72">        } else {</span>
+<span class="nc" id="L73">          throw new IllegalArgumentException(&quot;illegal path spec (missing '}'): &quot; + s);</span>
+        }
+      }
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">      if (jLast &lt; s.length()) {</span>
+<span class="nc" id="L78">        String postfix = s.substring(jLast);</span>
+<span class="nc" id="L79">        ArrayList&lt;String&gt; newList = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        for (String e : list) {</span>
+<span class="nc" id="L81">          newList.add(e + postfix);</span>
+<span class="nc" id="L82">        }</span>
+<span class="nc" id="L83">        list = newList;</span>
+      }
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">      if (hasWildcards){</span>
+<span class="nc" id="L87">        ArrayList&lt;String&gt; newList = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        for (String p : list) {</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">          for (String c : expandWildcards(p)) {</span>
+<span class="nc" id="L90">            newList.add(c);</span>
+          }
+<span class="nc" id="L92">        }</span>
+<span class="nc" id="L93">        list = newList;</span>
+      }
+
+<span class="nc" id="L96">      return list.toArray(new String[list.size()]);</span>
+
+    } else {  // no bracket expansion required
+
+<span class="nc bnc" id="L100" title="All 2 branches missed.">      if (hasWildcards){</span>
+<span class="nc" id="L101">        return expandWildcards(s);</span>
+
+      } else { // nothing to expand at all
+<span class="nc" id="L104">        return (new String[] {s});</span>
+      }
+    }
+  }
+
+  protected String[] expandWildcards (String s){
+<span class="nc" id="L110">    int i = s.indexOf('*');</span>
+
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (i &gt;= 0){ // Ok, we have at least one wildcard</span>
+<span class="nc" id="L113">      String[] a = s.split(&quot;\\/&quot;);</span>
+<span class="nc" id="L114">      ArrayList&lt;File&gt; list = new ArrayList&lt;File&gt;();</span>
+
+<span class="nc" id="L116">      int j= initializeMatchList(list, a[0]);</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">      for (; j&lt;a.length; j++){</span>
+<span class="nc" id="L118">        ArrayList&lt;File&gt; newList = new ArrayList&lt;File&gt;();</span>
+
+<span class="nc" id="L120">        String e = a[j];</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (e.indexOf('*') &gt;= 0){</span>
+
+<span class="nc bnc" id="L123" title="All 2 branches missed.">          if (e.equals(&quot;**&quot;)){ // matches all subdirs recursively</span>
+<span class="nc" id="L124">            collectDirs(list, newList);</span>
+
+          } else { // file/dir name match
+<span class="nc" id="L127">            collectMatchingNames(list, newList, getPattern(e));</span>
+          }
+
+        } else { // no wildcard
+<span class="nc" id="L131">          collectExistingFile(list, newList, e);</span>
+        }
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        if (newList.isEmpty()){  // shortcut, nothing more to match</span>
+<span class="nc" id="L135">          return new String[0];</span>
+        }
+<span class="nc" id="L137">        list = newList;</span>
+      }
+
+<span class="nc" id="L140">      return getPaths(list);</span>
+
+    } else { // no wildcards, nothing to expand
+<span class="nc" id="L143">      return new String[] {s};</span>
+    }
+  }
+
+  private int initializeMatchList (ArrayList&lt;File&gt; list, String path){
+<span class="nc bnc" id="L148" title="All 2 branches missed.">    if (path.isEmpty()){ // absolute pathname (ignoring drive letters for now)</span>
+<span class="nc" id="L149">      list.add(new File(File.separator));</span>
+<span class="nc" id="L150">      return 1;</span>
+<span class="nc bnc" id="L151" title="All 4 branches missed.">    } else if (path.equals(&quot;..&quot;) || path.equals(&quot;.&quot;)){</span>
+<span class="nc" id="L152">      list.add(new File(path));</span>
+<span class="nc" id="L153">      return 1;</span>
+    } else {
+<span class="nc" id="L155">      list.add(new File(&quot;.&quot;));</span>
+<span class="nc" id="L156">      return 0;</span>
+    }
+  }
+
+  private void collectMatchingNames(ArrayList&lt;File&gt; list, ArrayList&lt;File&gt; newList, Pattern pattern){
+<span class="nc bnc" id="L161" title="All 2 branches missed.">    for (File dir : list) {</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">      if (dir.isDirectory()){</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        for (String c : dir.list()){</span>
+<span class="nc" id="L164">          Matcher m = pattern.matcher(c);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">          if (m.matches()){</span>
+<span class="nc" id="L166">            newList.add(new File(dir,c));</span>
+          }
+        }
+      }
+<span class="nc" id="L170">    }</span>
+<span class="nc" id="L171">  }</span>
+
+  private void collectExistingFile(ArrayList&lt;File&gt; list, ArrayList&lt;File&gt; newList, String fname) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    for (File dir : list) {</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">      if (dir.isDirectory()){</span>
+<span class="nc" id="L176">        File nf = new File(dir, fname);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">        if (nf.exists()) {</span>
+<span class="nc" id="L178">          newList.add(nf);</span>
+        }
+      }
+<span class="nc" id="L181">    }</span>
+<span class="nc" id="L182">  }</span>
+
+  private void collectDirs(ArrayList&lt;File&gt; list, ArrayList&lt;File&gt; newList){
+<span class="nc bnc" id="L185" title="All 2 branches missed.">    for (File dir : list) {</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">      if (dir.isDirectory()){</span>
+<span class="nc" id="L187">        newList.add(dir); // this includes the dir itself!</span>
+<span class="nc" id="L188">        collectSubdirs(newList,dir);</span>
+      }
+<span class="nc" id="L190">    }</span>
+<span class="nc" id="L191">  }</span>
+  private void collectSubdirs(ArrayList&lt;File&gt; newList, File dir) {
+<span class="nc bnc" id="L193" title="All 2 branches missed.">    for (File f : dir.listFiles()){</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">      if (f.isDirectory()){</span>
+<span class="nc" id="L195">        newList.add(f);</span>
+<span class="nc" id="L196">        collectSubdirs(newList, f);</span>
+      }
+    }
+<span class="nc" id="L199">  }</span>
+
+  protected String[] getPaths(ArrayList&lt;File&gt; list) {
+<span class="nc" id="L202">    String[] result = new String[list.size()];</span>
+<span class="nc" id="L203">    int k=0;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">    for (File f : list){</span>
+<span class="nc" id="L205">      String p = f.getPath();</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">      if ((p.length() &gt; 1) &amp;&amp; (p.charAt(0) == '.')){ // remove leading &quot;./&quot;</span>
+<span class="nc" id="L207">        char c = p.charAt(1);</span>
+<span class="nc bnc" id="L208" title="All 4 branches missed.">        if (c == '\\' || c == '/'){</span>
+<span class="nc" id="L209">          p = p.substring(2);</span>
+        }
+      }
+<span class="nc" id="L212">      result[k++] = p;</span>
+<span class="nc" id="L213">    }</span>
+<span class="nc" id="L214">    return result;</span>
+  }
+
+  protected Pattern getPattern(String s){
+    Pattern p;
+
+<span class="nc" id="L220">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L222">    int len = s.length();</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">    for (int j=0; j&lt;len; j++){</span>
+<span class="nc" id="L224">      char c = s.charAt(j);</span>
+<span class="nc bnc" id="L225" title="All 6 branches missed.">      switch (c){</span>
+<span class="nc" id="L226">      case '.' : sb.append(&quot;\\.&quot;); break;</span>
+<span class="nc" id="L227">      case '$' : sb.append(&quot;\\$&quot;); break;</span>
+<span class="nc" id="L228">      case '[' : sb.append(&quot;\\[&quot;); break;</span>
+<span class="nc" id="L229">      case ']' : sb.append(&quot;\\]&quot;); break;</span>
+<span class="nc" id="L230">      case '*' : sb.append(&quot;.*&quot;); break;</span>
+      // &lt;2do&gt; and probably more..
+<span class="nc" id="L232">      default:   sb.append(c);</span>
+      }
+    }
+
+<span class="nc" id="L236">    p = Pattern.compile(sb.toString());</span>
+<span class="nc" id="L237">    return p;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

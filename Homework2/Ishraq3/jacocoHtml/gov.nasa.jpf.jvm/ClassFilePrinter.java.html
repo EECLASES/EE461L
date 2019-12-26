@@ -1,0 +1,786 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassFilePrinter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">ClassFilePrinter.java</span></div><h1>ClassFilePrinter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import java.io.PrintWriter;
+
+import gov.nasa.jpf.util.StructuredPrinter;
+import gov.nasa.jpf.vm.ClassParseException;
+
+/**
+ * simple tool to print contents of a classfile
+ *
+ * &lt;2do&gt; use indentation level variable and formated output
+ */
+<span class="nc" id="L31">public class ClassFilePrinter extends StructuredPrinter implements ClassFileReader {</span>
+
+
+  public static void main(String[] args){
+<span class="nc" id="L35">    ClassFilePrinter printer = new ClassFilePrinter();</span>
+
+    try {
+<span class="nc" id="L38">      ClassFile cf = new ClassFile(args[0]);</span>
+<span class="nc" id="L39">      cf.parse(printer);</span>
+
+<span class="nc" id="L41">    } catch (ClassParseException cfx){</span>
+<span class="nc" id="L42">      cfx.printStackTrace();</span>
+<span class="nc" id="L43">    }</span>
+<span class="nc" id="L44">  }</span>
+
+  @Override
+  public void setClass(ClassFile cf, String clsName, String superClsName, int flags, int cpCount) {
+<span class="nc" id="L48">    printSectionHeader( &quot;constpool&quot;);</span>
+<span class="nc" id="L49">    printCp(pw,cf);</span>
+
+<span class="nc" id="L51">    incIndent();</span>
+<span class="nc" id="L52">    printSectionHeader( &quot;class&quot;);</span>
+<span class="nc" id="L53">    pw.printf(&quot;%sclass=%s\n&quot;, indent, clsName);</span>
+<span class="nc" id="L54">    pw.printf(&quot;%ssuperclass=%s\n&quot;, indent, superClsName);</span>
+<span class="nc" id="L55">    pw.printf(&quot;%sflags=0x%X\n&quot;, indent, flags);</span>
+<span class="nc" id="L56">  }</span>
+
+  //--- interfaces
+  @Override
+  public void setInterfaceCount(ClassFile cf, int ifcCount) {
+<span class="nc" id="L61">    pw.printf(&quot;%sinterface count=%d\n&quot;, indent, ifcCount);</span>
+<span class="nc" id="L62">    incIndent();</span>
+<span class="nc" id="L63">  }</span>
+
+  @Override
+  public void setInterface(ClassFile cf, int ifcIndex, String ifcName) {
+<span class="nc" id="L67">    pw.printf(&quot;%s[%d]: %s\n&quot;, indent, ifcIndex, ifcName);</span>
+<span class="nc" id="L68">  }</span>
+
+  @Override
+  public void setInterfacesDone(ClassFile cf){
+<span class="nc" id="L72">    decIndent();</span>
+<span class="nc" id="L73">  }</span>
+
+  //--- fields
+  @Override
+  public void setFieldCount(ClassFile cf, int fieldCount) {
+<span class="nc" id="L78">    printSectionHeader( &quot;fields&quot;);</span>
+<span class="nc" id="L79">    pw.printf( &quot;%sfield count=%d\n&quot;, indent, fieldCount);</span>
+<span class="nc" id="L80">  }</span>
+
+  @Override
+  public void setField(ClassFile cf, int fieldIndex, int accessFlags, String name, String descriptor) {
+<span class="nc" id="L84">    pw.printf(&quot;%s[%d]: %s, type=%s,flags=0x%X&quot;, indent, fieldIndex, name, descriptor, accessFlags);</span>
+<span class="nc" id="L85">  }</span>
+
+  @Override
+  public void setFieldAttributeCount(ClassFile cf, int fieldIndex, int attrCount) {
+<span class="nc" id="L89">    pw.printf(&quot;, attr count=%d\n&quot;, attrCount);</span>
+<span class="nc" id="L90">    incIndent();</span>
+<span class="nc" id="L91">  }</span>
+
+  @Override
+  public void setFieldAttribute(ClassFile cf, int fieldIndex, int attrIndex, String name, int attrLength) {
+<span class="nc" id="L95">    pw.printf(&quot;%s[%d]: %s&quot;, indent, attrIndex, name);</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (name == ClassFile.CONST_VALUE_ATTR) {</span>
+<span class="nc" id="L98">      cf.parseConstValueAttr(this, null);</span>
+
+<span class="nc bnc" id="L100" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L101">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L104">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L107">        cf.parseTypeAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    } else if (name == ClassFile.SIGNATURE_ATTR){</span>
+<span class="nc" id="L110">      cf.parseSignatureAttr(this, null);</span>
+
+    } else {
+<span class="nc" id="L113">      pw.printf(&quot; ,length=%d,data=[&quot;,attrLength );</span>
+<span class="nc" id="L114">      printRawData(pw, cf, attrLength, 10);</span>
+<span class="nc" id="L115">      pw.println(']');</span>
+    }
+<span class="nc" id="L117">  }</span>
+
+  @Override
+  public void setFieldAttributesDone(ClassFile cf, int fieldIndex){
+<span class="nc" id="L121">    decIndent();</span>
+<span class="nc" id="L122">  }</span>
+
+  @Override
+  public void setFieldDone(ClassFile cf, int fieldIndex){
+<span class="nc" id="L126">    pw.println();</span>
+<span class="nc" id="L127">  }</span>
+
+  @Override
+  public void setFieldsDone(ClassFile cf){
+<span class="nc" id="L131">  }</span>
+
+  @Override
+  public void setConstantValue(ClassFile cf, Object tag, Object value) {
+<span class="nc" id="L135">    pw.printf(&quot; value=%s\n&quot;, value);</span>
+<span class="nc" id="L136">  }</span>
+
+  //--- methods
+  @Override
+  public void setMethodCount(ClassFile cf, int methodCount) {
+<span class="nc" id="L141">    printSectionHeader( &quot;methods&quot;);</span>
+<span class="nc" id="L142">    pw.printf( &quot;%smethod count=%d\n&quot;, indent, methodCount);</span>
+<span class="nc" id="L143">  }</span>
+
+  @Override
+  public void setMethod(ClassFile cf, int methodIndex, int accessFlags, String name, String descriptor) {
+<span class="nc" id="L147">    pw.printf(&quot;%s[%d]: %s%s, flags=0x%X&quot;, indent, methodIndex, name, descriptor, accessFlags);</span>
+<span class="nc" id="L148">  }</span>
+
+  @Override
+  public void setMethodAttributeCount(ClassFile cf, int methodIndex, int attrCount) {
+<span class="nc" id="L152">    pw.printf(&quot;, attr count=%d\n&quot;, attrCount);</span>
+<span class="nc" id="L153">    incIndent();</span>
+<span class="nc" id="L154">  }</span>
+
+  @Override
+  public void setMethodAttribute(ClassFile cf, int methodIndex, int attrIndex, String name, int attrLength) {
+<span class="nc" id="L158">    pw.printf(&quot;%s[%d]: %s&quot;, indent, attrIndex, name);</span>
+
+<span class="nc bnc" id="L160" title="All 2 branches missed.">    if (name == ClassFile.CODE_ATTR) {</span>
+<span class="nc" id="L161">      cf.parseCodeAttr(this, null);</span>
+
+<span class="nc bnc" id="L163" title="All 2 branches missed.">    } else if (name == ClassFile.EXCEPTIONS_ATTR){</span>
+<span class="nc" id="L164">      cf.parseExceptionAttr(this, null);</span>
+
+<span class="nc bnc" id="L166" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L167">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L170">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L173">      cf.parseParameterAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L176">      cf.parseTypeAnnotationsAttr(this, null);</span>
+      
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L179">      cf.parseParameterAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L181" title="All 2 branches missed.">    } else if (name == ClassFile.SIGNATURE_ATTR){</span>
+<span class="nc" id="L182">      cf.parseSignatureAttr(this, null);</span>
+
+    } else {
+<span class="nc" id="L185">      pw.printf(&quot; ,length=%d,data=[&quot;, attrLength );</span>
+<span class="nc" id="L186">      printRawData(pw, cf, attrLength, 10);</span>
+<span class="nc" id="L187">      pw.println(']');</span>
+    }
+<span class="nc" id="L189">  }</span>
+
+  @Override
+  public void setMethodAttributesDone(ClassFile cf, int methodIndex){
+<span class="nc" id="L193">    decIndent();</span>
+<span class="nc" id="L194">  }</span>
+
+  @Override
+  public void setMethodDone(ClassFile cf, int methodIndex){
+<span class="nc" id="L198">    pw.println();</span>
+<span class="nc" id="L199">  }</span>
+
+  @Override
+  public void setMethodsDone(ClassFile cf){
+<span class="nc" id="L203">  }</span>
+
+  @Override
+  public void setExceptionCount(ClassFile cf, Object tag, int exceptionCount){
+<span class="nc" id="L207">    pw.printf(&quot;, count=%d\n&quot;, exceptionCount);</span>
+<span class="nc" id="L208">    incIndent();</span>
+<span class="nc" id="L209">  }</span>
+  @Override
+  public void setException(ClassFile cf, Object tag, int exceptionIndex, String exceptionType){
+<span class="nc" id="L212">    pw.printf(&quot;%s[%d]: %s\n&quot;, indent, exceptionIndex, exceptionType);</span>
+<span class="nc" id="L213">  }</span>
+  @Override
+  public void setExceptionsDone(ClassFile cf, Object tag){
+<span class="nc" id="L216">    decIndent();</span>
+<span class="nc" id="L217">  }</span>
+
+
+  @Override
+  public void setCode(ClassFile cf, Object tag, int maxStack, int maxLocals, int codeLength) {
+<span class="nc" id="L222">    pw.printf(&quot;, maxStack=%d,maxLocals=%d,length=%d\n&quot;, maxStack, maxLocals,codeLength);</span>
+<span class="nc" id="L223">    incIndent();</span>
+<span class="nc" id="L224">    JVMByteCodePrinter bcPrinter = new JVMByteCodePrinter(pw, cf, indent);</span>
+<span class="nc" id="L225">    cf.parseBytecode(bcPrinter, tag, codeLength);</span>
+<span class="nc" id="L226">    decIndent();</span>
+<span class="nc" id="L227">  }</span>
+
+  @Override
+  public void setExceptionHandlerTableCount(ClassFile cf, Object tag, int exceptionTableCount) {
+<span class="nc" id="L231">    pw.printf(&quot;%sexception table count=%d\n&quot;, indent, exceptionTableCount);</span>
+<span class="nc" id="L232">    incIndent();</span>
+<span class="nc" id="L233">  }</span>
+  @Override
+  public void setExceptionHandler(ClassFile cf, Object tag, int exceptionIndex,
+          int startPc, int endPc, int handlerPc, String catchType) {
+<span class="nc" id="L237">    pw.printf(&quot;%s[%d]: type=%s, range=[%d..%d], handler=%d\n&quot;, indent, exceptionIndex, catchType, startPc, endPc, handlerPc);</span>
+<span class="nc" id="L238">  }</span>
+  @Override
+  public void setExceptionHandlerTableDone(ClassFile cf, Object tag){
+<span class="nc" id="L241">    decIndent();</span>
+<span class="nc" id="L242">  }</span>
+
+  @Override
+  public void setCodeAttributeCount(ClassFile cf, Object tag, int attrCount) {
+<span class="nc" id="L246">    pw.printf(&quot;%scode attribute count=%d\n&quot;, indent, attrCount);</span>
+<span class="nc" id="L247">    incIndent();</span>
+<span class="nc" id="L248">  }</span>
+  @Override
+  public void setCodeAttribute(ClassFile cf, Object tag, int attrIndex, String name, int attrLength) {
+<span class="nc" id="L251">    pw.printf(&quot;%s[%d]: %s&quot;, indent, attrIndex, name);</span>
+
+<span class="nc bnc" id="L253" title="All 2 branches missed.">    if (name == ClassFile.LINE_NUMBER_TABLE_ATTR) {</span>
+<span class="nc" id="L254">      cf.parseLineNumberTableAttr(this, tag);</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">    } else if (name == ClassFile.LOCAL_VAR_TABLE_ATTR) {</span>
+<span class="nc" id="L257">      cf.parseLocalVarTableAttr(this, tag);</span>
+
+<span class="nc bnc" id="L259" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L260">        cf.parseTypeAnnotationsAttr(this, tag);</span>
+
+    } else {  // generic
+<span class="nc" id="L263">      pw.printf(&quot; ,length=%d,data=[&quot;, attrLength );</span>
+<span class="nc" id="L264">      printRawData(pw, cf, attrLength, 10);</span>
+<span class="nc" id="L265">      pw.println(']');</span>
+    }
+<span class="nc" id="L267">  }</span>
+  @Override
+  public void setCodeAttributesDone(ClassFile cf, Object tag){
+<span class="nc" id="L270">    decIndent();</span>
+<span class="nc" id="L271">  }</span>
+
+  @Override
+  public void setLineNumberTableCount(ClassFile cf, Object tag, int lineNumberCount) {
+<span class="nc" id="L275">    pw.printf(&quot;, linenumber count=%d\n&quot;, lineNumberCount);</span>
+<span class="nc" id="L276">    incIndent();</span>
+<span class="nc" id="L277">  }</span>
+  @Override
+  public void setLineNumber(ClassFile cf, Object tag, int lineIndex, int lineNumber, int startPc) {
+<span class="nc" id="L280">    pw.printf(&quot;%s[%d]: line=%d, pc=%d\n&quot;, indent, lineIndex, lineNumber, startPc);</span>
+<span class="nc" id="L281">  }</span>
+  @Override
+  public void setLineNumberTableDone(ClassFile cf, Object tag){
+<span class="nc" id="L284">    decIndent();</span>
+<span class="nc" id="L285">  }</span>
+
+  @Override
+  public void setLocalVarTableCount(ClassFile cf, Object tag, int localVarCount) {
+<span class="nc" id="L289">    pw.printf(&quot;, localVar count=%d\n&quot;, localVarCount);</span>
+<span class="nc" id="L290">    incIndent();</span>
+<span class="nc" id="L291">  }</span>
+  @Override
+  public void setLocalVar(ClassFile cf, Object tag, int localVarIndex,
+          String varName, String descriptor, int scopeStartPc, int scopeEndPc, int slotIndex) {
+<span class="nc" id="L295">    pw.printf(&quot;%s[%d]: %s, type=%s, scope=[%d..%d], slot=%d\n&quot;, indent, localVarIndex, varName, descriptor,</span>
+<span class="nc" id="L296">            scopeStartPc, scopeEndPc, slotIndex);</span>
+<span class="nc" id="L297">  }</span>
+  @Override
+  public void setLocalVarTableDone(ClassFile cf, Object tag){
+<span class="nc" id="L300">    decIndent();</span>
+<span class="nc" id="L301">  }</span>
+
+  //--- class attributes
+  @Override
+  public void setClassAttributeCount(ClassFile cf, int attrCount) {
+<span class="nc" id="L306">    printSectionHeader( &quot;class attributes&quot;);</span>
+<span class="nc" id="L307">    pw.printf(&quot;%sclass attribute count=%d\n&quot;, indent, attrCount);</span>
+<span class="nc" id="L308">    incIndent();</span>
+<span class="nc" id="L309">  }</span>
+  @Override
+  public void setClassAttribute(ClassFile cf, int attrIndex, String name, int attrLength) {
+<span class="nc" id="L312">    pw.printf(&quot;%s[%d]: %s&quot;, indent, attrIndex, name);</span>
+
+<span class="nc bnc" id="L314" title="All 2 branches missed.">    if (name == ClassFile.SOURCE_FILE_ATTR) {</span>
+<span class="nc" id="L315">      cf.parseSourceFileAttr(this, null);</span>
+
+<span class="nc bnc" id="L317" title="All 2 branches missed.">    } else if (name == ClassFile.DEPRECATED_ATTR) {</span>
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">    } else if (name == ClassFile.INNER_CLASSES_ATTR) {</span>
+<span class="nc" id="L320">      cf.parseInnerClassesAttr(this, null);</span>
+
+<span class="nc bnc" id="L322" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L323">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L325" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L326">      cf.parseTypeAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L328" title="All 2 branches missed.">    } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR){</span>
+<span class="nc" id="L329">      cf.parseAnnotationsAttr(this, null);</span>
+
+<span class="nc bnc" id="L331" title="All 2 branches missed.">    } else if (name == ClassFile.SIGNATURE_ATTR){</span>
+<span class="nc" id="L332">      cf.parseSignatureAttr(this, null);</span>
+
+<span class="nc bnc" id="L334" title="All 2 branches missed.">    } else if (name == ClassFile.ENCLOSING_METHOD_ATTR){</span>
+<span class="nc" id="L335">      cf.parseEnclosingMethodAttr(this, null);</span>
+
+<span class="nc bnc" id="L337" title="All 2 branches missed.">    } else if (name == ClassFile.BOOTSTRAP_METHOD_ATTR){</span>
+<span class="nc" id="L338">      cf.parseBootstrapMethodAttr(this, null);</span>
+
+    } else {
+<span class="nc" id="L341">      pw.printf(&quot; ,length=%d,data=[&quot;, attrLength );</span>
+<span class="nc" id="L342">      printRawData(pw, cf, attrLength, 10);</span>
+<span class="nc" id="L343">      pw.println(']');</span>
+    }
+<span class="nc" id="L345">  }</span>
+  @Override
+  public void setClassAttributesDone(ClassFile cf){
+<span class="nc" id="L348">    decIndent();</span>
+<span class="nc" id="L349">  }</span>
+
+  @Override
+  public void setEnclosingMethod(ClassFile cf, Object tag, String enclosingClass, String enclosingMethod, String descriptor) {
+<span class="nc bnc" id="L353" title="All 2 branches missed.">    if (enclosingMethod != null){</span>
+<span class="nc" id="L354">      pw.printf(&quot;, enclosingClass=%s, method=%s%s\n&quot;, enclosingClass, enclosingMethod, descriptor);</span>
+    } else {
+<span class="nc" id="L356">      pw.printf(&quot;, enclosingClass=%s\n&quot;, enclosingClass);</span>
+    }
+<span class="nc" id="L358">  }</span>
+
+  
+  @Override
+  public void setSourceFile(ClassFile cf, Object tag, String pathName){
+<span class="nc" id="L363">    pw.printf(&quot;, path=%s\n&quot;, pathName);</span>
+<span class="nc" id="L364">  }</span>
+
+  @Override
+  public void setInnerClassCount(ClassFile cf, Object tag, int innerClsCount) {
+<span class="nc" id="L368">    pw.printf( &quot;, inner class count=%d\n&quot;, innerClsCount);</span>
+<span class="nc" id="L369">    incIndent();</span>
+<span class="nc" id="L370">  }</span>
+  @Override
+  public void setInnerClass(ClassFile cf, Object tag, int innerClsIndex,
+          String outerName, String innerName, String innerSimpleName, int accessFlags) {
+<span class="nc" id="L374">    pw.printf(&quot;%s[%d]: %s, fullName=%s, outerClass=%s, flags=0x%X\n&quot;, indent, innerClsIndex,</span>
+<span class="nc" id="L375">            innerSimpleName, innerName, outerName, accessFlags);</span>
+<span class="nc" id="L376">  }</span>
+  @Override
+  public void setInnerClassesDone(ClassFile cf, Object tag){
+<span class="nc" id="L379">    decIndent();</span>
+<span class="nc" id="L380">  }</span>
+
+  @Override
+  public void setBootstrapMethodCount (ClassFile cf, Object tag, int count) {
+<span class="nc" id="L384">    pw.printf( &quot;, bootstrap method count=%d\n&quot;, count);</span>
+<span class="nc" id="L385">    incIndent();</span>
+<span class="nc" id="L386">  }</span>
+  
+  @Override
+  public void setBootstrapMethod (ClassFile cf, Object tag, int idx, 
+                                  int refKind, String cls, String mth, String descriptor, int[] cpArgs){
+<span class="nc" id="L391">    String refTypeName = cf.getRefTypeName(refKind);</span>
+<span class="nc" id="L392">    pw.printf(&quot;%s[%d]: %s %s.%s%s\n&quot;, indent, idx, refTypeName, cls, mth, descriptor);</span>
+<span class="nc" id="L393">    incIndent();</span>
+<span class="nc" id="L394">    pw.printf(&quot;%smethod arg count: %d\n&quot;, indent, cpArgs.length);</span>
+<span class="nc" id="L395">    incIndent();</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">    for (int i=0; i&lt;cpArgs.length; i++){</span>
+<span class="nc" id="L397">      int cpIdx = cpArgs[i];</span>
+<span class="nc" id="L398">      String arg = getBootstrapMethodArgAsString(cf, cpIdx);</span>
+<span class="nc" id="L399">      pw.printf(&quot;%s[%d]: %s\n&quot;, indent, i, arg);</span>
+    }
+<span class="nc" id="L401">    decIndent();</span>
+<span class="nc" id="L402">    decIndent();</span>
+<span class="nc" id="L403">  }</span>
+  
+  String getBootstrapMethodArgAsString (ClassFile cf, int cpIdx){
+<span class="nc" id="L406">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L407">    Object cpValue = cf.getCpValue(cpIdx);</span>
+<span class="nc" id="L408">    sb.append('@');</span>
+<span class="nc" id="L409">    sb.append(cpIdx);</span>
+<span class="nc" id="L410">    sb.append(&quot; (&quot;);</span>
+<span class="nc" id="L411">    sb.append( cpValue);</span>
+<span class="nc" id="L412">    sb.append(&quot;): &quot;);</span>
+    
+<span class="nc bnc" id="L414" title="All 2 branches missed.">    if (cpValue instanceof ClassFile.CpInfo){</span>
+<span class="nc bnc" id="L415" title="All 3 branches missed.">      switch ((ClassFile.CpInfo)cpValue){</span>
+        case MethodType:
+<span class="nc" id="L417">          sb.append( cf.methodTypeDescriptorAt(cpIdx));</span>
+<span class="nc" id="L418">          break;</span>
+        case MethodHandle:
+<span class="nc" id="L420">          int methodRefIdx = cf.mhMethodRefIndexAt(cpIdx);</span>
+          
+<span class="nc" id="L422">          sb.append( cf.getRefTypeName(cf.mhRefTypeAt(cpIdx)));</span>
+<span class="nc" id="L423">          sb.append(' ');</span>
+<span class="nc" id="L424">          sb.append( cf.methodClassNameAt(methodRefIdx));</span>
+<span class="nc" id="L425">          sb.append('.');</span>
+<span class="nc" id="L426">          sb.append( cf.methodNameAt(methodRefIdx));</span>
+<span class="nc" id="L427">          sb.append( cf.methodDescriptorAt(methodRefIdx));</span>
+<span class="nc" id="L428">          break;</span>
+        default:
+<span class="nc" id="L430">          sb.append( cpValue.toString());</span>
+      }
+    } else {
+<span class="nc" id="L433">      sb.append( cpValue.toString());</span>
+    }
+    
+<span class="nc" id="L436">    return sb.toString();</span>
+  }
+  
+  @Override
+  public void setBootstrapMethodsDone (ClassFile cf, Object tag) {
+<span class="nc" id="L441">    decIndent();</span>
+<span class="nc" id="L442">  }</span>
+  
+  @Override
+  public void setAnnotationCount(ClassFile cf, Object tag, int annotationCount){
+<span class="nc" id="L446">    pw.printf( &quot; count=%d\n&quot;, annotationCount);</span>
+<span class="nc" id="L447">    incIndent();</span>
+<span class="nc" id="L448">  }</span>
+  @Override
+  public void setAnnotation(ClassFile cf, Object tag, int annotationIndex, String annotationType){
+<span class="nc" id="L451">    pw.printf(&quot;%s[%d]: %s&quot;, indent, annotationIndex, annotationType);</span>
+<span class="nc" id="L452">  }</span>
+  @Override
+  public void setAnnotationsDone(ClassFile cf, Object tag){
+<span class="nc" id="L455">    decIndent();</span>
+<span class="nc" id="L456">  }</span>
+  
+  // Java 8 type annotations
+
+  @Override
+  public void setTypeAnnotationCount(ClassFile cf, Object tag, int annotationCount){
+<span class="nc" id="L462">    pw.printf( &quot; count=%d\n&quot;, annotationCount);</span>
+<span class="nc" id="L463">    incIndent();</span>
+<span class="nc" id="L464">  }</span>
+
+  @Override
+  public void setTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                         int typeIndex, short[] typePath, String annotationType){
+<span class="nc" id="L469">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, type index=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L470">            ClassFile.getTargetTypeName(targetType), ClassFile.getTypePathEncoding(typePath), typeIndex);</span>
+<span class="nc" id="L471">  }</span>
+  @Override
+  public void setSuperTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                     int superTypeIdx, short[] typePath, String annotationType){
+<span class="nc" id="L475">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, super type index=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L476">            ClassFile.getTargetTypeName(targetType),  ClassFile.getTypePathEncoding(typePath), superTypeIdx);</span>
+<span class="nc" id="L477">  }</span>
+  @Override
+  public void setTypeParameterBoundAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType,
+                                     int typeParamIdx, int boundIdx, short[] typePath, String annotationType){
+<span class="nc" id="L481">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, type index=%d, bound=%d)&quot;, indent, annotationIndex, annotationType,</span>
+<span class="nc" id="L482">            ClassFile.getTargetTypeName(targetType),  ClassFile.getTypePathEncoding(typePath), typeParamIdx, boundIdx);</span>
+<span class="nc" id="L483">  }</span>
+  @Override
+  public void setTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType,
+                                short[] typePath, String annotationType){
+<span class="nc" id="L487">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s)&quot;, indent, annotationIndex, annotationType,</span>
+<span class="nc" id="L488">            ClassFile.getTargetTypeName(targetType), ClassFile.getTypePathEncoding(typePath));</span>
+<span class="nc" id="L489">  }</span>
+  @Override
+  public void setFormalParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                           int formalParamIdx, short[] typePath, String annotationType){
+<span class="nc" id="L493">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, formal param index=%d)&quot;, indent, annotationIndex, annotationType,</span>
+<span class="nc" id="L494">            ClassFile.getTargetTypeName(targetType),  ClassFile.getTypePathEncoding(typePath), formalParamIdx);</span>
+<span class="nc" id="L495">  }</span>
+  @Override
+  public void setThrowsAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                  int throwsTypeIdx, short[] typePath, String annotationType){
+<span class="nc" id="L499">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, throws index=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L500">            ClassFile.getTargetTypeName(targetType),  ClassFile.getTypePathEncoding(typePath), throwsTypeIdx);</span>
+<span class="nc" id="L501">  }</span>
+  @Override
+  public void setVariableAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                    long[] scopeEntries, short[] typePath, String annotationType){
+<span class="nc" id="L505">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, scope=%s)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L506">            ClassFile.getTargetTypeName(targetType), ClassFile.getTypePathEncoding(typePath), ClassFile.getScopeEncoding(scopeEntries));</span>
+    // 2do
+<span class="nc" id="L508">  }</span>
+  @Override
+  public void setExceptionParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                              int exceptionIndex, short[] typePath, String annotationType){
+<span class="nc" id="L512">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, catch type index=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L513">            ClassFile.getTargetTypeName(targetType),  ClassFile.getTypePathEncoding(typePath), exceptionIndex);</span>
+<span class="nc" id="L514">  }</span>
+  @Override
+  public void setBytecodeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                    int offset, short[] typePath, String annotationType){
+<span class="nc" id="L518">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, bytecode offset=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L519">            ClassFile.getTargetTypeName(targetType), ClassFile.getTypePathEncoding(typePath), offset);</span>
+<span class="nc" id="L520">  }</span>
+  @Override
+  public void setBytecodeTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                           int offset, int typeArgIdx, short[] typePath, String annotationType){
+<span class="nc" id="L524">    pw.printf(&quot;%s[%d]: %s (%s, type path=%s, bytecode offset=%d, type arg=%d)&quot;, indent, annotationIndex, annotationType, </span>
+<span class="nc" id="L525">            ClassFile.getTargetTypeName(targetType), ClassFile.getTypePathEncoding(typePath), offset, typeArgIdx);</span>
+<span class="nc" id="L526">  }</span>
+  
+  @Override
+  public void setTypeAnnotationsDone(ClassFile cf, Object tag) {
+<span class="nc" id="L530">    decIndent();</span>
+<span class="nc" id="L531">  }</span>
+    
+  @Override
+  public void setAnnotationValueCount(ClassFile cf, Object tag, int annotationIndex, int nValuePairs){
+<span class="nc" id="L535">    pw.printf(&quot; valueCount=%d\n&quot;, nValuePairs);</span>
+<span class="nc" id="L536">    incIndent();</span>
+<span class="nc" id="L537">  }</span>
+
+  @Override
+  public void setPrimitiveAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, Object val){
+<span class="nc bnc" id="L542" title="All 2 branches missed.">    if (arrayIndex &lt; 0){</span>
+<span class="nc" id="L543">      pw.printf(&quot;%s[%d]: %s=%s\n&quot;, indent, annotationIndex, elementName, val);</span>
+    } else {
+<span class="nc bnc" id="L545" title="All 2 branches missed.">      if (arrayIndex==0) {</span>
+<span class="nc" id="L546">        pw.printf(&quot;%s[%d]: %s={&quot;, indent, valueIndex, elementName);</span>
+      }  else {
+<span class="nc" id="L548">        pw.print(',');</span>
+      }
+<span class="nc" id="L550">      pw.print(val);</span>
+    }
+<span class="nc" id="L552">  }</span>
+
+  @Override
+  public void setStringAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String s){
+<span class="nc bnc" id="L557" title="All 2 branches missed.">    if (arrayIndex &lt; 0){</span>
+<span class="nc" id="L558">      pw.printf(&quot;%s[%d]: %s=\&quot;%s\&quot;\n&quot;, indent, annotationIndex, elementName, s);</span>
+    } else {
+<span class="nc bnc" id="L560" title="All 2 branches missed.">      if (arrayIndex==0) {</span>
+<span class="nc" id="L561">        pw.printf(&quot;%s[%d]: %s={&quot;, indent, valueIndex, elementName);</span>
+      }  else {
+<span class="nc" id="L563">        pw.print(',');</span>
+      }
+<span class="nc" id="L565">      pw.printf(&quot;\&quot;%s\&quot;&quot;, s);</span>
+    }
+<span class="nc" id="L567">  }</span>
+
+  @Override
+  public void setClassAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String typeName){
+<span class="nc bnc" id="L572" title="All 2 branches missed.">    if (arrayIndex &lt; 0){</span>
+<span class="nc" id="L573">      pw.printf(&quot;%s[%d]: %s=class %s\n&quot;, indent, annotationIndex, elementName, typeName);</span>
+    } else {
+<span class="nc bnc" id="L575" title="All 2 branches missed.">      if (arrayIndex==0) {</span>
+<span class="nc" id="L576">        pw.printf(&quot;%s[%d]: %s={&quot;, indent, valueIndex, elementName);</span>
+      }  else {
+<span class="nc" id="L578">        pw.print(',');</span>
+      }
+<span class="nc" id="L580">      pw.printf(&quot;class %s&quot;, typeName);</span>
+    }
+<span class="nc" id="L582">  }</span>
+
+  @Override
+  public void setEnumAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String enumType, String enumValue){
+<span class="nc bnc" id="L587" title="All 2 branches missed.">    if (arrayIndex &lt; 0){</span>
+<span class="nc" id="L588">      pw.printf(&quot;%s[%d]: %s=%s.%s\n&quot;, indent, annotationIndex, elementName, enumType, enumValue);</span>
+    } else {
+<span class="nc bnc" id="L590" title="All 2 branches missed.">      if (arrayIndex==0) {</span>
+<span class="nc" id="L591">        pw.printf(&quot;%s[%d]: %s={&quot;, indent, valueIndex, elementName);</span>
+      }  else {
+<span class="nc" id="L593">        pw.print(',');</span>
+      }
+<span class="nc" id="L595">      pw.printf(&quot;%s.%s&quot;, enumType, enumValue);</span>
+    }
+<span class="nc" id="L597">  }</span>
+
+
+  @Override
+  public void setAnnotationValueElementCount(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int elementCount){
+<span class="nc" id="L603">  }</span>
+  @Override
+  public void setAnnotationValueElementsDone(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+          String elementName){
+<span class="nc" id="L607">    pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L608">  }</span>
+
+  @Override
+  public void setAnnotationValuesDone(ClassFile cf, Object tag, int annotationIndex){
+<span class="nc" id="L612">    decIndent();</span>
+<span class="nc" id="L613">  }</span>
+
+  @Override
+  public void setParameterCount(ClassFile cf, Object tag, int parameterCount){
+<span class="nc" id="L617">    pw.printf(&quot; parameterCount=%d\n&quot;, parameterCount);</span>
+<span class="nc" id="L618">    incIndent();</span>
+<span class="nc" id="L619">  }</span>
+
+  @Override
+  public void setParameterAnnotationCount(ClassFile cf, Object tag, int paramIndex, int annotationCount){
+<span class="nc" id="L623">    pw.printf(&quot;%s[%d] count: %d\n&quot;, indent, paramIndex, annotationCount);</span>
+<span class="nc" id="L624">    incIndent();</span>
+<span class="nc" id="L625">  }</span>
+
+  @Override
+  public void setParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, String annotationType){
+<span class="nc" id="L629">    pw.printf(&quot;%s[%d]: %s&quot;, indent, annotationIndex, annotationType);</span>
+<span class="nc" id="L630">  }</span>
+
+  @Override
+  public void setParameterAnnotationsDone(ClassFile cf, Object tag, int paramIndex){
+<span class="nc" id="L634">    decIndent();</span>
+<span class="nc" id="L635">  }</span>
+
+  @Override
+  public void setParametersDone(ClassFile cf, Object tag){
+<span class="nc" id="L639">    decIndent();</span>
+<span class="nc" id="L640">  }</span>
+
+
+  @Override
+  public void setSignature(ClassFile cf, Object tag, String signature){
+<span class="nc" id="L645">    pw.printf(&quot; %s\n&quot;, signature);</span>
+<span class="nc" id="L646">  }</span>
+
+  //--- internal stuff
+
+  protected void printCp (PrintWriter pw, ClassFile cf){
+<span class="nc" id="L651">    int nCpEntries = cf.getNumberOfCpEntries();</span>
+
+<span class="nc bnc" id="L653" title="All 2 branches missed.">    for (int i=1; i&lt;nCpEntries; i++){</span>
+
+<span class="nc" id="L655">      int j = cf.getDataPosOfCpEntry(i);</span>
+
+<span class="nc" id="L657">      pw.print(&quot;  [&quot;);</span>
+<span class="nc" id="L658">      pw.print(i);</span>
+<span class="nc" id="L659">      pw.print(&quot;]: &quot;);</span>
+
+<span class="nc bnc" id="L661" title="All 2 branches missed.">      if (j &lt; 0) {</span>
+<span class="nc" id="L662">        pw.println(&quot;&lt;unused&gt;&quot;);</span>
+<span class="nc" id="L663">        continue;</span>
+      }
+
+<span class="nc bnc" id="L666" title="All 15 branches missed.">      switch (cf.u1(j)){</span>
+        case ClassFile.CONSTANT_UTF8:
+<span class="nc" id="L668">          pw.print( &quot;constant_utf8 {\&quot;&quot;);</span>
+<span class="nc" id="L669">          pw.print( cf.getCpValue(i));</span>
+<span class="nc" id="L670">          pw.println(&quot;\&quot;}&quot;);</span>
+<span class="nc" id="L671">          break;</span>
+        case ClassFile.CONSTANT_INTEGER:
+<span class="nc" id="L673">          pw.print( &quot;constant_integer {&quot;);</span>
+<span class="nc" id="L674">          pw.print( cf.getCpValue(i));</span>
+<span class="nc" id="L675">          pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L676">          break;</span>
+        case ClassFile.CONSTANT_FLOAT:
+<span class="nc" id="L678">          pw.print( &quot;constant_float {&quot;);</span>
+<span class="nc" id="L679">          pw.print( cf.getCpValue(i));</span>
+<span class="nc" id="L680">          pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L681">          break;</span>
+        case ClassFile.CONSTANT_LONG:
+<span class="nc" id="L683">          pw.print( &quot;constant_long {&quot;);</span>
+<span class="nc" id="L684">          pw.print( cf.getCpValue(i));</span>
+<span class="nc" id="L685">          pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L686">          break;</span>
+        case ClassFile.CONSTANT_DOUBLE:
+<span class="nc" id="L688">          pw.print( &quot;constant_double {&quot;);</span>
+<span class="nc" id="L689">          pw.print( cf.getCpValue(i));</span>
+<span class="nc" id="L690">          pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L691">          break;</span>
+        case ClassFile.CONSTANT_CLASS:
+<span class="nc" id="L693">          pw.print(&quot;constant_class {name=#&quot;);</span>
+<span class="nc" id="L694">          pw.print( cf.u2(j+1));</span>
+<span class="nc" id="L695">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L696">          pw.print( cf.classNameAt(i));</span>
+<span class="nc" id="L697">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L698">          break;</span>
+        case ClassFile.CONSTANT_STRING:
+<span class="nc" id="L700">          pw.print(&quot;constant_string {utf8=#&quot;);</span>
+<span class="nc" id="L701">          pw.print( cf.u2(j+1));</span>
+<span class="nc" id="L702">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L703">          pw.print( cf.stringAt(i));</span>
+<span class="nc" id="L704">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L705">          break;</span>
+        case ClassFile.FIELD_REF:
+<span class="nc" id="L707">          printRef(pw, cf, i, j, &quot;fieldref&quot;);</span>
+<span class="nc" id="L708">          break;</span>
+        case ClassFile.METHOD_REF:
+<span class="nc" id="L710">          printRef(pw, cf, i, j, &quot;methodref&quot;);</span>
+<span class="nc" id="L711">          break;</span>
+        case ClassFile.INTERFACE_METHOD_REF:
+<span class="nc" id="L713">          printRef(pw, cf, i, j, &quot;interface_methodref&quot;);</span>
+<span class="nc" id="L714">          break;</span>
+        case ClassFile.NAME_AND_TYPE:
+<span class="nc" id="L716">          pw.print(&quot;name_and_type {name=#&quot;);</span>
+<span class="nc" id="L717">          pw.print( cf.u2(j+1));</span>
+<span class="nc" id="L718">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L719">          pw.print(cf.utf8At(cf.u2(j+1)));</span>
+<span class="nc" id="L720">          pw.print(&quot;\&quot;),desciptor=#&quot;);</span>
+<span class="nc" id="L721">          pw.print( cf.u2(j+3));</span>
+<span class="nc" id="L722">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L723">          pw.print(cf.utf8At(cf.u2(j+3)));</span>
+<span class="nc" id="L724">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L725">          break;</span>
+          
+        case ClassFile.METHOD_HANDLE:
+<span class="nc" id="L728">          pw.print(&quot;method_handle {&quot;);</span>
+<span class="nc" id="L729">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L730">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L731">          break;</span>
+          
+        case ClassFile.METHOD_TYPE:
+<span class="nc" id="L734">          pw.print(&quot;method_type {&quot;);</span>
+<span class="nc" id="L735">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L736">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L737">          break;</span>
+          
+        case ClassFile.INVOKE_DYNAMIC:
+<span class="nc" id="L740">          pw.print(&quot;invoke_dynamic {bootstrap=#&quot;);</span>
+<span class="nc" id="L741">          pw.print(cf.u2(j+1));</span>
+<span class="nc" id="L742">          pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L743">          pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L744">          break;</span>
+          
+        default:
+<span class="nc" id="L747">          pw.print(&quot;ERROR: illegal tag&quot; + cf.u1(j));</span>
+      }
+    }
+<span class="nc" id="L750">    pw.println();</span>
+<span class="nc" id="L751">  }</span>
+
+  void printRef(PrintWriter pw, ClassFile cf, int cpIdx, int dataPos, String refType){
+<span class="nc" id="L754">    pw.print(refType);</span>
+<span class="nc" id="L755">    pw.print(&quot; {class=#&quot;);</span>
+<span class="nc" id="L756">    pw.print(cf.u2(dataPos + 1));</span>
+<span class="nc" id="L757">    pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L758">    pw.print(cf.refClassNameAt(cpIdx));</span>
+<span class="nc" id="L759">    pw.print(&quot;\&quot;),nameType=#&quot;);</span>
+<span class="nc" id="L760">    pw.print(cf.u2(dataPos + 3));</span>
+<span class="nc" id="L761">    pw.print(&quot;(\&quot;&quot;);</span>
+<span class="nc" id="L762">    pw.print(cf.refNameAt(cpIdx));</span>
+<span class="nc" id="L763">    pw.print(&quot;\&quot;,\&quot;&quot;);</span>
+<span class="nc" id="L764">    pw.print(cf.refDescriptorAt(cpIdx));</span>
+<span class="nc" id="L765">    pw.println(&quot;\&quot;)}&quot;);</span>
+<span class="nc" id="L766">  }</span>
+
+  void printRawData(PrintWriter pw, ClassFile cf, int dataLength, int maxBytes){
+<span class="nc" id="L769">    int max = Math.min(dataLength, maxBytes);</span>
+<span class="nc" id="L770">    int max1 = max-1;</span>
+<span class="nc bnc" id="L771" title="All 2 branches missed.">    for (int i=0; i&lt;max1; i++){</span>
+<span class="nc" id="L772">      pw.printf(&quot;%02x &quot;, cf.readUByte());</span>
+    }
+<span class="nc" id="L774">    pw.printf(&quot;%02x&quot;, cf.readUByte());</span>
+
+<span class="nc bnc" id="L776" title="All 2 branches missed.">    if (dataLength&gt;maxBytes){</span>
+<span class="nc" id="L777">      pw.print(&quot;..&quot;);</span>
+    }
+<span class="nc" id="L779">  }</span>
+
+  @Override
+  public void setAnnotationFieldValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex, String elementName, int arrayIndex) {
+    
+<span class="nc" id="L784">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

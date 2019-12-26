@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExceptionInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ExceptionInfo.java</span></div><h1>ExceptionInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.io.PrintWriter;
+
+/**
+ * helper class to store context of an exception
+ */
+public class ExceptionInfo {
+  ElementInfo  ei;
+  ThreadInfo ti;
+  
+<span class="fc" id="L29">  ExceptionInfo (ThreadInfo xThread, ElementInfo xEi) {</span>
+<span class="fc" id="L30">    ti = xThread;</span>
+<span class="fc" id="L31">    ei = xEi;</span>
+<span class="fc" id="L32">  }</span>
+  
+  public ElementInfo getException() {
+<span class="nc" id="L35">    return ei;</span>
+  }
+  
+  public int getExceptionReference () {
+<span class="fc" id="L39">    return ei.getObjectRef();</span>
+  }
+  
+  public String getExceptionClassname() {
+<span class="fc" id="L43">    return ei.getClassInfo().getName();</span>
+  }
+  
+  public String getDetails() {
+<span class="fc" id="L47">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L48">    sb.append(getExceptionClassname());</span>
+    
+<span class="fc" id="L50">    int msgRef = ei.getReferenceField(&quot;detailMessage&quot;);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">    if (msgRef != MJIEnv.NULL){</span>
+<span class="fc" id="L52">      ElementInfo eiMsg = ti.getElementInfo(msgRef);</span>
+<span class="fc" id="L53">      sb.append(&quot; : &quot;);</span>
+<span class="fc" id="L54">      sb.append(eiMsg.asString());</span>
+    }
+      
+<span class="fc" id="L57">    return sb.toString();</span>
+  }
+  
+  public String getCauseClassname() {
+<span class="nc" id="L61">    int causeRef = ei.getReferenceField(&quot;cause&quot;);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (causeRef != MJIEnv.NULL){</span>
+<span class="nc" id="L63">      ElementInfo eiCause = ti.getElementInfo(causeRef);</span>
+<span class="nc" id="L64">      return eiCause.getClassInfo().getName();</span>
+    }
+    
+<span class="nc" id="L67">    return null;</span>
+  }
+  public String getCauseDetails() {
+<span class="nc" id="L70">    int causeRef = ei.getReferenceField(&quot;cause&quot;);</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">    if (causeRef != MJIEnv.NULL){</span>
+<span class="nc" id="L72">      ElementInfo eiCause = ti.getElementInfo(causeRef);</span>
+<span class="nc" id="L73">      int msgRef = eiCause.getReferenceField(&quot;detailMessage&quot;);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">      if (msgRef != MJIEnv.NULL){</span>
+<span class="nc" id="L75">        ElementInfo eiMsg = ti.getElementInfo(msgRef);</span>
+<span class="nc" id="L76">        return eiMsg.asString();</span>
+      }
+    }
+
+<span class="nc" id="L80">    return null;</span>
+  }
+
+  
+  public ThreadInfo getThread() {
+<span class="nc" id="L85">    return ti;</span>
+  }
+  
+  public void printOn (PrintWriter pw){
+<span class="fc" id="L89">    ti.printStackTrace(pw, ei.getObjectRef());</span>
+<span class="fc" id="L90">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

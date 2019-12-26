@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArrayByteQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">ArrayByteQueue.java</span></div><h1>ArrayByteQueue.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/** 
+ * It is a dynamically growing, cyclic array buffer queue for bytes. It has 
+ * the similar implementation as ArrayObjectQueue.
+ * 
+ * Suitable buffer for storing data transmitted and received as a continuous 
+ * stream of bytes, e.g. buffers for socket based communications
+ */
+public class ArrayByteQueue  implements ObjectQueue&lt;Byte&gt;, Cloneable {
+
+  static final int DEFAULT_CAPACITY = 256;
+  
+<span class="nc" id="L34">  int size = 0;</span>
+  int first;  // next index we will remove
+  int last;   // last index we did add
+  
+<span class="nc" id="L38">  byte[] buffer = null;</span>
+  
+<span class="nc" id="L40">  class FIFOIterator implements Iterator&lt;Byte&gt; {</span>
+<span class="nc" id="L41">    int next = first;</span>
+<span class="nc" id="L42">    int remaining = size;</span>
+    
+    @Override
+	public boolean hasNext() {
+<span class="nc bnc" id="L46" title="All 2 branches missed.">      return (remaining &gt; 0);</span>
+    }
+
+    @Override
+	public Byte next() {
+<span class="nc bnc" id="L51" title="All 2 branches missed.">      if (remaining == 0){</span>
+<span class="nc" id="L52">        throw new NoSuchElementException();</span>
+      } else {
+<span class="nc" id="L54">        Byte e = buffer[next];</span>
+<span class="nc" id="L55">        next = (next+1) % buffer.length;</span>
+<span class="nc" id="L56">        remaining--;</span>
+<span class="nc" id="L57">        return e;</span>
+      }
+    }
+
+    @Override
+	public void remove() { // its a queue
+<span class="nc" id="L63">      throw new UnsupportedOperationException();</span>
+    }
+  }
+  
+  // just for debugging purposes
+<span class="nc" id="L68">  class StorageIterator implements Iterator&lt;Byte&gt; {</span>
+<span class="nc" id="L69">    int next = 0;</span>
+    
+    @Override
+	public boolean hasNext(){
+<span class="nc bnc" id="L73" title="All 2 branches missed.">      return (next &lt; buffer.length); </span>
+    }
+    
+    @Override
+	public Byte next(){
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      if (next == buffer.length){</span>
+<span class="nc" id="L79">        throw new NoSuchElementException();</span>
+      }
+      
+<span class="nc" id="L82">      Byte e = buffer[next];</span>
+<span class="nc" id="L83">      next++;</span>
+<span class="nc" id="L84">      return e;      </span>
+    }
+    
+    @Override
+	public void remove() { // its a queue
+<span class="nc" id="L89">      throw new UnsupportedOperationException();</span>
+    }
+  }
+  
+<span class="nc" id="L93">  public ArrayByteQueue (){</span>
+<span class="nc" id="L94">    buffer = new byte[DEFAULT_CAPACITY];</span>
+<span class="nc" id="L95">  }</span>
+  
+<span class="nc" id="L97">  public ArrayByteQueue (int initialCapacity){</span>
+<span class="nc" id="L98">    buffer = new byte[initialCapacity];</span>
+<span class="nc" id="L99">  }</span>
+  
+  protected void grow(){
+<span class="nc" id="L102">    byte[] newBuffer = new byte[buffer.length * 3 / 2];</span>
+    
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    if (first &lt; last){</span>
+<span class="nc" id="L105">      System.arraycopy(buffer, first, newBuffer, 0, last - first +1);</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    } else if (first &gt; last){</span>
+<span class="nc" id="L107">      int nRight = buffer.length - first;</span>
+<span class="nc" id="L108">      System.arraycopy(buffer, first, newBuffer, 0, nRight);</span>
+<span class="nc" id="L109">      System.arraycopy(buffer, 0, newBuffer, nRight, last+1);      </span>
+<span class="nc" id="L110">    } else { // just 1 element</span>
+<span class="nc" id="L111">      newBuffer[0] = buffer[first];</span>
+    }
+    
+<span class="nc" id="L114">    first = 0;</span>
+<span class="nc" id="L115">    last = size-1;</span>
+<span class="nc" id="L116">    buffer = newBuffer;</span>
+<span class="nc" id="L117">  }</span>
+  
+  @Override
+  public boolean isEmpty() {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    return (size == 0);</span>
+  }
+  
+  public int getCurrentCapacity(){
+<span class="nc" id="L125">    return buffer.length;</span>
+  }
+  
+  @Override
+  public int size() {
+<span class="nc" id="L130">    return size;</span>
+  }
+  
+  @Override
+  public boolean offer (Byte e){
+<span class="nc" id="L135">    return add(e);</span>
+  }
+  
+  @Override
+  public boolean add (Byte e){
+<span class="nc bnc" id="L140" title="All 2 branches missed.">    if (size == 0){  // first element</span>
+<span class="nc" id="L141">      first = last = 0;</span>
+<span class="nc" id="L142">      buffer[0] = e;</span>
+<span class="nc" id="L143">      size = 1;</span>
+      
+    } else {
+<span class="nc" id="L146">      int i = (last + 1) % buffer.length;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">      if (i == first) {</span>
+<span class="nc" id="L148">        grow();</span>
+<span class="nc" id="L149">        i = size;</span>
+      }
+      
+<span class="nc" id="L152">      last = i;</span>
+<span class="nc" id="L153">      buffer[i] = e;</span>
+<span class="nc" id="L154">      size++;</span>
+    }
+    
+<span class="nc" id="L157">    return true; // this is a dynamic queue, we never run out of space</span>
+  }
+	  
+  @Override
+  public Byte poll (){
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L163">      return null;      </span>
+    } else {
+<span class="nc" id="L165">      int i = first;</span>
+      
+<span class="nc" id="L167">      first = (first+1) % buffer.length;</span>
+<span class="nc" id="L168">      size--;</span>
+      
+<span class="nc" id="L170">      Byte e = buffer[i];</span>
+      //buffer[i] = null; // avoid memory leaks
+<span class="nc" id="L172">      return e;</span>
+    }    
+  }
+  
+  @Override
+  public Byte remove () throws NoSuchElementException {
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L179">      throw new NoSuchElementException();</span>
+    } else {
+<span class="nc" id="L181">      return poll();</span>
+    }
+  }
+
+  @Override
+  public Byte peek () {
+<span class="nc bnc" id="L187" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L188">      return null;</span>
+    } else {
+<span class="nc" id="L190">      return buffer[first];</span>
+    }
+  }
+  
+  @Override
+  public Iterator&lt;Byte&gt; iterator() {
+<span class="nc" id="L196">    return new FIFOIterator();</span>
+  }
+ 
+  public Iterator&lt;Byte&gt; storageIterator(){
+<span class="nc" id="L200">    return new StorageIterator();</span>
+  }
+  
+  
+  @Override
+  public void clear(){
+<span class="nc" id="L206">    buffer = new byte[buffer.length]; // cheaper than iterating over the old one</span>
+<span class="nc" id="L207">    size = 0;</span>
+<span class="nc" id="L208">    first = last = -1;</span>
+<span class="nc" id="L209">  }</span>
+  
+  /**
+   * call Processor.process(e) on each queued object
+   * 
+   * This method does not return before the queue is empty, which makes it
+   * suitable for graph traversal. It also avoids iterator objects, allows
+   * adding new objects while processing the queue, and enables to keep
+   * processing state in the processor
+   */
+  @Override
+  public void process (Processor&lt;Byte&gt; processor){
+<span class="nc bnc" id="L221" title="All 2 branches missed.">    while (size &gt; 0){</span>
+<span class="nc" id="L222">    	Byte e = remove();</span>
+<span class="nc" id="L223">      processor.process(e);</span>
+<span class="nc" id="L224">    }</span>
+<span class="nc" id="L225">  }</span>
+  
+  @Override
+  public Object clone() {
+    try {
+<span class="nc" id="L230">      ArrayByteQueue clone = (ArrayByteQueue)super.clone();</span>
+<span class="nc" id="L231">      clone.buffer = this.buffer.clone();</span>
+<span class="nc" id="L232">      return clone;</span>
+<span class="nc" id="L233">    } catch (CloneNotSupportedException cnx) {</span>
+<span class="nc" id="L234">      return null;</span>
+    }
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L240">    Iterator&lt;Byte&gt; itr = iterator();</span>
+<span class="nc" id="L241">    String result = &quot;[&quot;;</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    while(itr.hasNext()) {</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">      if(result.length()&gt;1) {</span>
+<span class="nc" id="L244">        result = result + &quot;, &quot;;</span>
+      }
+<span class="nc" id="L246">      byte b = itr.next();</span>
+<span class="nc" id="L247">      result = result + b;</span>
+<span class="nc" id="L248">    }</span>
+<span class="nc" id="L249">    result = result + &quot;]&quot;;</span>
+<span class="nc" id="L250">    return result;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

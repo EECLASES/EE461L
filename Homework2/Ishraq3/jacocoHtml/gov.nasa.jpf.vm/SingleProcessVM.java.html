@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SingleProcessVM.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">SingleProcessVM.java</span></div><h1>SingleProcessVM.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFConfigException;
+import gov.nasa.jpf.util.IntTable;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.Predicate;
+import gov.nasa.jpf.vm.choice.BreakGenerator;
+
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ * Includes the VM initialization for executing single Java process
+ * 
+ * To use this jpf.properties includes,
+ *              vm.class = gov.nasa.jpf.vm.SingleProcessVM
+ */
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">public class SingleProcessVM extends VM {</span>
+
+  protected ApplicationContext appCtx; // we only have one
+  
+  protected Predicate&lt;ThreadInfo&gt; runnablePredicate;
+  protected Predicate&lt;ThreadInfo&gt; daemonRunnable;
+  
+<span class="fc" id="L47">  protected SingleProcessVM (){}</span>
+
+  public SingleProcessVM (JPF jpf, Config conf) {
+<span class="fc" id="L50">    super(jpf, conf);</span>
+    
+<span class="fc" id="L52">    appCtx = createApplicationContext();</span>
+    
+<span class="fc" id="L54">    initializePredicates();</span>
+<span class="fc" id="L55">  }</span>
+    
+  void initializePredicates() {
+    // set predicates used to query from threadlist
+<span class="fc" id="L59">    runnablePredicate = new Predicate&lt;ThreadInfo&gt;(){</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti){
+<span class="fc" id="L62">        return (ti.isRunnable());</span>
+      }
+    };
+    
+<span class="fc" id="L66">    daemonRunnable = new Predicate&lt;ThreadInfo&gt;(){</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti){
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        return (ti.isDaemon() &amp;&amp; ti.isRunnable());</span>
+      }
+    };
+<span class="fc" id="L72">  }</span>
+  
+  protected ApplicationContext createApplicationContext (){
+    String clsName;
+<span class="fc" id="L76">    String[] args = null;</span>
+    
+<span class="fc" id="L78">    String[] freeArgs = config.getFreeArgs();</span>
+<span class="fc" id="L79">    clsName = config.getProperty(&quot;target&quot;); // explicit 'target' takes precedence</span>
+    
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">    if (clsName == null){</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">      if (freeArgs != null){ // if it is non-null, there is at least one entry</span>
+        // note that application property filenames have been removed by Config since they are part of its initialization
+<span class="nc" id="L84">        clsName = freeArgs[0];</span>
+        
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (freeArgs.length &gt; 1){ // if there is no 'target' command line overrides 'target.args'</span>
+<span class="nc" id="L87">          args = Misc.arrayWithoutFirst(freeArgs, 1);</span>
+        } else {
+<span class="nc" id="L89">          args = config.getStringArray(&quot;target.args&quot;);</span>
+        }
+      }
+    } else {
+      // since there was a 'target', 'target.args' override command line
+<span class="fc" id="L94">      args = config.getCompactStringArray(&quot;target.args&quot;);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">      if (args == null){</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (freeArgs != null){</span>
+<span class="fc" id="L97">          args = freeArgs;</span>
+        }
+      }
+    }
+    
+    // sanity checks
+<span class="fc bfc" id="L103" title="All 2 branches covered.">    if (args == null){</span>
+<span class="fc" id="L104">      args = EMPTY_ARGS;</span>
+    }
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    if (clsName == null){</span>
+<span class="nc" id="L107">      throw new JPFConfigException(&quot;no target class specified, terminating&quot;);</span>
+    }
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">    if (!isValidClassName(clsName)){</span>
+<span class="nc" id="L110">      throw new JPFConfigException(&quot;main class not a valid class name: &quot; + clsName);      </span>
+    }
+    
+    // can be any static method that has a (String[]), (String) or () signature
+<span class="fc" id="L114">    String mainEntry = config.getProperty(&quot;target.entry&quot;, &quot;main([Ljava/lang/String;)V&quot;);</span>
+
+<span class="fc" id="L116">    String host = config.getString(&quot;target.host&quot;, &quot;localhost&quot;);</span>
+    
+<span class="fc" id="L118">    SystemClassLoaderInfo sysCli = createSystemClassLoaderInfo(0);</span>
+    
+<span class="fc" id="L120">    return new ApplicationContext( 0, clsName, mainEntry, args, host, sysCli);</span>
+  }
+  
+  
+  @Override
+  public boolean initialize(){
+    try {
+      // this has to happen before we load the startup classes during initializeMainThread
+<span class="fc" id="L128">      scheduler.initialize(this, appCtx);</span>
+      
+<span class="fc" id="L130">      ThreadInfo tiMain = initializeMainThread(appCtx, 0);</span>
+<span class="fc" id="L131">      initializeFinalizerThread(appCtx, 1);</span>
+
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">      if (tiMain == null) {</span>
+<span class="nc" id="L134">        return false; // bail out</span>
+      }
+
+<span class="fc" id="L137">      initSystemState(tiMain);</span>
+<span class="fc" id="L138">      initialized = true;</span>
+<span class="fc" id="L139">      notifyVMInitialized();</span>
+<span class="fc" id="L140">      return true;</span>
+      
+<span class="nc" id="L142">    } catch (JPFConfigException cfe){</span>
+<span class="nc" id="L143">      log.severe(cfe.getMessage());</span>
+<span class="nc" id="L144">      return false;</span>
+<span class="nc" id="L145">    } catch (ClassInfoException cie){</span>
+<span class="nc" id="L146">      log.severe(cie.getMessage());</span>
+<span class="nc" id="L147">      return false;</span>
+    }
+    // all other exceptions are JPF errors that should cause stack traces
+  }
+
+  
+  @Override
+  public int getNumberOfApplications(){
+<span class="nc" id="L155">    return 1;</span>
+  }
+  
+  @Override
+  public String getSUTName() {
+<span class="fc" id="L160">    return appCtx.mainClassName;</span>
+  }
+
+  @Override
+  public String getSUTDescription(){
+<span class="fc" id="L165">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L166">    sb.append(appCtx.mainClassName);</span>
+<span class="fc" id="L167">    sb.append('.');</span>
+<span class="fc" id="L168">    sb.append(Misc.upToFirst( appCtx.mainEntry, '('));</span>
+    
+<span class="fc" id="L170">    sb.append('(');</span>
+<span class="fc" id="L171">    String[] args = appCtx.args;</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">      if (i&gt;0){</span>
+<span class="fc" id="L174">        sb.append(',');</span>
+      }
+<span class="fc" id="L176">      sb.append('&quot;');</span>
+<span class="fc" id="L177">      sb.append(args[i]);</span>
+<span class="fc" id="L178">      sb.append('&quot;');</span>
+    }
+<span class="fc" id="L180">    sb.append(')');</span>
+<span class="fc" id="L181">    return sb.toString();</span>
+  }
+  
+  @Override
+  public ApplicationContext getApplicationContext(int obj) {
+<span class="fc" id="L186">    return appCtx;</span>
+  }
+
+  @Override
+  public ApplicationContext[] getApplicationContexts(){
+<span class="nc" id="L191">    return new ApplicationContext[] { appCtx };</span>
+  }
+  
+  @Override
+  public ApplicationContext getCurrentApplicationContext(){
+<span class="fc" id="L196">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">    if (ti != null){</span>
+<span class="fc" id="L198">      return ti.getApplicationContext();</span>
+    } else {
+<span class="nc" id="L200">      return appCtx;</span>
+    }
+  }
+  
+  /**
+   * The program is terminated if there are no alive threads, and there is no nonDaemon left.
+   * 
+   * NOTE - this is only approximated in real life. Daemon threads can still run for a few cycles
+   * after the last non-daemon died, which opens an interesting source of errors we
+   * actually might want to check for
+   */
+  @Override
+  public boolean isEndState () {
+    // note this uses 'alive', not 'runnable', hence isEndStateProperty won't
+    // catch deadlocks - but that would be NoDeadlockProperty anyway
+    
+<span class="fc" id="L216">    boolean hasNonTerminatedDaemon = getThreadList().hasAnyMatching(getUserLiveNonDaemonPredicate());</span>
+<span class="fc" id="L217">    boolean hasRunnable = getThreadList().hasAnyMatching(getUserTimedoutRunnablePredicate());</span>
+<span class="pc bpc" id="L218" title="1 of 4 branches missed.">    boolean isEndState = !(hasNonTerminatedDaemon &amp;&amp; hasRunnable);</span>
+    
+<span class="fc bfc" id="L220" title="All 2 branches covered.">    if(processFinalizers) {</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">      if(isEndState) {</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if(getFinalizerThread().isRunnable()) {</span>
+<span class="fc" id="L223">          return false;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L228">    return isEndState;</span>
+  }
+
+  @Override
+  public boolean isDeadlocked () { 
+<span class="fc" id="L233">    boolean hasNonDaemons = false;</span>
+<span class="fc" id="L234">    boolean hasBlockedThreads = false;</span>
+
+<span class="fc bfc" id="L236" title="All 2 branches covered.">    if (ss.isBlockedInAtomicSection()) {</span>
+<span class="fc" id="L237">      return true; // blocked in atomic section</span>
+    }
+
+<span class="fc" id="L240">    ThreadInfo[] threads = getThreadList().getThreads();</span>
+
+<span class="fc" id="L242">    boolean hasUserThreads = false;</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="fc" id="L244">      ThreadInfo ti = threads[i];</span>
+      
+<span class="fc bfc" id="L246" title="All 2 branches covered.">      if (ti.isAlive()){</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        hasNonDaemons |= !ti.isDaemon();</span>
+
+        // shortcut - if there is at least one runnable, we are not deadlocked
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        if (ti.isTimeoutRunnable()) { // willBeRunnable() ?</span>
+<span class="fc" id="L251">          return false;</span>
+        }
+        
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        if(!ti.isSystemThread()) {</span>
+<span class="fc" id="L255">          hasUserThreads = true;</span>
+        }
+
+        // means it is not NEW or TERMINATED, i.e. live &amp; blocked
+<span class="fc" id="L259">        hasBlockedThreads = true;</span>
+      }
+    }
+
+<span class="pc bpc" id="L263" title="1 of 4 branches missed.">    boolean isDeadlock = hasNonDaemons &amp;&amp; hasBlockedThreads;</span>
+    
+<span class="pc bpc" id="L265" title="1 of 6 branches missed.">    if(processFinalizers &amp;&amp; isDeadlock &amp;&amp; !hasUserThreads) {</span>
+      // all threads are blocked, system threads. If the finalizer thread  
+      // is in-use, then this is a deadlocked state.
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">      return (!getFinalizerThread().isIdle());</span>
+    }
+    
+<span class="fc" id="L271">    return isDeadlock;</span>
+  }
+  
+  @Override
+  public void terminateProcess (ThreadInfo ti) {
+<span class="fc" id="L276">    SystemState ss = getSystemState();</span>
+<span class="fc" id="L277">    ThreadInfo[] liveThreads = getLiveThreads();</span>
+<span class="fc" id="L278">    ThreadInfo finalizerTi = null;</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">    for (int i = 0; i &lt; liveThreads.length; i++) {</span>
+<span class="pc bpc" id="L281" title="1 of 2 branches missed.">      if(!liveThreads[i].isSystemThread()) {</span>
+        // keep the stack frames around, so that we can inspect the snapshot
+<span class="fc" id="L283">        liveThreads[i].setTerminated();</span>
+      } else {
+        // FinalizerThread is not killed at this point. We need to keep it around in 
+        // case fianlizable objects are GCed after System.exit() returns.
+<span class="nc" id="L287">        finalizerTi = liveThreads[i];</span>
+      }
+    }
+    
+<span class="fc" id="L291">    ss.setMandatoryNextChoiceGenerator( new BreakGenerator(&quot;exit&quot;, ti, true), &quot;exit without break CG&quot;);</span>
+    
+    // if there is a finalizer thread, we have to run the last GC, to queue finalizable objects, if any
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">    if(finalizerTi != null) {</span>
+<span class="nc bnc" id="L295" title="All 4 branches missed.">      assert finalizerTi.isAlive();</span>
+<span class="nc" id="L296">      activateGC();</span>
+    }
+<span class="fc" id="L298">  }</span>
+  
+  @Override
+  public Map&lt;Integer,IntTable&lt;String&gt;&gt; getInitialInternStringsMap() {
+<span class="fc" id="L302">    Map&lt;Integer,IntTable&lt;String&gt;&gt; interns = new HashMap&lt;Integer,IntTable&lt;String&gt;&gt;();</span>
+<span class="fc" id="L303">    interns.put(0, appCtx.getInternStrings());</span>
+<span class="fc" id="L304">    return interns;</span>
+  }
+  
+  //---------- Predicates used to query threads from ThreadList ---------- //
+  
+  @Override
+  public Predicate&lt;ThreadInfo&gt; getRunnablePredicate() {
+<span class="fc" id="L311">    return runnablePredicate;</span>
+  }
+  
+  @Override
+  public Predicate&lt;ThreadInfo&gt; getAppTimedoutRunnablePredicate() {
+<span class="nc" id="L316">    return getRunnablePredicate();</span>
+  }
+  
+  @Override
+  public Predicate&lt;ThreadInfo&gt; getDaemonRunnablePredicate() {
+<span class="fc" id="L321">    return daemonRunnable;</span>
+  }
+  
+  // ---------- Methods for handling finalizers ---------- //
+
+  @Override
+  void updateFinalizerQueues () {
+<span class="fc" id="L328">    getFinalizerThread().processNewFinalizables();</span>
+<span class="fc" id="L329">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

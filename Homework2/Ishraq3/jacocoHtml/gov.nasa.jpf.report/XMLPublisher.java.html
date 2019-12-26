@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>XMLPublisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.report</a> &gt; <span class="el_source">XMLPublisher.java</span></div><h1>XMLPublisher.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.report;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.util.RepositoryEntry;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.Step;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Transition;
+
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+public class XMLPublisher extends Publisher {
+
+  public XMLPublisher(Config conf, Reporter reporter) {
+<span class="nc" id="L44">    super(conf, reporter);</span>
+<span class="nc" id="L45">  }</span>
+
+  @Override
+  public String getName() {
+<span class="nc" id="L49">    return &quot;xml&quot;;</span>
+  }
+  
+  @Override
+  protected void openChannel(){
+<span class="nc bnc" id="L54" title="All 2 branches missed.">    if (out == null) {</span>
+<span class="nc" id="L55">      String fname = getReportFileName(&quot;report.xml.file&quot;) + &quot;.xml&quot;;</span>
+      try {
+<span class="nc" id="L57">        out = new PrintWriter(fname);</span>
+<span class="nc" id="L58">      } catch (FileNotFoundException fnfx) {</span>
+        // log here
+<span class="nc" id="L60">      }</span>
+    }
+<span class="nc" id="L62">  }</span>
+
+  @Override
+  protected void closeChannel() {
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    if (out != null){</span>
+<span class="nc" id="L67">      out.close();</span>
+<span class="nc" id="L68">      out = null;</span>
+    }
+<span class="nc" id="L70">  }</span>
+  
+  
+  @Override
+  protected void publishProlog() {
+<span class="nc" id="L75">    out.println(&quot;&lt;?xml version=\&quot;1.0\&quot; ?&gt;&quot;);</span>
+<span class="nc" id="L76">    out.println(&quot;&lt;jpfreport&gt;&quot;);</span>
+<span class="nc" id="L77">  }</span>
+  
+  @Override
+  public void publishTopicStart(String topic) {
+<span class="nc" id="L81">    out.println(&quot;  &lt;&quot; + topic + &quot;&gt;&quot;);</span>
+<span class="nc" id="L82">  }</span>
+  
+  @Override
+  public void publishTopicEnd(String topic) {
+<span class="nc" id="L86">    out.println(&quot;  &lt;/&quot; + topic + &quot;&gt;&quot;);</span>
+<span class="nc" id="L87">  }  </span>
+  
+  @Override
+  protected void publishEpilog() {
+<span class="nc" id="L91">    out.println(&quot;&lt;/jpfreport&gt;&quot;);</span>
+<span class="nc" id="L92">  }</span>
+  
+  @Override
+  protected void publishJPF() {
+<span class="nc" id="L96">    out.println(&quot;  &lt;jpf-version&gt;&quot; + JPF.VERSION + &quot;&lt;/jpf-version&gt;&quot;);</span>
+<span class="nc" id="L97">  }</span>
+
+  @Override
+  protected void publishJPFConfig() {
+<span class="nc" id="L101">    TreeMap&lt;Object,Object&gt; map = conf.asOrderedMap();</span>
+<span class="nc" id="L102">    Set&lt;Map.Entry&lt;Object,Object&gt;&gt; eSet = map.entrySet();</span>
+
+<span class="nc" id="L104">    out.println(&quot;  &lt;jpf-properties&gt;&quot;);</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    for (Object src : conf.getSources()){</span>
+<span class="nc" id="L107">      out.println(&quot;    &lt;source value=\&quot;&quot; + conf.getSourceName(src) + &quot;\&quot;/&gt;&quot;);</span>
+<span class="nc" id="L108">    }    </span>
+    
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    for (Map.Entry&lt;Object,Object&gt; e : eSet) {</span>
+<span class="nc" id="L111">      out.println(&quot;    &lt;entry key=\&quot;&quot; + e.getKey() + &quot;\&quot; value=\&quot;&quot; + e.getValue() + &quot;\&quot;/&gt;&quot;);</span>
+<span class="nc" id="L112">    }      </span>
+<span class="nc" id="L113">    out.println(&quot;  &lt;/jpf-properties&gt;&quot;);</span>
+    
+<span class="nc" id="L115">  }</span>
+
+  @Override
+  protected void publishPlatform() {
+<span class="nc" id="L119">    out.println(&quot;  &lt;platform&gt;&quot;);</span>
+<span class="nc" id="L120">    out.println(&quot;    &lt;hostname&gt;&quot; + reporter.getHostName() + &quot;&lt;/hostname&gt;&quot;);</span>
+<span class="nc" id="L121">    out.println(&quot;    &lt;arch&gt;&quot; + reporter.getArch() + &quot;&lt;/arch&gt;&quot;);</span>
+<span class="nc" id="L122">    out.println(&quot;    &lt;os&gt;&quot; + reporter.getOS() + &quot;&lt;/os&gt;&quot;);</span>
+<span class="nc" id="L123">    out.println(&quot;    &lt;java&gt;&quot; + reporter.getJava() + &quot;&lt;/java&gt;&quot;);    </span>
+<span class="nc" id="L124">    out.println(&quot;  &lt;/platform&gt;&quot;);</span>
+<span class="nc" id="L125">  }</span>
+
+  @Override
+  protected void publishUser() {
+<span class="nc" id="L129">    out.println(&quot;  &lt;user&gt;&quot; + reporter.getUser() + &quot;&lt;/user&gt;&quot;);</span>
+<span class="nc" id="L130">  }</span>
+
+  @Override
+  protected void publishDTG() {
+<span class="nc" id="L134">    out.println(&quot;  &lt;started&gt;&quot; + reporter.getStartDate() + &quot;&lt;/started&gt;&quot;);</span>
+<span class="nc" id="L135">  }</span>
+  
+  @Override
+  protected void publishSuT() {
+<span class="nc" id="L139">    out.println(&quot;  &lt;sut&gt;&quot;);</span>
+<span class="nc" id="L140">    String mainCls = reporter.getSuT();</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (mainCls != null) {</span>
+<span class="nc" id="L142">      String mainPath = reporter.getSuT();</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (mainPath != null) {</span>
+<span class="nc" id="L144">        out.println(&quot;    &lt;source&gt;&quot; + mainPath + &quot;&lt;/source&gt;&quot;);</span>
+
+<span class="nc" id="L146">        RepositoryEntry rep = RepositoryEntry.getRepositoryEntry(mainPath);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        if (rep != null) {</span>
+<span class="nc" id="L148">          out.println(&quot;    &lt;repository&gt;&quot; + rep.getRepository() + &quot;&lt;/repository&gt;&quot;);</span>
+<span class="nc" id="L149">          out.println(&quot;    &lt;revision&gt;&quot; + rep.getRevision() + &quot;&lt;/revision&gt;&quot;);</span>
+        }
+<span class="nc" id="L151">      } else {</span>
+<span class="nc" id="L152">        out.println(&quot;    &lt;binary&gt;&quot; + mainCls + &quot;.class&quot; + &quot;&lt;/binary&gt;&quot;);</span>
+      }
+    } else {
+      // no app specified
+    }
+<span class="nc" id="L157">    out.println(&quot;  &lt;/sut&gt;&quot;);</span>
+<span class="nc" id="L158">  }</span>
+
+  @Override
+  protected void publishResult() {
+<span class="nc" id="L162">    List&lt;Error&gt; errors = reporter.getErrors();</span>
+    
+<span class="nc" id="L164">    out.print(&quot;  &lt;result findings=\&quot;&quot;);</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    if (errors.isEmpty()){</span>
+<span class="nc" id="L166">      out.println(&quot;none\&quot;/&gt;&quot;);</span>
+    } else {
+<span class="nc" id="L168">      out.println(&quot;errors\&quot;&gt;&quot;);</span>
+<span class="nc" id="L169">      int i=0;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">      for (Error e : errors) {</span>
+<span class="nc" id="L171">        out.print(&quot;    &lt;error id=\&quot;&quot;);</span>
+<span class="nc" id="L172">        out.print(i++);</span>
+<span class="nc" id="L173">        out.println(&quot;\&quot;&gt;&quot;);</span>
+<span class="nc" id="L174">        out.print(&quot;      &lt;property&gt;&quot;);</span>
+<span class="nc" id="L175">        out.print(e.getProperty().getClass().getName());</span>
+<span class="nc" id="L176">        out.println(&quot;&lt;/property&gt;&quot;);</span>
+<span class="nc" id="L177">        out.print(&quot;      &lt;details&gt;&quot;);</span>
+<span class="nc" id="L178">        out.print(e.getDetails());</span>
+<span class="nc" id="L179">        out.println(&quot;      &lt;/details&gt;&quot;);</span>
+<span class="nc" id="L180">        out.println(&quot;    &lt;/error&gt;&quot;);</span>
+<span class="nc" id="L181">      }</span>
+<span class="nc" id="L182">      out.println(&quot;  &lt;/result&gt;&quot;);</span>
+    }
+<span class="nc" id="L184">  }</span>
+
+  // not sure how much effort we want to put into readability here
+  @Override
+  protected void publishTrace() {
+<span class="nc" id="L189">    Path path = reporter.getPath();</span>
+<span class="nc" id="L190">    int i=0;</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">    if (path.size() == 0) {</span>
+<span class="nc" id="L193">      return; // nothing to publish</span>
+    }
+    
+<span class="nc" id="L196">    out.println(&quot;  &lt;trace&gt;&quot;);</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">    for (Transition t : path) {</span>
+<span class="nc" id="L198">      ChoiceGenerator&lt;?&gt; cg = t.getChoiceGenerator();</span>
+<span class="nc" id="L199">      out.println(&quot;    &lt;transition id=\&quot;&quot; + i++ + &quot;\&quot; thread=\&quot;&quot; + t.getThreadIndex() + &quot;\&quot;&gt;&quot;);</span>
+<span class="nc" id="L200">      out.println(&quot;      &lt;cg class=\&quot;&quot;+cg.getClass().getName() + &quot;\&quot; choice=\&quot;&quot; +</span>
+<span class="nc" id="L201">                  cg.getProcessedNumberOfChoices() + &quot;\&quot;/&gt;&quot;);</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">      for (Step s : t) {</span>
+<span class="nc" id="L203">        out.print(&quot;      &lt;insn src=\&quot;&quot; + s.getLocationString() + &quot;\&quot;&gt;&quot;);</span>
+<span class="nc" id="L204">        String insn = s.getInstruction().toString();</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (insn.indexOf('&lt;') &gt;= 0) { // &lt;init&gt; and &lt;clinit&gt; clash with XML</span>
+<span class="nc" id="L206">          insn = insn.replaceAll(&quot;&lt;&quot;, &quot;&amp;lt;&quot;);</span>
+<span class="nc" id="L207">          insn = insn.replaceAll(&quot;&gt;&quot;, &quot;&amp;gt;&quot;);</span>
+        }
+<span class="nc" id="L209">        out.print(insn);</span>
+<span class="nc" id="L210">        out.println(&quot;&lt;/insn&gt;&quot;);</span>
+<span class="nc" id="L211">      }</span>
+<span class="nc" id="L212">      out.println(&quot;    &lt;/transition&gt;&quot;);      </span>
+<span class="nc" id="L213">    }</span>
+<span class="nc" id="L214">    out.println(&quot;  &lt;/trace&gt;&quot;);</span>
+<span class="nc" id="L215">  }</span>
+
+  @Override
+  protected void publishOutput() {
+<span class="nc" id="L219">    Path path = reporter.getPath();</span>
+
+<span class="nc bnc" id="L221" title="All 2 branches missed.">    if (path.size() == 0) {</span>
+<span class="nc" id="L222">      return; // nothing to publish</span>
+    }
+        
+<span class="nc bnc" id="L225" title="All 2 branches missed.">    if (path.hasOutput()) {</span>
+<span class="nc" id="L226">      out.println(&quot;  &lt;output&gt;&quot;);</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">      for (Transition t : path) {</span>
+<span class="nc" id="L228">        String s = t.getOutput();</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (s != null){</span>
+<span class="nc" id="L230">          out.print(s);</span>
+        }
+<span class="nc" id="L232">      }</span>
+<span class="nc" id="L233">      out.println(&quot;  &lt;/output&gt;&quot;);</span>
+    }
+<span class="nc" id="L235">  }</span>
+  
+  @Override
+  protected void publishSnapshot() {
+<span class="nc" id="L239">    VM vm = reporter.getVM();</span>
+    
+<span class="nc" id="L241">    out.println(&quot;  &lt;live-threads&gt;&quot;);</span>
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    for (ThreadInfo ti : vm.getLiveThreads()) {</span>
+<span class="nc" id="L243">      out.println(&quot;    &lt;thread id=\&quot;&quot; + ti.getId() + &quot;\&quot; name=\&quot;&quot; + ti.getName()</span>
+<span class="nc" id="L244">                  + &quot;\&quot; status=\&quot;&quot; + ti.getStateName() + &quot;\&quot;&gt;&quot;);</span>
+      // owned locks
+<span class="nc bnc" id="L246" title="All 2 branches missed.">      for (ElementInfo e : ti.getLockedObjects()) {</span>
+<span class="nc" id="L247">        out.println(&quot;      &lt;lock-owned object=\&quot;&quot; + e + &quot;\&quot;/&gt;&quot;);</span>
+<span class="nc" id="L248">      }</span>
+      // requested locks
+<span class="nc" id="L250">      ElementInfo ei = ti.getLockObject();</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">      if (ei != null) {</span>
+<span class="nc" id="L252">        out.println(&quot;      &lt;lock-request object=\&quot;&quot; + ei + &quot;\&quot;/&gt;&quot;);</span>
+      }
+      // stack frames
+<span class="nc bnc" id="L255" title="All 2 branches missed.">      for (StackFrame frame : ti){</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        if (!frame.isDirectCallFrame()){</span>
+<span class="nc" id="L257">          out.println(&quot;      &lt;frame&gt;&quot; + frame.getStackTraceInfo() + &quot;&lt;/frame&gt;&quot;);</span>
+        }
+<span class="nc" id="L259">      }</span>
+<span class="nc" id="L260">      out.println(&quot;    &lt;/thread&gt;&quot;);</span>
+    }
+<span class="nc" id="L262">    out.println(&quot;  &lt;/live-threads&gt;&quot;);</span>
+<span class="nc" id="L263">  }</span>
+
+  @Override
+  protected void publishStatistics() {
+<span class="nc" id="L267">    Statistics stat = reporter.getStatistics();</span>
+<span class="nc" id="L268">    out.println(&quot;  &lt;statistics&gt;&quot;);</span>
+<span class="nc" id="L269">    out.println(&quot;    &lt;elapsed-time&gt;&quot; + formatHMS(reporter.getElapsedTime()) + &quot;&lt;/elapsed-time&gt;&quot;);</span>
+<span class="nc" id="L270">    out.println(&quot;    &lt;new-states&gt;&quot; + stat.newStates + &quot;&lt;/new-states&gt;&quot;);</span>
+<span class="nc" id="L271">    out.println(&quot;    &lt;visited-states&gt;&quot; + stat.visitedStates + &quot;&lt;/visited-states&gt;&quot;);</span>
+<span class="nc" id="L272">    out.println(&quot;    &lt;backtracked-states&gt;&quot; + stat.backtracked + &quot;&lt;/backtracked-states&gt;&quot;);</span>
+<span class="nc" id="L273">    out.println(&quot;    &lt;end-states&gt;&quot; + stat.endStates + &quot;&lt;/end-states&gt;&quot;);</span>
+<span class="nc" id="L274">    out.println(&quot;    &lt;max-memory unit=\&quot;MB\&quot;&gt;&quot; + (stat.maxUsed &gt;&gt;20) + &quot;&lt;/max-memory&gt;&quot;);</span>
+<span class="nc" id="L275">    out.println(&quot;  &lt;/statistics&gt;&quot;);</span>
+<span class="nc" id="L276">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

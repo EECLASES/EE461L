@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Perturbator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">Perturbator.java</span></div><h1>Perturbator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.GETFIELD;
+import gov.nasa.jpf.jvm.bytecode.JVMInstanceFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMReturnInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.perturb.OperandPerturbator;
+import gov.nasa.jpf.util.FieldSpec;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.MethodSpec;
+import gov.nasa.jpf.util.SourceRef;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.SystemState;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+/**
+ * listener that perturbs GETFIELD/GETSTATIC and JVMInvokeInstruction results
+ *
+ * NOTE - this listener initializes in two steps: (1) during listener construction
+ * it builds a list of classes it has to monitor, and (2) during class load
+ * time it further analyzes classes from this list to get the actual target
+ * objects (FieldInfos and MethodInfos) so that instruction monitoring is
+ * efficient enough.
+ *
+ * This means the listener always has to be instantiated BEFORE the respective
+ * target classes get loaded.
+ *
+ * configuration example:
+ *
+ *   # field getter example
+ *   perturb.fields = altitude,...
+ *   perturb.altitude.field = x.y.MyClass.alt
+ *   perturb.altitude.class = .perturb.IntOverUnder
+ *   perturb.altitude.location = MyClass.java:42
+ *   perturb.altitude.delta = 1
+ *
+ *   # method return value example
+ *   perturb.returns = velocity,...
+ *   perturb.velocity.method = x.y.MyClass.computeVelocity()
+ *   perturb.velocity.class = .perturb.IntOverUnder
+ *   perturb.velocity.delta = 50
+ *   
+ *   # method parameter perturbation example
+ *   perturb.params = foo, ...
+ *   perturb.foo.method = x.y.MyClass.send(int, float, boolean)
+ *   perturb.foo.location = MyClass.java:42
+ *   perturb.class = .perturb.dataAbstractor
+ *   
+ */
+
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">public class Perturbator extends ListenerAdapter {</span>
+
+<span class="fc" id="L84">  static JPFLogger log = JPF.getLogger(&quot;gov.nasa.jpf.Perturbator&quot;);</span>
+
+  public static class Perturbation {
+    SourceRef sref;    // location where field access should be perturbed
+    Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; cgType; // needs to be compatible with field type
+    OperandPerturbator perturbator;
+
+<span class="fc" id="L91">    Perturbation (OperandPerturbator perturbator, String loc){</span>
+<span class="fc" id="L92">      this.perturbator = perturbator;</span>
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">      if (loc != null){</span>
+<span class="fc" id="L95">        sref = new SourceRef(loc);</span>
+      }
+<span class="fc" id="L97">    }</span>
+  }
+
+  public static class FieldPerturbation extends Perturbation {
+    FieldSpec fieldSpec;
+
+    FieldPerturbation (FieldSpec fieldSpec, OperandPerturbator perturbator, String loc){
+<span class="fc" id="L104">      super(perturbator, loc);</span>
+
+<span class="fc" id="L106">      this.fieldSpec = fieldSpec;</span>
+<span class="fc" id="L107">    }</span>
+  }
+
+  public static class ReturnPerturbation extends Perturbation {
+    MethodSpec mthSpec;
+
+    ReturnPerturbation (MethodSpec mthSpec, OperandPerturbator perturbator, String loc){
+<span class="fc" id="L114">      super(perturbator, loc);</span>
+
+<span class="fc" id="L116">      this.mthSpec = mthSpec;</span>
+<span class="fc" id="L117">    }</span>
+  }
+  
+  public static class ParamsPerturbation extends Perturbation {
+  	public MethodSpec mthSpec;
+  	
+  	ParamsPerturbation (MethodSpec mthSpec, OperandPerturbator perturbator, String loc) {
+<span class="fc" id="L124">  		super(perturbator, loc);</span>
+  		
+<span class="fc" id="L126">  		this.mthSpec = mthSpec;</span>
+<span class="fc" id="L127">  	}</span>
+  }
+  
+<span class="fc" id="L130">  protected static Class&lt;?&gt;[] argTypes = { Config.class, String.class };</span>
+
+<span class="fc" id="L132">  protected List&lt;FieldPerturbation&gt; fieldWatchList = new ArrayList&lt;FieldPerturbation&gt;();</span>
+<span class="fc" id="L133">  protected HashMap&lt;FieldInfo,FieldPerturbation&gt; perturbedFields = new HashMap&lt;FieldInfo,FieldPerturbation&gt;();</span>
+
+<span class="fc" id="L135">  protected List&lt;ReturnPerturbation&gt; returnWatchList = new ArrayList&lt;ReturnPerturbation&gt;();</span>
+<span class="fc" id="L136">  protected HashMap&lt;MethodInfo,ReturnPerturbation&gt; perturbedReturns = new HashMap&lt;MethodInfo,ReturnPerturbation&gt;();</span>
+  
+<span class="fc" id="L138">  protected List&lt;ParamsPerturbation&gt; paramsWatchList = new ArrayList&lt;ParamsPerturbation&gt;();</span>
+<span class="fc" id="L139">  protected HashMap&lt;MethodInfo, ParamsPerturbation&gt; perturbedParams = new HashMap&lt;MethodInfo, ParamsPerturbation&gt;();</span>
+
+  protected StackFrame savedFrame;
+  
+<span class="fc" id="L143">  public Perturbator (Config conf){</span>
+
+    // in the ctor we only find out which classname patterns we have to watch
+    // for, and store them in a list (together with their partially initialized
+    // Perturbation instances) that is to be checked upon classLoaded notifications
+
+    // get the configured field perturbators
+<span class="fc" id="L150">    String[] fieldIds = conf.getCompactTrimmedStringArray(&quot;perturb.fields&quot;);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">    for (String id : fieldIds){</span>
+<span class="fc" id="L152">      addToFieldWatchList(conf, id);</span>
+    }
+
+<span class="fc" id="L155">    String[] returnIds = conf.getCompactTrimmedStringArray(&quot;perturb.returns&quot;);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">    for (String id : returnIds){</span>
+<span class="fc" id="L157">      addToReturnWatchList(conf, id);</span>
+    }
+    
+<span class="fc" id="L160">    String[] paramsIds = conf.getCompactTrimmedStringArray(&quot;perturb.params&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">    for (String id: paramsIds) {</span>
+<span class="fc" id="L162">    	addToParamsWatchList(conf, id);</span>
+    }
+<span class="fc" id="L164">  }</span>
+  
+  public boolean isMethodWatched(Instruction insn, MethodInfo mi) {
+<span class="nc" id="L167">    ParamsPerturbation e = perturbedParams.get(mi);</span>
+<span class="nc bnc" id="L168" title="All 4 branches missed.">    if (e != null &amp;&amp; isRelevantCallLocation(insn, e)){</span>
+<span class="nc" id="L169">      return true;</span>
+    }
+<span class="nc" id="L171">    return false;</span>
+  }
+  
+  protected void addToFieldWatchList (Config conf, String id){
+<span class="fc" id="L175">    String keyPrefix = &quot;perturb.&quot; + id;</span>
+
+<span class="fc" id="L177">    String fs = conf.getString(keyPrefix + &quot;.field&quot;);</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">    if (fs != null) {</span>
+<span class="fc" id="L179">      FieldSpec fieldSpec = FieldSpec.createFieldSpec(fs);</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">      if (fieldSpec != null){</span>
+<span class="fc" id="L181">        Object[] args = {conf, keyPrefix};</span>
+<span class="fc" id="L182">        OperandPerturbator perturbator = conf.getInstance(keyPrefix + &quot;.class&quot;, OperandPerturbator.class, argTypes, args);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (perturbator != null) {</span>
+<span class="fc" id="L184">          String loc = conf.getString(keyPrefix + &quot;.location&quot;);</span>
+<span class="fc" id="L185">          FieldPerturbation p = new FieldPerturbation(fieldSpec, perturbator, loc);</span>
+<span class="fc" id="L186">          fieldWatchList.add(p);</span>
+<span class="fc" id="L187">        } else {</span>
+<span class="nc" id="L188">          log.warning(&quot;invalid perturbator spec for &quot;, keyPrefix);</span>
+        }
+<span class="fc" id="L190">      } else {</span>
+<span class="nc" id="L191">        log.warning(&quot;malformed field specification for &quot;, keyPrefix);</span>
+      }
+
+<span class="fc" id="L194">    } else {</span>
+<span class="nc" id="L195">      log.warning(&quot;missing field specification for &quot;, keyPrefix);</span>
+    }
+<span class="fc" id="L197">  }</span>
+
+  protected void addToReturnWatchList (Config conf, String id){
+<span class="fc" id="L200">    String keyPrefix = &quot;perturb.&quot; + id;</span>
+
+<span class="fc" id="L202">    String ms = conf.getString(keyPrefix + &quot;.method&quot;);</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">    if (ms != null) {</span>
+<span class="fc" id="L204">      MethodSpec mthSpec = MethodSpec.createMethodSpec(ms);</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">      if (mthSpec != null) {</span>
+<span class="fc" id="L206">        Object[] args = {conf, keyPrefix};</span>
+<span class="fc" id="L207">        OperandPerturbator perturbator = conf.getInstance(keyPrefix + &quot;.class&quot;, OperandPerturbator.class, argTypes, args);</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (perturbator != null) {</span>
+<span class="fc" id="L209">          String loc = conf.getString(keyPrefix + &quot;.location&quot;);</span>
+<span class="fc" id="L210">          ReturnPerturbation p = new ReturnPerturbation(mthSpec, perturbator, loc);</span>
+<span class="fc" id="L211">          returnWatchList.add(p);</span>
+<span class="fc" id="L212">        } else {</span>
+<span class="nc" id="L213">          log.warning(&quot;invalid perturbator spec for &quot;, keyPrefix);</span>
+        }
+
+<span class="fc" id="L216">      } else {</span>
+<span class="nc" id="L217">        log.warning(&quot;malformed method specification for &quot;, keyPrefix);</span>
+      }
+
+<span class="fc" id="L220">    } else {</span>
+<span class="nc" id="L221">      log.warning(&quot;missing method specification for &quot;, keyPrefix);</span>
+    }
+<span class="fc" id="L223">  }</span>
+
+  protected void addToParamsWatchList (Config conf, String id){
+<span class="fc" id="L226">    String keyPrefix = &quot;perturb.&quot; + id;</span>
+
+<span class="fc" id="L228">    String ms = conf.getString(keyPrefix + &quot;.method&quot;);</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">    if (ms != null) {</span>
+<span class="fc" id="L230">      MethodSpec mthSpec = MethodSpec.createMethodSpec(ms);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">      if (mthSpec != null) {</span>
+<span class="fc" id="L232">        Object[] args = {conf, keyPrefix};</span>
+<span class="fc" id="L233">        OperandPerturbator perturbator = conf.getInstance(keyPrefix + &quot;.class&quot;, OperandPerturbator.class, argTypes, args);        </span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        if (perturbator != null) {</span>
+<span class="fc" id="L235">          String loc = conf.getString(keyPrefix + &quot;.location&quot;);</span>
+<span class="fc" id="L236">          ParamsPerturbation p = new ParamsPerturbation(mthSpec, perturbator, loc);</span>
+<span class="fc" id="L237">          paramsWatchList.add(p);</span>
+<span class="fc" id="L238">        } else {</span>
+<span class="nc" id="L239">          log.warning(&quot;invalid perturbator spec for &quot;, keyPrefix);</span>
+        }
+
+<span class="fc" id="L242">      } else {</span>
+<span class="nc" id="L243">        log.warning(&quot;malformed method specification for &quot;, keyPrefix);</span>
+      }
+<span class="fc" id="L245">    } else {</span>
+<span class="nc" id="L246">      log.warning(&quot;missing method specification for &quot;, keyPrefix);</span>
+    }
+<span class="fc" id="L248">  }</span>
+
+  @Override
+  public void classLoaded (VM vm, ClassInfo loadedClass){
+    // this one takes the watchlists, finds out if the loaded class matches
+    // any of the watch entries, and in case it does fully initializes
+    // the corresponding Perturbation object with the target construct
+    // (MethodInfo, FieldInfo) we use to identify relevant ops during
+    // instruction execution notifications
+
+<span class="fc" id="L258">    String clsName = loadedClass.getName();</span>
+
+<span class="fc bfc" id="L260" title="All 2 branches covered.">    for (FieldPerturbation p : fieldWatchList){</span>
+<span class="fc" id="L261">      FieldSpec fs = p.fieldSpec;</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">      if (fs.isMatchingType(loadedClass)){</span>
+<span class="fc" id="L263">        addFieldPerturbations( p, loadedClass, loadedClass.getDeclaredInstanceFields());</span>
+<span class="fc" id="L264">        addFieldPerturbations( p, loadedClass, loadedClass.getDeclaredStaticFields());</span>
+      }
+<span class="fc" id="L266">    }</span>
+
+<span class="fc bfc" id="L268" title="All 2 branches covered.">    for (ReturnPerturbation p : returnWatchList){</span>
+<span class="fc" id="L269">      MethodSpec ms = p.mthSpec;</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">      if (ms.isMatchingType(loadedClass)){</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        for (MethodInfo mi : loadedClass.getDeclaredMethodInfos()){</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">          if (ms.matches(mi)){</span>
+<span class="fc" id="L273">            Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; returnCGType = mi.getReturnChoiceGeneratorType();</span>
+<span class="fc" id="L274">            Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; perturbatorCGType = p.perturbator.getChoiceGeneratorType();</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">            if (returnCGType.isAssignableFrom(perturbatorCGType)){</span>
+<span class="fc" id="L276">              p.cgType = returnCGType;</span>
+<span class="fc" id="L277">              perturbedReturns.put(mi, p);</span>
+            } else {
+<span class="nc" id="L279">              log.warning(&quot;method &quot; + mi + &quot; not compatible with perturbator choice type &quot; + perturbatorCGType.getName());</span>
+            }
+          }
+        }
+      }
+<span class="fc" id="L284">    }</span>
+
+<span class="fc bfc" id="L286" title="All 2 branches covered.">    for (ParamsPerturbation p : paramsWatchList){</span>
+<span class="fc" id="L287">      MethodSpec ms = p.mthSpec;</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">      if (ms.isMatchingType(loadedClass)){</span>
+<span class="fc bfc" id="L289" title="All 2 branches covered.">        for (MethodInfo mi : loadedClass.getDeclaredMethodInfos()){</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">          if (ms.matches(mi)){</span>
+          	// We simply associate the method with the parameters perturbator
+<span class="fc" id="L292">            Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; perturbatorCGType = p.perturbator.getChoiceGeneratorType();</span>
+<span class="fc" id="L293">            p.cgType = perturbatorCGType;</span>
+<span class="fc" id="L294">          	perturbedParams.put(mi, p);</span>
+          }
+        }
+      }
+<span class="fc" id="L298">    }</span>
+<span class="fc" id="L299">  }</span>
+
+  protected void addFieldPerturbations (FieldPerturbation p, ClassInfo ci, FieldInfo[] fieldInfos){
+<span class="fc bfc" id="L302" title="All 2 branches covered.">    for (FieldInfo fi : ci.getDeclaredInstanceFields()) {</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">      if (p.fieldSpec.matches(fi)) {</span>
+<span class="fc" id="L304">        Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; fieldCGType = fi.getChoiceGeneratorType();</span>
+<span class="fc" id="L305">        Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; perturbatorCGType = p.perturbator.getChoiceGeneratorType();</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (fieldCGType.isAssignableFrom(perturbatorCGType)) {</span>
+<span class="fc" id="L307">          p.cgType = fieldCGType;</span>
+<span class="fc" id="L308">          perturbedFields.put(fi, p);</span>
+        } else {
+<span class="nc" id="L310">          log.warning(&quot;field &quot; + fi + &quot; not compatible with perturbator choice type &quot; + perturbatorCGType.getName());</span>
+        }
+      }
+    }
+<span class="fc" id="L314">  }</span>
+
+  protected boolean isRelevantCallLocation (ThreadInfo ti, Perturbation p){
+<span class="fc bfc" id="L317" title="All 2 branches covered.">    if (p.sref == null){</span>
+      // no caller location specified -&gt; all calls relevant
+<span class="fc" id="L319">      return true;</span>
+    } else {
+<span class="fc" id="L321">      StackFrame caller = ti.getCallerStackFrame();</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">      if (caller != null) {</span>
+<span class="fc" id="L323">        Instruction invokeInsn = caller.getPC();</span>
+<span class="fc" id="L324">        return p.sref.equals(invokeInsn.getFilePos());</span>
+      } else {
+<span class="nc" id="L326">        return false;</span>
+      }
+    }
+  }
+  
+  protected boolean isRelevantCallLocation (Instruction invokeInsn, Perturbation p) {
+  	// For parameter perturbation, we are about to enter a method
+  	// and hence can directly use the invoke instruction to get the file
+  	// location of the call
+<span class="fc bfc" id="L335" title="All 2 branches covered.">  	if (p.sref == null)</span>
+<span class="fc" id="L336">  		return true;</span>
+  	else
+<span class="fc" id="L338">  		return p.sref.equals(invokeInsn.getFilePos());</span>
+  }
+
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insnToExecute){
+    
+<span class="fc bfc" id="L344" title="All 2 branches covered.">    if (insnToExecute instanceof GETFIELD){</span>
+<span class="fc" id="L345">      FieldInfo fi = ((JVMInstanceFieldInstruction)insnToExecute).getFieldInfo();</span>
+<span class="fc" id="L346">      FieldPerturbation e = perturbedFields.get(fi);</span>
+
+<span class="fc bfc" id="L348" title="All 2 branches covered.">      if (e != null) {  // managed field</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (isMatchingInstructionLocation(e,insnToExecute)) {</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">          if (!ti.isFirstStepInsn()){</span>
+            // save the current stackframe so that we can restore it before
+            // we re-enter
+<span class="fc" id="L353">            savedFrame = ti.getTopFrame().clone();</span>
+          }
+        }
+      }
+
+<span class="fc bfc" id="L358" title="All 2 branches covered.">    } else if (insnToExecute instanceof JVMReturnInstruction){</span>
+<span class="fc" id="L359">      MethodInfo mi = insnToExecute.getMethodInfo();</span>
+<span class="fc" id="L360">      ReturnPerturbation e = perturbedReturns.get(mi);</span>
+
+<span class="fc bfc" id="L362" title="All 4 branches covered.">      if (e != null &amp;&amp; isRelevantCallLocation(ti, e)){</span>
+<span class="fc" id="L363">        SystemState ss = vm.getSystemState();</span>
+
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (!ti.isFirstStepInsn()){</span>
+          // first time, create &amp; set CG but DO NOT enter the insn since it would
+          // pop the callee stackframe and modify the caller stackframe
+          // note that we don't need to enter in order to get the perturbation base
+          // value because its already on the operand stack
+<span class="fc" id="L370">          ChoiceGenerator&lt;?&gt; cg = e.perturbator.createChoiceGenerator(&quot;perturbReturn&quot;, ti.getTopFrame(), new Integer(0));</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">          if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L372">            ti.skipInstruction(insnToExecute);</span>
+          }
+<span class="fc" id="L374">        } else {</span>
+          // re-executing, modify the operand stack top and enter
+<span class="fc" id="L376">          ChoiceGenerator&lt;?&gt; cg = ss.getCurrentChoiceGenerator(&quot;perturbReturn&quot;, e.cgType);</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">          if (cg != null) {</span>
+<span class="fc" id="L378">            e.perturbator.perturb(cg, ti.getTopFrame());</span>
+          }
+        }
+      }
+<span class="fc bfc" id="L382" title="All 2 branches covered.">    } else if (insnToExecute instanceof JVMInvokeInstruction) {</span>
+    	// first get the method info object corresponding to the invoked method
+    	// We can't use getMethodInfo as the method returned may not be the actual
+    	// method invoked, but rather its caller
+<span class="fc" id="L386">    	MethodInfo mi = ((JVMInvokeInstruction) insnToExecute).getInvokedMethod();</span>
+<span class="fc" id="L387">    	ParamsPerturbation e = perturbedParams.get(mi);</span>
+    	
+<span class="fc bfc" id="L389" title="All 4 branches covered.">      if (e != null &amp;&amp; isRelevantCallLocation(insnToExecute, e)){</span>
+<span class="fc" id="L390">        SystemState ss = vm.getSystemState();</span>
+
+<span class="fc bfc" id="L392" title="All 2 branches covered.">        if (!ti.isFirstStepInsn()) {</span>
+        	// first time, create and set CG and skip instruction as we want the instruction
+        	// to be executed with the parameter choices we like instead of the ones that
+        	// were passed in
+<span class="fc" id="L396">          ChoiceGenerator&lt;?&gt; cg = e.perturbator.createChoiceGenerator(mi.getFullName(), ti.getTopFrame(), mi);</span>
+          // check if the cg returned is null. If it is then we don't want to enter this
+          // method as we are done exploring it
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">          if (cg != null) {</span>
+<span class="fc" id="L400">            log.info(&quot;--- Creating choice generator: &quot; + mi.getFullName() + &quot; for thread: &quot; + ti);</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">            if (ss.setNextChoiceGenerator(cg)) {</span>
+<span class="fc" id="L402">              ti.skipInstruction(insnToExecute);</span>
+            }
+          }
+<span class="fc" id="L405">        } else {</span>
+          // re-executing, modify the operands on stack and enter
+<span class="fc" id="L407">          ChoiceGenerator&lt;?&gt; cg = ss.getChoiceGenerator(mi.getFullName());</span>
+<span class="pc bpc" id="L408" title="1 of 2 branches missed.">          if (cg != null) {</span>
+<span class="fc" id="L409">            log.info(&quot;--- Using choice generator: &quot; + mi.getFullName() + &quot; in thread: &quot; + ti);</span>
+<span class="fc" id="L410">            e.perturbator.perturb(cg, ti.getTopFrame());</span>
+          }
+        }
+      }
+    }
+<span class="fc" id="L415">  }</span>
+
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+    
+<span class="fc bfc" id="L420" title="All 2 branches covered.">    if (executedInsn instanceof GETFIELD){</span>
+<span class="fc" id="L421">      FieldInfo fi = ((JVMInstanceFieldInstruction)executedInsn).getFieldInfo();</span>
+<span class="fc" id="L422">      FieldPerturbation p = perturbedFields.get(fi);</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">      if (p != null){</span>
+<span class="fc bfc" id="L424" title="All 2 branches covered.">        if (isMatchingInstructionLocation(p, executedInsn)) {  // none or managed filePos</span>
+<span class="fc" id="L425">          StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L426">          SystemState ss = vm.getSystemState();</span>
+
+<span class="fc bfc" id="L428" title="All 2 branches covered.">          if (ti.isFirstStepInsn()) { // retrieve value from CG and replace it on operand stack</span>
+<span class="fc" id="L429">            ChoiceGenerator&lt;?&gt; cg = ss.getCurrentChoiceGenerator( &quot;perturbGetField&quot;, p.cgType);</span>
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">            if (cg != null) {</span>
+<span class="fc" id="L431">              p.perturbator.perturb(cg, frame);</span>
+            } else {
+<span class="nc" id="L433">              log.warning(&quot;wrong choice generator type &quot;, cg);</span>
+            }
+
+<span class="fc" id="L436">          } else { // first time around, create&amp;set the CG and reexecute</span>
+<span class="fc" id="L437">            ChoiceGenerator&lt;?&gt; cg = p.perturbator.createChoiceGenerator( &quot;perturbGetField&quot;, frame, new Integer(0));</span>
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">            if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="pc bpc" id="L439" title="2 of 4 branches missed.">              assert savedFrame != null;</span>
+              // we could more efficiently restore the stackframe
+              // to pre-exec state from last 'this' or classobject ref, but then
+              // we have to deal with different field value sizes
+<span class="fc" id="L443">              ti.setTopFrame(savedFrame);</span>
+<span class="fc" id="L444">              ti.setNextPC(executedInsn); // reexecute</span>
+
+<span class="fc" id="L446">              savedFrame = null;</span>
+            }
+          }
+        }
+      }
+    } 
+<span class="fc" id="L452">  }</span>
+  
+  protected boolean isMatchingInstructionLocation (Perturbation p, Instruction insn){
+<span class="fc bfc" id="L455" title="All 4 branches covered.">    return p.sref == null || p.sref.equals(insn.getFilePos());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

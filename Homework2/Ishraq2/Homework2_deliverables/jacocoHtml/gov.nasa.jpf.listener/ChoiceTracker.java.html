@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChoiceTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ChoiceTracker.java</span></div><h1>ChoiceTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.report.PublisherExtension;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.SystemState;
+
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+
+/**
+ * generic choice tracker tool, to produce a list of choice values that
+ * can be used to create readable replay scripts etc.
+ */
+public class ChoiceTracker extends ListenerAdapter implements PublisherExtension {
+
+<span class="nc" id="L41">  enum Format { CG, CHOICE };</span>
+
+  Config config;
+  VM vm;
+  Search search;
+  
+  protected PrintWriter pw;
+  Class&lt;?&gt;[] cgClasses;
+  boolean isReportExtension;
+
+  boolean showLocation;
+<span class="nc" id="L52">  Format format = Format.CHOICE;</span>
+  String[] excludes;
+
+  // &lt;2do&gt; hardwired type specific tracker for use with some shells - check if
+  // we can get rid of it
+<span class="nc" id="L57">  public ChoiceTracker (JPF jpf, String traceFileName, Class&lt;?&gt; cgClass){</span>
+<span class="nc" id="L58">    config = jpf.getConfig();</span>
+<span class="nc" id="L59">    vm = jpf.getVM();</span>
+<span class="nc" id="L60">    search = jpf.getSearch();</span>
+    
+<span class="nc" id="L62">    cgClasses = new Class&lt;?&gt;[1];</span>
+<span class="nc" id="L63">    cgClasses[0] = cgClass;</span>
+    
+    try {
+<span class="nc" id="L66">      pw = new PrintWriter(traceFileName);</span>
+<span class="nc" id="L67">    } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L68">      System.err.println(&quot;cannot write choice trace to file: &quot; + traceFileName);</span>
+<span class="nc" id="L69">      pw = new PrintWriter(System.out);</span>
+<span class="nc" id="L70">    }</span>
+<span class="nc" id="L71">  }</span>
+
+<span class="nc" id="L73">  public ChoiceTracker (Config config, JPF jpf) {</span>
+<span class="nc" id="L74">    this.config = config;</span>
+<span class="nc" id="L75">    vm = jpf.getVM();</span>
+<span class="nc" id="L76">    search = jpf.getSearch();</span>
+    
+<span class="nc" id="L78">    String fname = config.getString(&quot;choice.trace&quot;);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">    if (fname == null) {</span>
+<span class="nc" id="L80">      isReportExtension = true;</span>
+<span class="nc" id="L81">      jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+      // pw is going to be set later
+    } else {
+      try {
+<span class="nc" id="L85">        pw = new PrintWriter(fname);</span>
+<span class="nc" id="L86">      } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L87">        System.err.println(&quot;cannot write choice trace to file: &quot; + fname);</span>
+<span class="nc" id="L88">        pw = new PrintWriter(System.out);</span>
+<span class="nc" id="L89">      }</span>
+    }
+    
+<span class="nc" id="L92">    excludes = config.getStringArray(&quot;choice.exclude&quot;);</span>
+<span class="nc" id="L93">    cgClasses = config.getClasses(&quot;choice.class&quot;);</span>
+
+<span class="nc" id="L95">    format = config.getEnum(&quot;choice.format&quot;, Format.values(), Format.CG);</span>
+<span class="nc" id="L96">    showLocation = config.getBoolean(&quot;choice.show_location&quot;, true);</span>
+<span class="nc" id="L97">  }</span>
+
+  public void setExcludes (String... ex) {
+<span class="nc" id="L100">    excludes=ex;</span>
+<span class="nc" id="L101">  }</span>
+  
+  boolean isRelevantCG (ChoiceGenerator cg){
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    if (cgClasses == null){</span>
+<span class="nc" id="L105">      return true;</span>
+    } else {
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      for (Class&lt;?&gt; cls : cgClasses){</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (cls.isAssignableFrom(cg.getClass())){</span>
+<span class="nc" id="L109">          return true;</span>
+        }
+      }
+      
+<span class="nc" id="L113">      return false;</span>
+    }
+  }
+
+  @Override
+  public void propertyViolated (Search search) {
+        
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (!isReportExtension) {</span>
+
+<span class="nc" id="L122">      pw.print(&quot;// application: &quot;);</span>
+<span class="nc" id="L123">      pw.println( search.getVM().getSUTDescription());</span>
+
+<span class="nc bnc" id="L125" title="All 2 branches missed.">      if (cgClasses == null) {</span>
+<span class="nc" id="L126">        pw.println(&quot;// trace over all CG classes&quot;);</span>
+      } else {
+<span class="nc" id="L128">        pw.print(&quot;// trace over CG types: &quot;);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">        for (Class&lt;?&gt; cls : cgClasses){</span>
+<span class="nc" id="L130">          pw.print(cls.getName());</span>
+<span class="nc" id="L131">          pw.print(' ');</span>
+        }
+<span class="nc" id="L133">        pw.println();</span>
+      }
+
+<span class="nc" id="L136">      pw.println(&quot;//------------------------- choice trace&quot;);</span>
+<span class="nc" id="L137">      printChoices();</span>
+      
+<span class="nc" id="L139">      pw.println(&quot;//------------------------- end choice trace&quot;);</span>
+<span class="nc" id="L140">      pw.flush();</span>
+    }
+<span class="nc" id="L142">  }</span>
+
+  void printChoices () {
+<span class="nc" id="L145">    int i = 0;</span>
+<span class="nc" id="L146">    SystemState ss = vm.getSystemState();</span>
+<span class="nc" id="L147">    ChoiceGenerator&lt;?&gt;[] cgStack = ss.getChoiceGenerators();</span>
+
+    nextChoice:
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg : cgStack) {</span>
+<span class="nc bnc" id="L151" title="All 4 branches missed.">      if (isRelevantCG(cg) &amp;&amp; !cg.isDone()){</span>
+
+<span class="nc" id="L153">        Object choice = cg.getNextChoice();</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (choice == null) {</span>
+<span class="nc" id="L155">          continue;</span>
+        } else {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">          if (excludes != null) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            for (String e : excludes) {</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">              if (choice.toString().startsWith(e)) {</span>
+<span class="nc" id="L160">                continue nextChoice;</span>
+              }
+            }
+          }
+        }
+
+<span class="nc" id="L166">        String line = null;</span>
+
+<span class="nc bnc" id="L168" title="All 3 branches missed.">        switch (format){</span>
+          case CHOICE:
+<span class="nc" id="L170">            line = choice.toString();</span>
+<span class="nc bnc" id="L171" title="All 2 branches missed.">            if (line.startsWith(&quot;gov.nasa.jpf.vm.&quot;)){</span>
+<span class="nc" id="L172">              line = line.substring(17);</span>
+            }
+            break;
+          case CG:
+<span class="nc" id="L176">            line = cg.toString();</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">            if (line.startsWith(&quot;gov.nasa.jpf.vm.choice.&quot;)){</span>
+<span class="nc" id="L178">              line = line.substring(24);</span>
+            }
+            break;
+        }
+
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        if (line != null){</span>
+<span class="nc" id="L184">          pw.print(String.format(&quot;%4d: &quot;, i++));</span>
+
+<span class="nc" id="L186">          pw.print(line);</span>
+
+<span class="nc bnc" id="L188" title="All 2 branches missed.">          if (showLocation) {</span>
+<span class="nc" id="L189">            String loc = cg.getSourceLocation();</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">            if (loc != null) {</span>
+<span class="nc" id="L191">              pw.println();</span>
+<span class="nc" id="L192">              pw.print(&quot; \tat &quot;);</span>
+<span class="nc" id="L193">              pw.print(loc);</span>
+            }
+          }
+<span class="nc" id="L196">          pw.println();</span>
+        }
+      }
+    }
+<span class="nc" id="L200">  }</span>
+
+  //--- the PublisherExtension interface
+
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {
+<span class="nc" id="L206">    pw = publisher.getOut();</span>
+<span class="nc" id="L207">    publisher.publishTopicStart(&quot;choice trace &quot; + publisher.getLastErrorId());</span>
+<span class="nc" id="L208">    printChoices();</span>
+<span class="nc" id="L209">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

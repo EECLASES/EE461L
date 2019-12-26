@@ -1,0 +1,33 @@
+<?xml version = "1.0"?>
+<project name = "HelloWorldproject" basedir="." default = "info">
+   
+  
+  
+   
+   <target name = "init">
+    
+     
+      
+      <property name="build.dir" value="build"/>
+   	
+      <mkdir dir="${build.dir}"/>
+     
+
+     
+   </target>
+
+	<target name ="run1" depends="init">
+	   <javac srcdir="src" destdir="build" includeantruntime="false"/>
+	   	<java  classname="HelloWorld" classpath="usa.texas.austin" fork="yes"/>
+	</target>
+
+   
+   
+
+   <target name = "info">
+      <echo>Apache Ant version is ${ant.version} - You are at ${sitename} \n
+         run "ant init" and "ant run1" to run the basic Hello world! Thank you!
+      </echo>
+   </target>
+   
+</project>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SimplePriorityHeuristic.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search.heuristic</a> &gt; <span class="el_source">SimplePriorityHeuristic.java</span></div><h1>SimplePriorityHeuristic.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.search.heuristic;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.Predicate;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * a heuristic that is based on static priorities that are determined
+ * at state storage time
+ */
+public abstract class SimplePriorityHeuristic extends HeuristicSearch {
+
+  StaticPriorityQueue queue;
+  
+  protected Predicate&lt;ThreadInfo&gt; aliveThread;
+  
+  public SimplePriorityHeuristic (Config config, VM vm) {
+<span class="fc" id="L37">    super(config,vm);</span>
+
+<span class="fc" id="L39">    queue = new StaticPriorityQueue(config);</span>
+    
+<span class="fc" id="L41">    aliveThread = new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="nc" id="L44">        return (ti.isAlive());</span>
+      }
+    };
+    
+<span class="fc" id="L48">  }</span>
+
+  protected abstract int computeHeuristicValue ();
+
+  protected int computeAstarPathCost (VM vm) {
+<span class="nc" id="L53">    return vm.getPathLength();</span>
+  }
+  
+  @Override
+  protected HeuristicState queueCurrentState () {
+    int heuristicValue;
+    
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">    if (vm.isInterestingState()) {</span>
+<span class="nc" id="L61">      heuristicValue = 0;</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">    } else if (vm.isBoringState()) {</span>
+<span class="nc" id="L63">      heuristicValue = Integer.MAX_VALUE;</span>
+      
+    } else {
+<span class="fc" id="L66">      heuristicValue = computeHeuristicValue();</span>
+      
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">      if (useAstar) {</span>
+        // &lt;2do&gt; we probably don't want this for isInteresting/isBoring?
+<span class="nc" id="L70">        heuristicValue += computeAstarPathCost(vm);</span>
+      }
+    }
+    
+<span class="fc" id="L74">    PrioritizedState hState = new PrioritizedState(vm,heuristicValue);</span>
+    
+<span class="fc" id="L76">    queue.add(hState);</span>
+    
+<span class="fc" id="L78">    return hState;</span>
+  }
+  
+  @Override
+  protected HeuristicState getNextQueuedState () {
+    
+    //HeuristicState hState = queue.pollFirst();  // only Java 1.6
+    //if (isBeanSearch) { queue.clear(); }
+    //return hState;
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">    if (queue.size() == 0) {                      // the dreaded Java 1.5 version</span>
+<span class="fc" id="L89">      return null;</span>
+    }
+<span class="fc" id="L91">    HeuristicState hState = queue.first();</span>
+    
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">    if (isBeamSearch) {</span>
+<span class="nc" id="L94">      queue.clear();</span>
+    } else {
+<span class="fc" id="L96">      queue.remove(hState);      </span>
+    }
+    
+<span class="fc" id="L99">    return hState;</span>
+  }
+
+  @Override
+  public int getQueueSize() {
+<span class="nc" id="L104">    return queue.size();</span>
+  }
+  
+  @Override
+  public boolean isQueueLimitReached() {
+<span class="fc" id="L109">    return queue.isQueueLimitReached();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

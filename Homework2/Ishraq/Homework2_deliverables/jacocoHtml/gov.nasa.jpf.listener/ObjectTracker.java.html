@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjectTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ObjectTracker.java</span></div><h1>ObjectTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.PUTFIELD;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.util.IntSet;
+import gov.nasa.jpf.util.SortedArrayIntSet;
+import gov.nasa.jpf.util.StateExtensionClient;
+import gov.nasa.jpf.util.StateExtensionListener;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.bytecode.FieldInstruction;
+import gov.nasa.jpf.vm.bytecode.InstanceFieldInstruction;
+import gov.nasa.jpf.vm.bytecode.InstanceInvokeInstruction;
+import gov.nasa.jpf.vm.bytecode.InvokeInstruction;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+
+/**
+ * listener that keeps track of all operations on objects that are specified by
+ * reference value or types
+ */
+public class ObjectTracker extends ListenerAdapter implements StateExtensionClient {
+  
+<span class="nc" id="L55">  static class Attr {</span>
+    // nothing here, just a tag
+  }
+  
+<span class="nc" id="L59">  static final Attr ATTR = new Attr(); // we need only one</span>
+  
+<span class="nc" id="L61">  enum OpType { NEW, CALL, PUT, GET, FREE };</span>
+  
+  static class LogRecord {
+    ElementInfo ei;
+    ThreadInfo ti;
+    Instruction insn;
+    OpType opType;
+    int stateId;
+    
+    LogRecord prev;
+    
+<span class="nc" id="L72">    LogRecord (OpType opType, ElementInfo ei, ThreadInfo ti, Instruction insn, LogRecord prev){</span>
+<span class="nc" id="L73">      this.opType = opType;</span>
+<span class="nc" id="L74">      this.ei = ei;</span>
+<span class="nc" id="L75">      this.ti = ti;</span>
+<span class="nc" id="L76">      this.insn = insn;</span>
+<span class="nc" id="L77">      this.prev = prev;</span>
+<span class="nc" id="L78">      this.stateId = ti.getVM().getStateId();</span>
+<span class="nc" id="L79">    }</span>
+    
+    void printOn (PrintWriter pw){
+<span class="nc bnc" id="L82" title="All 4 branches missed.">      if (prev != null &amp;&amp; stateId != prev.stateId){</span>
+<span class="nc" id="L83">        pw.printf(&quot;----------------------------------- [%d]\n&quot;, prev.stateId + 1);</span>
+      }
+      
+<span class="nc" id="L86">      pw.print(ti.getId());</span>
+<span class="nc" id="L87">      pw.print(&quot;: &quot;);</span>
+      
+<span class="nc" id="L89">      pw.printf(&quot;%-4s &quot;, opType.toString().toLowerCase());</span>
+<span class="nc" id="L90">      pw.print(ei);</span>
+<span class="nc" id="L91">      pw.print('.');</span>
+      
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (insn != null){        </span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (insn instanceof FieldInstruction){</span>
+<span class="nc" id="L95">          FieldInstruction finsn = (FieldInstruction)insn;</span>
+          
+<span class="nc" id="L97">          String fname = finsn.getFieldName();</span>
+<span class="nc" id="L98">          pw.print(fname);</span>
+          
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        } else if (insn instanceof InvokeInstruction){</span>
+<span class="nc" id="L101">          InvokeInstruction call = (InvokeInstruction)insn;</span>
+          
+<span class="nc" id="L103">          String mthName = call.getInvokedMethodName();</span>
+          
+<span class="nc" id="L105">          pw.print( Types.getDequalifiedMethodSignature(mthName));</span>
+        }
+      }
+      
+<span class="nc" id="L109">      pw.println();</span>
+<span class="nc" id="L110">    }</span>
+  }
+  
+  protected LogRecord log; // needs to be state restored
+  
+  //--- log options  
+  protected StringSetMatcher includeClasses, excludeClasses; // type name patterns
+  protected IntSet trackedRefs;
+  
+  protected boolean logFieldAccess;
+  protected boolean logCalls;
+
+    
+  
+  //--- internal stuff
+  
+<span class="nc" id="L126">  public ObjectTracker (Config conf, JPF jpf) {</span>
+<span class="nc" id="L127">    includeClasses = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;ot.include&quot;));</span>
+<span class="nc" id="L128">    excludeClasses = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;ot.exclude&quot;, new String[] { &quot;*&quot; }));</span>
+
+<span class="nc" id="L130">    trackedRefs = new SortedArrayIntSet();</span>
+    
+<span class="nc" id="L132">    int[] refs = conf.getIntArray(&quot;ot.refs&quot;);</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">    if (refs != null){</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">      for (int i=0; i&lt;refs.length; i++){</span>
+<span class="nc" id="L135">        trackedRefs.add(refs[i]);</span>
+      }
+    }
+    
+<span class="nc" id="L139">    logCalls = conf.getBoolean(&quot;ot.log_calls&quot;, true);</span>
+<span class="nc" id="L140">    logFieldAccess = conf.getBoolean(&quot;ot.log_fields&quot;, true);</span>
+    
+<span class="nc" id="L142">    registerListener(jpf);</span>
+<span class="nc" id="L143">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="nc" id="L144">  }</span>
+    
+  protected void log (OpType opType, ElementInfo ei, ThreadInfo ti, Instruction insn){
+<span class="nc" id="L147">    log = new LogRecord( opType, ei, ti, insn,  log);</span>
+<span class="nc" id="L148">  }</span>
+  
+  
+  //--- Listener interface
+  
+  @Override
+  public void classLoaded (VM vm, ClassInfo ci){
+<span class="nc bnc" id="L155" title="All 2 branches missed.">    if (StringSetMatcher.isMatch(ci.getName(), includeClasses, excludeClasses)){</span>
+<span class="nc" id="L156">      ci.addAttr(ATTR);</span>
+    }
+<span class="nc" id="L158">  }</span>
+  
+  @Override
+  public void objectCreated (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L162">    ClassInfo ci = ei.getClassInfo();</span>
+<span class="nc" id="L163">    int ref = ei.getObjectRef();</span>
+    
+<span class="nc bnc" id="L165" title="All 4 branches missed.">    if (ci.hasAttr(Attr.class) || trackedRefs.contains(ref)){</span>
+      // it's new, we don't need to call getModifiable
+<span class="nc" id="L167">      ei.addObjectAttr(ATTR);</span>
+<span class="nc" id="L168">      log( OpType.NEW, ei, ti, ti.getPC());</span>
+    }
+<span class="nc" id="L170">  }</span>
+  
+  @Override
+  public void objectReleased (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    if (ei.hasObjectAttr(Attr.class)){</span>
+<span class="nc" id="L175">      log( OpType.FREE, ei, ti, ti.getPC());      </span>
+    }
+<span class="nc" id="L177">  }</span>
+
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn){
+    
+<span class="nc bnc" id="L182" title="All 4 branches missed.">    if (logCalls &amp;&amp; executedInsn instanceof InstanceInvokeInstruction){      </span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">      if (nextInsn != executedInsn){ // otherwise we didn't enter</span>
+<span class="nc" id="L184">        InstanceInvokeInstruction call = (InstanceInvokeInstruction)executedInsn;</span>
+
+<span class="nc" id="L186">        int ref = call.getCalleeThis(ti);</span>
+<span class="nc" id="L187">        ElementInfo ei = ti.getElementInfo(ref);</span>
+        
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (ei.hasObjectAttr(Attr.class)) {</span>
+<span class="nc" id="L190">          log( OpType.CALL, ei, ti, executedInsn);</span>
+        }
+<span class="nc" id="L192">      }</span>
+      
+<span class="nc bnc" id="L194" title="All 4 branches missed.">    } else if (logFieldAccess &amp;&amp; executedInsn instanceof InstanceFieldInstruction){</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">      if (nextInsn != executedInsn){ // otherwise we didn't enter</span>
+<span class="nc" id="L196">        InstanceFieldInstruction finsn = (InstanceFieldInstruction) executedInsn;</span>
+
+<span class="nc" id="L198">        StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L199">        int idx = finsn.getObjectSlot(frame);</span>
+<span class="nc" id="L200">        int ref = frame.getSlot(idx);</span>
+<span class="nc" id="L201">        ElementInfo ei = ti.getElementInfo(ref);</span>
+        
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (ei.hasObjectAttr(Attr.class)) {</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">          OpType op = (executedInsn instanceof PUTFIELD) ? OpType.PUT : OpType.GET;</span>
+<span class="nc" id="L205">          log( op, ei, ti, executedInsn);</span>
+        }
+      }
+    }
+<span class="nc" id="L209">  }</span>
+
+  //--- state store/restore
+  
+  @Override
+  public Object getStateExtension () {
+<span class="nc" id="L215">    return log;</span>
+  }
+
+  @Override
+  public void restore (Object stateExtension) {
+<span class="nc" id="L220">    log = (LogRecord)stateExtension;</span>
+<span class="nc" id="L221">  }</span>
+
+  @Override
+  public void registerListener (JPF jpf) {
+<span class="nc" id="L225">    StateExtensionListener&lt;Number&gt; sel = new StateExtensionListener(this);</span>
+<span class="nc" id="L226">    jpf.addSearchListener(sel);</span>
+<span class="nc" id="L227">  }</span>
+
+  
+  //--- reporting
+  
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {    
+<span class="nc bnc" id="L234" title="All 2 branches missed.">    if (log != null){ // otherwise we don't have anything to report</span>
+<span class="nc" id="L235">      PrintWriter pw = publisher.getOut();</span>
+<span class="nc" id="L236">      publisher.publishTopicStart(&quot;ObjectTracker &quot; + publisher.getLastErrorId());</span>
+<span class="nc" id="L237">      printLogOn(pw);</span>
+    }
+<span class="nc" id="L239">  }</span>
+
+  protected void printLogOn (PrintWriter pw){
+    // the log can be quite long so we can't use recursion (Java does not optimize tail recursion)
+<span class="nc" id="L243">    List&lt;LogRecord&gt; logRecs = new ArrayList&lt;LogRecord&gt;();</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">    for (LogRecord lr = log; lr != null; lr = lr.prev){</span>
+<span class="nc" id="L245">      logRecs.add(lr);</span>
+    }
+    
+<span class="nc" id="L248">    Collections.reverse(logRecs);</span>
+    
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    for (LogRecord lr : logRecs){</span>
+<span class="nc" id="L251">      lr.printOn(pw);</span>
+<span class="nc" id="L252">    }</span>
+<span class="nc" id="L253">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

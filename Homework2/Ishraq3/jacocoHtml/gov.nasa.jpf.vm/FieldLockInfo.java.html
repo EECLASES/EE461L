@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FieldLockInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">FieldLockInfo.java</span></div><h1>FieldLockInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPF;
+
+import java.util.logging.Logger;
+
+/**
+ * class encapsulating the lock protection status for field access
+ * instructions. Used by on-the-fly partial order reduction in FieldInstruction
+ * to determine if a GET/PUT_FIELD/STATIC insn has to be treated as a
+ * boundary step (terminates a transition). If the field access is always
+ * protected by a lock, only the corresponding sync (INVOKExx or MONITORENTER)
+ * are boundary steps, thus the number of states can be significantly reduced.
+ * 
+ * FieldLockInfos are only used if vm.por.sync_detection is set
+ * 
+ * NOTE this might involve assumptions that can be violated in subsequent
+ * paths, and might cause potential races to go undetected
+ */
+<span class="fc" id="L37">public abstract class FieldLockInfo implements Cloneable  {</span>
+  
+<span class="fc" id="L39">  static Logger log = JPF.getLogger(&quot;gov.nasa.jpf.vm.FieldLockInfo&quot;);</span>
+  
+<span class="fc" id="L41">  static protected final FieldLockInfo empty = new EmptyFieldLockInfo();</span>
+    
+  protected ThreadInfo tiLastCheck; // the thread this FieldLockInfo was last checked for
+
+  public static FieldLockInfo getEmptyFieldLockInfo(){
+<span class="fc" id="L46">    return empty;</span>
+  }
+  
+  public abstract FieldLockInfo checkProtection (ThreadInfo ti, ElementInfo ei, FieldInfo fi);
+  public abstract boolean isProtected ();
+  
+  public abstract FieldLockInfo cleanUp (Heap heap);
+  protected abstract int[] getCandidateLockSet();
+    
+  public boolean isFinal() {
+<span class="nc" id="L56">    return isProtected();</span>
+  }
+  
+  public boolean needsPindown (ElementInfo ei) {
+<span class="nc" id="L60">    return false;</span>
+  }
+  
+  
+  /*
+   * we need this for faster instantiation. Make sure it gets overridden in
+   * case there is a need for per-instance parameterization
+   */
+  @Override
+  public Object clone () throws CloneNotSupportedException {
+<span class="nc" id="L70">    return super.clone();</span>
+  }
+
+  void lockAssumptionFailed (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="nc" id="L74">    String src = ti.getTopFrameMethodInfo().getClassInfo().getSourceFileName();</span>
+<span class="nc" id="L75">    int line = ti.getLine();</span>
+
+<span class="nc" id="L77">    StringBuilder sb = new StringBuilder( &quot;unprotected field access of: &quot;);</span>
+<span class="nc" id="L78">    sb.append(ei);</span>
+<span class="nc" id="L79">    sb.append('.');</span>
+<span class="nc" id="L80">    sb.append(fi.getName());</span>
+<span class="nc" id="L81">    sb.append( &quot; in thread: &quot;);</span>
+<span class="nc" id="L82">    sb.append( ti.getName());</span>
+<span class="nc" id="L83">    sb.append( &quot; (&quot;);</span>
+<span class="nc" id="L84">    sb.append( src);</span>
+<span class="nc" id="L85">    sb.append(':');</span>
+<span class="nc" id="L86">    sb.append(line);</span>
+<span class="nc" id="L87">    sb.append(&quot;)\n[SEVERE].. last lock candidates: &quot;);</span>
+<span class="nc" id="L88">    appendLockSet(sb, getCandidateLockSet());</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    if (tiLastCheck != null) {</span>
+<span class="nc" id="L90">      sb.append(&quot; set by &quot;);</span>
+<span class="nc" id="L91">      sb.append(tiLastCheck);</span>
+    }
+<span class="nc" id="L93">    sb.append( &quot;\n[SEVERE].. current locks: &quot;);</span>
+<span class="nc" id="L94">    appendLockSet(sb, ti.getLockedObjectReferences());</span>
+<span class="nc" id="L95">    sb.append(&quot;\n[SEVERE].. if this is not a race, re-run with 'vm.shared.sync_detection=false' or exclude field from checks&quot;);</span>
+
+<span class="nc" id="L97">    log.severe(sb.toString());</span>
+<span class="nc" id="L98">  }</span>
+
+  void appendLockSet (StringBuilder sb, int[] lockSet) {
+<span class="nc" id="L101">    Heap heap = VM.getVM().getHeap();</span>
+
+<span class="nc bnc" id="L103" title="All 4 branches missed.">    if ((lockSet == null) || (lockSet.length == 0)) {</span>
+<span class="nc" id="L104">      sb.append( &quot;{}&quot;);</span>
+    } else {
+<span class="nc" id="L106">      sb.append('{');</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      for (int i=0; i&lt;lockSet.length;) {</span>
+<span class="nc" id="L108">        int ref = lockSet[i];</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (ref != MJIEnv.NULL) {</span>
+<span class="nc" id="L110">          ElementInfo ei = heap.get(ref);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">          if (ei != null) {</span>
+<span class="nc" id="L112">            sb.append(ei);</span>
+          } else {
+<span class="nc" id="L114">            sb.append(&quot;?@&quot;);</span>
+<span class="nc" id="L115">            sb.append(lockSet[i]);</span>
+          }
+        }
+<span class="nc" id="L118">        i++;</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (i&lt;lockSet.length) sb.append(',');</span>
+<span class="nc" id="L120">      }</span>
+<span class="nc" id="L121">      sb.append('}');</span>
+    }
+<span class="nc" id="L123">  }</span>
+
+}
+
+/**
+ * FieldLockSet implementation for fields that are terminally considered to be unprotected
+ */
+<span class="fc" id="L130">class EmptyFieldLockInfo extends FieldLockInfo {</span>
+  
+  @Override
+  public FieldLockInfo checkProtection (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="fc" id="L134">    return this;</span>
+  }
+      
+  @Override
+  public FieldLockInfo cleanUp (Heap heap) {
+<span class="fc" id="L139">    return this;</span>
+  }
+  
+  @Override
+  public boolean isProtected () {
+<span class="fc" id="L144">    return false;</span>
+  }
+    
+  @Override
+  public boolean isFinal() {
+<span class="nc" id="L149">    return true;</span>
+  }
+  
+  @Override
+  protected int[] getCandidateLockSet() {
+<span class="nc" id="L154">    return new int[0];</span>
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L159">    return &quot;EmptyFieldLockInfo&quot;;</span>
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

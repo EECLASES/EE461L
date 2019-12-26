@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GenericSGOIDHeap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">GenericSGOIDHeap.java</span></div><h1>GenericSGOIDHeap.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.IntTable;
+
+/**
+ * abstract Heap trait that implements SGOIDs by means of a search global
+ * Allocation map and a state managed allocCount map
+ * 
+ * NOTE - a reference value of 0 represents null and therefore is not a valid SGOID
+ */
+public abstract class GenericSGOIDHeap extends GenericHeap {
+
+  static class GenericSGOIDHeapMemento extends GenericHeapMemento {
+    IntTable.Snapshot&lt;AllocationContext&gt; ctxSnap;
+    
+    GenericSGOIDHeapMemento (GenericSGOIDHeap heap) {
+<span class="fc" id="L35">      super(heap);</span>
+      
+<span class="fc" id="L37">      ctxSnap = heap.allocCounts.getSnapshot();</span>
+<span class="fc" id="L38">    }</span>
+
+    @Override
+    public Heap restore(Heap inSitu) {
+<span class="fc" id="L42">      super.restore( inSitu);</span>
+      
+<span class="fc" id="L44">      GenericSGOIDHeap heap = (GenericSGOIDHeap) inSitu;</span>
+<span class="fc" id="L45">      heap.allocCounts.restore(ctxSnap);</span>
+      
+<span class="fc" id="L47">      return heap;</span>
+    }
+  }
+  
+  // these are search global
+  protected int nextSgoid;
+  protected IntTable&lt;Allocation&gt; sgoids;
+  
+  // this is state managed 
+  // NOTE - this has to be included in the mementos of concrete Heap implementations 
+  protected IntTable&lt;AllocationContext&gt; allocCounts;
+  
+  protected GenericSGOIDHeap (Config config, KernelState ks){
+<span class="fc" id="L60">    super(config, ks);</span>
+    
+    // static inits
+<span class="fc" id="L63">    initAllocationContext(config);</span>
+<span class="fc" id="L64">    sgoids = new IntTable&lt;Allocation&gt;();</span>
+<span class="fc" id="L65">    nextSgoid = 0;</span>
+    
+<span class="fc" id="L67">    allocCounts = new IntTable&lt;AllocationContext&gt;();</span>
+<span class="fc" id="L68">  }</span>
+  
+  
+  //--- to be overridden by subclasses that use different AllocationContext implementations
+  
+  protected void initAllocationContext(Config config) {
+<span class="fc" id="L74">    HashedAllocationContext.init(config);</span>
+    //PreciseAllocationContext.init(config);
+<span class="fc" id="L76">  }</span>
+  
+  // these are always called directly from the allocation primitive, i.e. the allocating site is at a fixed
+  // stack offset (callers caller)
+  @Override
+  protected AllocationContext getSUTAllocationContext (ClassInfo ci, ThreadInfo ti) {
+<span class="fc" id="L82">    return HashedAllocationContext.getSUTAllocationContext(ci, ti);</span>
+    //return PreciseAllocationContext.getSUTAllocationContext(ci, ti);
+  }
+  @Override
+  protected AllocationContext getSystemAllocationContext (ClassInfo ci, ThreadInfo ti, int anchor) {
+<span class="fc" id="L87">    return HashedAllocationContext.getSystemAllocationContext(ci, ti, anchor);</span>
+    //return PreciseAllocationContext.getSystemAllocationContext(ci, ti, anchor);
+  }
+  
+
+  @Override
+  protected int getNewElementInfoIndex (AllocationContext ctx) {
+    int idx;
+    int cnt;
+    
+<span class="fc" id="L97">    IntTable.Entry&lt;AllocationContext&gt; cntEntry = allocCounts.getInc(ctx);</span>
+<span class="fc" id="L98">    cnt = cntEntry.val;</span>
+    
+<span class="fc" id="L100">    Allocation alloc = new Allocation(ctx, cnt);</span>
+    
+<span class="fc" id="L102">    IntTable.Entry&lt;Allocation&gt; sgoidEntry = sgoids.get(alloc);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">    if (sgoidEntry != null) { // we already had this one</span>
+<span class="fc" id="L104">      idx = sgoidEntry.val;</span>
+      
+    } else { // new entry
+<span class="fc" id="L107">      idx = ++nextSgoid;</span>
+<span class="fc" id="L108">      sgoids.put(alloc, idx);</span>
+    }
+    
+    // sanity check - we do this here (and not in our super class) since we know how elements are stored
+//    assert get(idx) == null;
+    
+<span class="fc" id="L114">    return idx;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,1157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Types.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Types.java</span></div><h1>Types.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+
+
+/**
+ * various type mangling/demangling routines
+ *
+ * This reflects the general type id mess in Java. We support the following:
+ *
+ *  builtin type: byte - T_BOOLEAN and the like
+ *  type name: String - according to JLS 6.7 (&quot;int&quot;, &quot;x.Y[]&quot;)
+ *  type signature: String - like JNI (&quot;I&quot;, &quot;[Lx/Y;&quot;)
+ *  type classname: String - e.g. &quot;int&quot;, &quot;[I&quot;, &quot;x.Y&quot;, &quot;[Lx.Y;&quot;
+ */
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">public class Types {</span>
+
+  // these have the same values as the BCEL Constants since we don't want to break compiled code
+  public static final byte T_NONE      = 0; // illegal type
+  
+  public static final byte T_BOOLEAN   = 4;
+  public static final byte T_BYTE      = 8;
+  public static final byte T_CHAR      = 5;
+  public static final byte T_SHORT     = 9;
+  public static final byte T_INT       = 10;
+  public static final byte T_LONG      = 11;
+  public static final byte T_FLOAT     = 6;
+  public static final byte T_DOUBLE    = 7;
+  public static final byte T_REFERENCE = 14;
+  public static final byte T_ARRAY     = 13;  // &lt;2do&gt; do we need this in addition to T_REFERENCE?
+  public static final byte T_VOID      = 12;
+
+  
+  public static byte[] getArgumentTypes (String signature) {
+    int i;
+    int j;
+    int nArgs;
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">    for (i = 1, nArgs = 0; signature.charAt(i) != ')'; nArgs++) {</span>
+<span class="fc" id="L60">      i += getTypeLength(signature, i);</span>
+    }
+
+<span class="fc" id="L63">    byte[] args = new byte[nArgs];</span>
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    for (i = 1, j = 0; j &lt; nArgs; j++) {</span>
+<span class="fc" id="L66">      int    end = i + getTypeLength(signature, i);</span>
+<span class="fc" id="L67">      String arg = signature.substring(i, end);</span>
+<span class="fc" id="L68">      i = end;</span>
+
+<span class="fc" id="L70">      args[j] = getBuiltinTypeFromSignature(arg);</span>
+    }
+
+<span class="fc" id="L73">    return args;</span>
+  }
+
+  public static String[] getArgumentTypeNames (String signature) {
+<span class="fc" id="L77">    int len = signature.length();</span>
+
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">    if ((len &gt; 1) &amp;&amp; (signature.charAt(1) == ')')) {</span>
+<span class="fc" id="L80">      return new String[0]; // 'no args' shortcut</span>
+    }
+    
+<span class="fc" id="L83">    ArrayList&lt;String&gt; a = new ArrayList&lt;String&gt;();</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    for (int i = 1; signature.charAt(i) != ')';) {</span>
+<span class="fc" id="L86">      int end = i + getTypeLength(signature,i);</span>
+<span class="fc" id="L87">      String arg = signature.substring(i, end);</span>
+<span class="fc" id="L88">      i = end;</span>
+
+<span class="fc" id="L90">      a.add(getTypeName(arg));</span>
+<span class="fc" id="L91">    }</span>
+
+<span class="fc" id="L93">    String[] typeNames = new String[a.size()];</span>
+<span class="fc" id="L94">    a.toArray(typeNames);</span>
+    
+<span class="fc" id="L96">    return typeNames;</span>
+  }
+  
+  public static String dequalify (String typeName){
+<span class="nc" id="L100">    int idx = typeName.lastIndexOf('.');</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (idx &gt; 0) {</span>
+<span class="nc" id="L102">      return typeName.substring(idx + 1);</span>
+    } else {
+<span class="nc" id="L104">      return typeName;</span>
+    }    
+  }
+  
+  public static String getDequalifiedMethodSignature (String mName){
+<span class="nc" id="L109">    int idx = mName.indexOf('(');</span>
+<span class="nc" id="L110">    String sig = mName.substring(idx);</span>
+    
+<span class="nc" id="L112">    return mName.substring(0, idx) + getDequalifiedArgumentSignature(sig);</span>
+  }
+  
+  public static String getDequalifiedArgumentSignature (String sig){
+<span class="nc" id="L116">    String[] argTypes = getArgumentTypeNames(sig);</span>
+<span class="nc" id="L117">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L118">    sb.append('(');</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">    for (int i=0; i&lt;argTypes.length; i++){</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L121">        sb.append(',');</span>
+      }
+<span class="nc" id="L123">      sb.append(dequalify(argTypes[i]));</span>
+    }
+<span class="nc" id="L125">    sb.append(')');</span>
+<span class="nc" id="L126">    return sb.toString();</span>
+  }
+  
+  public static String getDequalifiedTypeName (String sig){
+<span class="nc" id="L130">    String tn = getTypeName(sig);</span>
+<span class="nc" id="L131">    return dequalify(tn);</span>
+  }
+  
+  public static String getArgumentSignature (String[] typeNames, boolean qualified){
+<span class="nc" id="L135">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L136">    sb.append('(');</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    for (int i=0; i&lt;typeNames.length; i++){</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L139">        sb.append(',');</span>
+      }
+      
+<span class="nc" id="L142">      String tn = getTypeName(typeNames[i]);</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (!qualified){</span>
+<span class="nc" id="L144">        int idx = tn.lastIndexOf('.');</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (idx &gt;0){</span>
+<span class="nc" id="L146">          tn = tn.substring(idx+1);</span>
+        }
+      }
+      
+<span class="nc" id="L150">      sb.append( tn);</span>
+    }
+<span class="nc" id="L152">    sb.append(')');</span>
+<span class="nc" id="L153">    return sb.toString();</span>
+  }
+  
+  /**
+   * get size in stack slots (ints), excluding this
+   */
+  public static int getArgumentsSize (String sig) {
+<span class="fc" id="L160">    int  n = 0;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">    for (int i = 1; sig.charAt(i) != ')'; i++) {</span>
+<span class="fc bfc" id="L162" title="All 4 branches covered.">      switch (sig.charAt(i)) {</span>
+      case 'L':
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        do i++; while (sig.charAt(i) != ';');</span>
+<span class="fc" id="L165">        n++;</span>
+<span class="fc" id="L166">        break;</span>
+      case '[':
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        do i++; while (sig.charAt(i) == '[');</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (sig.charAt(i) == 'L') {</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">          do i++; while (sig.charAt(i) != ';');</span>
+        }
+<span class="fc" id="L172">        n++;</span>
+<span class="fc" id="L173">        break;</span>
+      case 'J':
+      case 'D':
+        // the two-slot types
+<span class="fc" id="L177">        n += 2;</span>
+<span class="fc" id="L178">        break;</span>
+      default:
+        // just one slot entry
+<span class="fc" id="L181">        n++;</span>
+      }
+    }
+<span class="fc" id="L184">    return n;</span>
+  }
+
+  public static String getArrayElementType (String type) {
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">    if (type.charAt(0) != '[') {</span>
+<span class="nc" id="L189">      throw new JPFException(&quot;not an array type: &quot; + type);</span>
+    }
+
+<span class="fc" id="L192">    return type.substring(1);</span>
+  }
+
+  public static String getComponentTerminal (String type) {
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">    if (type.charAt(0) != '[') {</span>
+<span class="nc" id="L197">      throw new JPFException(&quot;not an array type: &quot; + type);</span>
+    }
+
+<span class="fc bfc" id="L200" title="All 2 branches covered.">    if(isReferenceSignature(type)) {</span>
+<span class="fc" id="L201">      return type.substring(type.indexOf('L') + 1 , type.indexOf(';'));</span>
+    } else {
+<span class="fc" id="L203">      return type.substring(type.lastIndexOf('[') + 1);</span>
+    }
+  }
+
+  public static byte getBuiltinTypeFromSignature (String signature) {
+<span class="pc bpc" id="L208" title="1 of 12 branches missed.">    switch (signature.charAt(0)) {</span>
+    case 'B':
+<span class="fc" id="L210">      return T_BYTE;</span>
+
+    case 'C':
+<span class="fc" id="L213">      return T_CHAR;</span>
+
+    case 'D':
+<span class="fc" id="L216">      return T_DOUBLE;</span>
+
+    case 'F':
+<span class="fc" id="L219">      return T_FLOAT;</span>
+
+    case 'I':
+<span class="fc" id="L222">      return T_INT;</span>
+
+    case 'J':
+<span class="fc" id="L225">      return T_LONG;</span>
+
+    case 'L':
+<span class="fc" id="L228">      return T_REFERENCE;</span>
+
+    case 'S':
+<span class="fc" id="L231">      return T_SHORT;</span>
+
+    case 'V':
+<span class="fc" id="L234">      return T_VOID;</span>
+
+    case 'Z':
+<span class="fc" id="L237">      return T_BOOLEAN;</span>
+
+    case '[':
+<span class="fc" id="L240">      return T_ARRAY;</span>
+    }
+
+<span class="nc" id="L243">    throw new JPFException(&quot;invalid type string: &quot; + signature);</span>
+  }
+
+  /**
+   * get the argument type part of the signature out of a
+   * JNI mangled method name.
+   * Note this is not the complete signature, since we don't have a
+   * return type (which is superfluous since it's not overloading,
+   * but unfortunately part of the signature in the class file)
+   */
+  public static String getJNISignature (String mangledName) {
+<span class="fc" id="L254">    int    i = mangledName.indexOf(&quot;__&quot;);</span>
+<span class="fc" id="L255">    String sig = null;</span>
+
+<span class="fc bfc" id="L257" title="All 2 branches covered.">    if (i &gt; 0) {</span>
+<span class="fc" id="L258">      int k = 0;      </span>
+<span class="fc" id="L259">      int r = mangledName.indexOf(&quot;__&quot;, i+2); // maybe there is a return type part</span>
+<span class="fc" id="L260">      boolean gotReturnType = false;</span>
+<span class="fc" id="L261">      int len = mangledName.length();</span>
+<span class="fc" id="L262">      char[] buf = new char[len + 2];</span>
+
+<span class="fc" id="L264">      buf[k++] = '(';</span>
+
+<span class="fc bfc" id="L266" title="All 2 branches covered.">      for (i += 2; i &lt; len; i++) {</span>
+
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        if (i == r) { // here comes the return type part (that's not JNI, only MJI</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">          if ((i + 2) &lt; len) {</span>
+<span class="fc" id="L270">            i++;</span>
+<span class="fc" id="L271">            buf[k++] = ')';</span>
+<span class="fc" id="L272">            gotReturnType = true;</span>
+<span class="fc" id="L273">            continue;</span>
+          } else {
+            break;
+          }
+        }
+        
+<span class="fc" id="L279">        char c = mangledName.charAt(i);</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (c == '_') {</span>
+<span class="fc" id="L281">          i++;</span>
+
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">          if (i &lt; len) {</span>
+<span class="fc" id="L284">            c = mangledName.charAt(i);</span>
+
+<span class="pc bpc" id="L286" title="1 of 4 branches missed.">            switch (c) {</span>
+            case '1':
+<span class="nc" id="L288">              buf[k++] = '_';</span>
+
+<span class="nc" id="L290">              break;</span>
+
+            case '2':
+<span class="fc" id="L293">              buf[k++] = ';';</span>
+
+<span class="fc" id="L295">              break;</span>
+
+            case '3':
+<span class="fc" id="L298">              buf[k++] = '[';</span>
+
+<span class="fc" id="L300">              break;</span>
+
+            default:
+<span class="fc" id="L303">              buf[k++] = '/';</span>
+<span class="fc" id="L304">              buf[k++] = c;</span>
+            }
+          } else {
+<span class="nc" id="L307">            buf[k++] = '/';</span>
+          }
+        } else {
+<span class="fc" id="L310">          buf[k++] = c;</span>
+        }
+      }
+
+<span class="fc bfc" id="L314" title="All 2 branches covered.">      if (!gotReturnType) {</span>
+        // if there was no return type spec, assume 'void'
+<span class="fc" id="L316">        buf[k++] = ')';</span>
+<span class="fc" id="L317">        buf[k++] = 'V';</span>
+      }
+        
+<span class="fc" id="L320">      sig = new String(buf, 0, k);</span>
+    }
+
+    // Hmm, maybe we should return &quot;()V&quot; instead of null, but that seems a bit too assuming
+<span class="fc" id="L324">    return sig;</span>
+  }
+
+  public static String getJNIMangledMethodName (Method m) {
+<span class="nc" id="L328">    String      name = m.getName();</span>
+<span class="nc" id="L329">    Class&lt;?&gt;[]    pt = m.getParameterTypes();</span>
+<span class="nc" id="L330">    StringBuilder  s = new StringBuilder(name.length() + (pt.length * 16));</span>
+
+<span class="nc" id="L332">    s.append(name);</span>
+<span class="nc" id="L333">    s.append(&quot;__&quot;);</span>
+
+    // &lt;2do&gt; not very efficient, but we don't care for now
+<span class="nc bnc" id="L336" title="All 2 branches missed.">    for (int i = 0; i &lt; pt.length; i++) {</span>
+<span class="nc" id="L337">      s.append(getJNITypeCode(pt[i].getName()));</span>
+    }
+
+    // the return type part, which is not in JNI, but is required for
+    // handling covariant return types
+<span class="nc" id="L342">    Class&lt;?&gt; rt = m.getReturnType();</span>
+<span class="nc" id="L343">    s.append(&quot;__&quot;);</span>
+<span class="nc" id="L344">    s.append(getJNITypeCode(rt.getName()));</span>
+    
+<span class="nc" id="L346">    return s.toString();</span>
+  }
+
+  public static String getJNIMangledMethodName (String cls, String name,
+                                                String signature) {
+<span class="nc" id="L351">    StringBuilder s = new StringBuilder(signature.length() + 10);</span>
+    int           i;
+    char          c;
+<span class="nc" id="L354">    int           slen = signature.length();</span>
+    
+<span class="nc bnc" id="L356" title="All 2 branches missed.">    if (cls != null) {</span>
+<span class="nc" id="L357">      s.append(cls.replace('.', '_'));</span>
+    }
+
+<span class="nc" id="L360">    s.append(name);</span>
+<span class="nc" id="L361">    s.append(&quot;__&quot;);</span>
+
+    // as defined in the JNI specs
+<span class="nc bnc" id="L364" title="All 2 branches missed.">    for (i = 1; i&lt;slen; i++) {</span>
+<span class="nc" id="L365">      c = signature.charAt(i);</span>
+<span class="nc bnc" id="L366" title="All 6 branches missed.">      switch (c) {</span>
+      case '/':
+<span class="nc" id="L368">        s.append('_');</span>
+<span class="nc" id="L369">        break;</span>
+
+      case '_':
+<span class="nc" id="L372">        s.append(&quot;_1&quot;);</span>
+<span class="nc" id="L373">        break;</span>
+
+      case ';':
+<span class="nc" id="L376">        s.append(&quot;_2&quot;);</span>
+<span class="nc" id="L377">        break;</span>
+
+      case '[':
+<span class="nc" id="L380">        s.append(&quot;_3&quot;);</span>
+<span class="nc" id="L381">        break;</span>
+
+      case ')':
+        // the return type part - note this is not JNI, but saves us a lot of trouble with
+        // the covariant return types of Java 1.5        
+<span class="nc" id="L386">        s.append(&quot;__&quot;);</span>
+<span class="nc" id="L387">        break;</span>
+        
+      default:
+<span class="nc" id="L390">        s.append(c);</span>
+      }
+    }
+
+<span class="nc" id="L394">    return s.toString();</span>
+  }
+
+  /**
+   * return the name part of a JNI mangled method name (which is of
+   * course not completely safe - you should only use it if you know
+   * this is a JNI name)
+   */
+  public static String getJNIMethodName (String mangledName) {
+    // note that's the first '__' group, which marks the beginning of the arg types
+<span class="fc" id="L404">    int i = mangledName.indexOf(&quot;__&quot;);</span>
+
+<span class="fc bfc" id="L406" title="All 2 branches covered.">    if (i &gt; 0) {</span>
+<span class="fc" id="L407">      return mangledName.substring(0, i);</span>
+    } else {
+<span class="fc" id="L409">      return mangledName;</span>
+    }
+  }
+
+  /**
+   * type is supposed to be Class.getName conforming, i.e.
+   * 
+   * int    -&gt; int
+   * int[]  -&gt; [I
+   * String -&gt; java/lang/String
+   * String[] -&gt; [Ljava/lang/String;
+   * String[][] -&gt; [[Ljava/lang/String;
+   * 
+   * &lt;2do&gt; this is really not very efficient
+   */
+  public static String getJNITypeCode (String type) {
+<span class="fc" id="L425">    StringBuilder sb = new StringBuilder(32);</span>
+<span class="fc" id="L426">    int l = type.length() - 1;</span>
+    int i;
+
+    // Class.getName arrays &quot;[...type&quot;
+<span class="pc bpc" id="L430" title="1 of 2 branches missed.">    for ( i=0; type.charAt(i) == '['; i++){</span>
+<span class="nc" id="L431">      sb.append(&quot;_3&quot;);</span>
+    }
+    
+    // conventional arrays &quot;type[]...&quot;
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">    for (; type.charAt(l) == ']'; l -= 2) {</span>
+<span class="nc" id="L436">      sb.append(&quot;_3&quot;);</span>
+    }
+
+<span class="fc" id="L439">    type = type.substring(i, l + 1);</span>
+
+<span class="pc bpc" id="L441" title="1 of 4 branches missed.">    if (type.equals(&quot;int&quot;) || type.equals(&quot;I&quot;)) {</span>
+<span class="fc" id="L442">      sb.append('I');</span>
+<span class="pc bpc" id="L443" title="1 of 4 branches missed.">    } else if (type.equals(&quot;long&quot;) || type.equals(&quot;J&quot;)) {</span>
+<span class="fc" id="L444">      sb.append('J');</span>
+<span class="pc bpc" id="L445" title="1 of 4 branches missed.">    } else if (type.equals(&quot;boolean&quot;) || type.equals(&quot;Z&quot;)) {</span>
+<span class="fc" id="L446">      sb.append('Z');</span>
+<span class="pc bpc" id="L447" title="1 of 4 branches missed.">    } else if (type.equals(&quot;char&quot;) || type.equals(&quot;C&quot;)) {</span>
+<span class="fc" id="L448">      sb.append('C');</span>
+<span class="pc bpc" id="L449" title="1 of 4 branches missed.">    } else if (type.equals(&quot;byte&quot;)  || type.equals(&quot;B&quot;)) {</span>
+<span class="fc" id="L450">      sb.append('B');</span>
+<span class="pc bpc" id="L451" title="1 of 4 branches missed.">    } else if (type.equals(&quot;short&quot;) || type.equals(&quot;S&quot;)) {</span>
+<span class="fc" id="L452">      sb.append('S');</span>
+<span class="pc bpc" id="L453" title="1 of 4 branches missed.">    } else if (type.equals(&quot;double&quot;) || type.equals(&quot;D&quot;)) {</span>
+<span class="fc" id="L454">      sb.append('D');</span>
+<span class="pc bpc" id="L455" title="3 of 4 branches missed.">    } else if (type.equals(&quot;float&quot;) || type.equals(&quot;F&quot;)) {</span>
+<span class="fc" id="L456">      sb.append('F');</span>
+<span class="nc bnc" id="L457" title="All 4 branches missed.">    } else if (type.equals(&quot;void&quot;) || type.equals(&quot;V&quot;)) {  // for return types</span>
+<span class="nc" id="L458">      sb.append('V');</span>
+    } else { // reference type
+<span class="nc bnc" id="L460" title="All 2 branches missed.">      if (type.charAt(0) != 'L'){</span>
+<span class="nc" id="L461">        sb.append('L');</span>
+      }
+
+<span class="nc" id="L464">      l = type.length();</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">      for (i=0; i &lt; l; i++) {</span>
+<span class="nc" id="L466">        char c = type.charAt(i);</span>
+
+<span class="nc bnc" id="L468" title="All 4 branches missed.">        switch (c) {</span>
+        case '.':
+<span class="nc" id="L470">          sb.append('_');</span>
+<span class="nc" id="L471">          break;</span>
+
+        case '_':
+<span class="nc" id="L474">          sb.append(&quot;_1&quot;);</span>
+<span class="nc" id="L475">          break;</span>
+          
+        case ';':
+<span class="nc" id="L478">          break;</span>
+          
+        default:
+<span class="nc" id="L481">          sb.append(c);</span>
+        }
+      }
+
+<span class="nc" id="L485">      sb.append(&quot;_2&quot;);</span>
+      
+    }
+
+<span class="fc" id="L489">    return sb.toString();</span>
+  }
+
+  // this includes the return type part
+  public static int getNumberOfStackSlots (String signature, boolean isStatic) {
+<span class="fc" id="L494">    int nArgSlots = 0;</span>
+<span class="fc bfc" id="L495" title="All 2 branches covered.">    int n = isStatic ? 0 : 1;</span>
+<span class="fc" id="L496">    int sigLen = signature.length();</span>
+
+<span class="fc bfc" id="L498" title="All 2 branches covered.">    for (int i = 1; i &lt; sigLen; i++) {</span>
+<span class="fc bfc" id="L499" title="All 5 branches covered.">      switch (signature.charAt(i)) {</span>
+      case ')' : // end of arg part, but there still might be a return type
+<span class="fc" id="L501">        nArgSlots = n;</span>
+<span class="fc" id="L502">        n = 0;</span>
+<span class="fc" id="L503">        break;</span>
+      case 'L':   // reference = 1 slot
+<span class="fc" id="L505">        i = signature.indexOf(';', i);</span>
+<span class="fc" id="L506">        n++;</span>
+<span class="fc" id="L507">        break;</span>
+      case '[':
+<span class="pc bpc" id="L509" title="1 of 2 branches missed.">        do i++; while (signature.charAt(i) == '[');</span>
+<span class="fc bfc" id="L510" title="All 2 branches covered.">        if (signature.charAt(i) == 'L') {</span>
+<span class="fc" id="L511">          i = signature.indexOf(';', i);</span>
+        }
+<span class="fc" id="L513">        n++;</span>
+<span class="fc" id="L514">        break;</span>
+      case 'J':
+      case 'D':
+<span class="fc" id="L517">        n+=2;</span>
+<span class="fc" id="L518">        break;</span>
+      default:
+<span class="fc" id="L520">        n++;</span>
+      }
+    }
+    
+<span class="fc" id="L524">    return Math.max(n, nArgSlots);</span>
+  }
+  
+  public static int getNumberOfArguments (String signature) {
+    int  i,n;
+<span class="fc" id="L529">    int sigLen = signature.length();</span>
+
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">    for (i = 1, n = 0; i&lt;sigLen; n++) {</span>
+<span class="fc bfc" id="L532" title="All 4 branches covered.">      switch (signature.charAt(i)) {</span>
+      case ')' :
+<span class="fc" id="L534">        return n;</span>
+      case 'L':
+<span class="fc bfc" id="L536" title="All 2 branches covered.">        do i++; while (signature.charAt(i) != ';');</span>
+<span class="fc" id="L537">        break;</span>
+
+      case '[':
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        do i++; while (signature.charAt(i) == '[');</span>
+<span class="fc bfc" id="L541" title="All 2 branches covered.">        if (signature.charAt(i) == 'L') {</span>
+<span class="fc bfc" id="L542" title="All 2 branches covered.">          do i++; while (signature.charAt(i) != ';');</span>
+        }
+        break;
+
+      default:
+        // just a single type char
+      }
+
+<span class="fc" id="L550">      i++;</span>
+    }
+
+<span class="nc bnc" id="L553" title="All 2 branches missed.">    assert (false) : &quot;malformed signature: &quot; + signature;</span>
+<span class="nc" id="L554">    return n; // that would be a malformed signature</span>
+  }
+
+  public static boolean isReferenceSignature(String signature){
+<span class="fc bfc" id="L558" title="All 2 branches covered.">    return signature.charAt(signature.length()-1) == ';';</span>
+  }
+
+  public static boolean isReference (String type) {
+<span class="fc" id="L562">    int t = getBuiltinTypeFromSignature(type);</span>
+
+<span class="fc bfc" id="L564" title="All 4 branches covered.">    return (t == T_ARRAY) || (t == T_REFERENCE);</span>
+  }
+
+  public static boolean isArray (String type) {
+<span class="fc" id="L568">    int t = getBuiltinTypeFromSignature(type);</span>
+
+<span class="fc bfc" id="L570" title="All 2 branches covered.">    return (t == T_ARRAY);</span>
+  }
+
+  public static byte getReturnBuiltinType (String signature) {
+<span class="fc" id="L574">    int i = signature.indexOf(')');</span>
+
+<span class="fc" id="L576">    return getBuiltinTypeFromSignature(signature.substring(i + 1));</span>
+  }
+
+  public static String getReturnTypeSignature(String signature){
+<span class="fc" id="L580">    int i = signature.indexOf(')');</span>
+<span class="fc" id="L581">    return signature.substring(i + 1);</span>
+  }
+
+  public static String getReturnTypeName (String signature){
+<span class="fc" id="L585">    int i = signature.indexOf(')');</span>
+<span class="fc" id="L586">    return getTypeName(signature.substring(i+1));</span>
+  }
+  
+  public static String getTypeSignature (String type, boolean asDotNotation) {
+<span class="fc" id="L590">    String  t = null;</span>
+<span class="fc" id="L591">    int arrayDim = 0;</span>
+    
+<span class="fc bfc" id="L593" title="All 2 branches covered.">    type = asDotNotation ? type.replace('/', '.') : type.replace('.', '/');</span>
+    
+<span class="pc bpc" id="L595" title="1 of 4 branches missed.">    if ((type.charAt(0) == '[') || (type.endsWith(&quot;;&quot;))) {  // [[[L...;</span>
+<span class="fc" id="L596">      t = type;</span>
+      
+    } else {
+      
+<span class="fc bfc" id="L600" title="All 2 branches covered.">      while (type.endsWith(&quot;[]&quot;)) { // type[][][]</span>
+<span class="fc" id="L601">        type = type.substring(0, type.length() - 2);</span>
+<span class="fc" id="L602">        arrayDim++;</span>
+      }
+      
+<span class="fc bfc" id="L605" title="All 2 branches covered.">      if (type.equals(&quot;byte&quot;)) {</span>
+<span class="fc" id="L606">        t = &quot;B&quot;;</span>
+<span class="fc bfc" id="L607" title="All 2 branches covered.">      } else if (type.equals(&quot;char&quot;)) {</span>
+<span class="fc" id="L608">        t = &quot;C&quot;;</span>
+<span class="fc bfc" id="L609" title="All 2 branches covered.">      } else if (type.equals(&quot;short&quot;)) {</span>
+<span class="fc" id="L610">        t = &quot;S&quot;;</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">      } else if (type.equals(&quot;int&quot;)) {</span>
+<span class="fc" id="L612">        t = &quot;I&quot;;</span>
+<span class="fc bfc" id="L613" title="All 2 branches covered.">      } else if (type.equals(&quot;float&quot;)) {</span>
+<span class="fc" id="L614">        t = &quot;F&quot;;</span>
+<span class="fc bfc" id="L615" title="All 2 branches covered.">      } else if (type.equals(&quot;long&quot;)) {</span>
+<span class="fc" id="L616">        t = &quot;J&quot;;</span>
+<span class="fc bfc" id="L617" title="All 2 branches covered.">      } else if (type.equals(&quot;double&quot;)) {</span>
+<span class="fc" id="L618">        t = &quot;D&quot;;</span>
+<span class="fc bfc" id="L619" title="All 2 branches covered.">      } else if (type.equals(&quot;boolean&quot;)) {</span>
+<span class="fc" id="L620">        t = &quot;Z&quot;;</span>
+<span class="pc bpc" id="L621" title="1 of 2 branches missed.">      } else if (type.equals(&quot;void&quot;)) {</span>
+<span class="nc" id="L622">        t = &quot;V&quot;;</span>
+<span class="pc bpc" id="L623" title="1 of 2 branches missed.">      } else if (type.endsWith(&quot;;&quot;)) {</span>
+<span class="nc" id="L624">        t = type;</span>
+        
+      } else {
+<span class="fc" id="L627">        t = &quot;L&quot; + type + ';';</span>
+      }
+      
+<span class="fc bfc" id="L630" title="All 2 branches covered.">      while (arrayDim-- &gt; 0) {</span>
+<span class="fc" id="L631">        t = &quot;[&quot; + t;</span>
+      }
+    }
+
+<span class="fc" id="L635">    return t;</span>
+  }
+
+  public static byte getBuiltinType(String typeName){
+<span class="nc bnc" id="L639" title="All 2 branches missed.">      if (typeName.equals(&quot;byte&quot;)) {</span>
+<span class="nc" id="L640">        return T_BYTE;</span>
+<span class="nc bnc" id="L641" title="All 2 branches missed.">      } else if (typeName.equals(&quot;char&quot;)) {</span>
+<span class="nc" id="L642">        return T_CHAR;</span>
+<span class="nc bnc" id="L643" title="All 2 branches missed.">      } else if (typeName.equals(&quot;short&quot;)) {</span>
+<span class="nc" id="L644">        return T_SHORT;</span>
+<span class="nc bnc" id="L645" title="All 2 branches missed.">      } else if (typeName.equals(&quot;int&quot;)) {</span>
+<span class="nc" id="L646">        return T_INT;</span>
+<span class="nc bnc" id="L647" title="All 2 branches missed.">      } else if (typeName.equals(&quot;float&quot;)) {</span>
+<span class="nc" id="L648">        return T_FLOAT;</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">      } else if (typeName.equals(&quot;long&quot;)) {</span>
+<span class="nc" id="L650">        return T_LONG;</span>
+<span class="nc bnc" id="L651" title="All 2 branches missed.">      } else if (typeName.equals(&quot;double&quot;)) {</span>
+<span class="nc" id="L652">        return T_DOUBLE;</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">      } else if (typeName.equals(&quot;boolean&quot;)) {</span>
+<span class="nc" id="L654">        return T_BOOLEAN;</span>
+<span class="nc bnc" id="L655" title="All 2 branches missed.">      } else if (typeName.equals(&quot;void&quot;)) {</span>
+<span class="nc" id="L656">        return T_VOID;</span>
+      } else {
+<span class="nc bnc" id="L658" title="All 2 branches missed.">        if (typeName.charAt(typeName.length()-1) == ']'){</span>
+<span class="nc" id="L659">          return T_ARRAY;</span>
+        } else {
+<span class="nc" id="L661">          return T_REFERENCE;</span>
+        }
+      }
+  }
+
+  public static String getBoxedType (byte type) {
+<span class="nc bnc" id="L667" title="All 9 branches missed.">	  switch (type) {</span>
+	  case Types.T_BOOLEAN:
+<span class="nc" id="L669">		  return &quot;Boolean&quot;;</span>
+	  case Types.T_BYTE:
+<span class="nc" id="L671">		  return &quot;Byte&quot;;</span>
+	  case Types.T_CHAR:
+<span class="nc" id="L673">		  return &quot;Character&quot;;</span>
+	  case Types.T_SHORT:
+<span class="nc" id="L675">		  return &quot;Short&quot;;</span>
+	  case Types.T_INT:
+<span class="nc" id="L677">		  return &quot;Integer&quot;;</span>
+	  case Types.T_LONG:
+<span class="nc" id="L679">		  return &quot;Long&quot;;</span>
+	  case Types.T_FLOAT:
+<span class="nc" id="L681">		  return &quot;Float&quot;;</span>
+	  case Types.T_DOUBLE:
+<span class="nc" id="L683">		  return &quot;Double&quot;;</span>
+	  default:
+<span class="nc" id="L685">		  return null;</span>
+	  }
+  }
+  
+  public static byte getUnboxedType (String typeName){
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">    if (typeName.startsWith(&quot;java.lang.&quot;)){</span>
+<span class="fc" id="L691">      typeName = typeName.substring(10);</span>
+<span class="fc bfc" id="L692" title="All 2 branches covered.">      if (typeName.equals(&quot;Boolean&quot;)){</span>
+<span class="fc" id="L693">        return T_BOOLEAN;</span>
+<span class="fc bfc" id="L694" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Byte&quot;)){</span>
+<span class="fc" id="L695">        return T_BYTE;</span>
+<span class="fc bfc" id="L696" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Character&quot;)){</span>
+<span class="fc" id="L697">        return T_CHAR;</span>
+<span class="fc bfc" id="L698" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Short&quot;)){</span>
+<span class="fc" id="L699">        return T_SHORT;</span>
+<span class="fc bfc" id="L700" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Integer&quot;)){</span>
+<span class="fc" id="L701">        return T_INT;</span>
+<span class="fc bfc" id="L702" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Long&quot;)){</span>
+<span class="fc" id="L703">        return T_LONG;</span>
+<span class="fc bfc" id="L704" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Float&quot;)){</span>
+<span class="fc" id="L705">        return T_FLOAT;</span>
+<span class="fc bfc" id="L706" title="All 2 branches covered.">      } else if (typeName.equals(&quot;Double&quot;)){</span>
+<span class="fc" id="L707">        return T_DOUBLE;</span>
+      }
+    }
+    
+    // everything else can't be a box type
+<span class="pc bpc" id="L712" title="2 of 4 branches missed.">    if (typeName.charAt(0) == '[' || typeName.charAt(typeName.length()-1) == ']'){</span>
+<span class="nc" id="L713">      return T_ARRAY;</span>
+    } else {
+<span class="fc" id="L715">      return T_REFERENCE;</span>
+    }
+  }
+  
+  public static String getClassNameFromSignature (String signature){
+<span class="nc bnc" id="L720" title="All 2 branches missed.">    if (signature.charAt(signature.length()-1) == ';'){ // reference</span>
+<span class="nc" id="L721">      return signature.replace('/', '.');</span>
+
+    } else { // builtin
+<span class="nc bnc" id="L724" title="All 9 branches missed.">      switch (signature.charAt(0)){</span>
+<span class="nc" id="L725">        case 'Z': return &quot;boolean&quot;;</span>
+<span class="nc" id="L726">        case 'B': return &quot;byte&quot;;</span>
+<span class="nc" id="L727">        case 'C': return &quot;char&quot;;</span>
+<span class="nc" id="L728">        case 'S': return &quot;short&quot;;</span>
+<span class="nc" id="L729">        case 'I': return &quot;int&quot;;</span>
+<span class="nc" id="L730">        case 'J': return &quot;long&quot;;</span>
+<span class="nc" id="L731">        case 'F': return &quot;float&quot;;</span>
+<span class="nc" id="L732">        case 'D': return &quot;double&quot;;</span>
+        default:
+<span class="nc" id="L734">          throw new JPFException(&quot;illegal type signature: &quot; + signature);</span>
+      }
+    }
+  }
+
+  /**
+   * get the canonical representation of a type name, which happens to be
+   *  (1) the name of the builtin type (e.g. &quot;int&quot;)
+   *  (2) the normal dot name for ordinary classes (e.g. &quot;java.lang.String&quot;)
+   *  (3) the coded dot name for arrays (e.g. &quot;[B&quot;, &quot;[[C&quot;, or &quot;[Ljava.lang.String;&quot;)
+   *  
+   * not sure if we need to support internal class names (which use '/'
+   * instead of '.' as separators
+   *  
+   * no idea what's the logic behind this, but let's implement it
+   */
+  public static String getClassNameFromTypeName (String typeName) {
+<span class="fc" id="L751">    typeName = typeName.replace('/','.');</span>
+<span class="fc" id="L752">    int n = typeName.length()-1;</span>
+    
+<span class="fc bfc" id="L754" title="All 2 branches covered.">    if (typeName.charAt(0) == '['){ // the &quot;[&lt;type&gt;&quot; notation</span>
+<span class="fc bfc" id="L755" title="All 2 branches covered.">      if (typeName.charAt(1) == 'L'){</span>
+<span class="fc bfc" id="L756" title="All 2 branches covered.">        if (typeName.charAt(n) != ';'){</span>
+<span class="fc" id="L757">          typeName = typeName + ';';</span>
+        }
+      }
+      
+<span class="fc" id="L761">      return typeName;</span>
+    }
+    
+<span class="fc" id="L764">    int i=typeName.indexOf(&quot;[]&quot;);</span>
+<span class="fc bfc" id="L765" title="All 2 branches covered.">    if (i&gt;0){ // the sort of &quot;&lt;type&gt;[]&quot;</span>
+<span class="fc" id="L766">      StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L767">      sb.append('[');</span>
+<span class="fc bfc" id="L768" title="All 2 branches covered.">      for (int j=i; (j=typeName.indexOf('[',j+1)) &gt;0;){</span>
+<span class="fc" id="L769">        sb.append('[');</span>
+      }
+      
+<span class="fc" id="L772">      typeName = typeName.substring(0,i);</span>
+<span class="fc bfc" id="L773" title="All 2 branches covered.">      if (isBasicType(typeName)){</span>
+<span class="fc" id="L774">        sb.append( getTypeSignature(typeName, true));</span>
+      } else {
+<span class="fc" id="L776">        sb.append('L');</span>
+<span class="fc" id="L777">        sb.append(typeName);</span>
+<span class="fc" id="L778">        sb.append(';');</span>
+      }
+      
+<span class="fc" id="L781">      return sb.toString();</span>
+    }
+    
+<span class="fc bfc" id="L784" title="All 2 branches covered.">    if (typeName.charAt(n) == ';') {</span>
+<span class="fc" id="L785">      return typeName.substring(1,n);</span>
+    }
+    
+<span class="fc" id="L788">    return typeName;</span>
+  }
+
+  
+  public static boolean isTypeCode (String t) {
+<span class="nc" id="L793">    char c = t.charAt(0);</span>
+
+<span class="nc bnc" id="L795" title="All 2 branches missed.">    if (c == '[') {</span>
+<span class="nc" id="L796">      return true;</span>
+    }
+
+<span class="nc bnc" id="L799" title="All 18 branches missed.">    if ((t.length() == 1) &amp;&amp;</span>
+            ((c == 'B') || (c == 'I') || (c == 'S') || (c == 'C') ||
+              (c == 'F') || (c == 'J') || (c == 'D') || (c == 'Z'))) {
+<span class="nc" id="L802">      return true;</span>
+    }
+
+<span class="nc bnc" id="L805" title="All 2 branches missed.">    if (t.endsWith(&quot;;&quot;)) {</span>
+<span class="nc" id="L806">      return true;</span>
+    }
+
+<span class="nc" id="L809">    return false;</span>
+  }
+
+  public static boolean isBasicType (String typeName){
+<span class="fc bfc" id="L813" title="All 2 branches covered.">    return (&quot;boolean&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L814" title="All 2 branches covered.">        &quot;byte&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L815" title="All 2 branches covered.">        &quot;char&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L816" title="All 2 branches covered.">        &quot;int&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L817" title="All 2 branches covered.">        &quot;long&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L818" title="All 2 branches covered.">        &quot;double&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L819" title="All 2 branches covered.">        &quot;short&quot;.equals(typeName) ||</span>
+<span class="fc bfc" id="L820" title="All 2 branches covered.">        &quot;float&quot;.equals(typeName));</span>
+  }
+
+  public static byte getTypeCode (String signature){
+<span class="nc" id="L824">    char c = signature.charAt(0);</span>
+
+<span class="nc bnc" id="L826" title="All 12 branches missed.">    switch (c) {</span>
+      case 'B':
+<span class="nc" id="L828">        return T_BYTE;</span>
+
+      case 'C':
+<span class="nc" id="L831">        return T_CHAR;</span>
+
+      case 'D':
+<span class="nc" id="L834">        return T_DOUBLE;</span>
+
+      case 'F':
+<span class="nc" id="L837">        return T_FLOAT;</span>
+
+      case 'I':
+<span class="nc" id="L840">        return T_INT;</span>
+
+      case 'J':
+<span class="nc" id="L843">        return T_LONG;</span>
+
+      case 'L':
+<span class="nc" id="L846">        return T_REFERENCE;</span>
+
+      case 'S':
+<span class="nc" id="L849">        return T_SHORT;</span>
+
+      case 'V':
+<span class="nc" id="L852">        return T_VOID;</span>
+
+      case 'Z':
+<span class="nc" id="L855">        return T_BOOLEAN;</span>
+
+      case '[':
+<span class="nc" id="L858">        return T_ARRAY;</span>
+
+      default:
+<span class="nc" id="L861">        throw new JPFException(&quot;unknow typecode: &quot; + signature);</span>
+    }
+  }
+  
+  /**
+   * return the qualified signature name according to JLS 6.7 (e.g. &quot;int&quot;, &quot;x.Y[]&quot;)
+   */
+  public static String getTypeName (String signature) {
+<span class="fc" id="L869">    int  len = signature.length();</span>
+<span class="fc" id="L870">    char c = signature.charAt(0);</span>
+
+<span class="fc bfc" id="L872" title="All 2 branches covered.">    if (len == 1) {</span>
+<span class="pc bpc" id="L873" title="1 of 10 branches missed.">      switch (c) {</span>
+      case 'B':
+<span class="fc" id="L875">        return &quot;byte&quot;;</span>
+
+      case 'C':
+<span class="fc" id="L878">        return &quot;char&quot;;</span>
+
+      case 'D':
+<span class="fc" id="L881">        return &quot;double&quot;;</span>
+
+      case 'F':
+<span class="fc" id="L884">        return &quot;float&quot;;</span>
+
+      case 'I':
+<span class="fc" id="L887">        return &quot;int&quot;;</span>
+
+      case 'J':
+<span class="fc" id="L890">        return &quot;long&quot;;</span>
+
+      case 'S':
+<span class="fc" id="L893">        return &quot;short&quot;;</span>
+
+      case 'V':
+<span class="fc" id="L896">        return &quot;void&quot;;</span>
+
+      case 'Z':
+<span class="fc" id="L899">        return &quot;boolean&quot;;</span>
+      }
+    }
+
+<span class="fc bfc" id="L903" title="All 2 branches covered.">    if (c == '[') {</span>
+<span class="fc" id="L904">      return getTypeName(signature.substring(1)) + &quot;[]&quot;;</span>
+    }
+
+<span class="fc" id="L907">    int len1 = len-1;</span>
+<span class="pc bpc" id="L908" title="1 of 2 branches missed.">    if (signature.charAt(len1) == ';') {</span>
+<span class="fc" id="L909">      return signature.substring(1, len1).replace('/', '.');</span>
+    }
+
+<span class="nc" id="L912">    throw new JPFException(&quot;invalid type string: &quot; + signature);</span>
+  }
+
+  /** thoses are according to the arrayType codes of the newarray JVMS definition */
+  public static String getElementDescriptorOfType (int arrayType){
+<span class="pc bpc" id="L917" title="1 of 9 branches missed.">    switch (arrayType){</span>
+<span class="fc" id="L918">      case 4: return &quot;Z&quot;;</span>
+<span class="fc" id="L919">      case 5: return &quot;C&quot;;</span>
+<span class="fc" id="L920">      case 6: return &quot;F&quot;;</span>
+<span class="fc" id="L921">      case 7: return &quot;D&quot;;</span>
+<span class="fc" id="L922">      case 8: return &quot;B&quot;;</span>
+<span class="fc" id="L923">      case 9: return &quot;S&quot;;</span>
+<span class="fc" id="L924">      case 10: return &quot;I&quot;;</span>
+<span class="fc" id="L925">      case 11: return &quot;J&quot;;</span>
+    }
+<span class="nc" id="L927">    return null;</span>
+  }
+
+  /**
+   * what would be the info size in bytes, not words
+   * (we ignore 64bit machines for now)
+   */
+  public static int getTypeSizeInBytes (String signature) {
+<span class="nc bnc" id="L935" title="All 6 branches missed.">    switch (signature.charAt(0)) {</span>
+      case 'V':
+<span class="nc" id="L937">        return 0;</span>
+        
+      case 'Z': // that's a stretch, but we assume boolean uses the smallest addressable size
+      case 'B':
+<span class="nc" id="L941">        return 1;</span>
+        
+      case 'S':
+      case 'C':
+<span class="nc" id="L945">        return 2;</span>
+        
+      case 'L':
+      case '[':
+      case 'F':
+      case 'I':
+<span class="nc" id="L951">        return 4;</span>
+        
+      case 'D':
+      case 'J':
+<span class="nc" id="L955">        return 8;</span>
+    }
+
+<span class="nc" id="L958">    throw new JPFException(&quot;invalid type string: &quot; + signature);</span>
+  }
+  
+  public static int getTypeSize (String signature) {
+<span class="pc bpc" id="L962" title="2 of 4 branches missed.">    switch (signature.charAt(0)) {</span>
+    case 'V':
+<span class="nc" id="L964">      return 0;</span>
+
+    case 'B':
+    case 'C':
+    case 'F':
+    case 'I':
+    case 'L':
+    case 'S':
+    case 'Z':
+    case '[':
+<span class="fc" id="L974">      return 1;</span>
+
+    case 'D':
+    case 'J':
+<span class="fc" id="L978">      return 2;</span>
+    }
+
+<span class="nc" id="L981">    throw new JPFException(&quot;invalid type string: &quot; + signature);</span>
+  }
+
+  public static int getTypeSize (byte typeCategory){
+<span class="nc bnc" id="L985" title="All 4 branches missed.">    if (typeCategory == T_LONG || typeCategory == T_DOUBLE){</span>
+<span class="nc" id="L986">      return 2;</span>
+    } else {
+<span class="nc" id="L988">      return 1;</span>
+    }
+  }
+  
+  public static String asTypeName (String type) {
+<span class="nc bnc" id="L993" title="All 4 branches missed.">    if (type.startsWith(&quot;[&quot;) || type.endsWith(&quot;;&quot;)) {</span>
+<span class="nc" id="L994">      return getTypeName(type);</span>
+    }
+
+<span class="nc" id="L997">    return type;</span>
+  }
+
+  public static int booleanToInt (boolean b) {
+<span class="fc bfc" id="L1001" title="All 2 branches covered.">    return b ? 1 : 0;</span>
+  }
+
+  public static long doubleToLong (double d) {
+<span class="fc" id="L1005">    return Double.doubleToLongBits(d);</span>
+  }
+
+  public static int floatToInt (float f) {
+<span class="fc" id="L1009">    return Float.floatToIntBits(f);</span>
+  }
+
+  public static int hiDouble (double d) {
+<span class="fc" id="L1013">    return hiLong(Double.doubleToLongBits(d));</span>
+  }
+
+  public static int hiLong (long l) {
+<span class="fc" id="L1017">    return (int) (l &gt;&gt; 32);</span>
+  }
+
+  public static boolean instanceOf (String type, String ofType) {
+<span class="fc" id="L1021">    int bType = getBuiltinTypeFromSignature(type);</span>
+
+<span class="fc bfc" id="L1023" title="All 4 branches covered.">    if ((bType == T_ARRAY) &amp;&amp; ofType.equals(&quot;Ljava/lang/Object;&quot;)) {</span>
+<span class="fc" id="L1024">      return true;</span>
+    }
+
+<span class="fc" id="L1027">    int bOfType = getBuiltinTypeFromSignature(ofType);</span>
+
+<span class="pc bpc" id="L1029" title="1 of 2 branches missed.">    if (bType != bOfType) {</span>
+<span class="nc" id="L1030">      return false;</span>
+    }
+
+<span class="pc bpc" id="L1033" title="1 of 3 branches missed.">    switch (bType) {</span>
+    case T_ARRAY:
+<span class="fc" id="L1035">      return instanceOf(type.substring(1), ofType.substring(1));</span>
+
+    case T_REFERENCE:
+<span class="fc" id="L1038">      ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(getTypeName(type));</span>
+<span class="fc" id="L1039">      return ci.isInstanceOf(getTypeName(ofType));</span>
+
+    default:
+<span class="nc" id="L1042">      return true;</span>
+    }
+  }
+
+  public static boolean intToBoolean (int i) {
+<span class="fc bfc" id="L1047" title="All 2 branches covered.">    return i != 0;</span>
+  }
+
+  public static float intToFloat (int i) {
+<span class="fc" id="L1051">    return Float.intBitsToFloat(i);</span>
+  }
+
+  public static double intsToDouble (int l, int h) {
+<span class="fc" id="L1055">    long bits = ((long) h &lt;&lt; 32) | (/*(long)*/ l &amp; 0xFFFFFFFFL);</span>
+<span class="fc" id="L1056">    return Double.longBitsToDouble(bits);</span>
+  }
+
+  public static long intsToLong (int l, int h) {
+<span class="fc" id="L1060">    return ((long) h &lt;&lt; 32) | (/*(long)*/ l &amp; 0xFFFFFFFFL);</span>
+  }
+
+  public static int loDouble (double d) {
+<span class="fc" id="L1064">    return loLong(Double.doubleToLongBits(d));</span>
+  }
+
+  public static int loLong (long l) {
+<span class="fc" id="L1068">    return (int) (l &amp; 0xFFFFFFFFL);</span>
+  }
+
+  public static double longToDouble (long l) {
+<span class="fc" id="L1072">    return Double.longBitsToDouble(l);</span>
+  }
+
+  private static int getTypeLength (String signature, int idx) {
+<span class="pc bpc" id="L1076" title="1 of 4 branches missed.">    switch (signature.charAt(idx)) {</span>
+    case 'B':
+    case 'C':
+    case 'D':
+    case 'F':
+    case 'I':
+    case 'J':
+    case 'S':
+    case 'V':
+    case 'Z':
+<span class="fc" id="L1086">      return 1;</span>
+
+    case '[':
+<span class="fc" id="L1089">      return 1 + getTypeLength(signature, idx + 1);</span>
+
+    case 'L':
+
+<span class="fc" id="L1093">      int semicolon = signature.indexOf(';', idx);</span>
+
+<span class="pc bpc" id="L1095" title="1 of 2 branches missed.">      if (semicolon == -1) {</span>
+<span class="nc" id="L1096">        throw new JPFException(&quot;invalid type signature: &quot; +</span>
+                                         signature);
+      }
+
+<span class="fc" id="L1100">      return semicolon - idx + 1;</span>
+    }
+
+<span class="nc" id="L1103">    throw new JPFException(&quot;invalid type signature&quot;);</span>
+  }
+
+  /**
+   * return the JPF internal representation of a method signature that is given
+   * in dot-notation (like javap),
+   *
+   *  e.g.  &quot;int foo(int[],java.lang.String)&quot; -&gt; &quot;foo([ILjava/lang/String;)I&quot;
+   *
+   */
+  public static String getSignatureName (String methodDecl) {
+
+<span class="fc" id="L1115">    StringBuffer sb = new StringBuffer(128);</span>
+<span class="fc" id="L1116">    String retType = null;</span>
+
+<span class="fc" id="L1118">    int i = methodDecl.indexOf('(');</span>
+<span class="pc bpc" id="L1119" title="1 of 2 branches missed.">    if (i&gt;0){</span>
+
+      //--- name and return type
+<span class="fc" id="L1122">      String[] a = methodDecl.substring(0, i).split(&quot; &quot;);</span>
+<span class="pc bpc" id="L1123" title="1 of 2 branches missed.">      if (a.length &gt; 0){</span>
+<span class="fc" id="L1124">        sb.append(a[a.length-1]);</span>
+
+<span class="fc bfc" id="L1126" title="All 2 branches covered.">        if (a.length &gt; 1){</span>
+<span class="fc" id="L1127">          retType = getTypeSignature(a[a.length-2], false);</span>
+        }
+      }
+
+      //--- argument types
+<span class="fc" id="L1132">      int j = methodDecl.lastIndexOf(')');</span>
+<span class="pc bpc" id="L1133" title="1 of 2 branches missed.">      if (j &gt; 0){</span>
+<span class="fc" id="L1134">        sb.append('(');</span>
+<span class="fc bfc" id="L1135" title="All 2 branches covered.">        for (String type : methodDecl.substring(i+1,j).split(&quot;,&quot;)){</span>
+<span class="fc bfc" id="L1136" title="All 2 branches covered.">          if (!type.isEmpty()){</span>
+<span class="fc" id="L1137">            type = type.trim();</span>
+<span class="pc bpc" id="L1138" title="1 of 2 branches missed.">            if (!type.isEmpty()){</span>
+<span class="fc" id="L1139">              sb.append( getTypeSignature(type,false));</span>
+            }
+          }
+        }
+<span class="fc" id="L1143">        sb.append(')');</span>
+
+<span class="fc bfc" id="L1145" title="All 2 branches covered.">        if (retType != null){</span>
+<span class="fc" id="L1146">          sb.append(retType);</span>
+        }
+
+<span class="fc" id="L1149">        return sb.toString();</span>
+      }
+    }
+
+<span class="nc" id="L1153">    throw new JPFException(&quot;invalid method declaration: &quot; + methodDecl);</span>
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

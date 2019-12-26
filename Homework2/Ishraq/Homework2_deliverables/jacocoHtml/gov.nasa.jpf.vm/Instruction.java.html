@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Instruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Instruction.java</span></div><h1>Instruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.ObjectList;
+import gov.nasa.jpf.util.Source;
+import gov.nasa.jpf.vm.bytecode.InstructionInterface;
+
+
+
+/**
+ * common root of all JPF bytecode instruction classes 
+ * 
+ */
+<span class="fc" id="L30">public abstract class Instruction implements Cloneable, InstructionInterface {</span>
+
+  protected int insnIndex;        // code[] index of instruction
+  protected int position;     // accumulated bytecode position (prev pos + prev bc-length)
+  protected MethodInfo mi;    // the method this insn belongs to
+
+  // property/mode specific attributes
+  protected Object attr;
+  
+  // this is for changing from InstructionInterface types to Instruction types
+  @Override
+  public Instruction asInstruction(){
+<span class="nc" id="L42">    return this;</span>
+  }
+  
+  // to allow a classname and methodname context for each instruction
+  public void setContext(String className, String methodName, int lineNumber,
+          int offset) {
+<span class="nc" id="L48">  }</span>
+
+  /**
+   * is this the first instruction in a method
+   */
+  @Override
+  public boolean isFirstInstruction() {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    return (insnIndex == 0);</span>
+  }
+
+
+  /**
+   * answer if this is a potential loop closing jump
+   */
+  @Override
+  public boolean isBackJump() {
+<span class="fc" id="L64">    return false;</span>
+  }
+
+  /**
+   * is this instruction part of a monitorenter code pattern 
+   */
+  public boolean isMonitorEnterPrologue(){
+<span class="nc" id="L71">    return false;</span>
+  }
+
+  /**
+   * is this one of our own, artificial insns?
+   */
+  @Override
+  public boolean isExtendedInstruction() {
+<span class="nc" id="L79">    return false;</span>
+  }
+
+
+  @Override
+  public MethodInfo getMethodInfo() {
+<span class="fc" id="L85">    return mi;</span>
+  }
+
+
+  /**
+   * that's used for explicit construction of MethodInfos (synthetic methods)
+   */
+  public void setMethodInfo(MethodInfo mi) {
+<span class="fc" id="L93">    this.mi = mi;</span>
+<span class="fc" id="L94">  }</span>
+
+  /**
+   * this returns the instruction at the following code insnIndex within the same
+   * method, which might or might not be the next one to enter (branches, overlay calls etc.).
+   */
+  @Override
+  public Instruction getNext() {
+<span class="fc" id="L102">    return mi.getInstruction(insnIndex + 1);</span>
+  }
+
+  @Override
+  public int getInstructionIndex() {
+<span class="fc" id="L107">    return insnIndex;</span>
+  }
+
+  @Override
+  public int getPosition() {
+<span class="fc" id="L112">    return position;</span>
+  }
+
+  public void setLocation(int insnIdx, int pos) {
+<span class="fc" id="L116">    insnIndex = insnIdx;</span>
+<span class="fc" id="L117">    position = pos;</span>
+<span class="fc" id="L118">  }</span>
+
+  /**
+   * return the length in bytes of this instruction.
+   * override if this is not 1
+   */
+  @Override
+  public int getLength() {
+<span class="nc" id="L126">    return 1;</span>
+  }
+
+  @Override
+  public Instruction getPrev() {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">    if (insnIndex &gt; 0) {</span>
+<span class="nc" id="L132">      return mi.getInstruction(insnIndex - 1);</span>
+    } else {
+<span class="nc" id="L134">      return null;</span>
+    }
+  }
+
+  /**
+   * this is for listeners that process instructionExecuted(), but need to
+   * determine if there was a CG registration, an overlayed direct call
+   * (like clinit) etc.
+   * The easy case is the instruction not having been executed yet, in
+   * which case ti.getNextPC() == null
+   * There are two cases for re-execution: either nextPC was set to the
+   * same insn (which is what CG creators usually use), or somebody just
+   * pushed another stackframe that executes something which will return to the
+   * same insn (that is what automatic &lt;clinit&gt; calls and the like do - we call
+   * it overlays)
+   */
+  @Override
+  public boolean isCompleted(ThreadInfo ti) {
+<span class="fc" id="L152">    Instruction nextPc = ti.getNextPC();</span>
+
+<span class="fc bfc" id="L154" title="All 2 branches covered.">    if (nextPc == null) {</span>
+<span class="fc" id="L155">      return ti.isTerminated();</span>
+
+    } else {
+
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">      return (nextPc != this) &amp;&amp; (ti.getStackFrameExecuting(this, 1) == null);</span>
+    }
+
+    // &lt;2do&gt; how do we account for exceptions? 
+  }
+
+  /**
+   * this method can be overridden if instruction classes have to store
+   * information for instructionExecuted() notifications, and this information
+   * should not be stored persistent to avoid memory leaks (e.g. via traces).
+   * Called by ThreadInfo.executeInstruction
+   */
+  public void cleanupTransients(){
+    // nothing here
+<span class="fc" id="L173">  }</span>
+  
+  public boolean isSchedulingRelevant(SystemState ss, KernelState ks, ThreadInfo ti) {
+<span class="nc" id="L176">    return false;</span>
+  }
+
+  /**
+   * this is the real workhorse
+   * returns next instruction to enter in this thread
+   * 
+   * &lt;2do&gt; it's unfortunate we roll every side effect into this method, because
+   * it diminishes the value of the 'executeInstruction' notification: all
+   * insns that require some sort of late binding (InvokeVirtual, GetField, ..)
+   * are not yet fully analyzable (e.g. the callee of InvokeVirtuals is not
+   * known yet), putting the burden of duplicating the related code of
+   * enter() in the listener. It would be better if we factor this
+   * 'prepareExecution' out of enter()
+   */
+  @Override
+  public abstract Instruction execute(ThreadInfo ti);
+
+  @Override
+  public String toString() {
+<span class="fc" id="L196">    return getMnemonic();</span>
+  }
+
+  /**
+   * this can contain additional info that was gathered/cached during execution 
+   */
+  @Override
+  public String toPostExecString(){
+<span class="nc" id="L204">    return toString();</span>
+  }
+  
+  @Override
+  public String getMnemonic() {
+<span class="fc" id="L209">    String s = getClass().getSimpleName();</span>
+<span class="fc" id="L210">    return s.toLowerCase();</span>
+  }
+
+  @Override
+  public int getLineNumber() {
+<span class="fc" id="L215">    return mi.getLineNumber(this);</span>
+  }
+
+  @Override
+  public String getSourceLine() {
+<span class="fc" id="L220">    ClassInfo ci = mi.getClassInfo();</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L222">      int line = mi.getLineNumber(this);</span>
+<span class="fc" id="L223">      String fileName = ci.getSourceFileName();</span>
+
+<span class="fc" id="L225">      Source src = Source.getSource(fileName);</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">      if (src != null) {</span>
+<span class="nc" id="L227">        String srcLine = src.getLine(line);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        if (srcLine != null) {</span>
+<span class="nc" id="L229">          return srcLine;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L234">    return null;</span>
+  }
+
+  /**
+   * this is for debugging/logging if we always want something back telling
+   * us where this insn came from
+   */
+  public String getSourceOrLocation(){
+<span class="nc" id="L242">    ClassInfo ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L244">      int line = mi.getLineNumber(this);</span>
+<span class="nc" id="L245">      String file = ci.getSourceFileName();</span>
+
+<span class="nc" id="L247">      Source src = Source.getSource(file);</span>
+<span class="nc bnc" id="L248" title="All 2 branches missed.">      if (src != null) {</span>
+<span class="nc" id="L249">        String srcLine = src.getLine(line);</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (srcLine != null) {</span>
+<span class="nc" id="L251">          return srcLine;</span>
+        }
+      }
+
+<span class="nc" id="L255">      return &quot;(&quot; + file + ':' + line + ')'; // fallback</span>
+
+    } else {
+<span class="nc" id="L258">      return &quot;[synthetic] &quot; + mi.getName();</span>
+    }
+  }
+  
+  
+  /**
+   * this returns a &quot;pathname:line&quot; string
+   */
+  @Override
+  public String getFileLocation() {
+<span class="nc" id="L268">    ClassInfo ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L270">      int line = mi.getLineNumber(this);</span>
+<span class="nc" id="L271">      String fname = ci.getSourceFileName();</span>
+<span class="nc" id="L272">      return (fname + ':' + line);</span>
+    } else {
+<span class="nc" id="L274">      return &quot;[synthetic] &quot; + mi.getName();</span>
+    }
+  }
+
+  /**
+   * this returns a &quot;filename:line&quot; string
+   */
+  @Override
+  public String getFilePos() {
+<span class="fc" id="L283">    String file = null;</span>
+<span class="fc" id="L284">    int line = -1;</span>
+<span class="fc" id="L285">    ClassInfo ci = mi.getClassInfo();</span>
+
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">    if (ci != null){</span>
+<span class="fc" id="L288">      line = mi.getLineNumber(this);</span>
+<span class="fc" id="L289">      file = ci.getSourceFileName();</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">      if (file != null){</span>
+<span class="fc" id="L291">        int i = file.lastIndexOf('/'); // ClassInfo.sourceFileName is using '/'</span>
+<span class="pc bpc" id="L292" title="1 of 2 branches missed.">        if (i &gt;= 0) {</span>
+<span class="fc" id="L293">          file = file.substring(i + 1);</span>
+        }
+      }
+    }
+
+<span class="fc bfc" id="L298" title="All 2 branches covered.">    if (file != null) {</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">      if (line != -1){</span>
+<span class="fc" id="L300">        return (file + ':' + line);</span>
+      } else {
+<span class="fc" id="L302">        return file;</span>
+      }
+    } else {
+<span class="fc" id="L305">      return (&quot;pc &quot; + position);</span>
+    }
+  }
+
+  /**
+   * this returns a &quot;class.method(line)&quot; string
+   */
+  @Override
+  public String getSourceLocation() {
+<span class="fc" id="L314">    ClassInfo ci = mi.getClassInfo();</span>
+
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L317">      String s = ci.getName() + '.' + mi.getName() +</span>
+<span class="fc" id="L318">              '(' + getFilePos() + ')';</span>
+<span class="fc" id="L319">      return s;</span>
+
+    } else {
+<span class="nc" id="L322">      return null;</span>
+    }
+  }
+
+  public void init(MethodInfo mi, int offset, int position) {
+<span class="nc" id="L327">    this.mi = mi;</span>
+<span class="nc" id="L328">    this.insnIndex = offset;</span>
+<span class="nc" id="L329">    this.position = position;</span>
+<span class="nc" id="L330">  }</span>
+
+  /**
+   * this is a misnomer - we actually push the clinit calls here in case
+   * we need some. 'causedClinitCalls' might be more appropriate, but it is
+   * used in a number of external projects
+   */
+  public boolean requiresClinitExecution(ThreadInfo ti, ClassInfo ci) {
+<span class="nc" id="L338">    return ci.initializeClass(ti);</span>
+  }
+
+  /**
+   * this is returning the next Instruction to enter, to be called to obtain
+   * the return value of enter() if this is not a branch insn
+   *
+   * Be aware of that we might have had exceptions caused by our execution
+   * (-&gt; lower frame), or we might have had overlaid calls (-&gt; higher frame),
+   * i.e. we can't simply assume it's the following insn. We have to
+   * acquire this through the top frame of the ThreadInfo.
+   *
+   * note: the System.exit() problem should be gone, now that it is implemented
+   * as ThreadInfo state (TERMINATED), rather than purged stacks
+   */
+  @Override
+  public Instruction getNext (ThreadInfo ti) {
+<span class="fc" id="L355">    return ti.getPC().getNext();</span>
+  }
+
+  
+  //--- the generic attribute API
+
+  @Override
+  public boolean hasAttr () {
+<span class="nc bnc" id="L363" title="All 2 branches missed.">    return (attr != null);</span>
+  }
+
+  @Override
+  public boolean hasAttr (Class&lt;?&gt; attrType){
+<span class="fc" id="L368">    return ObjectList.containsType(attr, attrType);</span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  @Override
+  public Object getAttr(){
+<span class="nc" id="L377">    return attr;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  @Override
+  public void setAttr (Object a){
+<span class="nc" id="L388">    attr = ObjectList.set(attr, a);    </span>
+<span class="nc" id="L389">  }</span>
+
+  @Override
+  public void addAttr (Object a){
+<span class="fc" id="L393">    attr = ObjectList.add(attr, a);</span>
+<span class="fc" id="L394">  }</span>
+
+  @Override
+  public void removeAttr (Object a){
+<span class="nc" id="L398">    attr = ObjectList.remove(attr, a);</span>
+<span class="nc" id="L399">  }</span>
+
+  @Override
+  public void replaceAttr (Object oldAttr, Object newAttr){
+<span class="nc" id="L403">    attr = ObjectList.replace(attr, oldAttr, newAttr);</span>
+<span class="nc" id="L404">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  @Override
+  public &lt;T&gt; T getAttr (Class&lt;T&gt; attrType) {
+<span class="fc" id="L412">    return ObjectList.getFirst(attr, attrType);</span>
+  }
+
+  @Override
+  public &lt;T&gt; T getNextAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L417">    return ObjectList.getNext(attr, attrType, prev);</span>
+  }
+
+  @Override
+  public ObjectList.Iterator attrIterator(){
+<span class="nc" id="L422">    return ObjectList.iterator(attr);</span>
+  }
+  
+  @Override
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; attrIterator(Class&lt;T&gt; attrType){
+<span class="nc" id="L427">    return ObjectList.typedIterator(attr, attrType);</span>
+  }
+
+  // -- end attrs --
+
+  /**
+   * this is overridden by any Instruction that use a cache for class or 
+   * method to provide a type safe cloning
+   */
+  public Instruction typeSafeClone(MethodInfo mi) {
+<span class="fc" id="L437">    Instruction clone = null;</span>
+
+    try {
+<span class="fc" id="L440">      clone = (Instruction) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L443">      clone.mi = mi;</span>
+<span class="nc" id="L444">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L445">      e.printStackTrace();</span>
+<span class="fc" id="L446">    }</span>
+
+<span class="fc" id="L448">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

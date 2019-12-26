@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INVOKESTATIC.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">INVOKESTATIC.java</span></div><h1>INVOKESTATIC.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.LoadOnJPFRequired;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StaticElementInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+
+/**
+ * Invoke a class (static) method
+ * ..., [arg1, [arg2 ...]]  =&gt; ...
+ */
+public class INVOKESTATIC extends JVMInvokeInstruction {
+  ClassInfo ci;
+  
+  protected INVOKESTATIC (String clsDescriptor, String methodName, String signature){
+<span class="fc" id="L40">    super(clsDescriptor, methodName, signature);</span>
+<span class="fc" id="L41">  }</span>
+
+  protected ClassInfo getClassInfo () {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">    if (ci == null) {</span>
+<span class="fc" id="L45">      ci = ClassLoaderInfo.getCurrentResolvedClassInfo(cname);</span>
+    }
+<span class="fc" id="L47">    return ci;</span>
+  }
+  
+  @Override
+  public int getByteCode () {
+<span class="fc" id="L52">    return 0xB8;</span>
+  }
+
+  @Override
+  public String toPostExecString(){
+<span class="nc" id="L57">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L58">    sb.append(getMnemonic());</span>
+<span class="nc" id="L59">    sb.append(' ');</span>
+<span class="nc" id="L60">    sb.append( invokedMethod.getFullName());</span>
+
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (invokedMethod.isMJI()){</span>
+<span class="nc" id="L63">      sb.append(&quot; [native]&quot;);</span>
+    }
+    
+<span class="nc" id="L66">    return sb.toString();</span>
+
+  }
+  
+  public StaticElementInfo getStaticElementInfo (){
+<span class="nc" id="L71">    return getClassInfo().getStaticElementInfo();</span>
+  }
+
+  public int getClassObjectRef(){
+<span class="nc" id="L75">    return getClassInfo().getStaticElementInfo().getClassObjectRef();</span>
+  }
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+    MethodInfo callee;
+    
+    try {
+<span class="fc" id="L83">      callee = getInvokedMethod(ti);</span>
+<span class="nc" id="L84">    } catch (LoadOnJPFRequired lre) {</span>
+<span class="nc" id="L85">      return ti.getPC();</span>
+<span class="fc" id="L86">    }</span>
+        
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    if (callee == null) {</span>
+<span class="nc" id="L89">      return ti.createAndThrowException(&quot;java.lang.NoSuchMethodException&quot;, cname + '.' + mname);</span>
+    }
+
+    // this can be actually different than (can be a base)
+<span class="fc" id="L93">    ClassInfo ciCallee = callee.getClassInfo();</span>
+    
+<span class="fc bfc" id="L95" title="All 2 branches covered.">    if (ciCallee.initializeClass(ti)) {</span>
+      // do class initialization before continuing
+      // note - this returns the next insn in the topmost clinit that just got pushed
+<span class="fc" id="L98">      return ti.getPC();</span>
+    }
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">    if (callee.isSynchronized()) {</span>
+<span class="fc" id="L102">      ElementInfo ei = ciCallee.getClassObject();</span>
+<span class="fc" id="L103">      ei = ti.getScheduler().updateObjectSharedness(ti, ei, null); // locks most likely belong to shared objects</span>
+      
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">      if (reschedulesLockAcquisition(ti, ei)){</span>
+<span class="nc" id="L106">        return this;</span>
+      }
+    }
+        
+<span class="fc" id="L110">    setupCallee( ti, callee); // this creates, initializes and pushes the callee StackFrame</span>
+
+<span class="fc" id="L112">    return ti.getPC(); // we can't just return the first callee insn if a listener throws an exception</span>
+  }
+
+  @Override
+  public MethodInfo getInvokedMethod(){
+<span class="fc bfc" id="L117" title="All 2 branches covered.">    if (invokedMethod != null){</span>
+<span class="fc" id="L118">      return invokedMethod;</span>
+    } else {
+      // Hmm, this would be pre-exec, but if the current thread is not the one executing the insn 
+      // this might result in false sharedness of the class object
+<span class="fc" id="L122">      return getInvokedMethod( ThreadInfo.getCurrentThread());</span>
+    }
+  }
+  
+  @Override
+  public MethodInfo getInvokedMethod (ThreadInfo ti){
+<span class="fc bfc" id="L128" title="All 2 branches covered.">    if (invokedMethod == null) {</span>
+<span class="fc" id="L129">      ClassInfo clsInfo = getClassInfo();</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">      if (clsInfo != null){</span>
+<span class="fc" id="L131">        MethodInfo callee = clsInfo.getMethod(mname, true);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (callee != null){</span>
+<span class="fc" id="L133">          ClassInfo ciCallee = callee.getClassInfo(); // might be a superclass of ci, i.e. not what is referenced in the insn</span>
+
+<span class="fc bfc" id="L135" title="All 2 branches covered.">          if (!ciCallee.isRegistered()){</span>
+            // if it wasn't registered yet, classLoaded listeners didn't have a chance yet to modify it..
+<span class="fc" id="L137">            ciCallee.registerClass(ti);</span>
+            // .. and might replace/remove MethodInfos
+<span class="fc" id="L139">            callee = clsInfo.getMethod(mname, true);</span>
+          }
+<span class="fc" id="L141">          invokedMethod = callee;</span>
+        }
+      }    
+    }
+<span class="fc" id="L145">    return invokedMethod;</span>
+  }
+  
+  // can be different thatn the ci - method can be in a superclass
+  public ClassInfo getInvokedClassInfo(){
+<span class="nc" id="L150">    return getInvokedMethod().getClassInfo();</span>
+  }
+
+  public String getInvokedClassName(){
+<span class="nc" id="L154">    return getInvokedClassInfo().getName();</span>
+  }
+
+  @Override
+  public int getArgSize () {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (argSize &lt; 0) {</span>
+<span class="nc" id="L160">      argSize = Types.getArgumentsSize(signature);</span>
+    }
+
+<span class="nc" id="L163">    return argSize;</span>
+  }
+
+  
+  @Override
+  public String toString() {
+    // methodInfo not set outside real call context (requires target object)
+<span class="fc" id="L170">    return &quot;invokestatic &quot; + cname + '.' + mname;</span>
+  }
+
+  @Override
+  public Object getFieldValue (String id, ThreadInfo ti) {
+<span class="nc" id="L175">    return getClassInfo().getStaticFieldValueObject(id);</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L180">	  insVisitor.visit(this);</span>
+<span class="fc" id="L181">  }</span>
+
+  @Override
+  public Instruction typeSafeClone(MethodInfo mi) {
+<span class="fc" id="L185">    INVOKESTATIC clone = null;</span>
+
+    try {
+<span class="fc" id="L188">      clone = (INVOKESTATIC) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L191">      clone.mi = mi;</span>
+
+<span class="fc" id="L193">      clone.invokedMethod = null;</span>
+<span class="fc" id="L194">      clone.lastObj = Integer.MIN_VALUE;</span>
+<span class="fc" id="L195">      clone.ci = null;</span>
+<span class="nc" id="L196">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L197">      e.printStackTrace();</span>
+<span class="fc" id="L198">    }</span>
+
+<span class="fc" id="L200">    return clone;</span>
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

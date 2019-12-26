@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocalVarInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">LocalVarInfo.java</span></div><h1>LocalVarInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+public class LocalVarInfo  extends InfoObject {
+  private final String name;
+  private String type;       // lazy initialized FQN according to JLS 6.7 (e.g. &quot;int&quot;, &quot;x.Y[]&quot;)
+  private final String signature;  // e.g. &quot;I&quot;, &quot;[Lx/Y;&quot;
+  private final String genericSignature;  // non-type erased generic signature(s)
+  private final int    startPC;
+  private final int    endPC;
+  private final int slotIndex;
+    
+<span class="fc" id="L30">  public LocalVarInfo(String name, String signature, String genericSignature, int startPC, int endPC, int slotIndex){</span>
+   
+<span class="fc" id="L32">    this.name             = name;</span>
+<span class="fc" id="L33">    this.signature        = signature;</span>
+<span class="fc" id="L34">    this.genericSignature = genericSignature;</span>
+<span class="fc" id="L35">    this.startPC          = startPC;</span>
+<span class="fc" id="L36">    this.endPC            = endPC;</span>
+<span class="fc" id="L37">    this.slotIndex        = slotIndex;</span>
+<span class="fc" id="L38">  }</span>
+    
+  @Override
+  public String toString(){
+<span class="fc" id="L42">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L43">    sb.append(&quot;LocalVarInfo[&quot;);</span>
+<span class="fc" id="L44">    sb.append(&quot;name=\&quot;&quot;);</span>
+<span class="fc" id="L45">    sb.append(name);</span>
+<span class="fc" id="L46">    sb.append(&quot;\&quot;,signature=\&quot;&quot;);</span>
+<span class="fc" id="L47">    sb.append(signature);</span>
+<span class="fc" id="L48">    sb.append(&quot;\&quot;,startPC=&quot;);</span>
+<span class="fc" id="L49">    sb.append(startPC);</span>
+<span class="fc" id="L50">    sb.append(&quot;,endPC=&quot;);</span>
+<span class="fc" id="L51">    sb.append(endPC);</span>
+<span class="fc" id="L52">    sb.append(&quot;,slotIndex=&quot;);</span>
+<span class="fc" id="L53">    sb.append(slotIndex);</span>
+<span class="fc" id="L54">    sb.append(&quot;]&quot;);</span>
+    
+<span class="fc" id="L56">    return sb.toString();</span>
+  }
+  
+  public String getName() {
+<span class="fc" id="L60">    return name; </span>
+  }
+
+  public String getType() {
+<span class="nc bnc" id="L64" title="All 2 branches missed.">    if (type == null){</span>
+<span class="nc" id="L65">      type = Types.getTypeName(signature);</span>
+    }
+<span class="nc" id="L67">    return type; </span>
+  }
+
+  public String getSignature() {
+<span class="fc" id="L71">    return signature;</span>
+  }
+
+  public String getGenericSignature() {
+<span class="nc" id="L75">    return genericSignature;</span>
+  }
+  
+  public int getStartPC() {
+<span class="fc" id="L79">    return startPC; </span>
+  }
+     
+  public int getLength() {
+<span class="nc" id="L83">    return endPC - startPC +1;</span>
+  }
+
+  public int getSlotIndex() {
+<span class="fc" id="L87">    return slotIndex;</span>
+  }
+
+  public boolean matches (String name, int pc){
+<span class="pc bpc" id="L91" title="1 of 6 branches missed.">    return (startPC &lt;= pc &amp;&amp; endPC &gt;= pc &amp;&amp; this.name.equals(name));</span>
+  }
+
+  public boolean matches (int slotIdx, int pc){
+<span class="pc bpc" id="L95" title="2 of 6 branches missed.">    return (slotIdx == slotIndex) &amp;&amp; (pc &gt;= startPC) &amp;&amp; (pc &lt;= endPC);</span>
+  }
+
+  public boolean isNumeric(){
+<span class="nc" id="L99">    char c = signature.charAt(0);</span>
+<span class="nc bnc" id="L100" title="All 12 branches missed.">    return (c == 'B' || c == 'S' || c == 'I' || c == 'J' || c == 'F' || c == 'D');</span>
+  }
+
+  public boolean isBoolean(){
+<span class="nc" id="L104">    char c = signature.charAt(0);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    return (c == 'Z');</span>
+  }  
+
+  public int getSlotSize(){
+<span class="fc" id="L109">    char c = signature.charAt(0);</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">    if (c == 'J' || c == 'D'){</span>
+<span class="nc" id="L111">      return 2;</span>
+    } else {
+<span class="fc" id="L113">      return 1;</span>
+    }
+  }
+
+  public boolean isFloatingPoint(){
+<span class="fc" id="L118">    char c = signature.charAt(0);</span>
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">    return (c == 'F' || c == 'D');</span>
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

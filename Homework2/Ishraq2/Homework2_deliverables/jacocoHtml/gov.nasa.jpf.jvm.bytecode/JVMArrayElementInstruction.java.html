@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMArrayElementInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">JVMArrayElementInstruction.java</span></div><h1>JVMArrayElementInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.ArrayElementInstruction;
+
+/**
+ * abstract class for operations that access elements of arrays
+ */
+<span class="fc" id="L28">public abstract class JVMArrayElementInstruction extends  ArrayElementInstruction {</span>
+  
+  protected int arrayRef;
+  protected int index; // the accessed element
+
+  // we cache these to avoid the need for executeInstruction() listening
+  // if attrs are processed in instructionExecuted()
+  protected Object arrayOperandAttr;
+  protected Object indexOperandAttr;
+  
+  // we need this to be abstract because of the LongArrayStore insns
+  @Override
+  abstract public int peekIndex (ThreadInfo ti);
+  abstract public int peekArrayRef (ThreadInfo ti);
+
+  abstract public Object peekIndexAttr (ThreadInfo ti);
+  abstract public Object peekArrayAttr (ThreadInfo ti);
+
+  public boolean isReferenceArray() {
+<span class="nc" id="L47">    return false;</span>
+  }
+  
+  @Override
+  public ElementInfo getElementInfo (ThreadInfo ti){
+<span class="nc bnc" id="L52" title="All 2 branches missed.">    if (isCompleted(ti)){</span>
+<span class="nc" id="L53">      return ti.getElementInfo(arrayRef);</span>
+    } else {
+<span class="nc" id="L55">      int ref = peekArrayRef(ti);</span>
+<span class="nc" id="L56">      return ti.getElementInfo(arrayRef);</span>
+    }
+  }
+  
+  /**
+   * only makes sense from an executeInstruction() or instructionExecuted() listener,
+   * it is undefined outside of insn exec notifications
+   */
+  public int getArrayRef (ThreadInfo ti){
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    if (ti.isPreExec()){</span>
+<span class="fc" id="L66">      return peekArrayRef(ti);</span>
+    } else {
+<span class="fc" id="L68">      return arrayRef;</span>
+    }
+  }
+
+  public Object getArrayOperandAttr (ThreadInfo ti){
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    if (ti.isPreExec()) {</span>
+<span class="nc" id="L74">      return peekArrayAttr(ti);</span>
+    } else {
+<span class="nc" id="L76">      return arrayOperandAttr;</span>
+    }
+  }
+
+  public Object getIndexOperandAttr (ThreadInfo ti){
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    if (ti.isPreExec()) {</span>
+<span class="nc" id="L82">      return peekIndexAttr(ti);</span>
+    } else {
+<span class="nc" id="L84">      return indexOperandAttr;</span>
+    }
+  }
+
+
+  @Override
+  public ElementInfo peekArrayElementInfo (ThreadInfo ti){
+<span class="fc" id="L91">    int aref = getArrayRef(ti);</span>
+<span class="fc" id="L92">    return ti.getElementInfo(aref);</span>
+  }
+  
+  public int getIndex (ThreadInfo ti){
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (!isCompleted(ti)){</span>
+<span class="nc" id="L97">      return peekIndex(ti);</span>
+    } else {
+<span class="nc" id="L99">      return index;</span>
+    }
+  }
+  
+  /**
+   * return size of array elements in stack words (long,double: 2, all other: 1)
+   * e.g. used to determine where the object reference is on the stack
+   * 
+   * should probably be abstract, but there are lots of subclasses and only LongArrayLoad/Store insns have different size
+   */
+  protected int getElementSize () {
+<span class="fc" id="L110">    return 1;</span>
+  }
+  
+  @Override
+  public abstract boolean isRead();
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DynamicAbstractionSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.serialize</a> &gt; <span class="el_source">DynamicAbstractionSerializer.java</span></div><h1>DynamicAbstractionSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.serialize;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.util.FieldSpec;
+import gov.nasa.jpf.util.FinalBitSet;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ArrayFields;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Fields;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ReferenceArrayFields;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.StaticElementInfo;
+import gov.nasa.jpf.vm.Statics;
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * a serializer that uses Abstraction objects stored as field attributes to
+ * obtain the values to hash. 
+ */
+public class DynamicAbstractionSerializer extends FilteringSerializer {
+
+<span class="fc" id="L50">  static JPFLogger logger = JPF.getLogger(&quot;gov.nasa.jpf.vm.serialize.DynamicAbstractionSerializer&quot;);</span>
+
+  static class FieldAbstraction {
+    FieldSpec fspec;
+    Abstraction abstraction;
+
+<span class="fc" id="L56">    FieldAbstraction(FieldSpec f, Abstraction a) {</span>
+<span class="fc" id="L57">      fspec = f;</span>
+<span class="fc" id="L58">      abstraction = a;</span>
+<span class="fc" id="L59">    }</span>
+  }
+
+<span class="fc" id="L62">  public class Attributor extends ListenerAdapter {</span>
+
+    @Override
+    public void classLoaded(VM vm, ClassInfo loadedClass) {
+
+<span class="fc bfc" id="L67" title="All 4 branches covered.">      if (!loadedClass.isArray() &amp;&amp; !loadedClass.isPrimitive()) {</span>
+
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (!fieldAbstractions.isEmpty()) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">          for (FieldInfo fi : loadedClass.getDeclaredInstanceFields()) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            for (FieldAbstraction fabs : fieldAbstractions) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">              if (fabs.fspec.matches(fi)) {</span>
+<span class="fc" id="L73">                logger.info(&quot;setting instance field abstraction &quot;, fabs.abstraction.getClass().getName(),</span>
+<span class="fc" id="L74">                        &quot; for field &quot;, fi.getFullName());</span>
+<span class="fc" id="L75">                fi.addAttr(fabs.abstraction);</span>
+              }
+<span class="fc" id="L77">            }</span>
+          }
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">          for (FieldInfo fi : loadedClass.getDeclaredStaticFields()) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">            for (FieldAbstraction fabs : fieldAbstractions) {</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">              if (fabs.fspec.matches(fi)) {</span>
+<span class="nc" id="L83">                logger.info(&quot;setting static field abstraction &quot;, fabs.abstraction.getClass().getName(),</span>
+<span class="nc" id="L84">                        &quot; for field &quot;, fi.getFullName());</span>
+<span class="nc" id="L85">                fi.addAttr(fabs.abstraction);</span>
+              }
+<span class="fc" id="L87">            }</span>
+          }
+        }
+      }
+<span class="fc" id="L91">    }</span>
+  }
+  
+<span class="fc" id="L94">  protected StringSetMatcher includeClasses = null; //  means all</span>
+<span class="fc" id="L95">  protected StringSetMatcher excludeClasses = null; //  means none</span>
+<span class="fc" id="L96">  protected StringSetMatcher includeMethods = null;</span>
+<span class="fc" id="L97">  protected StringSetMatcher excludeMethods = null;</span>
+
+  List&lt;FieldAbstraction&gt; fieldAbstractions;
+
+  protected boolean processAllObjects;
+  protected boolean declaredFieldsOnly;
+
+  
+<span class="fc" id="L105">  public DynamicAbstractionSerializer(Config conf) {</span>
+<span class="fc" id="L106">    processAllObjects = conf.getBoolean(&quot;das.all_objects&quot;, true);</span>
+<span class="fc" id="L107">    declaredFieldsOnly = conf.getBoolean(&quot;das.declared_fields&quot;, false);</span>
+
+<span class="fc" id="L109">    includeClasses = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;das.classes.include&quot;));</span>
+<span class="fc" id="L110">    excludeClasses = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;das.classes.exclude&quot;));</span>
+
+<span class="fc" id="L112">    includeMethods = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;das.methods.include&quot;));</span>
+<span class="fc" id="L113">    excludeMethods = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;das.methods.exclude&quot;));</span>
+
+<span class="fc" id="L115">    fieldAbstractions = getFieldAbstractions(conf);</span>
+<span class="fc" id="L116">  }</span>
+
+  
+  protected List&lt;FieldAbstraction&gt; getFieldAbstractions(Config conf){
+<span class="fc" id="L120">    List&lt;FieldAbstraction&gt; list = null;</span>
+    
+<span class="fc" id="L122">    String[] fids = conf.getCompactTrimmedStringArray(&quot;das.fields&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">    for (String id : fids) {</span>
+<span class="fc" id="L124">      String keyPrefix = &quot;das.&quot; + id;</span>
+<span class="fc" id="L125">      String fs = conf.getString(keyPrefix + &quot;.field&quot;);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">      if (fs != null) {</span>
+<span class="fc" id="L127">        FieldSpec fspec = FieldSpec.createFieldSpec(fs);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (fspec != null) {</span>
+<span class="fc" id="L129">          String aKey = keyPrefix + &quot;.abstraction&quot;;</span>
+<span class="fc" id="L130">          Abstraction abstraction = conf.getInstance(aKey, Abstraction.class);</span>
+
+<span class="fc" id="L132">          logger.info(&quot;found field abstraction for &quot;, fspec, &quot; = &quot;, abstraction.getClass().getName());</span>
+          
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">          if (list == null){</span>
+<span class="fc" id="L135">            list = new LinkedList&lt;FieldAbstraction&gt;();</span>
+          }
+          
+<span class="fc" id="L138">          list.add(new FieldAbstraction(fspec, abstraction));</span>
+        }
+<span class="fc" id="L140">      } else {</span>
+<span class="nc" id="L141">        logger.warning(&quot;no field spec for id: &quot; + id);</span>
+      }
+    }
+    
+<span class="fc" id="L145">    return list;</span>
+  }
+  
+  @Override
+  public void attach (VM vm){
+<span class="fc" id="L150">    super.attach(vm);</span>
+    
+<span class="fc bfc" id="L152" title="All 2 branches covered.">    if (fieldAbstractions != null){</span>
+<span class="fc" id="L153">      Attributor attributor = new Attributor();</span>
+<span class="fc" id="L154">      vm.addListener(attributor);</span>
+    }
+<span class="fc" id="L156">  }</span>
+  
+  
+  // note that we don't add the reference value here
+  @Override
+  public void processReference(int objref) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">    if (objref != MJIEnv.NULL) {</span>
+<span class="fc" id="L163">      ElementInfo ei = heap.get(objref);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">      if (!ei.isMarked()) { // only add objects once</span>
+<span class="fc" id="L165">        ei.setMarked();</span>
+<span class="fc" id="L166">        refQueue.add(ei);</span>
+      }
+    }
+    
+    // we DON'T add the reference value to the buffer here
+<span class="fc" id="L171">  }</span>
+
+  protected void processField(Fields fields, int[] slotValues, FieldInfo fi, FinalBitSet filtered) {
+<span class="fc" id="L174">    int off = fi.getStorageOffset();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    if (!filtered.get(off)) {</span>
+<span class="fc" id="L176">      Abstraction a = fi.getAttr(Abstraction.class);</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">      if (a != null) {</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (fi.is1SlotField()) {</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">          if (fi.isReference()) {</span>
+<span class="nc" id="L180">            int ref = fields.getReferenceValue(off);</span>
+<span class="nc" id="L181">            buf.add(a.getAbstractObject(ref));</span>
+
+<span class="nc bnc" id="L183" title="All 2 branches missed.">            if (a.traverseObject(ref)) {</span>
+<span class="nc" id="L184">              processReference(ref);</span>
+            }
+
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">          } else if (fi.isFloatField()) {</span>
+<span class="nc" id="L188">            buf.add(a.getAbstractValue(fields.getFloatValue(off)));</span>
+          } else {
+<span class="fc" id="L190">            buf.add(a.getAbstractValue(fields.getIntValue(off)));</span>
+          }
+        } else { // double or long
+<span class="nc bnc" id="L193" title="All 2 branches missed.">          if (fi.isLongField()) {</span>
+<span class="nc" id="L194">            buf.add(a.getAbstractValue(fields.getLongValue(off)));</span>
+          } else { // got to be double
+<span class="nc" id="L196">            buf.add(a.getAbstractValue(fields.getDoubleValue(off)));</span>
+          }
+        }
+
+      } else { // no abstraction, fall back to concrete values
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (fi.is1SlotField()) {</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">          if (fi.isReference()) {</span>
+<span class="fc" id="L203">            int ref = slotValues[off];</span>
+<span class="fc" id="L204">            buf.add(ref);</span>
+<span class="fc" id="L205">            processReference(ref);</span>
+
+<span class="fc" id="L207">          } else {</span>
+<span class="fc" id="L208">            buf.add(slotValues[off]);</span>
+          }
+
+        } else { // double or long
+<span class="fc" id="L212">          buf.add(slotValues[off]);</span>
+<span class="fc" id="L213">          buf.add(slotValues[off + 1]);</span>
+        }
+      }
+    }
+<span class="fc" id="L217">  }</span>
+
+  // non-ignored class
+  @Override
+  protected void processArrayFields(ArrayFields fields) {
+<span class="fc" id="L222">    buf.add(fields.arrayLength());</span>
+
+<span class="fc bfc" id="L224" title="All 2 branches covered.">    if (fields.isReferenceArray()) {</span>
+<span class="fc" id="L225">      int[] values = fields.asReferenceArray();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">      for (int i = 0; i &lt; values.length; i++) {</span>
+<span class="fc" id="L227">        processReference(values[i]);</span>
+<span class="fc" id="L228">        buf.add(values[i]);</span>
+      }
+<span class="fc" id="L230">    } else {</span>
+<span class="fc" id="L231">      fields.appendTo(buf);</span>
+    }
+<span class="fc" id="L233">  }</span>
+
+  // for ignored class, to get all live objects
+  protected void processNamedInstanceReferenceFields(ClassInfo ci, Fields fields) {
+<span class="fc" id="L237">    FinalBitSet filtered = getInstanceFilterMask(ci);</span>
+<span class="fc" id="L238">    FinalBitSet refs = getInstanceRefMask(ci);</span>
+<span class="fc" id="L239">    int[] slotValues = fields.asFieldSlots(); // for non-attributed fields</span>
+
+<span class="fc bfc" id="L241" title="All 2 branches covered.">    for (int i = 0; i &lt; slotValues.length; i++) {</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">      if (!filtered.get(i)) {</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (refs.get(i)) {</span>
+<span class="fc" id="L244">          processReference(slotValues[i]);</span>
+        }
+      }
+    }
+<span class="fc" id="L248">  }</span>
+
+  // for ignored class, to get all live objects
+  protected void processNamedStaticReferenceFields(ClassInfo ci, Fields fields) {
+<span class="fc" id="L252">    FinalBitSet filtered = getStaticFilterMask(ci);</span>
+<span class="fc" id="L253">    FinalBitSet refs = getStaticRefMask(ci);</span>
+<span class="fc" id="L254">    int[] slotValues = fields.asFieldSlots(); // for non-attributed fields</span>
+
+<span class="fc bfc" id="L256" title="All 2 branches covered.">    for (int i = 0; i &lt; slotValues.length; i++) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">      if (!filtered.get(i)) {</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">        if (refs.get(i)) {</span>
+<span class="fc" id="L259">          processReference(slotValues[i]);</span>
+        }
+      }
+    }
+<span class="fc" id="L263">  }</span>
+
+  // for ignored class, to get all live objects
+  protected void processReferenceArray(ReferenceArrayFields fields) {
+<span class="fc" id="L267">    int[] slotValues = fields.asReferenceArray();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">    for (int i = 0; i &lt; slotValues.length; i++) {</span>
+<span class="fc" id="L269">      processReference(slotValues[i]);</span>
+    }
+<span class="fc" id="L271">  }</span>
+
+  // non-ignored class
+  @Override
+  protected void processNamedFields(ClassInfo ci, Fields fields) {
+<span class="fc" id="L276">    FinalBitSet filtered = getInstanceFilterMask(ci);</span>
+<span class="fc" id="L277">    int nFields = ci.getNumberOfInstanceFields();</span>
+<span class="fc" id="L278">    int[] slotValues = fields.asFieldSlots(); // for non-attributed fields</span>
+
+<span class="fc bfc" id="L280" title="All 2 branches covered.">    for (int i = 0; i &lt; nFields; i++) {</span>
+<span class="fc" id="L281">      FieldInfo fi = ci.getInstanceField(i);</span>
+
+<span class="pc bpc" id="L283" title="3 of 4 branches missed.">      if (declaredFieldsOnly &amp;&amp; fi.getClassInfo() != ci) {</span>
+<span class="nc" id="L284">        continue;</span>
+      }
+
+<span class="fc" id="L287">      processField(fields, slotValues, fi, filtered);</span>
+    }
+<span class="fc" id="L289">  }</span>
+
+  // &lt;2do&gt; this should also allow abstraction of whole objects, so that
+  // we can hash combinations/relations of field values
+  @Override
+  public void process (ElementInfo ei) {
+<span class="fc" id="L295">    Fields fields = ei.getFields();</span>
+<span class="fc" id="L296">    ClassInfo ci = ei.getClassInfo();</span>
+
+<span class="fc bfc" id="L298" title="All 2 branches covered.">    if (StringSetMatcher.isMatch(ci.getName(), includeClasses, excludeClasses)) {</span>
+<span class="fc" id="L299">      buf.add(ci.getUniqueId());</span>
+
+<span class="fc bfc" id="L301" title="All 2 branches covered.">      if (fields instanceof ArrayFields) { // not filtered</span>
+<span class="fc" id="L302">        processArrayFields((ArrayFields) fields);</span>
+      } else { // named fields, potentially filtered &amp; abstracted via attributes
+<span class="fc" id="L304">        processNamedFields(ci, fields);</span>
+      }
+
+    } else { // ignored class
+      // we check for live non-ignored objects along all stack frames, so we should do the same for all objects
+<span class="fc bfc" id="L309" title="All 2 branches covered.">      if (fields instanceof ArrayFields) {</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        if (fields instanceof ReferenceArrayFields) {</span>
+<span class="fc" id="L311">          processReferenceArray((ReferenceArrayFields) fields);</span>
+        }
+      } else {
+<span class="fc" id="L314">        processNamedInstanceReferenceFields(ci, fields);</span>
+      }
+    }
+<span class="fc" id="L317">  }</span>
+
+  @Override
+  protected void serializeFrame (StackFrame frame) {
+<span class="fc" id="L321">    MethodInfo mi = frame.getMethodInfo();</span>
+    
+<span class="fc bfc" id="L323" title="All 2 branches covered.">    if (StringSetMatcher.isMatch(mi.getFullName(), includeMethods, excludeMethods)){</span>
+      // &lt;2do&gt; should do frame abstraction here
+<span class="fc" id="L325">      super.serializeFrame(frame);</span>
+
+    } else {
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">      if (processAllObjects) {</span>
+<span class="fc" id="L329">        frame.visitReferenceSlots(this);</span>
+      }
+    }
+<span class="fc" id="L332">  }</span>
+
+  @Override
+  protected void serializeClass (StaticElementInfo sei) {
+<span class="fc" id="L336">    ClassInfo ci = sei.getClassInfo();</span>
+<span class="fc" id="L337">    Fields fields = sei.getFields();</span>
+
+<span class="fc bfc" id="L339" title="All 2 branches covered.">    if (StringSetMatcher.isMatch(ci.getName(), includeClasses, excludeClasses)) {</span>
+<span class="fc" id="L340">      buf.add(sei.getStatus());</span>
+
+<span class="fc" id="L342">      FinalBitSet filtered = getStaticFilterMask(ci);</span>
+<span class="fc" id="L343">      int[] slotValues = fields.asFieldSlots();</span>
+
+<span class="fc bfc" id="L345" title="All 2 branches covered.">      for (FieldInfo fi : ci.getDeclaredStaticFields()) {</span>
+<span class="fc" id="L346">        processField(fields, slotValues, fi, filtered);</span>
+      }
+
+<span class="fc" id="L349">    } else {</span>
+      // ignored class, but still process references to extract live objects
+<span class="fc" id="L351">      processNamedStaticReferenceFields(ci, fields);</span>
+    }
+<span class="fc" id="L353">  }</span>
+
+  @Override
+  protected void serializeClassLoaders(){
+    // we don't care about the number of classloaders
+    
+<span class="fc bfc" id="L359" title="All 2 branches covered.">    for (ClassLoaderInfo cl : ks.classLoaders) {</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">      if(cl.isAlive()) {</span>
+<span class="fc" id="L361">        serializeStatics( cl.getStatics());</span>
+      }
+<span class="fc" id="L363">    }</span>
+<span class="fc" id="L364">  }</span>
+
+  @Override
+  protected void serializeStatics(Statics statics){
+    // we don't care about the number of statics entries
+
+<span class="fc bfc" id="L370" title="All 2 branches covered.">    for (StaticElementInfo sei : statics.liveStatics()) {</span>
+<span class="fc" id="L371">      serializeClass(sei);</span>
+<span class="fc" id="L372">    }</span>
+<span class="fc" id="L373">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMInvokeInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">JVMInvokeInstruction.java</span></div><h1>JVMInvokeInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.LocalVarInfo;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.bytecode.InvokeInstruction;
+
+
+/**
+ * abstraction for all invoke instructions
+ */
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">public abstract class JVMInvokeInstruction extends InvokeInstruction implements JVMInstruction {</span>
+  /* Those are all straight from the class file.
+   * Note that we can't directly resolve to MethodInfo objects because
+   * the corresponding class might not be loaded yet (has to be done
+   * on execution)
+   */
+  protected String cname;
+  protected String mname;
+  protected String signature;
+
+<span class="pc" id="L43">  protected int argSize = -1;</span>
+
+  /** to cache the last callee object */
+<span class="pc" id="L46">  protected int lastObj = Integer.MIN_VALUE;</span>
+
+  /**
+   * watch out - this is only const for static and special invocation
+   * all virtuals will use it only as a cache
+   */
+  protected MethodInfo invokedMethod;
+
+  protected Object[] arguments; // temporary cache for arg values (for listeners)
+
+<span class="fc" id="L56">  protected JVMInvokeInstruction (String clsName, String methodName, String signature){</span>
+<span class="fc" id="L57">    this.cname = Types.getClassNameFromTypeName(clsName);</span>
+<span class="fc" id="L58">    this.signature = signature;</span>
+<span class="fc" id="L59">    this.mname = MethodInfo.getUniqueName(methodName, signature);</span>
+<span class="fc" id="L60">  }</span>
+
+<span class="nc" id="L62">  protected JVMInvokeInstruction () {}</span>
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L66">    return 3; // opcode, index1, index2</span>
+  }
+  
+  // only useful from post-exec notifications
+  public int getLastObjRef() {
+<span class="nc" id="L71">    return lastObj;</span>
+  }
+
+  /**
+   * this is for explicit initialization (not BCEL)
+   */
+  public void setInvokedMethod (String clsName, String mthName, String sig) {
+<span class="nc" id="L78">    cname = clsName;</span>
+<span class="nc" id="L79">    mname = mthName + sig;</span>
+<span class="nc" id="L80">    signature = sig;</span>
+<span class="nc" id="L81">  }</span>
+
+  /**
+   * be aware of that this might differ from getInvokedMethod(), since it only
+   * denotes the target type info we have at the static point of the call, i.e.
+   * before dynamic dispatching
+   */
+  @Override
+  public String getInvokedMethodClassName() {
+<span class="nc" id="L90">    return cname;</span>
+  }
+
+  @Override
+  public String getInvokedMethodSignature() {
+<span class="nc" id="L95">    return signature;</span>
+  }
+
+  @Override
+  public String getInvokedMethodName () {
+<span class="fc" id="L100">    return mname;</span>
+  }
+
+  public abstract MethodInfo getInvokedMethod (ThreadInfo ti);
+
+  @Override
+  public MethodInfo getInvokedMethod () {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">    if (invokedMethod == null){</span>
+<span class="fc" id="L108">      invokedMethod = getInvokedMethod(ThreadInfo.getCurrentThread());</span>
+    }
+
+<span class="fc" id="L111">    return invokedMethod;</span>
+  }
+
+  @Override
+  public boolean isCompleted(ThreadInfo ti) {
+<span class="nc" id="L116">    Instruction nextPc = ti.getNextPC();</span>
+
+<span class="nc bnc" id="L118" title="All 4 branches missed.">    if (nextPc == null || nextPc == this){</span>
+<span class="nc" id="L119">      return false;</span>
+    }
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    if (invokedMethod != null){</span>
+<span class="nc" id="L123">      MethodInfo topMethod = ti.getTopFrame().getMethodInfo();</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">      if (invokedMethod.isMJI() &amp;&amp; (topMethod == mi)) {</span>
+        // same frame -&gt; this was a native method that already returned
+<span class="nc" id="L126">        return true;</span>
+      }
+
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      if (topMethod == invokedMethod){</span>
+<span class="nc" id="L130">        return true;</span>
+      }
+    }
+
+    // &lt;2do&gt; how do we account for exceptions?
+
+<span class="nc" id="L136">    return false;</span>
+  }
+
+  StackFrame getCallerFrame (ThreadInfo ti, MethodInfo callee) {
+<span class="fc" id="L140">    return ti.getStackFrameExecuting(this, 0);</span>
+  }
+
+  //--- invocation processing
+
+  protected void setupCallee (ThreadInfo ti, MethodInfo callee){
+<span class="fc" id="L146">    ClassInfo ciCaller = callee.getClassInfo();</span>
+<span class="fc" id="L147">    StackFrame frame = ciCaller.createStackFrame( ti, callee);</span>
+    
+<span class="fc" id="L149">    ti.pushFrame(frame);</span>
+<span class="fc" id="L150">    ti.enter();</span>
+<span class="fc" id="L151">  }</span>
+  
+  /**
+   * this is a little helper to find out about call argument values from listeners that
+   * don't want to dig through MethodInfos and Types. Reference arguments are returned as
+   * either ElementInfos or 'null', all others are boxed (i.e. a 'double' is returned as
+   * a 'Double' object).
+   * It goes without saying that this method can only be called during an executeInstruction()
+   * or instructionExecuted() notification for the corresponding JVMInvokeInstruction
+   * We use the caller frame to retrieve the arguments (instead of the locals of
+   * the callee) since that works for both pre- and post-exec notification
+   */
+  public Object[] getArgumentValues (ThreadInfo ti) {    
+<span class="fc" id="L164">    MethodInfo callee = getInvokedMethod(ti);</span>
+<span class="fc" id="L165">    StackFrame frame = getCallerFrame(ti, callee);</span>
+    
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">    assert frame != null : &quot;can't find caller stackframe for: &quot; + this;</span>
+<span class="fc" id="L168">    return frame.getCallArguments(ti);</span>
+  }
+
+  public Object[] getArgumentAttrs (ThreadInfo ti) {
+<span class="fc" id="L172">    MethodInfo callee = getInvokedMethod(ti);</span>
+<span class="fc" id="L173">    StackFrame frame = getCallerFrame(ti, callee);</span>
+
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">    assert frame != null : &quot;can't find caller stackframe for: &quot; + this;</span>
+<span class="fc" id="L176">    return frame.getArgumentAttrs(callee);</span>
+  }
+  
+  
+  /**
+   * check if there is any argument attr of the specified type
+   * (use this before using any of the more expensive retrievers)
+   */
+  public boolean hasArgumentAttr (ThreadInfo ti, Class&lt;?&gt; type){
+<span class="nc" id="L185">    MethodInfo callee = getInvokedMethod(ti);</span>
+<span class="nc" id="L186">    StackFrame frame = getCallerFrame(ti, callee);</span>
+
+<span class="nc bnc" id="L188" title="All 4 branches missed.">    assert frame != null : &quot;no caller stackframe for: &quot; + this;</span>
+<span class="nc" id="L189">    return frame.hasArgumentAttr(callee,type);</span>
+  }
+
+  /**
+   * do we have a reference argument that has an object attribute?
+   * less efficient, but still without object creation
+   */
+  public boolean hasArgumentObjectAttr (ThreadInfo ti, Class&lt;?&gt; type){
+<span class="nc" id="L197">    MethodInfo callee = getInvokedMethod(ti);</span>
+<span class="nc" id="L198">    StackFrame frame = getCallerFrame(ti, callee);</span>
+
+<span class="nc bnc" id="L200" title="All 4 branches missed.">    assert frame != null : &quot;no caller stackframe for: &quot; + this;</span>
+<span class="nc" id="L201">    return frame.hasArgumentObjectAttr(ti,callee,type);</span>
+  }
+
+  /**
+   * this is slot size, i.e. includes 'this' for InstanceInvocations 
+   */
+  abstract public int getArgSize();
+  
+  public int getReturnType() {
+<span class="nc" id="L210">    return Types.getReturnBuiltinType(signature);</span>
+  }
+
+  public boolean isReferenceReturnType() {
+<span class="nc" id="L214">    int r = Types.getReturnBuiltinType(signature);</span>
+<span class="nc bnc" id="L215" title="All 4 branches missed.">    return ((r == Types.T_REFERENCE) || (r == Types.T_ARRAY));</span>
+  }
+
+  public String getReturnTypeName() {
+<span class="nc" id="L219">    return Types.getReturnTypeName(signature);</span>
+  }
+
+  public Object getFieldOrArgumentValue (String id, ThreadInfo ti){
+<span class="nc" id="L223">    Object v = null;</span>
+
+<span class="nc bnc" id="L225" title="All 2 branches missed.">    if ((v = getArgumentValue(id,ti)) == null){</span>
+<span class="nc" id="L226">      v = getFieldValue(id, ti);</span>
+    }
+
+<span class="nc" id="L229">    return v;</span>
+  }
+
+  public abstract Object getFieldValue (String id, ThreadInfo ti);
+
+
+  /**
+   * &lt;2do&gt; - this relies on same order of arguments and LocalVariableTable entries, which
+   * seems to hold for javac, but is not required by the VM spec, which only
+   * says that arguments are stored in consecutive slots starting at 0
+   */
+  public Object getArgumentValue (String id, ThreadInfo ti){
+<span class="nc" id="L241">    MethodInfo mi = getInvokedMethod();</span>
+<span class="nc" id="L242">    LocalVarInfo localVars[] = mi.getLocalVars();</span>
+<span class="nc" id="L243">    Object[] args = getArgumentValues(ti);</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">    if (localVars != null){</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">      int j = mi.isStatic() ? 0 : 1;</span>
+
+<span class="nc bnc" id="L248" title="All 2 branches missed.">      for (int i=0; i&lt;args.length; i++, j++){</span>
+<span class="nc" id="L249">        Object a = args[i];</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (id.equals(localVars[j].getName())){</span>
+<span class="nc" id="L251">          return a;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L256">    return null;</span>
+  }
+    
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L261">	  insVisitor.visit(this);</span>
+<span class="nc" id="L262">  }</span>
+
+  @Override
+  public Instruction typeSafeClone(MethodInfo mi) {
+<span class="fc" id="L266">    JVMInvokeInstruction clone = null;</span>
+
+    try {
+<span class="fc" id="L269">      clone = (JVMInvokeInstruction) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L272">      clone.mi = mi;</span>
+
+<span class="fc" id="L274">      clone.invokedMethod = null;</span>
+<span class="nc" id="L275">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L276">      e.printStackTrace();</span>
+<span class="fc" id="L277">    }</span>
+
+<span class="fc" id="L279">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DistributedSimpleDot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">DistributedSimpleDot.java</span></div><h1>DistributedSimpleDot.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.jvm.bytecode.DIRECTCALLRETURN;
+import gov.nasa.jpf.jvm.bytecode.EXECUTENATIVE;
+import gov.nasa.jpf.jvm.bytecode.JVMFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.LockInstruction;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.GlobalSchedulingPoint;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * This is a Graphviz dot-file generator similar to SimpleDot. It is useful in
+ * the case of Multiprocess applications. It distinguishes local choices from global
+ * choices.
+ * 
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ */
+public class DistributedSimpleDot extends SimpleDot {
+
+  static final String MP_START_NODE_ATTRS = &quot;shape=octagon,fillcolor=green&quot;;
+  static final String MP_NODE_ATTRS = &quot;shape=octagon,fillcolor=azure2&quot;;
+  
+  protected String mpNodeAttrs;
+  protected String mpStartNodeAttrs;
+  
+  protected Instruction insn;
+  
+  public DistributedSimpleDot (Config config, JPF jpf) {
+<span class="nc" id="L54">    super(config, jpf);</span>
+    
+<span class="nc" id="L56">    mpNodeAttrs = config.getString(&quot;dot.mp_node_attr&quot;, MP_NODE_ATTRS);</span>
+<span class="nc" id="L57">    startNodeAttrs = config.getString(&quot;dot.mp_start_node_attr&quot;, MP_START_NODE_ATTRS);</span>
+<span class="nc" id="L58">  }</span>
+
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo currentThread, Instruction nextInstruction, Instruction executedInstruction) {
+<span class="nc" id="L62">    insn = executedInstruction;</span>
+<span class="nc" id="L63">  }</span>
+  
+  @Override
+  public void stateAdvanced(Search search){
+<span class="nc" id="L67">    int id = search.getStateId();</span>
+<span class="nc" id="L68">    long edgeId = ((long)lastId &lt;&lt; 32) | id;</span>
+    
+<span class="nc" id="L70">    String prcId = &quot;P&quot;+Integer.toString(search.getVM().getCurrentApplicationContext().getId());</span>
+<span class="nc bnc" id="L71" title="All 4 branches missed.">    if (id &lt;0 || seenEdges.contains(edgeId)){</span>
+<span class="nc" id="L72">      return; // skip the root state and property violations (reported separately)</span>
+    }
+    
+<span class="nc" id="L75">    String lastInst = getNextCG();</span>
+<span class="nc" id="L76">    String choice =  prcId+&quot;.&quot;+getLastChoice();</span>
+    
+<span class="nc bnc" id="L78" title="All 2 branches missed.">    if (search.isErrorState()) {</span>
+<span class="nc" id="L79">      String eid = &quot;e&quot; + search.getNumberOfErrors();</span>
+<span class="nc" id="L80">      printTransition(getStateId(lastId), eid, choice, getError(search));</span>
+<span class="nc" id="L81">      printErrorState(eid);</span>
+<span class="nc" id="L82">      lastErrorId = eid;</span>
+
+<span class="nc bnc" id="L84" title="All 2 branches missed.">    } else if (search.isNewState()) {</span>
+      
+<span class="nc bnc" id="L86" title="All 2 branches missed.">      if (search.isEndState()) {</span>
+<span class="nc" id="L87">        printTransition(getStateId(lastId), getStateId(id), choice, lastInst);</span>
+<span class="nc" id="L88">        printEndState(getStateId(id));</span>
+      } else {
+<span class="nc" id="L90">        printTransition(getStateId(lastId), getStateId(id), choice, lastInst);</span>
+<span class="nc" id="L91">        printMultiProcessState(getStateId(id));</span>
+      }
+
+    } else { // already visited state
+<span class="nc" id="L95">      printTransition(getStateId(lastId), getStateId(id), choice, lastInst);</span>
+    }
+
+<span class="nc" id="L98">    seenEdges.add(edgeId);</span>
+<span class="nc" id="L99">    lastId = id;</span>
+<span class="nc" id="L100">  }</span>
+  
+  @Override
+  protected String getNextCG(){
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    if (insn instanceof EXECUTENATIVE) {</span>
+<span class="nc" id="L105">      return getNativeExecCG((EXECUTENATIVE)insn);</span>
+
+<span class="nc bnc" id="L107" title="All 2 branches missed.">    } else if (insn instanceof JVMFieldInstruction) { // shared object field access</span>
+<span class="nc" id="L108">      return getFieldAccessCG((JVMFieldInstruction)insn);</span>
+
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    } else if (insn instanceof LockInstruction){ // monitor_enter</span>
+<span class="nc" id="L111">      return getLockCG((LockInstruction)insn);</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    } else if (insn instanceof JVMInvokeInstruction){ // sync method invoke</span>
+<span class="nc" id="L114">      return getInvokeCG((JVMInvokeInstruction)insn);</span>
+<span class="nc bnc" id="L115" title="All 4 branches missed.">    } else if(insn instanceof DIRECTCALLRETURN &amp;&amp; vm.getCurrentThread().getNextPC()==null) {</span>
+<span class="nc" id="L116">      return &quot;return&quot;;</span>
+    }
+
+<span class="nc" id="L119">    return insn.getMnemonic(); // our generic fallback</span>
+  }
+  
+  protected void printMultiProcessState(String stateId){
+<span class="nc bnc" id="L123" title="All 2 branches missed.">    if(GlobalSchedulingPoint.isGlobal(vm.getNextChoiceGenerator())) {</span>
+<span class="nc" id="L124">      pw.print(stateId);</span>
+
+<span class="nc" id="L126">      pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L127">      pw.print(mpNodeAttrs);</span>
+<span class="nc" id="L128">      pw.print(']');</span>
+
+<span class="nc" id="L130">      pw.println(&quot;  // multiprc state&quot;);</span>
+    }
+<span class="nc" id="L132">  }</span>
+  
+  @Override
+  protected String getNativeExecCG (EXECUTENATIVE insn){
+<span class="nc" id="L136">    MethodInfo mi = insn.getExecutedMethod();</span>
+<span class="nc" id="L137">    String s = mi.getName();</span>
+
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if (s.equals(&quot;start&quot;)) {</span>
+<span class="nc" id="L140">      s = lastTi.getName() + &quot;.start&quot;;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    } else if (s.equals(&quot;wait&quot;)) {</span>
+<span class="nc" id="L142">      s = lastTi.getName() + &quot;.wait&quot;;</span>
+    }
+
+<span class="nc" id="L145">    return s;</span>
+  }
+  
+  @Override
+  protected String getLastChoice() {
+<span class="nc" id="L150">    ChoiceGenerator&lt;?&gt; cg = vm.getChoiceGenerator();</span>
+<span class="nc" id="L151">    Object choice = cg.getNextChoice();</span>
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (choice instanceof ThreadInfo){</span>
+<span class="nc" id="L154">       return ((ThreadInfo) choice).getName();</span>
+    } else {
+<span class="nc" id="L156">      return choice.toString();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

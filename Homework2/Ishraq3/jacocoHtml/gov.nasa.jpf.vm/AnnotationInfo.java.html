@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnnotationInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">AnnotationInfo.java</span></div><h1>AnnotationInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+import java.util.HashMap;
+
+/**
+ * the JPF internal representation for Java Annotations
+ * 
+ * AnnotationInfos represent a separate type system. While we could have used normal ClassInfos
+ * (Java annotations are just restricted interfaces with some syntactic sugar), we keep this separate because
+ * ClassInfos would be overkill. Besides, our runtime behavior differs in that we synchronously load
+ * annotation class files when we encounter them during normal ClassInfo construction (i.e. we parse recursively),
+ * whereas a normal JVM only loads them once they are referenced. The reason why we deviate is that
+ * annotations are used more often in tools than via reflection within the SUT, i.e. they most likely will
+ * be read either by JPF or by listeners, so we want them as soon as possible to avoid additional class state.
+ * This also means we do not faithfully model ClassNotFoundExceptions on annotations due to reflection
+ * calls within the SUT, but that seems less important than having them available during ClassInfo construction.
+ * This mostly matters because of default values and inherited class annotations.
+ * 
+ * AnnotationInfo serves as the concrete type of declaration annotations, and as the base for
+ * type annotations, holding all the info that comes from the annotation class file. In the first
+ * case, AnnotationInfo instances can be shared if there are no explicit values. Sharing does not
+ * make sense for type annotations which need to store site specific target info (from the classfile).
+ * 
+ * Note - AnnotationInfos loaded by the same ClassLoader that do not have explicitly set values are shared
+ * between annotated objects
+ * 
+ */
+public class AnnotationInfo implements Cloneable {
+
+  // NOTE - never modify an Entry object since it might be shared between
+  // different instances of the same annotation type
+  public static class Entry implements Cloneable {
+    String key;
+    Object value;
+    
+    public String getKey() {
+<span class="fc" id="L55">      return key;</span>
+    }
+
+    public Object getValue() {
+<span class="fc" id="L59">      return value;</span>
+    }
+    
+<span class="fc" id="L62">    public Entry (String key, Object value){</span>
+<span class="fc" id="L63">      this.key = key;</span>
+<span class="fc" id="L64">      this.value = value;</span>
+<span class="fc" id="L65">    }</span>
+    
+    @Override
+	public Entry clone(){
+      try {
+<span class="nc" id="L70">        return (Entry) super.clone();</span>
+<span class="nc" id="L71">      } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L72">        throw new JPFException(&quot;AnnotationInfo.Entry clone() failed&quot;);</span>
+      }
+    }
+  }
+  
+  public static class EnumValue {
+    String eClassName;
+    String eConst;
+    
+<span class="fc" id="L81">    EnumValue (String clsName, String constName){</span>
+<span class="fc" id="L82">      eClassName = clsName;</span>
+<span class="fc" id="L83">      eConst = constName;</span>
+<span class="fc" id="L84">    }</span>
+    public String getEnumClassName(){
+<span class="fc" id="L86">      return eClassName;</span>
+    }
+    public String getEnumConstName(){
+<span class="fc" id="L89">      return eConst;</span>
+    }
+    @Override
+	public String toString(){
+<span class="nc" id="L93">      return eClassName + '.' + eConst;</span>
+    }
+  }
+
+  public static class ClassValue {
+    String name;
+
+<span class="fc" id="L100">    ClassValue (String cn){</span>
+<span class="fc" id="L101">      name = cn;</span>
+<span class="fc" id="L102">    }</span>
+
+    public String getName(){
+<span class="fc" id="L105">      return name;</span>
+    }
+    @Override
+	public String toString(){
+<span class="fc" id="L109">      return name;</span>
+    }
+  }
+
+<span class="fc" id="L113">  static final Entry[] NONE = new Entry[0];</span>
+  
+  // we have to jump through a lot of hoops to handle default annotation parameter values
+  // this is not ideal, since it causes the classfile to be re-read if the SUT
+  // uses annotation reflection (which creates a ClassInfo), but this is rather
+  // exotic, so we save some time by not creating a ClassInfo (which would hold
+  // the default vals as method annotations) and directly store the default values here
+
+<span class="fc" id="L121">  static HashMap&lt;String, AnnotationAttribute&gt; annotationAttributes = new HashMap&lt;String, AnnotationAttribute&gt;();</span>
+
+  public static class AnnotationAttribute {
+    Entry[] defaultEntries;
+    boolean isInherited;
+
+<span class="nc" id="L127">    AnnotationAttribute (Entry[] defaultEntries, boolean isInherited) {</span>
+<span class="nc" id="L128">      this.defaultEntries = defaultEntries;</span>
+<span class="nc" id="L129">      this.isInherited = isInherited;</span>
+<span class="nc" id="L130">    }</span>
+  }
+  
+  public static Object getEnumValue(String eType, String eConst){
+<span class="fc" id="L134">    return new EnumValue( Types.getClassNameFromTypeName(eType), eConst);</span>
+  }
+
+  public static Object getClassValue(String type){
+<span class="fc" id="L138">    return new ClassValue( Types.getClassNameFromTypeName(type));</span>
+  }  
+  
+  protected String name;
+  protected Entry[] entries;
+<span class="pc" id="L143">  protected boolean isInherited = false;</span>
+    
+  /**
+   * this records if the associated class file has been loaded. If it isn't resolved yet,
+   * we don't know about default values, hence we need to check before retrieving field values
+   * that have not been explicitly set. Note this is search global and hence does not need to
+   * be state managed since we only check for default values, i.e. there are no side effects.
+   * Loading has to happen with the right ClassLoader though
+   */
+  protected ClassLoaderInfo classLoader; // set once it is resolved (i.e. the corresponding classfile is read)
+  
+  
+<span class="fc" id="L155">  public AnnotationInfo (String name, ClassLoaderInfo classLoader, AnnotationParser parser) throws ClassParseException {</span>
+<span class="fc" id="L156">    this.name = name;</span>
+<span class="fc" id="L157">    this.classLoader = classLoader;</span>
+    
+<span class="fc" id="L159">    parser.parse(this);</span>
+<span class="fc" id="L160">  }</span>
+  
+  /**
+   * this is the base ctor for AbstractTypeAnnotationInfos, which add additional
+   * target information from the classfile
+   */
+<span class="fc" id="L166">  protected AnnotationInfo (AnnotationInfo exemplar){</span>
+<span class="fc" id="L167">    this.name = exemplar.name;</span>
+<span class="fc" id="L168">    this.classLoader = exemplar.classLoader;</span>
+<span class="fc" id="L169">    this.entries = exemplar.entries;</span>
+<span class="fc" id="L170">    this.isInherited = exemplar.isInherited;</span>
+<span class="fc" id="L171">  }</span>
+  
+  //--- the init API used by AnnotationParsers
+  public void setName (String name) throws ClassParseException {
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">    if (!this.name.equals(name)){</span>
+<span class="nc" id="L176">      throw new ClassParseException(&quot;wrong annotation name in classfile, expected &quot; + this.name + &quot;, found &quot; + name);</span>
+    }
+<span class="fc" id="L178">  }</span>
+
+  public void setEntries (Entry[] entries){
+<span class="fc" id="L181">    this.entries = entries;</span>
+<span class="fc" id="L182">  }</span>
+  
+  public void setInherited (boolean isInherited){
+<span class="fc" id="L185">    this.isInherited = isInherited;</span>
+<span class="fc" id="L186">  }</span>
+  
+  
+<span class="nc" id="L189">  public AnnotationInfo (String name, Entry[] entries, boolean isInherited){</span>
+<span class="nc" id="L190">    this.name = name;</span>
+<span class="nc" id="L191">    this.entries = entries;</span>
+<span class="nc" id="L192">    this.isInherited = isInherited;</span>
+<span class="nc" id="L193">  }</span>
+
+
+  public boolean isInherited (){
+<span class="fc" id="L197">    return this.isInherited;</span>
+  }
+  
+  public ClassLoaderInfo getClassLoaderInfo(){
+<span class="fc" id="L201">    return classLoader;</span>
+  }
+
+  public String getName() {
+<span class="fc" id="L205">    return name;</span>
+  }
+  
+  protected AnnotationInfo cloneFor (ClassLoaderInfo cl){
+    try {
+<span class="nc" id="L210">      AnnotationInfo ai = (AnnotationInfo) clone();</span>
+      
+      // &lt;2do&gt; once we support class/enum values we have to clone these too
+      
+<span class="nc" id="L214">      ai.classLoader = cl;</span>
+      
+<span class="nc" id="L216">      return ai;</span>
+      
+<span class="nc" id="L218">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L219">      throw new JPFException(&quot;AnnotationInfo cloneFor() failed&quot;);</span>
+    }
+  }
+  
+  /**
+   * this returns a clone that can be used to explicitly set values.
+   * NOTE - Entry instances are still shared, i.e. to change values we have to create and set
+   * new Entry instances
+   */
+  public AnnotationInfo cloneForOverriddenValues(){
+    try {
+<span class="fc" id="L230">      AnnotationInfo ai = (AnnotationInfo) clone();</span>
+<span class="fc" id="L231">      ai.entries = entries.clone();</span>
+<span class="fc" id="L232">      return ai;</span>
+      
+<span class="nc" id="L234">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L235">      throw new JPFException(&quot;AnnotationInfo cloneFor() failed&quot;);</span>
+    }    
+  }
+  
+  public void setClonedEntryValue (String key, Object newValue){
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">    for (int i=0; i&lt;entries.length; i++){</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">      if (entries[i].getKey().equals(key)){</span>
+<span class="fc" id="L242">        entries[i] = new Entry( key, newValue);</span>
+<span class="fc" id="L243">        return;</span>
+      }
+    }    
+<span class="nc" id="L246">  }</span>
+  
+  public Entry[] getEntries() {
+<span class="fc" id="L249">    return entries;</span>
+  }
+  
+  /**
+   * this is the common getter that should trigger parsing the corresponding class file 
+   */
+  public Object getValue (String key){    
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">    for (int i=0; i&lt;entries.length; i++){</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">      if (entries[i].getKey().equals(key)){</span>
+<span class="fc" id="L258">        return entries[i].getValue();</span>
+      }
+    }
+<span class="nc" id="L261">    return null;</span>
+  }
+
+  
+  // convenience method for single-attribute annotations
+  public Object value() {
+<span class="fc" id="L267">    return getValue(&quot;value&quot;);</span>
+  }
+  
+  public String valueAsString(){
+<span class="nc" id="L271">    Object v = value();</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">    return (v != null) ? v.toString() : null;</span>
+  }
+  
+  public String getValueAsString (String key){
+<span class="fc" id="L276">    Object v = getValue(key);</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">    return (v != null) ? v.toString() : null;</span>
+  }
+  
+  public String[] getValueAsStringArray() {
+<span class="fc" id="L281">    String a[] = null; </span>
+<span class="fc" id="L282">    Object v = value();</span>
+<span class="pc bpc" id="L283" title="2 of 4 branches missed.">    if (v != null &amp;&amp; v instanceof Object[]) {</span>
+<span class="fc" id="L284">      Object[] va = (Object[])v;</span>
+<span class="fc" id="L285">      a = new String[va.length];</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">      for (int i=0; i&lt;a.length; i++) {</span>
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (va[i] != null) {</span>
+<span class="fc" id="L288">          a[i] = va[i].toString();</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L293">    return a;    </span>
+  }
+  
+  public String[] getValueAsStringArray (String key) {
+    // &lt;2do&gt; not very efficient
+<span class="nc" id="L298">    String a[] = null; </span>
+<span class="nc" id="L299">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L300" title="All 4 branches missed.">    if (v != null &amp;&amp; v instanceof Object[]) {</span>
+<span class="nc" id="L301">      Object[] va = (Object[])v;</span>
+<span class="nc" id="L302">      a = new String[va.length];</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">      for (int i=0; i&lt;a.length; i++) {</span>
+<span class="nc bnc" id="L304" title="All 2 branches missed.">        if (va[i] != null) {</span>
+<span class="nc" id="L305">          a[i] = va[i].toString();</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L310">    return a;</span>
+  }
+  
+  public &lt;T&gt; T getValue (String key, Class&lt;T&gt; type){
+<span class="nc" id="L314">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">    if (type.isInstance(v)){</span>
+<span class="nc" id="L316">      return (T)v;</span>
+    } else {
+<span class="nc" id="L318">      return null;</span>
+    }
+  }
+  
+  public boolean getValueAsBoolean (String key){
+<span class="fc" id="L323">    Object v = getValue(key);</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">    if (v instanceof Boolean){</span>
+<span class="fc" id="L325">      return ((Boolean)v).booleanValue();</span>
+    } else {
+<span class="nc" id="L327">      throw new JPFException(&quot;annotation element @&quot; + name + '.' + key + &quot;() not a boolean: &quot; + v);</span>
+    }
+  }
+  
+  public int getValueAsInt (String key){
+<span class="nc" id="L332">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L333" title="All 2 branches missed.">    if (v instanceof Integer){</span>
+<span class="nc" id="L334">      return ((Integer)v).intValue();</span>
+    } else {
+<span class="nc" id="L336">      throw new JPFException(&quot;annotation element @&quot; + name + '.' + key + &quot;() not an int: &quot; + v);</span>
+    }
+  }
+
+  public long getValueAsLong (String key){
+<span class="nc" id="L341">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">    if (v instanceof Long){</span>
+<span class="nc" id="L343">      return ((Long)v).longValue();</span>
+    } else {
+<span class="nc" id="L345">      throw new JPFException(&quot;annotation element @&quot; + name + '.' + key + &quot;() not a long: &quot; + v);</span>
+    }
+  }
+
+  public float getValueAsFloat (String key){
+<span class="nc" id="L350">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">    if (v instanceof Float){</span>
+<span class="nc" id="L352">      return ((Float)v).floatValue();</span>
+    } else {
+<span class="nc" id="L354">      throw new JPFException(&quot;annotation element @&quot; + name + '.' + key + &quot;() not a float: &quot; + v);</span>
+    }
+  }
+  
+  public double getValueAsDouble (String key){
+<span class="nc" id="L359">    Object v = getValue(key);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">    if (v instanceof Double){</span>
+<span class="nc" id="L361">      return ((Double)v).doubleValue();</span>
+    } else {
+<span class="nc" id="L363">      throw new JPFException(&quot;annotation element @&quot; + name + '.' + key + &quot;() not a double: &quot; + v);</span>
+    }
+  }
+  
+  public String asString() {
+<span class="fc" id="L368">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L369">    sb.append('@');</span>
+<span class="fc" id="L370">    sb.append(name);</span>
+<span class="fc" id="L371">    sb.append('[');</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">    for (int i=0; i&lt;entries.length; i++){</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">      if (i &gt; 0){</span>
+<span class="nc" id="L374">        sb.append(',');</span>
+      }
+<span class="fc" id="L376">      sb.append(entries[i].getKey());</span>
+<span class="fc" id="L377">      sb.append('=');</span>
+<span class="fc" id="L378">      sb.append(entries[i].getValue());</span>
+    }
+<span class="fc" id="L380">    sb.append(']');</span>
+    
+<span class="fc" id="L382">    return sb.toString();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

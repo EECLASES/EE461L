@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JSONParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">JSONParser.java</span></div><h1>JSONParser.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.JPFException;
+
+/**
+ * JSON parser. Read tokenized stream from JSONTokenizer and returns root JSON
+ * node.
+ * Parser read extended JSON grammar (http://json.org).
+ * Standard grammar was extended by ability to set Choice Generator call as a
+ * value in JSON object.
+ * @author Ivan Mushketik
+ */
+public class JSONParser {
+
+  JSONLexer lexer;
+  // Last token returned by lexer
+  Token lastReadToken;
+  
+  Token prevReadToken;
+  // true if parser bactracked to previous token
+  int backtrack;
+
+<span class="fc" id="L40">  public JSONParser(JSONLexer lexer) {</span>
+<span class="fc" id="L41">    this.lexer = lexer;</span>
+<span class="fc" id="L42">  }</span>
+
+  /**
+   * Parse JSON document
+   * @return root node of JSON tree.
+   */
+  public JSONObject parse() {
+<span class="fc" id="L49">    return parseObject();</span>
+  }
+
+  /**
+   * Read next token from lexer output stream. If parser backtraced return previously
+   * read token
+   * @return
+   */
+  private Token next() {
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">    if (lastReadToken != null &amp;&amp; lastReadToken.getType() == Token.Type.DocumentEnd) {</span>
+<span class="nc" id="L59">      return lastReadToken;</span>
+    }
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    if (backtrack == 1) {</span>
+<span class="fc" id="L63">      backtrack--;</span>
+<span class="fc" id="L64">      return lastReadToken;</span>
+    }
+
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    if (backtrack == 2) {</span>
+<span class="fc" id="L68">      backtrack--;</span>
+<span class="fc" id="L69">      return prevReadToken;</span>
+    }
+
+<span class="fc" id="L72">    prevReadToken = lastReadToken;</span>
+<span class="fc" id="L73">    lastReadToken = lexer.getNextToken();</span>
+
+<span class="fc" id="L75">    return lastReadToken;</span>
+  }
+
+  /**
+   * Backtrack to previous token
+   */
+  private void back() {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">    if (backtrack == 2) {</span>
+<span class="nc" id="L83">      throw new JPFException(&quot;Attempt to bactrack three times. Posibly an error. Please report&quot;);</span>
+    }
+
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">    if (lastReadToken == null) {</span>
+<span class="nc" id="L87">      throw new JPFException(&quot;Attempt to backtrack before starting to read token stream. Please report&quot;);</span>
+    }
+
+<span class="pc bpc" id="L90" title="1 of 4 branches missed.">    if (backtrack == 1 &amp;&amp; prevReadToken == null) {</span>
+<span class="nc" id="L91">      throw new JPFException(&quot;Attempt to backtrack twice when less then two tokens read. Please report&quot;);</span>
+    }
+
+<span class="fc" id="L94">    backtrack++;</span>
+<span class="fc" id="L95">  }</span>
+
+  /**
+   * Read next token and check it's type. If type is wrong method throws exception
+   * else it returns read token
+   * @param type - type of the following token.
+   * @return read token if it has correct type
+   */
+  private Token consume(Token.Type type) {
+<span class="fc" id="L104">    Token t = next();</span>
+
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    if (t.getType() != type) {</span>
+<span class="nc" id="L107">      error(&quot;Unexpected token '&quot; + t.getValue() + &quot;' expected &quot; + type);</span>
+    }
+
+<span class="fc" id="L110">    return t;</span>
+  }
+
+  /**
+   * Parse JSON object
+   * @return
+   */
+  private JSONObject parseObject() {
+<span class="fc" id="L118">    JSONObject pn = new JSONObject();</span>
+<span class="fc" id="L119">    consume(Token.Type.ObjectStart);  </span>
+<span class="fc" id="L120">    Token t = next();</span>
+
+    // Check if object is empty
+<span class="fc bfc" id="L123" title="All 2 branches covered.">    if (t.getType() != Token.Type.ObjectEnd) {</span>
+<span class="fc" id="L124">      back();</span>
+      while (true) {
+<span class="fc" id="L126">        Token key = consume(Token.Type.String);</span>
+<span class="fc" id="L127">        consume(Token.Type.KeyValueSeparator);</span>
+        
+
+<span class="fc" id="L130">        Token posibleId = next();</span>
+<span class="fc" id="L131">        t = next();</span>
+
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (posibleId.getType() == Token.Type.Identificator &amp;&amp;</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            t.getType() == Token.Type.CGCallParamsStart) {</span>
+<span class="fc" id="L135">            CGCall cg = parseCGCall(posibleId.getValue());</span>
+<span class="fc" id="L136">            pn.addCGCall(key.getValue(), cg);</span>
+<span class="fc" id="L137">        } else {</span>
+<span class="fc" id="L138">          back();</span>
+<span class="fc" id="L139">          back();</span>
+<span class="fc" id="L140">          Value v = parseValue();</span>
+<span class="fc" id="L141">          pn.addValue(key.getValue(), v);</span>
+        }
+
+<span class="fc" id="L144">        t = next();</span>
+        // If next token is comma there is one more key-value pair to read
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (t.getType() != Token.Type.Comma) {</span>
+<span class="fc" id="L147">          back();</span>
+<span class="fc" id="L148">          break;</span>
+        }
+<span class="fc" id="L150">      }</span>
+<span class="fc" id="L151">      consume(Token.Type.ObjectEnd);</span>
+    }
+<span class="fc" id="L153">    return pn;</span>
+  }
+
+  /**
+   * Parse array of JSON objects
+   * @return parsed array of JSON objects
+   */
+  private ArrayValue parseArray() {
+<span class="fc" id="L161">    consume(Token.Type.ArrayStart);</span>
+<span class="fc" id="L162">    ArrayValue arrayValue = new ArrayValue();</span>
+<span class="fc" id="L163">    Token t = next();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">    if (t.getType() != Token.Type.ArrayEnd) {</span>
+<span class="fc" id="L165">      back();</span>
+      while (true) {
+<span class="fc" id="L167">        Value val = parseValue();</span>
+<span class="fc" id="L168">        arrayValue.addValue(val);</span>
+
+<span class="fc" id="L170">        t = next();</span>
+        // If next token is comma there is one more object to parse
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (t.getType() != Token.Type.Comma) {</span>
+<span class="fc" id="L173">          back();</span>
+<span class="fc" id="L174">          break;</span>
+        }
+<span class="fc" id="L176">      }</span>
+    } else {
+<span class="fc" id="L178">      back();</span>
+    }
+<span class="fc" id="L180">    consume(Token.Type.ArrayEnd);</span>
+    
+<span class="fc" id="L182">    return arrayValue;</span>
+  }
+
+  /**
+   * Parse identifier. Identifier can be &quot;null&quot;, &quot;true&quot; or &quot;false&quot;
+   * @return appropriate value object
+   */
+  private Value parseIdentificator() {
+<span class="fc" id="L190">    Token id = consume(Token.Type.Identificator);</span>
+
+<span class="fc" id="L192">    String val = id.getValue();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">    if (val.equals(&quot;true&quot;)) {</span>
+<span class="fc" id="L194">      return new BooleanValue(true, &quot;true&quot;);</span>
+
+<span class="fc bfc" id="L196" title="All 2 branches covered.">    } else if (val.equals(&quot;false&quot;)) {</span>
+<span class="fc" id="L197">      return new BooleanValue(false, &quot;false&quot;);</span>
+      
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">    } else if (val.equals(&quot;null&quot;)) {</span>
+<span class="fc" id="L200">      return new NullValue();</span>
+    }
+
+<span class="nc" id="L203">    error(&quot;Unknown identifier&quot;);</span>
+<span class="nc" id="L204">    return null;</span>
+  }
+
+  private void error(String string) {
+<span class="nc" id="L208">    throw new JPFException(string + &quot;(&quot; + lexer.getLineNumber() + &quot;:&quot; + lexer.getCurrentPos() + &quot;)&quot;);</span>
+  }
+
+  private Value parseValue() {
+<span class="fc" id="L212">    Token t = next();</span>
+<span class="pc bpc" id="L213" title="1 of 6 branches missed.">    switch (t.getType()) {</span>
+      case Number:
+<span class="fc" id="L215">        return new DoubleValue(t.getValue());</span>
+        
+      case String:
+<span class="fc" id="L218">        return new StringValue(t.getValue());</span>
+        
+      case ArrayStart:
+<span class="fc" id="L221">        back();</span>
+<span class="fc" id="L222">        return parseArray();</span>
+        
+      case ObjectStart:
+<span class="fc" id="L225">        back();</span>
+<span class="fc" id="L226">        return new JSONObjectValue(parseObject());</span>
+        
+      case Identificator:
+<span class="fc" id="L229">        back();</span>
+<span class="fc" id="L230">        return parseIdentificator();</span>
+        
+      default:
+<span class="nc" id="L233">        error(&quot;Unexpected token '&quot; + t.getValue() + &quot;' during parsing JSON value&quot;);</span>
+<span class="nc" id="L234">        return null;</span>
+    }
+    
+  }
+
+  /**
+   * Parse Choice Generator call
+   * @param cgName - name of called Choice Generator.
+   * @return parsed object with info about Choice Generator call
+   */
+  private CGCall parseCGCall(String cgName) {
+    
+<span class="fc" id="L246">    CGCall parsedCG = new CGCall(cgName);</span>
+<span class="fc" id="L247">    Token t = next();</span>
+
+<span class="fc bfc" id="L249" title="All 2 branches covered.">    if (t.getType() != Token.Type.CGCallParamsEnd) {</span>
+<span class="fc" id="L250">      back();</span>
+      while (true) {
+<span class="fc" id="L252">        Value v = parseValue();</span>
+<span class="fc" id="L253">        parsedCG.addParam(v);</span>
+
+<span class="fc" id="L255">        t = next();</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (t.getType() == Token.Type.CGCallParamsEnd) {</span>
+<span class="fc" id="L257">          back();</span>
+<span class="fc" id="L258">          break;</span>
+        }
+<span class="fc" id="L260">        back();</span>
+<span class="fc" id="L261">        consume(Token.Type.Comma);</span>
+<span class="fc" id="L262">      }</span>
+    } else {
+<span class="fc" id="L264">      back();</span>
+    }
+
+<span class="fc" id="L267">    consume(Token.Type.CGCallParamsEnd);</span>
+
+<span class="fc" id="L269">    return parsedCG;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

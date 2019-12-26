@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Invocation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">Invocation.java</span></div><h1>Invocation.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ObjRef;
+
+/**
+ * a record that includes all information to perform a call
+ */
+public class Invocation {
+  MethodInfo mi;
+  Object[] args;  // includes 'this' for instance methods
+  Object[] attrs;
+  
+<span class="nc" id="L36">  public Invocation (MethodInfo mi, Object[] args, Object[] attrs){</span>
+<span class="nc" id="L37">    this.mi = mi;</span>
+<span class="nc" id="L38">    this.args = args;</span>
+<span class="nc" id="L39">    this.attrs = attrs;</span>
+<span class="nc" id="L40">  }</span>
+  
+  public MethodInfo getMethodInfo () {
+<span class="nc" id="L43">    return mi;</span>
+  }
+  
+  public Object[] getExplicitArguments () {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">    if (!mi.isStatic()){</span>
+<span class="nc" id="L48">      Object[] a = new Object[args.length-1];</span>
+<span class="nc" id="L49">      System.arraycopy(args,1,a,0,a.length);</span>
+<span class="nc" id="L50">      return a;</span>
+    } else {
+<span class="nc" id="L52">      return args;</span>
+    }
+  }
+  
+  public String[] getArgumentTypeNames() {
+<span class="nc" id="L57">    return mi.getArgumentTypeNames();</span>
+  }
+  
+  public String getArgumentValueLiteral(Object a) {
+<span class="nc" id="L61">    Class&lt;?&gt; cls = a.getClass();</span>
+    
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    if (cls == Boolean.class)   return ((Boolean)a).toString();</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">    if (cls == Byte.class)      return ((Byte)a).toString();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    if (cls == Character.class) return ((Character)a).toString();</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    if (cls == Short.class)     return ((Short)a).toString();</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (cls == Integer.class)   return ((Integer)a).toString();</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (cls == Long.class)      return ((Long)a).toString();</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">    if (cls == Float.class)     return ((Float)a).toString();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    if (cls == Double.class)    return ((Double)a).toString();</span>
+
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    if (cls == ObjRef.class) {</span>
+<span class="nc" id="L73">      int ref = ((ObjRef)a).getReference();</span>
+      
+<span class="nc bnc" id="L75" title="All 2 branches missed.">      if (ref != MJIEnv.NULL){</span>
+<span class="nc" id="L76">        ElementInfo ei = VM.getVM().getElementInfo(ref);</span>
+<span class="nc" id="L77">        ClassInfo ci = ei.getClassInfo();</span>
+<span class="nc" id="L78">        String cname = ci.getName();</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        if (cname.equals(&quot;java.lang.String&quot;)){</span>
+<span class="nc" id="L80">          return &quot;\&quot;&quot; + ei.asString() + '&quot;';</span>
+        } 
+        // &lt;2do&gt; we could probably do some more literals for java.lang.Class etc.
+<span class="nc" id="L83">      } else {</span>
+<span class="nc" id="L84">        return &quot;null&quot;;</span>
+      }
+    }
+    
+<span class="nc" id="L88">    return null; // no literal representation</span>
+  }
+  
+  public Object[] getArguments() {
+<span class="nc" id="L92">    return args;</span>
+  }
+  
+  public Object[] getAttrs() {
+<span class="nc" id="L96">    return attrs;</span>
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L101">    StringBuilder sb = new StringBuilder();</span>
+    
+<span class="nc" id="L103">    sb.append(&quot;INVOKE[&quot;);</span>
+<span class="nc" id="L104">    sb.append(mi.getName());</span>
+<span class="nc" id="L105">    sb.append('(');</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L108">        sb.append(',');</span>
+      }
+<span class="nc" id="L110">      sb.append(args[i]);</span>
+    }
+<span class="nc" id="L112">    sb.append(&quot;)]&quot;);</span>
+    
+<span class="nc" id="L114">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

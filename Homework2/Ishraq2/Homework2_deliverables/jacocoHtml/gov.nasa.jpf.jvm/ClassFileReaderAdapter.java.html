@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassFileReaderAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">ClassFileReaderAdapter.java</span></div><h1>ClassFileReaderAdapter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.vm.ClassParseException;
+
+/**
+ * adapter class implementing the ClassFileReader interface
+ */
+<span class="fc" id="L26">public class ClassFileReaderAdapter implements ClassFileReader {</span>
+
+  @Override
+<span class="nc" id="L29">  public void setClass(ClassFile cf, String clsName, String superClsName, int flags, int cpCount) throws ClassParseException {}</span>
+
+  @Override
+<span class="fc" id="L32">  public void setInterfaceCount(ClassFile cf, int ifcCount) {}</span>
+
+  @Override
+<span class="nc" id="L35">  public void setInterface(ClassFile cf, int ifcIndex, String ifcName) {}</span>
+
+  @Override
+<span class="fc" id="L38">  public void setInterfacesDone(ClassFile cf) {};</span>
+
+  @Override
+<span class="fc" id="L41">  public void setFieldCount(ClassFile cf, int fieldCount) {}</span>
+
+  @Override
+<span class="nc" id="L44">  public void setField(ClassFile cf, int fieldIndex, int accessFlags, String name, String descriptor) {}</span>
+
+  @Override
+<span class="fc" id="L47">  public void setFieldAttributeCount(ClassFile cf, int fieldIndex, int attrCount) {}</span>
+
+  @Override
+<span class="nc" id="L50">  public void setFieldAttribute(ClassFile cf, int fieldIndex, int attrIndex, String name, int attrLength) {}</span>
+
+  @Override
+<span class="fc" id="L53">  public void setFieldAttributesDone(ClassFile cf, int fieldIndex) {}</span>
+
+  @Override
+<span class="fc" id="L56">  public void setFieldDone(ClassFile cf, int fieldIndex) {}</span>
+
+  @Override
+<span class="fc" id="L59">  public void setFieldsDone(ClassFile cf) {}</span>
+
+  @Override
+<span class="nc" id="L62">  public void setConstantValue(ClassFile cf, Object tag, Object value) {}</span>
+
+  @Override
+<span class="nc" id="L65">  public void setMethodCount(ClassFile cf, int methodCount) {}</span>
+
+  @Override
+<span class="nc" id="L68">  public void setMethod(ClassFile cf, int methodIndex, int accessFlags, String name, String descriptor) {}</span>
+
+  @Override
+<span class="fc" id="L71">  public void setMethodAttributeCount(ClassFile cf, int methodIndex, int attrCount) {}</span>
+
+  @Override
+<span class="nc" id="L74">  public void setMethodAttribute(ClassFile cf, int methodIndex, int attrIndex, String name, int attrLength) {}</span>
+
+  @Override
+<span class="fc" id="L77">  public void setMethodAttributesDone(ClassFile cf, int methodIndex){}</span>
+
+  @Override
+<span class="nc" id="L80">  public void setMethodDone(ClassFile cf, int methodIndex) {}</span>
+
+  @Override
+<span class="fc" id="L83">  public void setMethodsDone(ClassFile cf) {}</span>
+
+  @Override
+<span class="nc" id="L86">  public void setExceptionCount(ClassFile cf, Object tag, int exceptionCount) {}</span>
+
+  @Override
+<span class="nc" id="L89">  public void setException(ClassFile cf, Object tag, int exceptionIndex, String exceptionType) {}</span>
+
+  @Override
+<span class="nc" id="L92">  public void setExceptionsDone(ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="nc" id="L95">  public void setCode(ClassFile cf, Object tag, int maxStack, int maxLocals, int codeLength) {}</span>
+
+  @Override
+<span class="nc" id="L98">  public void setExceptionHandlerTableCount(ClassFile cf, Object tag, int exceptionTableCount) {}</span>
+
+  @Override
+  public void setExceptionHandler(ClassFile cf, Object tag, int exceptionIndex,
+<span class="nc" id="L102">          int startPc, int endPc, int handlerPc, String catchType) {}</span>
+
+  @Override
+<span class="nc" id="L105">  public void setExceptionHandlerTableDone(ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="fc" id="L108">  public void setCodeAttributeCount(ClassFile cf, Object tag, int attrCount) {}</span>
+
+  @Override
+<span class="nc" id="L111">  public void setCodeAttribute(ClassFile cf, Object tag, int attrIndex, String name, int attrLength) {}</span>
+
+  @Override
+<span class="fc" id="L114">  public void setCodeAttributesDone (ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="nc" id="L117">  public void setLineNumberTableCount(ClassFile cf, Object tag, int lineNumberCount) {}</span>
+
+  @Override
+<span class="nc" id="L120">  public void setLineNumber(ClassFile cf, Object tag, int lineIndex, int lineNumber, int startPc) {}</span>
+
+  @Override
+<span class="nc" id="L123">  public void setLineNumberTableDone(ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="nc" id="L126">  public void setLocalVarTableCount(ClassFile cf, Object tag, int localVarCount) {}</span>
+
+  @Override
+  public void setLocalVar(ClassFile cf, Object tag, int localVarIndex,
+<span class="nc" id="L130">          String varName, String descriptor, int scopeStartPc, int scopeEndPc, int slotIndex) {}</span>
+
+  @Override
+<span class="nc" id="L133">  public void setLocalVarTableDone (ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="fc" id="L136">  public void setClassAttributeCount(ClassFile cf, int attrCount) {}</span>
+
+  @Override
+<span class="nc" id="L139">  public void setClassAttribute(ClassFile cf, int attrIndex, String name, int attrLength) {}</span>
+
+  @Override
+<span class="fc" id="L142">  public void setClassAttributesDone(ClassFile cf) {}</span>
+
+  @Override
+<span class="nc" id="L145">  public void setSourceFile(ClassFile cf, Object tag, String pathName) {}</span>
+
+  @Override
+<span class="nc" id="L148">  public void setInnerClassCount(ClassFile cf, Object tag, int innerClsCount) {}</span>
+
+  @Override
+  public void setInnerClass(ClassFile cf, Object tag, int innerClsIndex,
+<span class="nc" id="L152">          String outerName, String innerName, String innerSimpleName, int accessFlags) {}</span>
+
+  @Override
+<span class="nc" id="L155">  public void setInnerClassesDone(ClassFile cf, Object tag) {}</span>
+  
+  @Override
+<span class="nc" id="L158">  public void setBootstrapMethodCount (ClassFile cf, Object tag, int count) {}</span>
+  
+  @Override
+<span class="nc" id="L161">  public void setBootstrapMethod (ClassFile cf, Object tag, int idx, int refKind, String cls, String mth, String descriptor, int[] cpArgs){}</span>
+  
+  @Override
+<span class="fc" id="L164">  public void setBootstrapMethodsDone (ClassFile cf, Object tag) {}</span>
+  
+  @Override
+<span class="nc" id="L167">  public void setEnclosingMethod(ClassFile cf, Object tag, String enclosingClass, String enclosingMethod, String descriptor) {}</span>
+
+  @Override
+<span class="fc" id="L170">  public void setAnnotationCount(ClassFile cf, Object tag, int annotationCount){}</span>
+  @Override
+<span class="nc" id="L172">  public void setAnnotation(ClassFile cf, Object tag, int annotationIndex, String annotationType){}</span>
+  @Override
+<span class="fc" id="L174">  public void setAnnotationsDone(ClassFile cf, Object tag) {}</span>
+
+  //--- Java 8 type annotations
+  @Override
+<span class="nc" id="L178">  public void setTypeAnnotationCount(ClassFile cf, Object tag, int annotationCount){}</span>
+  @Override
+<span class="nc" id="L180">  public void setTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int typeIndex, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L182">  public void setSuperTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int superTypeIdx, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L184">  public void setTypeParameterBoundAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int typeParamIdx, int boundIdx, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L186">  public void setTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L188">  public void setFormalParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int formalParamIdx, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L190">  public void setThrowsAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int throwsTypeIdx, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L192">  public void setVariableAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, long[] scopeEntries, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L194">  public void setExceptionParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int exceptionIndex, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L196">  public void setBytecodeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int offset, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L198">  public void setBytecodeTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, int offset, int typeArgIdx, short[] typePath, String annotationType){}</span>
+  @Override
+<span class="nc" id="L200">  public void setTypeAnnotationsDone(ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="fc" id="L203">  public void setAnnotationValueCount(ClassFile cf, Object tag, int annotationIndex, int annotationCount) {}</span>
+
+  @Override
+  public void setPrimitiveAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+<span class="nc" id="L207">          String elementName, int arrayIndex, Object val){}</span>
+
+  @Override
+  public void setStringAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+<span class="nc" id="L211">          String elementName, int arrayIndex, String s){}</span>
+
+  @Override
+  public void setClassAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+<span class="nc" id="L215">          String elementName, int arrayIndex, String typeName){}</span>
+
+  @Override
+  public void setEnumAnnotationValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+<span class="nc" id="L219">          String elementName, int arrayIndex, String enumType, String enumValue){}</span>
+
+  @Override
+  public void setAnnotationValueElementCount(ClassFile cf, Object tag, int annotationIndex, int valueIndex, 
+<span class="nc" id="L223">          String elementName, int elementCount) {}</span>
+
+  @Override
+  public void setAnnotationValueElementsDone(ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+<span class="nc" id="L227">          String elementName) {}</span>
+
+  @Override
+<span class="fc" id="L230">  public void setAnnotationValuesDone(ClassFile cf, Object tag, int annotationIndex) {}</span>
+
+  @Override
+<span class="nc" id="L233">  public void setParameterCount(ClassFile cf, Object tag, int parameterCount) {}</span>
+
+  @Override
+<span class="nc" id="L236">  public void setParameterAnnotationCount(ClassFile cf, Object tag, int paramIndex, int annotationCount) {}</span>
+
+  @Override
+<span class="nc" id="L239">  public void setParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, String annotationType) {}</span>
+
+  @Override
+<span class="fc" id="L242">  public void setParameterAnnotationsDone(ClassFile cf, Object tag, int paramIndex) {}</span>
+
+  @Override
+<span class="nc" id="L245">  public void setParametersDone(ClassFile cf, Object tag) {}</span>
+
+  @Override
+<span class="nc" id="L248">  public void setSignature(ClassFile cf, Object tag, String signature) {}</span>
+
+  @Override
+<span class="nc" id="L251">  public void setAnnotationFieldValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex, String elementName, int arrayIndex) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StatisticFieldLockInfoFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">StatisticFieldLockInfoFactory.java</span></div><h1>StatisticFieldLockInfoFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+
+import java.util.logging.Logger;
+
+/**
+ * a FieldLockInfo implementation with the following strategy:
+ * 
+ *   - at each check, store the intersection of the current threads lock set
+ *     with the previous field lock set
+ *   - if the access was checked less than CHECK_THRESHOLD times, report the
+ *     field as unprotected
+ *   - if the field lock set doesn't become empty after CHECK_THRESHOLD, report
+ *     the field as protected
+ *   - as an optimization, raise the check level above the threshold if we
+ *     have a good probability that a current lock is a protection lock for this
+ *     field
+ *   - continue to check even after reaching the threshold, so that we
+ *     can at least report a violated assumption
+ *     
+ *  NOTE there is a subtle problem: if we ever falsely assume lock protection
+ *  in a path that subsequently recycles the shared object (e.g. by leading
+ *  into an end state), we loose the assumption. If this is followed by
+ *  a backtrack and execution of a path that uses a conflicting assumption
+ *  (different or no lock), we will NOT detect potential races unless
+ *  vm.por.sync_detection.pindown is set (which has some runtime costs)
+ */
+
+public class StatisticFieldLockInfoFactory implements FieldLockInfoFactory {
+
+<span class="nc" id="L50">  static Logger log = JPF.getLogger(&quot;gov.nasa.jpf.vm.FieldLockInfo&quot;);</span>
+  
+  /**
+   * the number of checks after which we decide if a non-empty lock set
+   * means this field is protected
+   */
+<span class="nc" id="L56">  static int CHECK_THRESHOLD = 5;</span>
+  
+  /**
+   * do we want objects with final field lock assumptions to be pinned
+   * down (not garbage collected), to make sure we don't loose these
+   * assumptions and subsequently fail to detect an assumption violation
+   * after backtracking (see above)
+   */
+<span class="nc" id="L64">  static boolean PINDOWN = false;</span>
+
+  /**
+   * do we look for strong locking candidates (i.e. assume protection
+   * if there is a lock related to the object).
+   * NOTE this can lead to undetected race conditions if the assumption
+   * subsequently fails
+   */
+<span class="nc" id="L72">  static boolean AGRESSIVE = false;</span>
+  
+  
+<span class="nc" id="L75">  public StatisticFieldLockInfoFactory (Config conf) {</span>
+<span class="nc" id="L76">    CHECK_THRESHOLD = conf.getInt(&quot;vm.por.sync_detection.threshold&quot;, CHECK_THRESHOLD);</span>
+<span class="nc" id="L77">    PINDOWN = conf.getBoolean(&quot;vm.por.sync_detection.pindown&quot;, PINDOWN);</span>
+<span class="nc" id="L78">    AGRESSIVE = conf.getBoolean(&quot;vm.por.sync_detection.agressive&quot;,AGRESSIVE);    </span>
+<span class="nc" id="L79">  }</span>
+  
+  @Override
+  public FieldLockInfo createFieldLockInfo (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="nc" id="L83">    int[] currentLockRefs = ti.getLockedObjectReferences();</span>
+<span class="nc" id="L84">    int nLocks = currentLockRefs.length;</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    if (nLocks == 0) {</span>
+<span class="nc" id="L87">      return FieldLockInfo.empty; // not protected, never will</span>
+      
+    } else {
+      
+<span class="nc bnc" id="L91" title="All 2 branches missed.">      if (AGRESSIVE) {</span>
+<span class="nc" id="L92">        int lockCandidateRef = strongProtectionCandidate(ei,fi,currentLockRefs);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (lockCandidateRef != MJIEnv.NULL) {</span>
+          // NOTE we raise the checklevel
+<span class="nc" id="L95">          return new SingleLockFli( ti, lockCandidateRef, CHECK_THRESHOLD);</span>
+        }
+      }
+      
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      if (nLocks == 1) { // most common case</span>
+<span class="nc" id="L100">        return new SingleLockFli( ti, currentLockRefs[0], 0);</span>
+      
+      } else {
+<span class="nc" id="L103">        return new MultiLockFli( ti, fi, currentLockRefs);</span>
+      }
+    }
+  }
+
+  /**
+   * check if the current thread lockset contains a lock with a high probability
+   * that it is a protection lock for this field. We need this to avoid
+   * state explosion due to the number of fields to check. Note that we don't
+   * necessarily have to answer/decide which one is the best match in case of
+   * several candidates (if we don't use this to reduce to StatisticFieldLockInfo1)
+   *
+   * For instance fields, this would be a lock with a distance &lt;= 1.
+   * For static fields, the corresponding class object is a good candidate.
+   */
+  int strongProtectionCandidate (ElementInfo ei, FieldInfo fi, int[] currentLockRefs) {
+<span class="nc" id="L119">    int n = currentLockRefs.length;</span>
+<span class="nc" id="L120">    Heap heap = VM.getVM().getHeap();</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    if (fi.isStatic()) { // static field, check for class object locking</span>
+<span class="nc" id="L123">      ClassInfo ci = fi.getClassInfo();</span>
+<span class="nc" id="L124">      int cref = ci.getClassObjectRef();</span>
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      for (int i=0; i&lt;n; i++) {</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (currentLockRefs[i] == cref) {</span>
+<span class="nc" id="L128">          ElementInfo e = heap.get(cref);</span>
+<span class="nc" id="L129">          log.info(&quot;sync-detection: &quot; + ei + &quot; assumed to be synced on class object: @&quot; + e);</span>
+<span class="nc" id="L130">          return cref;</span>
+        }
+      }
+
+<span class="nc" id="L134">    } else { // instance field, use lock distance as a heuristic</span>
+<span class="nc" id="L135">      int objRef = ei.getObjectRef();</span>
+      
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      for (int i=0; i&lt;n; i++) {</span>
+<span class="nc" id="L138">        int eidx = currentLockRefs[i];</span>
+
+        // case 1: synchronization on field owner itself
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (eidx == objRef) {</span>
+<span class="nc" id="L142">          log.info(&quot;sync-detection: &quot; + ei + &quot; assumed to be synced on itself&quot;);</span>
+<span class="nc" id="L143">          return objRef;</span>
+        }
+
+<span class="nc" id="L146">        ElementInfo e = heap.get(eidx);</span>
+        
+        // case 2: synchronization on sibling field that is a private lock object
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (ei.hasRefField(eidx)) {</span>
+<span class="nc" id="L150">          log.info(&quot;sync-detection: &quot;+ ei + &quot; assumed to be synced on sibling: &quot; + e);</span>
+<span class="nc" id="L151">          return eidx;</span>
+        }
+        
+        // case 3: synchronization on owner of object holding field (sync wrapper)
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (e.hasRefField(objRef)) {</span>
+<span class="nc" id="L156">          log.info(&quot;sync-detection: &quot; + ei + &quot; assumed to be synced on object wrapper: &quot; + e);</span>
+<span class="nc" id="L157">          return eidx;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L162">    return -1;</span>
+  }
+
+  
+  
+  //--- root for our concrete FieldLockInfo classes
+<span class="nc" id="L168">  static abstract class StatisticFieldLockInfo extends FieldLockInfo {</span>
+    int checkLevel;
+
+    @Override
+	public boolean isProtected () {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">      return (checkLevel &gt;= CHECK_THRESHOLD);</span>
+    }
+
+    @Override
+	public boolean needsPindown (ElementInfo ei) {
+<span class="nc bnc" id="L178" title="All 4 branches missed.">      return PINDOWN &amp;&amp; (checkLevel &gt;= CHECK_THRESHOLD);</span>
+    }
+
+    protected void checkFailedLockAssumption(ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">      if (checkLevel &gt;= CHECK_THRESHOLD) {</span>
+<span class="nc" id="L183">        lockAssumptionFailed(ti,ei,fi);</span>
+      }
+<span class="nc" id="L185">    }</span>
+  }
+  
+  //--- Fli for a single lock
+  static class SingleLockFli extends StatisticFieldLockInfo {
+    int lockRef;
+    
+<span class="nc" id="L192">    SingleLockFli (ThreadInfo ti, int lockRef, int nChecks) {</span>
+<span class="nc" id="L193">      tiLastCheck = ti;</span>
+
+<span class="nc" id="L195">      this.lockRef = lockRef;</span>
+<span class="nc" id="L196">      checkLevel = nChecks;</span>
+<span class="nc" id="L197">    }</span>
+
+    @Override
+	protected int[] getCandidateLockSet() {
+<span class="nc" id="L201">      int[] set = { lockRef };</span>
+<span class="nc" id="L202">      return set;</span>
+    }
+    
+
+    @Override
+	public FieldLockInfo checkProtection (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="nc" id="L208">      int[] currentLockRefs = ti.getLockedObjectReferences();</span>
+<span class="nc" id="L209">      int nLocks = currentLockRefs.length;</span>
+      
+<span class="nc" id="L211">      checkLevel++;</span>
+      
+<span class="nc bnc" id="L213" title="All 2 branches missed.">      for (int i=0; i&lt;nLocks; i++) {</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (currentLockRefs[i] == lockRef) {</span>
+<span class="nc" id="L215">          return this;</span>
+        }
+      }
+      
+<span class="nc" id="L219">      checkFailedLockAssumption(ti, ei, fi);</span>
+<span class="nc" id="L220">      return empty;</span>
+    }
+
+    /**
+     * only called at the end of the gc on all live objects. The recycled ones
+     * are either already nulled in the heap, or are not marked as live
+     */
+    @Override
+	public FieldLockInfo cleanUp (Heap heap) {
+<span class="nc" id="L229">      ElementInfo ei = heap.get(lockRef);</span>
+<span class="nc bnc" id="L230" title="All 2 branches missed.">      if (!heap.isAlive(ei)) {</span>
+<span class="nc" id="L231">        return FieldLockInfo.empty;</span>
+      } else {
+<span class="nc" id="L233">        return this;</span>
+      }
+    }
+
+    @Override
+	public String toString() {
+<span class="nc" id="L239">      return (&quot;SingleLockFli {checkLevel=&quot;+checkLevel+&quot;,lock=&quot;+lockRef + '}');</span>
+    }  
+  }
+  
+  
+  //--- StatisticFieldLockInfo for lock sets
+<span class="nc bnc" id="L245" title="All 2 branches missed.">  static class MultiLockFli extends StatisticFieldLockInfo {</span>
+
+    int[] lockRefSet;
+      
+    // this is only used once during prototype generation
+<span class="nc" id="L250">    public MultiLockFli (ThreadInfo ti, FieldInfo fi, int[] currentLockRefs) {</span>
+<span class="nc" id="L251">      lockRefSet = currentLockRefs;</span>
+<span class="nc" id="L252">    }</span>
+    
+    @Override
+	protected int[] getCandidateLockSet() {
+<span class="nc" id="L256">      return lockRefSet;</span>
+    }
+      
+
+    @Override
+	public FieldLockInfo checkProtection (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="nc" id="L262">      int[] currentLockRefs = ti.getLockedObjectReferences();      </span>
+<span class="nc" id="L263">      int nLocks = currentLockRefs.length;</span>
+          
+<span class="nc" id="L265">      checkLevel++;</span>
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">      if (nLocks == 0) { // no current locks, so intersection is empty</span>
+<span class="nc" id="L268">        checkFailedLockAssumption(ti, ei, fi);</span>
+<span class="nc" id="L269">        return empty;</span>
+
+      } else { // we had a lock set, and there currently is at least one lock held
+<span class="nc" id="L272">        int l =0;</span>
+<span class="nc" id="L273">        int[] newLset = new int[lockRefSet.length];</span>
+
+<span class="nc bnc" id="L275" title="All 2 branches missed.">        for (int i=0; i&lt;nLocks; i++) { // get the set intersection</span>
+<span class="nc" id="L276">          int leidx = currentLockRefs[i];</span>
+
+<span class="nc bnc" id="L278" title="All 2 branches missed.">          for (int j=0; j&lt;lockRefSet.length; j++) {</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">            if (lockRefSet[j] == leidx) {</span>
+<span class="nc" id="L280">              newLset[l++] = leidx;</span>
+<span class="nc" id="L281">              break; // sets don't contain duplicates</span>
+            }
+          }
+        }
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">        if (l == 0) { // intersection empty</span>
+<span class="nc" id="L287">          checkFailedLockAssumption(ti, ei, fi);</span>
+<span class="nc" id="L288">          return empty;</span>
+          
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        } else if (l == 1) { // only one candidate left </span>
+<span class="nc" id="L291">          return new SingleLockFli( ti, newLset[0], checkLevel);</span>
+        
+<span class="nc bnc" id="L293" title="All 2 branches missed.">        } else if (l &lt; newLset.length) { // candidate set did shrink</span>
+<span class="nc" id="L294">          lockRefSet = new int[l];</span>
+<span class="nc" id="L295">          System.arraycopy(newLset, 0, lockRefSet, 0, l);</span>
+          
+        } else {
+          // no change
+        }
+      }
+
+<span class="nc" id="L302">      tiLastCheck = ti;</span>
+<span class="nc" id="L303">      return this;</span>
+    }
+
+    /**
+     * only called at the end of the gc on all live objects. The recycled ones
+     * are either already nulled in the heap, or are not marked as live
+     */
+    @Override
+	public FieldLockInfo cleanUp (Heap heap) {
+<span class="nc" id="L312">      int[] newSet = null;</span>
+<span class="nc" id="L313">      int l = 0;</span>
+
+<span class="nc bnc" id="L315" title="All 2 branches missed.">      if (lockRefSet != null) {</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">        for (int i=0; i&lt;lockRefSet.length; i++) {</span>
+<span class="nc" id="L317">          ElementInfo ei = heap.get(lockRefSet[i]);</span>
+
+<span class="nc bnc" id="L319" title="All 2 branches missed.">          if (!heap.isAlive(ei)) { // we got a stale one, so we have to change us</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            if (newSet == null) { // first one, copy everything up to it</span>
+<span class="nc" id="L321">              newSet = new int[lockRefSet.length-1];</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">              if (i &gt; 0) {</span>
+<span class="nc" id="L323">                System.arraycopy(lockRefSet, 0, newSet, 0, i);</span>
+<span class="nc" id="L324">                l = i;</span>
+              }
+            }
+
+          } else {
+<span class="nc bnc" id="L329" title="All 2 branches missed.">            if (newSet != null) { // we already had a dangling ref, now copy the live ones</span>
+<span class="nc" id="L330">              newSet[l++] = lockRefSet[i];</span>
+            }
+          }
+        }
+      }
+
+<span class="nc bnc" id="L336" title="All 2 branches missed.">      if (l == 1) {</span>
+<span class="nc bnc" id="L337" title="All 4 branches missed.">          assert (newSet != null);</span>
+<span class="nc" id="L338">          return new SingleLockFli(tiLastCheck, newSet[0], checkLevel);</span>
+          
+      } else {
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (newSet != null) {</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">          if (l == newSet.length) { // we just had one stale ref</span>
+<span class="nc" id="L343">            lockRefSet = newSet;</span>
+          } else { // several stales - make a new copy
+<span class="nc bnc" id="L345" title="All 2 branches missed.">            if (l == 0) {</span>
+<span class="nc" id="L346">              return empty;</span>
+            } else {
+<span class="nc" id="L348">              lockRefSet = new int[l];</span>
+<span class="nc" id="L349">              System.arraycopy(newSet, 0, lockRefSet, 0, l);</span>
+            }
+          }
+        }
+<span class="nc" id="L353">        return this;</span>
+      }
+    }
+
+    @Override
+	public String toString() {
+<span class="nc" id="L359">      StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L360">      sb.append(&quot;MultiLockFli {&quot;);</span>
+<span class="nc" id="L361">      sb.append(&quot;checkLevel=&quot;);</span>
+<span class="nc" id="L362">      sb.append(checkLevel);</span>
+<span class="nc" id="L363">      sb.append(&quot;,lset=[&quot;);</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">      if (lockRefSet != null) {</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        for (int i=0; i&lt;lockRefSet.length; i++) {</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">          if (i&gt;0) {</span>
+<span class="nc" id="L367">            sb.append(',');</span>
+          }
+<span class="nc" id="L369">          sb.append(lockRefSet[i]);</span>
+        }
+      }
+<span class="nc" id="L372">      sb.append(&quot;]}&quot;);</span>
+
+<span class="nc" id="L374">      return sb.toString();</span>
+    }
+  }  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

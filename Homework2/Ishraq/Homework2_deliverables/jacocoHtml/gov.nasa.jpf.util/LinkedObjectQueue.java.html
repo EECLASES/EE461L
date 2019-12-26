@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LinkedObjectQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">LinkedObjectQueue.java</span></div><h1>LinkedObjectQueue.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * object queue that uses cached link entries
+ */
+public class LinkedObjectQueue&lt;E&gt; implements ObjectQueue&lt;E&gt; {
+
+<span class="nc" id="L29">  static class Entry {</span>
+    Entry next; // single linked list
+    Object obj;  // referenced object
+  }
+
+  protected Entry last;
+  protected Entry first;
+
+  protected int size;
+  
+  protected int maxCache;
+  protected int nFree;
+  protected Entry free;
+
+<span class="nc" id="L43">  class FIFOIterator implements Iterator&lt;E&gt; {</span>
+<span class="nc" id="L44">    Entry e = first;</span>
+
+    @Override
+	public boolean hasNext() {
+<span class="nc bnc" id="L48" title="All 2 branches missed.">      return e != null;</span>
+    }
+
+    @Override
+	public E next() {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      if (e == null){</span>
+<span class="nc" id="L54">        throw new NoSuchElementException();</span>
+      } else {
+<span class="nc" id="L56">        E obj = (E)e.obj;</span>
+<span class="nc" id="L57">        e = e.next;</span>
+<span class="nc" id="L58">        return obj;</span>
+      }
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L64">      throw new UnsupportedOperationException(&quot;arbitrary remove from queue not supported&quot;);</span>
+    }
+  }
+  
+<span class="nc" id="L68">  public LinkedObjectQueue (){</span>
+<span class="nc" id="L69">    maxCache = 256;</span>
+<span class="nc" id="L70">  }</span>
+  
+<span class="nc" id="L72">  public LinkedObjectQueue (int maxCache){</span>
+<span class="nc" id="L73">    this.maxCache = maxCache;</span>
+<span class="nc" id="L74">  }</span>
+  
+  @Override
+  public int size() {
+<span class="nc" id="L78">    return size;</span>
+  }
+  
+  @Override
+  public boolean add(E obj) {
+    Entry e;
+
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    if (nFree &gt; 0){ // reuse a cached Entry object</span>
+<span class="nc" id="L86">      e = free;</span>
+<span class="nc" id="L87">      free = e.next;</span>
+<span class="nc" id="L88">      nFree--;</span>
+
+    } else {
+<span class="nc" id="L91">      e = new Entry();</span>
+    }
+
+<span class="nc" id="L94">    e.obj = obj;</span>
+<span class="nc" id="L95">    e.next = null;</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (last != null) {</span>
+<span class="nc" id="L98">      last.next = e;</span>
+    } else {
+<span class="nc" id="L100">      first = e;</span>
+    }
+
+<span class="nc" id="L103">    last = e;</span>
+    
+<span class="nc" id="L105">    size++;</span>
+<span class="nc" id="L106">    return true;</span>
+  }
+  
+  @Override
+  public boolean offer( E obj){
+<span class="nc" id="L111">    return add(obj);</span>
+  }
+
+  @Override
+  public boolean isEmpty(){
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    return size &gt; 0;</span>
+  }
+  
+  @Override
+  public E peek (){
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L122">      return null;</span>
+    } else {
+<span class="nc" id="L124">      return (E)first.obj;</span>
+    }
+  }
+  
+  @Override
+  public E poll(){
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L131">      return null;</span>
+      
+    } else {
+<span class="nc" id="L134">      Entry e = first;</span>
+<span class="nc" id="L135">      first = first.next;</span>
+<span class="nc" id="L136">      size--;</span>
+      
+<span class="nc" id="L138">      E obj = (E)e.obj;</span>
+      
+<span class="nc bnc" id="L140" title="All 2 branches missed.">      if (nFree &lt; maxCache){</span>
+<span class="nc" id="L141">        Entry next = e.next;</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        e.next = (nFree++ &gt; 0) ? free : null;</span>
+<span class="nc" id="L143">        e.obj = null;</span>
+<span class="nc" id="L144">        free = e;</span>
+      }
+      
+<span class="nc" id="L147">      return obj;</span>
+    }
+  }
+  
+  @Override
+  public E remove() throws NoSuchElementException {
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L154">      throw new NoSuchElementException();</span>
+    } else {
+<span class="nc" id="L156">      return poll();</span>
+    }
+  }
+  
+  @Override
+  public Iterator&lt;E&gt; iterator(){
+<span class="nc" id="L162">    return new FIFOIterator();</span>
+  }
+  
+  @Override
+  public void process( Processor&lt;E&gt; proc) {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    for (Entry e = first; e != null; ) {</span>
+<span class="nc" id="L168">      proc.process( (E)e.obj);</span>
+
+<span class="nc" id="L170">      e.obj = null; // avoid memory leaks</span>
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">      if (nFree &lt; maxCache){</span>
+        // recycle to save some allocation and a lot of shortliving garbage
+<span class="nc" id="L174">        Entry next = e.next;</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        e.next = (nFree++ &gt; 0) ? free : null;</span>
+<span class="nc" id="L176">        free = e;</span>
+<span class="nc" id="L177">        e = next;</span>
+
+<span class="nc" id="L179">      } else {</span>
+<span class="nc" id="L180">        e = e.next;</span>
+      }
+    }
+<span class="nc" id="L183">    clear();</span>
+<span class="nc" id="L184">  }</span>
+
+  @Override
+  public void clear () {
+<span class="nc" id="L188">    first = null;</span>
+<span class="nc" id="L189">    last = null;</span>
+<span class="nc" id="L190">    size = 0;</span>
+
+    // don't reset nFree and free since we limit the memory size of our cache
+    // and the Entry object do not reference anything
+<span class="nc" id="L194">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

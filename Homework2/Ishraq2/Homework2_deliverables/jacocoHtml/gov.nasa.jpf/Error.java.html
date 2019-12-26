@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Error.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf</a> &gt; <span class="el_source">Error.java</span></div><h1>Error.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf;
+
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.ThreadList;
+
+/**
+ * class used to store property violations (property and path)
+ */
+public class Error {
+
+  int            id;
+  
+  Property       property;
+  private String errorMessage;
+  
+  private Path   path;
+  ThreadList     threadList;
+  
+<span class="fc" id="L36">  public Error (int id, Property prop, Path p, ThreadList l) {</span>
+<span class="fc" id="L37">    this.id = id;</span>
+<span class="fc" id="L38">    property = prop;</span>
+<span class="fc" id="L39">    errorMessage = prop.getErrorMessage();    </span>
+<span class="fc" id="L40">    path = p; // client has to clone in case we go on</span>
+<span class="fc" id="L41">    threadList = l;</span>
+<span class="fc" id="L42">  }</span>
+
+  public int getId() {
+<span class="fc" id="L45">    return id;</span>
+  }
+  
+  public String getDescription () {
+<span class="fc" id="L49">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L50">    sb.append(property.getClass().getName());</span>
+    
+<span class="fc" id="L52">    String s = property.getExplanation();</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">    if (s != null) {</span>
+<span class="nc" id="L54">      sb.append(&quot; (\&quot;&quot;);</span>
+<span class="nc" id="L55">      sb.append(s);</span>
+<span class="nc" id="L56">      sb.append(&quot;\&quot;)&quot;);</span>
+    }
+    
+<span class="fc" id="L59">    return sb.toString();</span>
+  }
+
+  public String getDetails() {
+<span class="fc" id="L63">    return errorMessage;</span>
+  }
+  
+  public Path getPath () {
+<span class="nc" id="L67">    return path;</span>
+  }
+
+  public Property getProperty () {
+<span class="fc" id="L71">    return property;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

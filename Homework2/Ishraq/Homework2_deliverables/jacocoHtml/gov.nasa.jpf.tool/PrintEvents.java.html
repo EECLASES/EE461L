@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrintEvents.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.tool</a> &gt; <span class="el_source">PrintEvents.java</span></div><h1>PrintEvents.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.tool;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFClassLoader;
+import gov.nasa.jpf.util.FileUtils;
+import gov.nasa.jpf.util.JPFSiteUtils;
+import gov.nasa.jpf.util.event.EventTree;
+
+
+/**
+ * very simple tool to print .util.script.EventTrees
+ * 
+ * &lt;2do&gt; this should use native_classpath / JPFClassLoader to load the EventTree
+ */
+<span class="nc" id="L33">public class PrintEvents {</span>
+
+  static boolean printTree;
+  static boolean printPaths;
+  static String clsName;
+  
+  static void showUsage () {
+<span class="nc" id="L40">    System.out.println(&quot;usage:   'PrintEvents [&lt;option&gt;..] &lt;className&gt;'&quot;);</span>
+<span class="nc" id="L41">    System.out.println(&quot;options:  -t  : print tree&quot;);</span>
+<span class="nc" id="L42">    System.out.println(&quot;          -p  : print paths&quot;);</span>
+<span class="nc" id="L43">  }</span>
+
+  static boolean readOptions (String[] args) {
+<span class="nc bnc" id="L46" title="All 2 branches missed.">    for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L47">      String arg = args[i];</span>
+
+<span class="nc bnc" id="L49" title="All 2 branches missed.">      if (&quot;-t&quot;.equals(arg)) {</span>
+<span class="nc" id="L50">        printTree = true;</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">      } else if (&quot;-p&quot;.equals(arg)) {</span>
+<span class="nc" id="L52">        printPaths = true;</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      } else if (arg.charAt(0) != '-') {</span>
+<span class="nc" id="L54">          clsName = arg;</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">          if (clsName.charAt(0) == '.'){</span>
+<span class="nc" id="L56">            clsName = &quot;gov.nasa.jpf&quot; + clsName;</span>
+          }
+      } else {
+<span class="nc" id="L59">        System.err.println(&quot;unknown option: &quot; + arg);</span>
+<span class="nc" id="L60">        showUsage();</span>
+
+<span class="nc" id="L62">        return false;</span>
+      }
+    }
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">    return (clsName != null);</span>
+  }
+
+  static String[] getTestPathElements (Config config){
+<span class="nc" id="L70">    String projectId = JPFSiteUtils.getCurrentProjectId();</span>
+    
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    if (projectId != null) {</span>
+<span class="nc" id="L73">      String testCpKey = projectId + &quot;.test_classpath&quot;;</span>
+<span class="nc" id="L74">      return  config.getCompactTrimmedStringArray(testCpKey);</span>
+      
+    } else {
+<span class="nc" id="L77">      return new String[0];</span>
+    }    
+  }
+  
+  static void addTestClassPath (JPFClassLoader cl, String[] testPathElements){
+<span class="nc bnc" id="L82" title="All 2 branches missed.">    if (testPathElements != null) {</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      for (String pe : testPathElements) {</span>
+        try {
+<span class="nc" id="L85">          cl.addURL(FileUtils.getURL(pe));</span>
+<span class="nc" id="L86">        } catch (Throwable x) {</span>
+<span class="nc" id="L87">          System.err.println(&quot;malformed test_classpath URL: &quot; + pe);</span>
+<span class="nc" id="L88">        }</span>
+      }
+    }
+<span class="nc" id="L91">  }</span>
+  
+  public static void main (String[] args){
+<span class="nc bnc" id="L94" title="All 4 branches missed.">    if ((args.length == 0) || !readOptions(args)) {</span>
+<span class="nc" id="L95">      showUsage();</span>
+    }
+     
+<span class="nc" id="L98">    Config config = new Config(args);</span>
+<span class="nc" id="L99">    String[] testPathElements = getTestPathElements(config);</span>
+<span class="nc" id="L100">    JPFClassLoader cl = config.initClassLoader(RunTest.class.getClassLoader());</span>
+<span class="nc" id="L101">    addTestClassPath( cl, testPathElements);</span>
+
+    try {     
+<span class="nc" id="L104">      Class&lt;EventTree&gt; cls = (Class&lt;EventTree&gt;)cl.loadClass(clsName);</span>
+<span class="nc" id="L105">      EventTree et = cls.newInstance();</span>
+      
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      if (printTree){</span>
+<span class="nc" id="L108">        System.out.println(&quot;---------------- event tree of &quot; + clsName);</span>
+<span class="nc" id="L109">        et.printTree();</span>
+      }
+      
+<span class="nc bnc" id="L112" title="All 2 branches missed.">      if (printPaths){</span>
+<span class="nc" id="L113">        System.out.println(&quot;---------------- event paths of &quot; + clsName);</span>
+<span class="nc" id="L114">        et.printPaths();</span>
+      }
+<span class="nc" id="L116">    } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L117">      System.err.println(&quot;class not found: &quot; + clsName);</span>
+<span class="nc" id="L118">    } catch (NoClassDefFoundError ncdf){</span>
+<span class="nc" id="L119">      System.err.println(&quot;class does not load: &quot; + ncdf.getMessage());      </span>
+<span class="nc" id="L120">    } catch (InstantiationException ex) {</span>
+<span class="nc" id="L121">      System.err.println(&quot;cannot instantiate: &quot; + ex.getMessage());      </span>
+<span class="nc" id="L122">    } catch (IllegalAccessException ex) {</span>
+<span class="nc" id="L123">      System.err.println(&quot;cannot instantiate: &quot; + ex.getMessage());      </span>
+<span class="nc" id="L124">    }</span>
+<span class="nc" id="L125">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

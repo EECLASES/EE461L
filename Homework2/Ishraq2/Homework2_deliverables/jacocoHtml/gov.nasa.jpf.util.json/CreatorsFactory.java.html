@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CreatorsFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">CreatorsFactory.java</span></div><h1>CreatorsFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.MJIEnv;
+
+import java.util.HashMap;
+
+<span class="nc" id="L26">public class CreatorsFactory {</span>
+
+<span class="fc" id="L28">  static private final HashMap&lt;String, Creator&gt; creatorsTable = new HashMap&lt;String, Creator&gt;();</span>
+
+  static {
+<span class="fc" id="L31">    creatorsTable.put(&quot;java.lang.Boolean&quot;, new BoxedBoolCreator());</span>
+<span class="fc" id="L32">    creatorsTable.put(&quot;java.lang.Byte&quot;, new BoxedByteCreator());</span>
+<span class="fc" id="L33">    creatorsTable.put(&quot;java.lang.Short&quot;, new BoxedShortCreator());</span>
+<span class="fc" id="L34">    creatorsTable.put(&quot;java.lang.Integer&quot;, new BoxedIntCreator());</span>
+<span class="fc" id="L35">    creatorsTable.put(&quot;java.lang.Long&quot;, new BoxedLongCreator());</span>
+<span class="fc" id="L36">    creatorsTable.put(&quot;java.lang.Float&quot;, new BoxedFloatCreator());</span>
+<span class="fc" id="L37">    creatorsTable.put(&quot;java.lang.Double&quot;, new BoxedDoubleCreator());</span>
+<span class="fc" id="L38">    creatorsTable.put(&quot;java.lang.String&quot;, new StringCreator());</span>
+<span class="fc" id="L39">  }</span>
+
+  public static Creator getCreator(String typeName) {
+
+<span class="fc" id="L43">    return creatorsTable.get(typeName);</span>
+  }
+}
+
+
+<span class="fc" id="L48">class BoxedBoolCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L51">    Boolean read = value.getBoolean();</span>
+<span class="fc" id="L52">    int boolRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L55">      boolRef = env.newObject(&quot;java.lang.Boolean&quot;);</span>
+<span class="fc" id="L56">      ElementInfo ei = env.getModifiableElementInfo(boolRef);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">      ei.setBooleanField(&quot;value&quot;, (read == true));</span>
+    }
+
+<span class="fc" id="L60">    return boolRef;</span>
+  }
+}
+
+<span class="fc" id="L64">class BoxedByteCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L67">    Double read = value.getDouble();</span>
+<span class="fc" id="L68">    int byteRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L71">      byteRef = env.newObject(&quot;java.lang.Byte&quot;);</span>
+<span class="fc" id="L72">      ElementInfo ei = env.getModifiableElementInfo(byteRef);</span>
+<span class="fc" id="L73">      ei.setByteField(&quot;value&quot;, read.byteValue());</span>
+    }
+
+<span class="fc" id="L76">    return byteRef;</span>
+  }
+}
+
+<span class="fc" id="L80">class BoxedShortCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L83">    Double read = value.getDouble();</span>
+<span class="fc" id="L84">    int shortRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L87">      shortRef = env.newObject(&quot;java.lang.Short&quot;);</span>
+<span class="fc" id="L88">      ElementInfo ei = env.getModifiableElementInfo(shortRef);</span>
+<span class="fc" id="L89">      ei.setShortField(&quot;value&quot;, read.shortValue());</span>
+    }
+
+<span class="fc" id="L92">    return shortRef;</span>
+  }
+}
+
+<span class="fc" id="L96">class BoxedIntCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L99">    Double read = value.getDouble();</span>
+<span class="fc" id="L100">    int intRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L103">      intRef = env.newObject(&quot;java.lang.Integer&quot;);</span>
+<span class="fc" id="L104">      ElementInfo ei = env.getModifiableElementInfo(intRef);</span>
+<span class="fc" id="L105">      ei.setIntField(&quot;value&quot;, read.intValue());</span>
+    }
+
+<span class="fc" id="L108">    return intRef;</span>
+  }
+}
+
+<span class="fc" id="L112">class BoxedLongCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L115">    Double read = value.getDouble();</span>
+<span class="fc" id="L116">    int longRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L119">      longRef = env.newObject(&quot;java.lang.Long&quot;);</span>
+<span class="fc" id="L120">      ElementInfo ei = env.getModifiableElementInfo(longRef);</span>
+<span class="fc" id="L121">      ei.setLongField(&quot;value&quot;, read.longValue());</span>
+    }
+
+<span class="fc" id="L124">    return longRef;</span>
+  }
+}
+
+<span class="fc" id="L128">class BoxedFloatCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L131">    Double read = value.getDouble();</span>
+<span class="fc" id="L132">    int floatRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L135">      floatRef = env.newObject(&quot;java.lang.Float&quot;);</span>
+<span class="fc" id="L136">      ElementInfo ei = env.getModifiableElementInfo(floatRef);</span>
+<span class="fc" id="L137">      ei.setFloatField(&quot;value&quot;, read.floatValue());</span>
+    }
+
+<span class="fc" id="L140">    return floatRef;</span>
+  }
+}
+
+<span class="fc" id="L144">class BoxedDoubleCreator implements Creator {</span>
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L147">    Double read = value.getDouble();</span>
+<span class="fc" id="L148">    int doubleRef = MJIEnv.NULL;</span>
+
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">    if (read != null) {</span>
+<span class="fc" id="L151">      doubleRef = env.newObject(&quot;java.lang.Double&quot;);</span>
+<span class="fc" id="L152">      ElementInfo ei = env.getModifiableElementInfo(doubleRef);</span>
+<span class="fc" id="L153">      ei.setDoubleField(&quot;value&quot;, read.doubleValue());</span>
+    }
+
+<span class="fc" id="L156">    return doubleRef;</span>
+  }
+}
+
+<span class="fc" id="L160">class StringCreator implements Creator {</span>
+
+  @Override
+  public int create(MJIEnv env, String typeName, Value value) {
+<span class="fc" id="L164">    String strVal = value.getString();</span>
+<span class="fc" id="L165">    int stringRef = MJIEnv.NULL;</span>
+
+<span class="fc bfc" id="L167" title="All 2 branches covered.">    if (strVal != null) {</span>
+<span class="fc" id="L168">      stringRef = env.newString(strVal);</span>
+    }
+
+<span class="fc" id="L171">    return stringRef;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

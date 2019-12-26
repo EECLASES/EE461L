@@ -1,0 +1,440 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SplitInputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SplitInputStream.java</span></div><h1>SplitInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.concurrent.locks.ReentrantLock;
+
+/* Note: This class fails after 8 petabytes of data has been read.  This should
+ * never be a problem.  For example, assuming a 10 Ghz clock and 1 cycle to read
+ * 4-bytes from L1 cache, it would take 7.3 years to read that much data.
+ */
+public class SplitInputStream {
+
+  static final int INITIAL_BUFFER_SIZE = 1024; // Recommended to be a power of 2.  If not, it will be rounded up to the next power of 2.
+
+<span class="nc" id="L33">  private final ReentrantLock m_sourceLock = new ReentrantLock();</span>
+<span class="nc" id="L34">  private final ReentrantLock m_dataLock = new ReentrantLock();</span>
+  private final InputStream m_source;      // Protected by m_sourceGate lock
+  private final Stream m_stream[];    // Not protected by a lock
+  private long m_write;       // Must hold m_dataGate lock to read.  Must hold m_dataGate and m_sourceGate to write.
+  private int m_available;   // Must hold m_dataGate lock to read.  Must hold m_dataGate and m_sourceGate to write.
+  private int m_openStreams; // Must hold m_dataGate lock to access.
+  private byte m_buffer[];    // Must hold m_dataGate lock to read.  Must hold m_sourceGate lock to write.  The written data doesn't become available until m_write is updated.
+
+  public SplitInputStream(InputStream source, int streamCount) {
+<span class="nc" id="L43">    this(source, streamCount, INITIAL_BUFFER_SIZE);</span>
+<span class="nc" id="L44">  }</span>
+
+<span class="nc" id="L46">  public SplitInputStream(InputStream source, int streamCount, int initialSize) {</span>
+    int i;
+
+<span class="nc bnc" id="L49" title="All 2 branches missed.">    if (source == null) {</span>
+<span class="nc" id="L50">      throw new NullPointerException(&quot;source == null&quot;);</span>
+    }
+
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    if (streamCount &lt;= 0) {</span>
+<span class="nc" id="L54">      throw new IllegalArgumentException(&quot;streamCount &lt;= 0 : &quot; + streamCount);</span>
+    }
+
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (initialSize &lt;= 0) {</span>
+<span class="nc" id="L58">      throw new IllegalArgumentException(&quot;initialSize &lt;= 0 : &quot; + initialSize);</span>
+    }
+
+<span class="nc" id="L61">    m_source = source;</span>
+<span class="nc" id="L62">    m_openStreams = streamCount;</span>
+<span class="nc" id="L63">    m_stream = new Stream[streamCount];</span>
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    for (i = streamCount; --i &gt;= 0;) {</span>
+<span class="nc" id="L66">      m_stream[i] = new Stream(i);</span>
+    }
+
+<span class="nc" id="L69">    initialSize--;                     // Rounds initialSize up to the next power of 2</span>
+<span class="nc" id="L70">    initialSize |= initialSize &gt;&gt; 1;</span>
+<span class="nc" id="L71">    initialSize |= initialSize &gt;&gt; 2;</span>
+<span class="nc" id="L72">    initialSize |= initialSize &gt;&gt; 4;</span>
+<span class="nc" id="L73">    initialSize |= initialSize &gt;&gt; 8;</span>
+<span class="nc" id="L74">    initialSize |= initialSize &gt;&gt; 16;</span>
+<span class="nc" id="L75">    initialSize++;</span>
+
+<span class="nc" id="L77">    m_buffer = new byte[initialSize];</span>
+<span class="nc" id="L78">  }</span>
+
+  public int getStreamCount() {
+<span class="nc" id="L81">    return (m_stream.length);</span>
+  }
+
+  public InputStream getStream(int index) {
+<span class="nc" id="L85">    return (m_stream[index]);</span>
+  }
+
+  private int read(int index) throws IOException {
+    long position;
+    int offset, result;
+
+<span class="nc" id="L92">    m_dataLock.lock();</span>
+
+    try {
+<span class="nc" id="L95">      position = m_stream[index].getPosition();</span>
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      if (position == m_write) {</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (!fill(index)) {</span>
+<span class="nc" id="L99">          return (-1);</span>
+        }
+
+<span class="nc" id="L102">        position = m_stream[index].getPosition();</span>
+      }
+
+<span class="nc" id="L105">      offset = getBufferOffset(position);</span>
+<span class="nc" id="L106">      result = m_buffer[offset] &amp; 0x0FF;</span>
+
+<span class="nc" id="L108">      m_stream[index].setPosition(position + 1);</span>
+    } finally {
+<span class="nc" id="L110">      m_dataLock.unlock();</span>
+    }
+
+<span class="nc" id="L113">    return (result);</span>
+  }
+
+  private int read(int index, byte buffer[], int offset, int length) throws IOException {
+    long position;
+    int off;
+
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (buffer == null) {</span>
+<span class="nc" id="L121">      throw new NullPointerException(&quot;buffer == null&quot;);</span>
+    }
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (offset &lt; 0) {</span>
+<span class="nc" id="L125">      throw new IndexOutOfBoundsException(&quot;offset &lt; 0 : &quot; + offset);</span>
+    }
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    if (length &lt; 0) {</span>
+<span class="nc" id="L129">      throw new IndexOutOfBoundsException(&quot;length &lt; 0 : &quot; + length);</span>
+    }
+
+<span class="nc bnc" id="L132" title="All 2 branches missed.">    if (offset + length &gt; buffer.length) {</span>
+<span class="nc" id="L133">      throw new IndexOutOfBoundsException(&quot;offset + length &gt; buffer.length : &quot; + offset + &quot; + &quot; + length + &quot; &gt; &quot; + buffer.length);</span>
+    }
+
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    if (length == 0) {</span>
+<span class="nc" id="L137">      return (0);</span>
+    }
+
+<span class="nc" id="L140">    m_dataLock.lock();</span>
+
+    try {
+<span class="nc" id="L143">      position = m_stream[index].getPosition();</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">      if (position == m_write) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (!fill(index)) {</span>
+<span class="nc" id="L147">          return (-1);</span>
+        }
+
+<span class="nc" id="L150">        position = m_stream[index].getPosition();</span>
+      }
+
+<span class="nc" id="L153">      off = getBufferOffset(position);</span>
+<span class="nc" id="L154">      length = (int) Math.min(length, m_write - position);</span>
+<span class="nc" id="L155">      length = Math.min(length, m_buffer.length - off);</span>
+
+<span class="nc" id="L157">      m_stream[index].setPosition(position + length);</span>
+<span class="nc" id="L158">      System.arraycopy(m_buffer, off, buffer, offset, length);</span>
+    } finally {
+<span class="nc" id="L160">      m_dataLock.unlock();</span>
+    }
+
+<span class="nc" id="L163">    return (length);</span>
+  }
+
+  private long skip(int index, long n) throws IOException {
+    long position;
+
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    if (n &lt;= 0) {</span>
+<span class="nc" id="L170">      return (0);</span>
+    }
+
+<span class="nc" id="L173">    m_dataLock.lock();</span>
+
+    try {
+<span class="nc" id="L176">      position = m_stream[index].getPosition();</span>
+
+<span class="nc bnc" id="L178" title="All 2 branches missed.">      if (position == m_write) {</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (!fill(index)) {</span>
+<span class="nc" id="L180">          return (0);</span>
+        }
+
+<span class="nc" id="L183">        position = m_stream[index].getPosition();</span>
+      }
+
+<span class="nc" id="L186">      n = Math.min(n, m_write - position);</span>
+
+<span class="nc" id="L188">      m_stream[index].setPosition(position + n);</span>
+    } finally {
+<span class="nc" id="L190">      m_dataLock.unlock();</span>
+    }
+
+<span class="nc" id="L193">    return (n);</span>
+  }
+
+  private boolean fill(int index) throws IOException {
+    long minPosition, write;
+    int length, offsetPosition, offsetWrite;
+
+    try {
+<span class="nc bnc" id="L201" title="All 2 branches missed.">      if (!doLock(index)) {</span>
+<span class="nc" id="L202">        return (true);</span>
+      }
+
+<span class="nc" id="L205">      minPosition = getMinPosition();</span>
+
+<span class="nc bnc" id="L207" title="All 2 branches missed.">      if (m_write - minPosition + 1 &gt;= m_buffer.length) {</span>
+<span class="nc" id="L208">        expand();</span>
+      }
+
+<span class="nc" id="L211">      write = m_write;               // Capture the data in local variables so the calculations can take place outside m_dataLock.</span>
+<span class="nc" id="L212">      length = m_buffer.length;</span>
+<span class="nc" id="L213">      m_available = m_source.available();</span>
+
+<span class="nc" id="L215">      m_dataLock.unlock();                 // Don't hold m_dataLock while blocked reading.  That way other Streams with data left to read can do so.</span>
+
+<span class="nc" id="L217">      offsetWrite = getBufferOffset(write);</span>
+<span class="nc" id="L218">      offsetPosition = getBufferOffset(minPosition); // If the minPosition advances while not holding the lock, no big deal.  It simply means less data will be read from m_source.</span>
+<span class="nc" id="L219">      length = getReadLength(offsetPosition, offsetWrite, length);</span>
+
+      do {
+<span class="nc" id="L222">        length = m_source.read(m_buffer, offsetWrite, length);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">      } while (length == 0); // Guarantee that at least 1 byte is read or end of file is reached.</span>
+
+<span class="nc bnc" id="L225" title="All 2 branches missed.">      if (length &lt; 0) {</span>
+<span class="nc" id="L226">        return (false);</span>
+      }
+
+<span class="nc" id="L229">      m_dataLock.lock();</span>
+
+<span class="nc" id="L231">      m_write += length;</span>
+<span class="nc" id="L232">      m_available = m_source.available();</span>
+    } finally {
+<span class="nc" id="L234">      m_sourceLock.unlock();</span>
+
+<span class="nc bnc" id="L236" title="All 2 branches missed.">      if (!m_dataLock.isHeldByCurrentThread()) // Restore the lock state when the method was called.</span>
+      {
+<span class="nc" id="L238">        m_dataLock.lock();</span>
+      }
+    }
+
+<span class="nc" id="L242">    return (true);</span>
+  }
+
+  private boolean doLock(int index) {
+    long position;
+
+    /* m_sourceLock must be acquired before m_dataLock.  Otherwise, there will
+     * be a deadlock.  But, if we can tryLock() m_sourceLock while holding 
+     * m_dataLock, this will save CPU time.
+     */
+<span class="nc bnc" id="L252" title="All 2 branches missed.">    if (m_sourceLock.tryLock()) {</span>
+<span class="nc" id="L253">      return (true);</span>
+    }
+
+<span class="nc" id="L256">    m_dataLock.unlock();</span>
+<span class="nc" id="L257">    m_sourceLock.lock();</span>
+<span class="nc" id="L258">    m_dataLock.lock();</span>
+
+<span class="nc" id="L260">    position = m_stream[index].getPosition();</span>
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">    return (position == m_write);    // Does the thread still need to read data?</span>
+  }
+
+  private long getMinPosition() {
+    long result, position;
+    int i;
+
+<span class="nc" id="L269">    result = Long.MAX_VALUE;</span>
+
+<span class="nc bnc" id="L271" title="All 2 branches missed.">    for (i = m_stream.length; --i &gt;= 0;) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">      if (!m_stream[i].isClosed()) {</span>
+<span class="nc" id="L273">        position = m_stream[i].getPosition();</span>
+<span class="nc" id="L274">        result = Math.min(result, position);</span>
+      }
+    }
+
+<span class="nc" id="L278">    return (result);</span>
+  }
+
+  private int getReadLength(int offsetPosition, int offsetWrite, int length) {
+<span class="nc bnc" id="L282" title="All 2 branches missed.">    if (offsetPosition &gt; offsetWrite) {</span>
+<span class="nc" id="L283">      return (offsetPosition - offsetWrite - 1);</span>
+    }
+
+<span class="nc" id="L286">    length -= offsetWrite;</span>
+
+<span class="nc bnc" id="L288" title="All 2 branches missed.">    if (offsetPosition == 0) {</span>
+<span class="nc" id="L289">      length--;</span>
+    }
+
+<span class="nc" id="L292">    return (length);</span>
+  }
+
+  private void expand() {
+    int length;
+    byte buffer[];
+
+<span class="nc" id="L299">    buffer = m_buffer;</span>
+<span class="nc" id="L300">    length = buffer.length;</span>
+<span class="nc" id="L301">    m_buffer = Arrays.copyOf(buffer, 2 * length);</span>
+
+      // Since we are doubling the length of the array, we simply have to duplicate the contents.
+    // This allows us to avoid figuring out which part of m_buffer is actually holding data and dealing with wrapping.
+<span class="nc" id="L305">    System.arraycopy(buffer, 0, m_buffer, length, length);</span>
+<span class="nc" id="L306">  }</span>
+
+  private int available(int index) throws IOException {
+    long result;
+    boolean sourceLock;
+
+<span class="nc" id="L312">    m_dataLock.lock();</span>
+
+<span class="nc" id="L314">    sourceLock = m_sourceLock.tryLock();   // By putting this after locking m_dataLock, the only way tryLock() will fail is if a thread is reading from m_source.</span>
+
+    try {
+<span class="nc bnc" id="L317" title="All 2 branches missed.">      if (sourceLock) {</span>
+<span class="nc" id="L318">        m_available = m_source.available();</span>
+      }
+
+<span class="nc" id="L321">      result = m_available;</span>
+<span class="nc" id="L322">      result += m_write - m_stream[index].getPosition();</span>
+    } finally {
+<span class="nc" id="L324">      m_dataLock.unlock();</span>
+
+<span class="nc bnc" id="L326" title="All 2 branches missed.">      if (sourceLock) {</span>
+<span class="nc" id="L327">        m_sourceLock.unlock();</span>
+      }
+    }
+
+<span class="nc bnc" id="L331" title="All 2 branches missed.">    if (result &gt; Integer.MAX_VALUE) {</span>
+<span class="nc" id="L332">      return (Integer.MAX_VALUE);</span>
+    }
+
+<span class="nc" id="L335">    return ((int) result);</span>
+  }
+
+  private void close() throws IOException {
+    boolean close;
+
+<span class="nc" id="L341">    m_dataLock.lock();</span>
+
+    try {
+<span class="nc" id="L344">      m_openStreams--;</span>
+
+<span class="nc bnc" id="L346" title="All 2 branches missed.">      close = m_openStreams == 0;</span>
+    } finally {
+<span class="nc" id="L348">      m_dataLock.unlock();</span>
+    }
+
+<span class="nc bnc" id="L351" title="All 2 branches missed.">    if (!close) {</span>
+<span class="nc" id="L352">      return;</span>
+    }
+
+<span class="nc" id="L355">    m_sourceLock.lock();</span>
+
+    try {
+<span class="nc" id="L358">      m_source.close();</span>
+    } finally {
+<span class="nc" id="L360">      m_sourceLock.unlock();</span>
+    }
+<span class="nc" id="L362">  }</span>
+
+  private int getBufferOffset(long position) {
+<span class="nc" id="L365">    return ((int) (position &amp; (m_buffer.length - 1)));</span>
+  }
+
+  private class Stream extends InputStream {
+
+    private long m_position;
+    private final int m_index;
+    private boolean m_closed;
+
+<span class="nc" id="L374">    private Stream(int index) {</span>
+<span class="nc" id="L375">      m_index = index;</span>
+<span class="nc" id="L376">    }</span>
+
+    long getPosition() {
+<span class="nc" id="L379">      return (m_position);</span>
+    }
+
+    void setPosition(long position) {
+<span class="nc" id="L383">      m_position = position;</span>
+<span class="nc" id="L384">    }</span>
+
+    synchronized boolean isClosed() {
+<span class="nc" id="L387">      return (m_closed);</span>
+    }
+
+    @Override
+	public int read() throws IOException {
+<span class="nc bnc" id="L392" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L393">        return (-1);</span>
+      }
+
+<span class="nc" id="L396">      return (SplitInputStream.this.read(m_index));</span>
+    }
+
+    @Override
+	public int read(byte buffer[], int offset, int length) throws IOException {
+<span class="nc bnc" id="L401" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L402">        return (-1);</span>
+      }
+
+<span class="nc" id="L405">      return (SplitInputStream.this.read(m_index, buffer, offset, length));</span>
+    }
+
+    @Override
+	public long skip(long n) throws IOException {
+<span class="nc bnc" id="L410" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L411">        return (0);</span>
+      }
+
+<span class="nc" id="L414">      return (SplitInputStream.this.skip(m_index, n));</span>
+    }
+
+    @Override
+	public int available() throws IOException {
+<span class="nc bnc" id="L419" title="All 2 branches missed.">      if (isClosed()) {</span>
+<span class="nc" id="L420">        return (0);</span>
+      }
+
+<span class="nc" id="L423">      return (SplitInputStream.this.available(m_index));</span>
+    }
+
+    @Override
+	public void close() throws IOException {
+<span class="nc" id="L428">      synchronized (this) {</span>
+<span class="nc bnc" id="L429" title="All 2 branches missed.">        if (m_closed) {</span>
+<span class="nc" id="L430">          return;</span>
+        }
+
+<span class="nc" id="L433">        m_closed = true;</span>
+<span class="nc" id="L434">      }</span>
+
+<span class="nc" id="L436">      SplitInputStream.this.close();</span>
+<span class="nc" id="L437">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

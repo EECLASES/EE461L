@@ -1,0 +1,732 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf</a> &gt; <span class="el_source">JPF.java</span></div><h1>JPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf;
+
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.report.PublisherExtension;
+import gov.nasa.jpf.report.Reporter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.search.SearchListener;
+import gov.nasa.jpf.tool.RunJPF;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.LogManager;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.RunRegistry;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.NoOutOfMemoryErrorProperty;
+import gov.nasa.jpf.vm.VMListener;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Logger;
+
+
+/**
+ * main class of the JPF verification framework. This reads the configuration,
+ * instantiates the Search and VM objects, and kicks off the Search
+ */
+public class JPF implements Runnable {
+  
+<span class="fc" id="L46">  public static String VERSION = &quot;8.0&quot;; // the major version number</span>
+
+<span class="fc" id="L48">  static Logger logger     = null; // initially</span>
+
+<span class="fc" id="L50">  public enum Status { NEW, RUNNING, DONE };</span>
+
+<span class="fc" id="L52">  class ConfigListener implements ConfigChangeListener {</span>
+    
+    /**
+     * check for new listeners that are dynamically configured
+     */
+    @Override
+    public void propertyChanged(Config config, String key, String oldValue, String newValue) {
+<span class="fc bfc" id="L59" title="All 2 branches covered.">      if (&quot;listener&quot;.equals(key)) {</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">        if (oldValue == null)</span>
+<span class="fc" id="L61">          oldValue = &quot;&quot;;</span>
+        
+<span class="fc" id="L63">        String[] nv = config.asStringArray(newValue);</span>
+<span class="fc" id="L64">        String[] ov = config.asStringArray(oldValue);</span>
+<span class="fc" id="L65">        String[] newListeners = Misc.getAddedElements(ov, nv);</span>
+<span class="fc" id="L66">        Class&lt;?&gt;[] argTypes = { Config.class, JPF.class };          // Many listeners have 2 parameter constructors</span>
+<span class="fc" id="L67">        Object[] args = {config, JPF.this };</span>
+        
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (newListeners != null) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">          for (String clsName : newListeners) {</span>
+            try {
+<span class="fc" id="L72">              JPFListener newListener = config.getInstance(&quot;listener&quot;, clsName, JPFListener.class, argTypes, args);</span>
+<span class="fc" id="L73">              addListener(newListener);</span>
+<span class="fc" id="L74">              logger.info(&quot;config changed, added listener &quot; + clsName);</span>
+
+<span class="nc" id="L76">            } catch (JPFConfigException cfx) {</span>
+<span class="nc" id="L77">              logger.warning(&quot;listener change failed: &quot; + cfx.getMessage());</span>
+<span class="fc" id="L78">            }</span>
+          }
+        }
+      }
+<span class="fc" id="L82">    }</span>
+    
+    /**
+     * clean up to avoid a sublte but serious memory leak when using the
+     * same config for multiple JPF objects/runs - this listener is an inner
+     * class object that keeps its encapsulating JPF instance alive
+     */
+    @Override
+    public void jpfRunTerminated(Config config){
+<span class="fc" id="L91">      config.removeChangeListener(this);</span>
+<span class="fc" id="L92">    }</span>
+  }
+  
+  /** this is the backbone of all JPF configuration */
+  Config config;
+  
+  /** The search policy used to explore the state space */
+  Search search;
+
+  /** Reference to the virtual machine used by the search */
+  VM vm;
+
+  /** the report generator */
+  Reporter reporter;
+
+<span class="pc" id="L107">  Status status = Status.NEW;</span>
+
+  /** a list of listeners that get automatically added from VM, Search or Reporter initialization */
+  List&lt;VMListener&gt; pendingVMListeners;
+  List&lt;SearchListener&gt; pendingSearchListeners;
+
+  
+  /** we use this as safety margin, to be released upon OutOfMemoryErrors */
+  byte[] memoryReserve;
+  
+  private static Logger initLogging(Config conf) {
+<span class="fc" id="L118">    LogManager.init(conf);</span>
+<span class="fc" id="L119">    return getLogger(&quot;gov.nasa.jpf&quot;);</span>
+  }
+
+  /**
+   * use this one to get a Logger that is initialized via our Config mechanism. Note that
+   * our own Loggers do NOT pass
+   */
+  public static JPFLogger getLogger (String name) {
+<span class="fc" id="L127">    return LogManager.getLogger( name);</span>
+  }
+
+  public static void main(String[] args){
+<span class="nc" id="L131">    int options = RunJPF.getOptions(args);</span>
+
+<span class="nc bnc" id="L133" title="All 4 branches missed.">    if (args.length == 0 || RunJPF.isOptionEnabled( RunJPF.HELP,options)) {</span>
+<span class="nc" id="L134">      RunJPF.showUsage();</span>
+<span class="nc" id="L135">      return;</span>
+    }
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (RunJPF.isOptionEnabled( RunJPF.ADD_PROJECT,options)){</span>
+<span class="nc" id="L138">      RunJPF.addProject(args);</span>
+<span class="nc" id="L139">      return;</span>
+    }
+    
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    if (RunJPF.isOptionEnabled( RunJPF.BUILD_INFO,options)){</span>
+<span class="nc" id="L143">      RunJPF.showBuild(RunJPF.class.getClassLoader());</span>
+    }
+
+<span class="nc bnc" id="L146" title="All 2 branches missed.">    if (RunJPF.isOptionEnabled( RunJPF.LOG,options)){</span>
+<span class="nc" id="L147">      Config.enableLogging(true);</span>
+    }
+
+<span class="nc" id="L150">    Config conf = createConfig(args);</span>
+
+<span class="nc bnc" id="L152" title="All 2 branches missed.">    if (RunJPF.isOptionEnabled( RunJPF.SHOW, options)) {</span>
+<span class="nc" id="L153">      conf.printEntries();</span>
+    }
+
+<span class="nc" id="L156">    start(conf, args);</span>
+<span class="nc" id="L157">  }</span>
+
+  public static void start(Config conf, String[] args){
+    // this is redundant to jpf.report.&lt;publisher&gt;.start=..config..
+    // but nobody can remember this (it's only used to produce complete reports)
+
+<span class="nc bnc" id="L163" title="All 2 branches missed.">    if (logger == null) {</span>
+<span class="nc" id="L164">      logger = initLogging(conf);</span>
+    }
+
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    if (!checkArgs(args)){</span>
+<span class="nc" id="L168">      return;</span>
+    }
+
+<span class="nc" id="L171">    setNativeClassPath(conf); // in case we have to find a shell</span>
+
+    // check if there is a shell class specification, in which case we just delegate
+<span class="nc" id="L174">    JPFShell shell = conf.getInstance(&quot;shell&quot;, JPFShell.class);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (shell != null) {</span>
+<span class="nc" id="L176">      shell.start(args); // responsible for exception handling itself</span>
+
+    } else {
+      // no shell, we start JPF directly
+<span class="nc" id="L180">      LogManager.printStatus(logger);</span>
+<span class="nc" id="L181">      conf.printStatus(logger);</span>
+
+      // this has to be done after we checked&amp;consumed all &quot;-..&quot; arguments
+      // this is NOT about checking properties!
+<span class="nc" id="L185">      checkUnknownArgs(args);</span>
+
+      try {
+<span class="nc" id="L188">        JPF jpf = new JPF(conf);</span>
+<span class="nc" id="L189">        jpf.run();</span>
+
+<span class="nc" id="L191">      } catch (ExitException x) {</span>
+<span class="nc" id="L192">        logger.severe( &quot;JPF terminated&quot;);</span>
+
+        // this is how we get most runtime config exceptions
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        if (x.shouldReport()) {</span>
+<span class="nc" id="L196">          x.printStackTrace();</span>
+        }
+
+        /**
+        Throwable cause = x.getCause();
+        if ((cause != null) &amp;&amp; conf.getBoolean(&quot;pass_exceptions&quot;, false)) {
+          cause.fillInStackTrace();
+          throw cause;
+        }
+        **/
+
+<span class="nc" id="L207">      } catch (JPFException jx) {</span>
+<span class="nc" id="L208">        logger.severe( &quot;JPF exception, terminating: &quot; + jx.getMessage());</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (conf.getBoolean(&quot;jpf.print_exception_stack&quot;)) {</span>
+
+<span class="nc" id="L211">          Throwable cause = jx.getCause();</span>
+<span class="nc bnc" id="L212" title="All 4 branches missed.">          if (cause != null &amp;&amp; cause != jx){</span>
+<span class="nc" id="L213">            cause.printStackTrace();</span>
+          } else {
+<span class="nc" id="L215">            jx.printStackTrace();</span>
+          }
+        }
+        // pass this on, caller has to handle
+<span class="nc" id="L219">        throw jx;</span>
+<span class="nc" id="L220">      }</span>
+    }
+<span class="nc" id="L222">  }</span>
+
+  
+  static void setNativeClassPath(Config config) {
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">    if (!config.hasSetClassLoader()) {</span>
+<span class="fc" id="L227">      config.initClassLoader( JPF.class.getClassLoader());</span>
+    }
+<span class="fc" id="L229">  }</span>
+
+
+<span class="nc" id="L232">  protected JPF (){</span>
+    // just to support unit test mockups
+<span class="nc" id="L234">  }</span>
+
+  /**
+   * create new JPF object. Note this is always guaranteed to return, but the
+   * Search and/or VM object instantiation might have failed (i.e. the JPF
+   * object might not be really usable). If you directly use getSearch() / getVM(),
+   * check for null
+   */
+<span class="fc" id="L242">  public JPF(Config conf) {</span>
+<span class="fc" id="L243">    config = conf;</span>
+
+<span class="fc" id="L245">    setNativeClassPath(config); // before we do anything else</span>
+
+<span class="fc bfc" id="L247" title="All 2 branches covered.">    if (logger == null) { // maybe somebody created a JPF object explicitly</span>
+<span class="fc" id="L248">      logger = initLogging(config);</span>
+    }
+
+<span class="fc" id="L251">    initialize();</span>
+<span class="fc" id="L252">  }</span>
+
+  /**
+   * convenience method if caller doesn't care about Config
+   */
+  public JPF (String ... args) {
+<span class="nc" id="L258">    this( createConfig(args));</span>
+<span class="nc" id="L259">  }</span>
+  
+  private void initialize() {
+<span class="fc" id="L262">    VERSION = config.getString(&quot;jpf.version&quot;, VERSION);</span>
+<span class="fc" id="L263">    memoryReserve = new byte[config.getInt(&quot;jpf.memory_reserve&quot;, 64 * 1024)]; // in bytes</span>
+    
+    try {
+      
+<span class="fc" id="L267">      Class&lt;?&gt;[] vmArgTypes = { JPF.class, Config.class };</span>
+<span class="fc" id="L268">      Object[] vmArgs = { this, config };</span>
+<span class="fc" id="L269">      vm = config.getEssentialInstance(&quot;vm.class&quot;, VM.class, vmArgTypes, vmArgs);</span>
+
+<span class="fc" id="L271">      Class&lt;?&gt;[] searchArgTypes = { Config.class, VM.class };</span>
+<span class="fc" id="L272">      Object[] searchArgs = { config, vm };</span>
+<span class="fc" id="L273">      search = config.getEssentialInstance(&quot;search.class&quot;, Search.class,</span>
+                                                searchArgTypes, searchArgs);
+
+      // although the Reporter will always be notified last, this has to be set
+      // first so that it can register utility listeners like Statistics that
+      // can be used by configured listeners
+<span class="fc" id="L279">      Class&lt;?&gt;[] reporterArgTypes = { Config.class, JPF.class };</span>
+<span class="fc" id="L280">      Object[] reporterArgs = { config, this };</span>
+<span class="fc" id="L281">      reporter = config.getInstance(&quot;report.class&quot;, Reporter.class, reporterArgTypes, reporterArgs);</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L283">        search.setReporter(reporter);</span>
+      }
+      
+<span class="fc" id="L286">      addListeners();</span>
+      
+<span class="fc" id="L288">      config.addChangeListener(new ConfigListener());</span>
+      
+<span class="fc" id="L290">    } catch (JPFConfigException cx) {</span>
+<span class="fc" id="L291">      logger.severe(cx.toString());</span>
+      //cx.getCause().printStackTrace();      
+<span class="fc" id="L293">      throw new ExitException(false, cx);</span>
+<span class="fc" id="L294">    }</span>
+<span class="fc" id="L295">  }  </span>
+
+  
+  public Status getStatus() {
+<span class="nc" id="L299">    return status;</span>
+  }
+  
+  public boolean isRunnable () {
+<span class="pc bpc" id="L303" title="2 of 4 branches missed.">    return ((vm != null) &amp;&amp; (search != null));</span>
+  }
+
+  public void addPropertyListener (PropertyListenerAdapter pl) {
+<span class="nc bnc" id="L307" title="All 2 branches missed.">    if (vm != null) {</span>
+<span class="nc" id="L308">      vm.addListener( pl);</span>
+    }
+<span class="nc bnc" id="L310" title="All 2 branches missed.">    if (search != null) {</span>
+<span class="nc" id="L311">      search.addListener( pl);</span>
+<span class="nc" id="L312">      search.addProperty(pl);</span>
+    }
+<span class="nc" id="L314">  }</span>
+
+  public void addSearchListener (SearchListener l) {
+<span class="nc bnc" id="L317" title="All 2 branches missed.">    if (search != null) {</span>
+<span class="nc" id="L318">      search.addListener(l);</span>
+    }
+<span class="nc" id="L320">  }</span>
+
+  protected void addPendingVMListener (VMListener l){
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">    if (pendingVMListeners == null){</span>
+<span class="fc" id="L324">      pendingVMListeners = new ArrayList&lt;VMListener&gt;();</span>
+    }
+<span class="fc" id="L326">    pendingVMListeners.add(l);</span>
+<span class="fc" id="L327">  }</span>
+  
+  protected void addPendingSearchListener (SearchListener l){
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">    if (pendingSearchListeners == null){</span>
+<span class="fc" id="L331">      pendingSearchListeners = new ArrayList&lt;SearchListener&gt;();</span>
+    }
+<span class="fc" id="L333">    pendingSearchListeners.add(l);</span>
+<span class="fc" id="L334">  }</span>
+  
+  public void addListener (JPFListener l) {    
+    // the VM is instantiated first
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">    if (l instanceof VMListener) {</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">      if (vm != null) {</span>
+<span class="fc" id="L340">        vm.addListener( (VMListener) l);</span>
+        
+      } else { // no VM yet, we are in VM initialization
+<span class="fc" id="L343">        addPendingVMListener((VMListener)l);</span>
+      }
+    }
+    
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">    if (l instanceof SearchListener) {</span>
+<span class="fc bfc" id="L348" title="All 2 branches covered.">      if (search != null) {</span>
+<span class="fc" id="L349">        search.addListener( (SearchListener) l);</span>
+        
+      } else { // no search yet, we are in Search initialization
+<span class="fc" id="L352">        addPendingSearchListener((SearchListener)l);</span>
+      }
+    }
+<span class="fc" id="L355">  }</span>
+
+  public &lt;T&gt; T getListenerOfType( Class&lt;T&gt; type){
+<span class="nc bnc" id="L358" title="All 2 branches missed.">    if (search != null){</span>
+<span class="nc" id="L359">      T listener = search.getNextListenerOfType(type, null);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">      if (listener != null){</span>
+<span class="nc" id="L361">        return listener;</span>
+      }
+    }
+    
+<span class="nc bnc" id="L365" title="All 2 branches missed.">    if (vm != null){</span>
+<span class="nc" id="L366">      T listener = vm.getNextListenerOfType(type, null);</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">      if (listener != null){</span>
+<span class="nc" id="L368">        return listener;</span>
+      }
+    }
+    
+<span class="nc" id="L372">    return null;</span>
+  }
+  
+  public boolean addUniqueTypeListener (JPFListener l) {
+<span class="nc" id="L376">    boolean addedListener = false;</span>
+<span class="nc" id="L377">    Class&lt;?&gt; cls = l.getClass();</span>
+    
+<span class="nc bnc" id="L379" title="All 2 branches missed.">    if (l instanceof VMListener) {</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">      if (vm != null) {</span>
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if (!vm.hasListenerOfType(cls)) {</span>
+<span class="nc" id="L382">          vm.addListener( (VMListener) l);</span>
+<span class="nc" id="L383">          addedListener = true;</span>
+        }
+      }
+    }
+<span class="nc bnc" id="L387" title="All 2 branches missed.">    if (l instanceof SearchListener) {</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">      if (search != null) {</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (!search.hasListenerOfType(cls)) {</span>
+<span class="nc" id="L390">          search.addListener( (SearchListener) l);</span>
+<span class="nc" id="L391">          addedListener = true;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L396">    return addedListener;</span>
+  }
+  
+  
+  public void removeListener (JPFListener l){
+<span class="nc bnc" id="L401" title="All 2 branches missed.">    if (l instanceof VMListener) {</span>
+<span class="nc bnc" id="L402" title="All 2 branches missed.">      if (vm != null) {</span>
+<span class="nc" id="L403">        vm.removeListener( (VMListener) l);</span>
+      }
+    }
+<span class="nc bnc" id="L406" title="All 2 branches missed.">    if (l instanceof SearchListener) {</span>
+<span class="nc bnc" id="L407" title="All 2 branches missed.">      if (search != null) {</span>
+<span class="nc" id="L408">        search.removeListener( (SearchListener) l);</span>
+      }
+    }
+<span class="nc" id="L411">  }</span>
+
+  public void addVMListener (VMListener l) {
+<span class="nc bnc" id="L414" title="All 2 branches missed.">    if (vm != null) {</span>
+<span class="nc" id="L415">      vm.addListener(l);</span>
+    }
+<span class="nc" id="L417">  }</span>
+
+  public void addSearchProperty (Property p) {
+<span class="nc bnc" id="L420" title="All 2 branches missed.">    if (search != null) {</span>
+<span class="nc" id="L421">      search.addProperty(p);</span>
+    }
+<span class="nc" id="L423">  }</span>
+    
+  /**
+   * this is called after vm, search and reporter got instantiated
+   */
+  void addListeners () {
+<span class="fc" id="L429">    Class&lt;?&gt;[] argTypes = { Config.class, JPF.class };</span>
+<span class="fc" id="L430">    Object[] args = { config, this };</span>
+
+    // first listeners that were automatically added from VM, Search and Reporter initialization
+<span class="fc bfc" id="L433" title="All 2 branches covered.">    if (pendingVMListeners != null){</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">      for (VMListener l : pendingVMListeners) {</span>
+<span class="fc" id="L435">       vm.addListener(l);</span>
+<span class="fc" id="L436">      }      </span>
+<span class="fc" id="L437">      pendingVMListeners = null;</span>
+    }
+    
+<span class="fc bfc" id="L440" title="All 2 branches covered.">    if (pendingSearchListeners != null){</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">      for (SearchListener l : pendingSearchListeners) {</span>
+<span class="fc" id="L442">       search.addListener(l);</span>
+<span class="fc" id="L443">      }</span>
+<span class="fc" id="L444">      pendingSearchListeners = null;</span>
+    }
+    
+    // and finally everything that's user configured
+<span class="fc" id="L448">    List&lt;JPFListener&gt; listeners = config.getInstances(&quot;listener&quot;, JPFListener.class, argTypes, args);</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">    if (listeners != null) {</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">      for (JPFListener l : listeners) {</span>
+<span class="fc" id="L451">        addListener(l);</span>
+<span class="fc" id="L452">      }</span>
+    }
+<span class="fc" id="L454">  }</span>
+
+  public Reporter getReporter () {
+<span class="fc" id="L457">    return reporter;</span>
+  }
+
+  public &lt;T extends Publisher&gt; boolean addPublisherExtension (Class&lt;T&gt; pCls, PublisherExtension e) {
+<span class="pc bpc" id="L461" title="1 of 2 branches missed.">    if (reporter != null) {</span>
+<span class="fc" id="L462">      return reporter.addPublisherExtension(pCls, e);</span>
+    }
+<span class="nc" id="L464">    return false;</span>
+  }
+
+  public &lt;T extends Publisher&gt; void setPublisherItems (Class&lt;T&gt; pCls,
+                                                        int category, String[] topics) {
+<span class="nc bnc" id="L469" title="All 2 branches missed.">    if (reporter != null) {</span>
+<span class="nc" id="L470">      reporter.setPublisherItems(pCls, category, topics);</span>
+    }
+<span class="nc" id="L472">  }</span>
+
+
+  public Config getConfig() {
+<span class="nc" id="L476">    return config;</span>
+  }
+
+  /**
+   * return the search object. This can be null if the initialization has failed
+   */
+  public Search getSearch() {
+<span class="fc" id="L483">    return search;</span>
+  }
+
+  /**
+   * return the VM object. This can be null if the initialization has failed
+   */
+  public VM getVM() {
+<span class="fc" id="L490">    return vm;</span>
+  }
+
+  public static void exit() {
+    // Hmm, exception as non local return. But we might be called from a
+    // context we don't want to kill
+<span class="nc" id="L496">    throw new ExitException();</span>
+  }
+
+  public boolean foundErrors() {
+<span class="nc bnc" id="L500" title="All 2 branches missed.">    return !(search.getErrors().isEmpty());</span>
+  }
+
+  /**
+   * this assumes that we have checked and 'consumed' (nullified) all known
+   * options, so we just have to check for any '-' option prior to the
+   * target class name
+   */
+  static void checkUnknownArgs (String[] args) {
+<span class="nc bnc" id="L509" title="All 2 branches missed.">    for ( int i=0; i&lt;args.length; i++) {</span>
+<span class="nc bnc" id="L510" title="All 2 branches missed.">      if (args[i] != null) {</span>
+<span class="nc bnc" id="L511" title="All 2 branches missed.">        if (args[i].charAt(0) == '-') {</span>
+<span class="nc" id="L512">          logger.warning(&quot;unknown command line option: &quot; + args[i]);</span>
+        }
+        else {
+          // this is supposed to be the target class name - everything that follows
+          // is supposed to be processed by the program under test
+          break;
+        }
+      }
+    }
+<span class="nc" id="L521">  }</span>
+
+  public static void printBanner (Config config) {
+<span class="nc" id="L524">    System.out.println(&quot;Java Pathfinder core system v&quot; +</span>
+<span class="nc" id="L525">                  config.getString(&quot;jpf.version&quot;, VERSION) +</span>
+                  &quot; - (C) 2005-2014 United States Government. All rights reserved.&quot;);
+<span class="nc" id="L527">  }</span>
+
+
+  /**
+   * find the value of an arg that is either specific as
+   * &quot;-key=value&quot; or as &quot;-key value&quot;. If not found, the supplied
+   * defValue is returned
+   */
+  static String getArg(String[] args, String pattern, String defValue, boolean consume) {
+<span class="nc" id="L536">    String s = defValue;</span>
+
+<span class="nc bnc" id="L538" title="All 2 branches missed.">    if (args != null){</span>
+<span class="nc bnc" id="L539" title="All 2 branches missed.">      for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L540">        String arg = args[i];</span>
+
+<span class="nc bnc" id="L542" title="All 2 branches missed.">        if (arg != null) {</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">          if (arg.matches(pattern)) {</span>
+<span class="nc" id="L544">            int idx=arg.indexOf('=');</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">            if (idx &gt; 0) {</span>
+<span class="nc" id="L546">              s = arg.substring(idx+1);</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">              if (consume) {</span>
+<span class="nc" id="L548">                args[i]=null;</span>
+              }
+<span class="nc bnc" id="L550" title="All 2 branches missed.">            } else if (i &lt; args.length-1) {</span>
+<span class="nc" id="L551">              s = args[i+1];</span>
+<span class="nc bnc" id="L552" title="All 2 branches missed.">              if (consume) {</span>
+<span class="nc" id="L553">                args[i] = null;</span>
+<span class="nc" id="L554">                args[i+1] = null;</span>
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    
+<span class="nc" id="L563">    return s;</span>
+  }
+
+  /**
+   * what property file to look for
+   */
+  static String getConfigFileName (String[] args) {
+<span class="nc bnc" id="L570" title="All 2 branches missed.">    if (args.length &gt; 0) {</span>
+      // check if the last arg is a mode property file
+      // if yes, it has to include a 'target' spec
+<span class="nc" id="L573">      int idx = args.length-1;</span>
+<span class="nc" id="L574">      String lastArg = args[idx];</span>
+<span class="nc bnc" id="L575" title="All 4 branches missed.">      if (lastArg.endsWith(&quot;.jpf&quot;) || lastArg.endsWith(&quot;.properties&quot;)) {</span>
+<span class="nc bnc" id="L576" title="All 2 branches missed.">        if (lastArg.startsWith(&quot;-c&quot;)) {</span>
+<span class="nc" id="L577">          int i = lastArg.indexOf('=');</span>
+<span class="nc bnc" id="L578" title="All 2 branches missed.">          if (i &gt; 0) {</span>
+<span class="nc" id="L579">            lastArg = lastArg.substring(i+1);</span>
+          }
+        }
+<span class="nc" id="L582">        args[idx] = null;</span>
+<span class="nc" id="L583">        return lastArg;</span>
+      }
+    }
+    
+<span class="nc" id="L587">    return getArg(args, &quot;-c(onfig)?(=.+)?&quot;, &quot;jpf.properties&quot;, true);</span>
+  }
+
+  /**
+   * return a Config object that holds the JPF options. This first
+   * loads the properties from a (potentially configured) properties file, and
+   * then overlays all command line arguments that are key/value pairs
+   */
+  public static Config createConfig (String[] args) {
+<span class="nc" id="L596">    return new Config(args);</span>
+  }
+  
+  /**
+   * runs the verification.
+   */
+  @Override
+  public void run() {
+<span class="fc" id="L604">    Runtime rt = Runtime.getRuntime();</span>
+
+    // this might be executed consecutively, so notify everybody
+<span class="fc" id="L607">    RunRegistry.getDefaultRegistry().reset();</span>
+
+<span class="pc bpc" id="L609" title="1 of 2 branches missed.">    if (isRunnable()) {</span>
+      try {
+<span class="pc bpc" id="L611" title="1 of 2 branches missed.">        if (vm.initialize()) {</span>
+<span class="fc" id="L612">          status = Status.RUNNING;</span>
+<span class="fc" id="L613">          search.search();</span>
+        }
+<span class="fc" id="L615">      } catch (OutOfMemoryError oom) {</span>
+        
+        // try to get memory back before we do anything that makes it worse
+        // (note that we even try to avoid calls here, we are on thin ice)
+
+        // NOTE - we don't try to recover at this point (that is what we do
+        // if we fall below search.min_free within search()), we only want to
+        // terminate gracefully (incl. report)
+
+<span class="fc" id="L624">        memoryReserve = null; // release something</span>
+<span class="fc" id="L625">        long m0 = rt.freeMemory();</span>
+<span class="fc" id="L626">        long d = 10000;</span>
+        
+        // see if we can reclaim some memory before logging or printing statistics
+<span class="pc bpc" id="L629" title="1 of 2 branches missed.">        for (int i=0; i&lt;10; i++) {</span>
+<span class="fc" id="L630">          rt.gc();</span>
+<span class="fc" id="L631">          long m1 = rt.freeMemory();</span>
+<span class="pc bpc" id="L632" title="1 of 4 branches missed.">          if ((m1 &lt;= m0) || ((m1 - m0) &lt; d)) {</span>
+<span class="nc" id="L633">            break;</span>
+          }
+<span class="fc" id="L635">          m0 = m1;</span>
+        }
+        
+<span class="fc" id="L638">        logger.severe(&quot;JPF out of memory&quot;);</span>
+
+        // that's questionable, but we might want to see statistics / coverage
+        // to know how far we got. We don't inform any other listeners though
+        // if it throws an exception we bail - we can't handle it w/o memory
+        try {
+<span class="fc" id="L644">          search.notifySearchConstraintHit(&quot;JPF out of memory&quot;);</span>
+<span class="fc" id="L645">          search.error(new NoOutOfMemoryErrorProperty());            // JUnit tests will succeed if OOM isn't flagged.</span>
+<span class="fc" id="L646">          reporter.searchFinished(search);</span>
+<span class="nc" id="L647">        } catch (Throwable t){</span>
+<span class="nc" id="L648">          throw new JPFListenerException(&quot;exception during out-of-memory termination&quot;, t);</span>
+<span class="fc" id="L649">        }</span>
+        
+      // NOTE - this is not an exception firewall anymore
+
+      } finally {
+<span class="fc" id="L654">        status = Status.DONE;</span>
+
+<span class="fc" id="L656">        config.jpfRunTerminated();</span>
+<span class="fc" id="L657">        cleanUp();        </span>
+      }
+    }
+<span class="fc" id="L660">  }</span>
+  
+  protected void cleanUp(){
+<span class="fc" id="L663">    search.cleanUp();</span>
+<span class="fc" id="L664">    vm.cleanUp();</span>
+<span class="fc" id="L665">    reporter.cleanUp();</span>
+<span class="fc" id="L666">  }</span>
+  
+  public List&lt;Error&gt; getSearchErrors () {
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">    if (search != null) {</span>
+<span class="fc" id="L670">      return search.getErrors();</span>
+    }
+
+<span class="nc" id="L673">    return null;</span>
+  }
+
+  public Error getLastError () {
+<span class="pc bpc" id="L677" title="1 of 2 branches missed.">    if (search != null) {</span>
+<span class="fc" id="L678">      return search.getLastError();</span>
+    }
+
+<span class="nc" id="L681">    return null;</span>
+  }
+  
+  
+  // some minimal sanity checks
+  static boolean checkArgs (String[] args){
+<span class="nc" id="L687">    String lastArg = args[args.length-1];</span>
+<span class="nc bnc" id="L688" title="All 4 branches missed.">    if (lastArg != null &amp;&amp; lastArg.endsWith(&quot;.jpf&quot;)){</span>
+<span class="nc bnc" id="L689" title="All 2 branches missed.">      if (!new File(lastArg).isFile()){</span>
+<span class="nc" id="L690">        logger.severe(&quot;application property file not found: &quot; + lastArg);</span>
+<span class="nc" id="L691">        return false;</span>
+      }
+    }
+
+<span class="nc" id="L695">    return true;</span>
+  }
+
+  public static void handleException(JPFException e) {
+<span class="nc" id="L699">    logger.severe(e.getMessage());</span>
+<span class="nc" id="L700">    exit();</span>
+<span class="nc" id="L701">  }</span>
+
+  /**
+   * private helper class for local termination of JPF (without killing the
+   * whole Java process via System.exit).
+   * While this is basically a bad non-local goto exception, it seems to be the
+   * least of evils given the current JPF structure, and the need to terminate
+   * w/o exiting the whole Java process. If we just do a System.exit(), we couldn't
+   * use JPF in an embedded context
+   */
+  @SuppressWarnings(&quot;serial&quot;)
+  public static class ExitException extends RuntimeException {
+<span class="pc" id="L713">    boolean report = true;</span>
+    
+<span class="nc" id="L715">    ExitException() {}</span>
+    
+    ExitException (boolean report, Throwable cause){
+<span class="fc" id="L718">      super(cause);</span>
+      
+<span class="fc" id="L720">      this.report = report;</span>
+<span class="fc" id="L721">    }</span>
+    
+    ExitException(String msg) {
+<span class="nc" id="L724">      super(msg);</span>
+<span class="nc" id="L725">    }</span>
+    
+    public boolean shouldReport() {
+<span class="nc" id="L728">      return report;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

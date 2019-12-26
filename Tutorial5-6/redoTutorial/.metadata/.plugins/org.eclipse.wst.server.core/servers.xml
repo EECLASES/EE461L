@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<servers>
+  <server auto-publish-setting="2" auto-publish-time="0" hostname="localhost" id="App Engine Standard at localhost" name="App Engine Standard at localhost" runtime-id="App Engine Standard Runtime" server-type="com.google.cloud.tools.eclipse.appengine.standard.server" server-type-id="com.google.cloud.tools.eclipse.appengine.standard.server" start-timeout="240" stop-timeout="240" timestamp="0">
+    <list key="app-engine-server-modules-list" value0="org.eclipse.jst.jee.server:Guestbook"/>
+    <list key="modules" value0="Guestbook::org.eclipse.jst.jee.server:Guestbook::jst.web::3.1"/>
+  </server>
+  <server appEngineDevServerPort="8088" auto-publish-setting="2" auto-publish-time="0" hostname="localhost" id="8088" name="8088" runtime-id="App Engine Standard Runtime" server-type="com.google.cloud.tools.eclipse.appengine.standard.server" server-type-id="com.google.cloud.tools.eclipse.appengine.standard.server" start-timeout="240" stop-timeout="240" timestamp="1">
+    <list key="app-engine-server-modules-list" value0="org.eclipse.jst.jee.server:Guestbook"/>
+    <list key="modules" value0="Guestbook::org.eclipse.jst.jee.server:Guestbook::jst.web::3.1"/>
+  </server>
+</servers>

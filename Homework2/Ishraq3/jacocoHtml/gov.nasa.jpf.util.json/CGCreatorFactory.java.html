@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CGCreatorFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">CGCreatorFactory.java</span></div><h1>CGCreatorFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.vm.BooleanChoiceGenerator;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.choice.DoubleChoiceFromList;
+import gov.nasa.jpf.vm.choice.DoubleThresholdGenerator;
+import gov.nasa.jpf.vm.choice.IntChoiceFromSet;
+import gov.nasa.jpf.vm.choice.IntIntervalGenerator;
+import gov.nasa.jpf.vm.choice.RandomIntIntervalGenerator;
+
+import java.lang.reflect.Constructor;
+import java.util.HashMap;
+
+/**
+ * Singleton factory for creating CGCreators.
+ * @author Ivan Mushketik
+ */
+public class CGCreatorFactory {
+
+  private static CGCreatorFactory factory;
+
+<span class="fc" id="L43">  ClassLoader loader = CGCreatorFactory.class.getClassLoader();</span>
+
+  // Hash where key is a name that user can use in JSON document to set a
+  // ChoiceGenerator and value is creator of ChoiceGenerator that uses Values[]
+  // from JSON to creat CG
+<span class="fc" id="L48">  private HashMap&lt;String, CGCreator&gt; cgTable = new HashMap&lt;String, CGCreator&gt;() {{</span>
+<span class="fc" id="L49">    put(&quot;TrueFalse&quot;, new BoolCGCreator());</span>
+<span class="fc" id="L50">    put(&quot;IntSet&quot;, new IntFromSetCGCreator());</span>
+<span class="fc" id="L51">    put(&quot;IntInterval&quot;, new IntIntervalCGCreator());</span>
+<span class="fc" id="L52">    put(&quot;DoubleSet&quot;, new DoubleFromSetCGCreator());</span>
+<span class="fc" id="L53">    put(&quot;DoubleThreshold&quot;, new DoubleThresholdGeneratorCGCreator());</span>
+<span class="fc" id="L54">    put(&quot;RandomIntInerval&quot;, new RandomIntIntervalGeneratorCGCreator());</span>
+<span class="fc" id="L55">  }};</span>
+
+<span class="fc" id="L57">  private CGCreatorFactory() {</span>
+<span class="fc" id="L58">    Config config = VM.getVM().getConfig();</span>
+<span class="fc" id="L59">    String[] cgCreators = config.getStringArray(&quot;cg-creators&quot;);</span>
+
+    // If user specified names for additional CG creators, lets add them
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    if (cgCreators != null) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">      for (String creator : cgCreators) {</span>
+<span class="fc" id="L64">        String[] nameClassPair = creator.split(&quot;:&quot;);</span>
+<span class="fc" id="L65">        String cgName = nameClassPair[0];</span>
+<span class="fc" id="L66">        String cgCreatorClassName = nameClassPair[1];</span>
+
+<span class="fc" id="L68">        CGCreator cgCreator = createCGCreator(cgCreatorClassName);</span>
+
+<span class="fc" id="L70">        addCGCreator(cgName, cgCreator);</span>
+      }
+    }
+<span class="fc" id="L73">  }</span>
+
+  public static CGCreatorFactory getFactory() {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">    if (factory == null) {</span>
+<span class="fc" id="L77">      factory = new CGCreatorFactory();</span>
+    }
+
+<span class="fc" id="L80">    return factory;</span>
+  }
+
+  public CGCreator getCGCreator(String key) {
+<span class="fc" id="L84">    return cgTable.get(key);</span>
+  }
+
+  public void addCGCreator(String cgName, CGCreator cgCreator) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    if (cgTable.containsKey(cgName)) {</span>
+<span class="nc" id="L89">      throw new JPFException(&quot;CGCreator with name '&quot; + cgName + &quot;' already exists&quot;);</span>
+    }
+
+<span class="fc" id="L92">    cgTable.put(cgName, cgCreator);</span>
+<span class="fc" id="L93">  }</span>
+
+  private CGCreator createCGCreator(String cgCreatorClassName) {
+    try {
+<span class="fc" id="L97">      Class cgCreatorClass = loader.loadClass(cgCreatorClassName);</span>
+      // We search for a constructor with no parameters
+<span class="fc" id="L99">      Constructor ctor = cgCreatorClass.getDeclaredConstructor();</span>
+<span class="fc" id="L100">      ctor.setAccessible(true);</span>
+<span class="fc" id="L101">      return (CGCreator) ctor.newInstance();</span>
+<span class="nc" id="L102">    } catch (Exception ex) {</span>
+<span class="nc" id="L103">      throw new JPFException(ex);</span>
+    }
+
+  }
+}
+
+/**
+ * CGCreator that creates instance of BooleanChoiceGenerator
+ */
+<span class="fc" id="L112">class BoolCGCreator implements CGCreator {</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="fc" id="L116">    return new BooleanChoiceGenerator(id);</span>
+  }
+}
+
+
+/**
+ * CGCreator that creates IntChoiceFromSet CG 
+ */
+<span class="fc" id="L124">class IntFromSetCGCreator implements CGCreator {</span>
+
+  // &lt;2do&gt; add support from ctor with no params
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="fc" id="L129">    int[] intSet = new int[params.length];</span>
+
+<span class="fc bfc" id="L131" title="All 2 branches covered.">    for (int i = 0; i &lt; intSet.length; i++) {</span>
+<span class="fc" id="L132">      intSet[i] = params[i].getDouble().intValue();</span>
+    }
+
+<span class="fc" id="L135">    return new IntChoiceFromSet(id, intSet);</span>
+  }
+}
+
+<span class="fc" id="L139">class IntIntervalCGCreator implements CGCreator {</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="fc" id="L143">    int min = params[0].getDouble().intValue();</span>
+<span class="fc" id="L144">    int max = params[1].getDouble().intValue();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">    if (params.length == 2) {</span>
+<span class="fc" id="L146">      return new IntIntervalGenerator(id, min, max);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    } else if (params.length == 3) {</span>
+<span class="nc" id="L148">      int delta = params[2].getDouble().intValue();</span>
+<span class="nc" id="L149">      return new IntIntervalGenerator(id, min, max, delta);</span>
+    }
+
+<span class="nc" id="L152">    throw new JPFException(&quot;Can't create IntIntevalChoiceGenerator with id &quot; + id);</span>
+  }
+}
+
+<span class="fc" id="L156">class DoubleFromSetCGCreator implements CGCreator {</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="fc" id="L160">    double[] doubleSet = new double[params.length];</span>
+
+<span class="fc bfc" id="L162" title="All 2 branches covered.">    for (int i = 0; i &lt; doubleSet.length; i++) {</span>
+<span class="fc" id="L163">      doubleSet[i] = params[i].getDouble().doubleValue();</span>
+    }
+
+<span class="fc" id="L166">    return new DoubleChoiceFromList(id, doubleSet);</span>
+  }
+
+}
+
+<span class="fc" id="L171">class DoubleThresholdGeneratorCGCreator implements CGCreator {</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (params.length != 0) {</span>
+<span class="nc" id="L176">      throw new JPFException(&quot;Double threshold generator requires empty parameters list&quot;);</span>
+    }
+<span class="nc" id="L178">    Config config = VM.getVM().getConfig();</span>
+<span class="nc" id="L179">    return new DoubleThresholdGenerator(config, id);</span>
+  }
+
+}
+
+<span class="fc" id="L184">class RandomIntIntervalGeneratorCGCreator implements CGCreator {</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createCG(String id, Value[] params) {
+<span class="nc" id="L188">    int min = params[0].getDouble().intValue();</span>
+<span class="nc" id="L189">    int max = params[1].getDouble().intValue();</span>
+<span class="nc" id="L190">    int nChoices = params[2].getDouble().intValue();</span>
+
+<span class="nc bnc" id="L192" title="All 2 branches missed.">    if (params.length == 3) {</span>
+<span class="nc" id="L193">      return new RandomIntIntervalGenerator(id, min, max, nChoices);</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">    } else if (params.length == 4) {</span>
+<span class="nc" id="L195">      long seed = params[3].getDouble().longValue();</span>
+
+<span class="nc" id="L197">      return new RandomIntIntervalGenerator(id, min, max, nChoices, seed);</span>
+    }
+
+<span class="nc" id="L200">    throw new JPFException(&quot;Unexpected length of parameters list &quot; + params.length);</span>
+  }
+  
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MutableInteger.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">MutableInteger.java</span></div><h1>MutableInteger.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+/**
+ * an object that holds a mutable int. Unfortunately, java.lang.Integer is
+ * final, but we can at least be a Number
+ */
+public class MutableInteger extends Number {
+
+  private int value;
+  
+<span class="nc" id="L28">  public MutableInteger (int val){</span>
+<span class="nc" id="L29">    value = val;</span>
+<span class="nc" id="L30">  }</span>
+  
+  public void set (int val){
+<span class="nc" id="L33">    value = val;</span>
+<span class="nc" id="L34">  }</span>
+  
+  //--- arithmetic operations
+  public MutableInteger inc() {
+<span class="nc" id="L38">    value++;</span>
+<span class="nc" id="L39">    return this;</span>
+  }
+  
+  public MutableInteger dec() {
+<span class="nc" id="L43">    value--;</span>
+<span class="nc" id="L44">    return this;</span>
+  }
+  
+  public MutableInteger add (int n){
+<span class="nc" id="L48">    value += n;</span>
+<span class="nc" id="L49">    return this;</span>
+  }
+  
+  public MutableInteger subtract (int n){
+<span class="nc" id="L53">    value -= n;</span>
+<span class="nc" id="L54">    return this;</span>
+  }
+  
+  public MutableInteger multiply (int n){
+<span class="nc" id="L58">    value *= n;</span>
+<span class="nc" id="L59">    return this;</span>
+  }
+  
+  public MutableInteger divide (int n){
+<span class="nc" id="L63">    value /= n;</span>
+<span class="nc" id="L64">    return this;</span>
+  }
+  
+  //-- Hmm, we probably want to round correctly for these
+  public MutableInteger add (Number n){
+<span class="nc" id="L69">    value += n.intValue();</span>
+<span class="nc" id="L70">    return this;</span>
+  }
+  
+  public MutableInteger subtract (Number n){
+<span class="nc" id="L74">    value -= n.intValue();</span>
+<span class="nc" id="L75">    return this;</span>
+  }
+  
+  public MutableInteger multiply (Number n){
+<span class="nc" id="L79">    value *= n.intValue();</span>
+<span class="nc" id="L80">    return this;</span>
+  }
+  
+  public MutableInteger divide (Number n){
+<span class="nc" id="L84">    value /= n.intValue();</span>
+<span class="nc" id="L85">    return this;</span>
+  }
+  
+  //--- value accessors
+  
+  @Override
+  public double doubleValue() {
+<span class="nc" id="L92">    return value;</span>
+  }
+
+  @Override
+  public float floatValue() {
+<span class="nc" id="L97">    return value;</span>
+  }
+
+  @Override
+  public int intValue() {
+<span class="nc" id="L102">    return value;</span>
+  }
+
+  @Override
+  public long longValue() {
+<span class="nc" id="L107">    return value;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

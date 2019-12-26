@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NoStateCycles.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">NoStateCycles.java</span></div><h1>NoStateCycles.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.SystemState;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+
+
+/**
+ * If there is a cycle in the states of the program, JPF doesn't execute the
+ * already visited states.  A cycle in the states may represent the ability for
+ * the program to hang.  This property finds and outputs cycles in the states
+ * so that they may be investigated.
+ *
+ * The following might need to be added to listener property...
+ *   gov.nasa.jpf.tools.SimpleIdleFilter
+ *   gov.nasa.jpf.tools.IdleFilter
+ */
+
+public class NoStateCycles extends PropertyListenerAdapter {
+
+<span class="nc" id="L43">  private final HashSet&lt;Integer&gt;   m_inStack = new HashSet&lt;Integer&gt;();</span>
+<span class="nc" id="L44">  private final ArrayList&lt;Integer&gt; m_stack   = new ArrayList&lt;Integer&gt;();</span>
+
+<span class="nc" id="L46">  private int m_cycleFound = -1;</span>
+<span class="nc" id="L47">  private int m_stackPos   = -1;</span>
+
+<span class="nc" id="L49">  public NoStateCycles(Config config) {</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">    if (!config.getString(&quot;search.class&quot;).equals(&quot;gov.nasa.jpf.search.DFSearch&quot;))</span>
+<span class="nc" id="L51">      config.throwException(&quot;search.class must be gov.nasa.jpf.search.DFSearch&quot;);   // Or any class which does a depth first search.</span>
+<span class="nc" id="L52">  }</span>
+
+  @Override
+   public void stateAdvanced(Search search) {
+     SystemState state;
+     Integer id;
+
+<span class="nc" id="L59">     state = search.getVM().getSystemState();</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">     if (state.isInitState())</span>
+<span class="nc" id="L61">       return;</span>
+
+<span class="nc" id="L63">     id = state.getId();</span>
+
+<span class="nc bnc" id="L65" title="All 4 branches missed.">     if ((m_stackPos &lt; 0) &amp;&amp; (m_inStack.contains(id))) {</span>
+<span class="nc" id="L66">       m_cycleFound = id;</span>
+
+<span class="nc bnc" id="L68" title="All 2 branches missed.">       for (m_stackPos = m_stack.size() - 1; m_stackPos &gt;= 0; m_stackPos--)</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">         if (m_stack.get(m_stackPos).equals(id))</span>
+<span class="nc" id="L70">           break;</span>
+     }
+
+<span class="nc" id="L73">     m_stack.add(id);</span>
+<span class="nc" id="L74">     m_inStack.add(id);</span>
+<span class="nc" id="L75">   }</span>
+
+  @Override
+   public void stateBacktracked(Search search) {
+     Integer id;
+     int pos;
+
+<span class="nc" id="L82">     pos = m_stack.size() - 1;</span>
+<span class="nc" id="L83">     id  = m_stack.remove(pos);</span>
+<span class="nc" id="L84">     m_inStack.remove(id);</span>
+
+<span class="nc bnc" id="L86" title="All 2 branches missed.">     if (m_stackPos &gt;= pos)</span>
+<span class="nc" id="L87">       m_stackPos = -1;</span>
+<span class="nc" id="L88">   }</span>
+
+  @Override
+   public boolean check(Search search, VM vm) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">     return(m_cycleFound &lt; 0);</span>
+   }
+
+   @Override
+   public void reset () {
+<span class="nc" id="L97">     m_cycleFound = -1;</span>
+<span class="nc" id="L98">   }</span>
+
+   @Override
+  public String getErrorMessage () {
+     StringBuilder result;
+     int i, id;
+
+<span class="nc" id="L105">     result = new StringBuilder();</span>
+<span class="nc" id="L106">     result.append(&quot;States:\n&quot;);</span>
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">     for (i = m_stack.size() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L109">       id = m_stack.get(i);</span>
+
+<span class="nc" id="L111">       result.append(&quot;  &quot;);</span>
+<span class="nc" id="L112">       result.append(id);</span>
+<span class="nc" id="L113">       result.append('\n');</span>
+
+<span class="nc bnc" id="L115" title="All 2 branches missed.">       if (id == m_cycleFound)</span>
+<span class="nc" id="L116">         break;</span>
+     }
+
+<span class="nc" id="L119">     return(result.toString());</span>
+   }
+
+   @Override
+  public String getExplanation () {
+<span class="nc" id="L124">     return(&quot;Finds cycles in states.  A cycle suggests that the program might be able to hang.&quot;);</span>
+   }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

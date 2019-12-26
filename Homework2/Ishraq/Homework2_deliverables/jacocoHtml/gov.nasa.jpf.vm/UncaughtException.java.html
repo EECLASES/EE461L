@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UncaughtException.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">UncaughtException.java</span></div><h1>UncaughtException.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.Printable;
+
+import java.io.PrintWriter;
+
+
+/**
+ * represents the case of an unhandled exception detected by JPF
+ *
+ * This is a &quot;controlflow exception&quot;, but I finally made my peace with it since
+ * UncaughtExceptions can be thrown from various places, including the VM (&lt;clinit&gt;, finalizer)
+ * and we can't rely on that all these locations can check for pc == null. Even if they would,
+ * at this point there is nothing to do anymore, get to the NoUncaughtProperty reporting
+ * as quickly as possible, since chances are we would be even obfuscating the problem
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class UncaughtException extends RuntimeException implements Printable {
+
+  ThreadInfo thread;
+  int xObjRef;          // the exception object reference (that went uncaught)
+
+  String     xClsName;
+  String     details;
+
+  //ArrayList  stackTrace; // unused -pcd
+
+<span class="fc" id="L45">  public UncaughtException (ThreadInfo ti, int objRef) {</span>
+<span class="fc" id="L46">    thread = ti;</span>
+<span class="fc" id="L47">    xObjRef = objRef;</span>
+    
+<span class="fc" id="L49">    ElementInfo ei = ti.getElementInfo(xObjRef);</span>
+<span class="fc" id="L50">    xClsName = ei.getClassInfo().getName();</span>
+<span class="fc" id="L51">    details = ei.getStringField(&quot;detailMessage&quot;);</span>
+<span class="fc" id="L52">  }</span>
+  
+  public String getRawMessage () {
+<span class="nc" id="L55">    return xClsName;</span>
+  }
+  
+  @Override
+  public String getMessage () {
+<span class="fc" id="L60">    String s = &quot;uncaught exception in thread &quot; + thread.getName() +</span>
+<span class="fc" id="L61">              &quot; #&quot; + thread.getId() + &quot; : &quot;</span>
+              + xClsName;
+    
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">    if (details != null) {</span>
+<span class="fc" id="L65">      s += &quot; : \&quot;&quot; + details + &quot;\&quot;&quot;;</span>
+    }
+    
+<span class="fc" id="L68">    return s;</span>
+  }
+
+  @Override
+  public void printOn (PrintWriter pw) {
+<span class="nc" id="L73">    pw.print(&quot;uncaught exception in thread &quot;);</span>
+<span class="nc" id="L74">    pw.print( thread.getName());</span>
+<span class="nc" id="L75">    pw.print(&quot; #&quot;);</span>
+<span class="nc" id="L76">    pw.print(thread.getId());</span>
+<span class="nc" id="L77">    pw.print(&quot; : &quot;);</span>
+
+<span class="nc" id="L79">    thread.printStackTrace(pw, xObjRef);</span>
+<span class="nc" id="L80">    pw.flush();</span>
+<span class="nc" id="L81">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

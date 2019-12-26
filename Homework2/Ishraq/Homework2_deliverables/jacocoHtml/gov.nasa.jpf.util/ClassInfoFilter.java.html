@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassInfoFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">ClassInfoFilter.java</span></div><h1>ClassInfoFilter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.ClassInfo;
+
+/**
+ * utility class that can be used by InstructionFactory implementations to
+ * selectively replace bytecodes for specified class sets.
+ *
+ * Filtering is based on include/exclude name patterns (e.g. for packages) and/or
+ * on inheritance (both down- and upwards)
+ */
+public class ClassInfoFilter {
+
+    // filter using an explicit set of class names (can be used for one-pass load)
+  protected StringSetMatcher includes;  // included classes that should use them
+  protected StringSetMatcher excludes;  // excluded classes (that should NOT use them)
+
+  // filter using base/derived class sets (only useful in subsequent pass)
+  ClassInfo ciLeaf;
+  ClassInfo ciRoot;
+
+  public ClassInfoFilter (String[] includeCls, String[] excludeCls,
+<span class="nc" id="L41">                                   ClassInfo rootCls, ClassInfo leafCls) {</span>
+<span class="nc" id="L42">    includes = StringSetMatcher.getNonEmpty(includeCls);</span>
+<span class="nc" id="L43">    excludes = StringSetMatcher.getNonEmpty(excludeCls);</span>
+
+<span class="nc" id="L45">    ciRoot = rootCls;</span>
+<span class="nc" id="L46">    ciLeaf = leafCls;</span>
+<span class="nc" id="L47">  }</span>
+
+
+  public boolean isPassing (ClassInfo ci){
+<span class="nc bnc" id="L51" title="All 2 branches missed.">    if (ci == null){</span>
+
+      // &lt;??&gt; not clear what to do in this case, since we have nothing to
+      // filter on. Since all reflection calls come in here, it's probably
+      // better to instrument by default (until we have a better mechanism)
+<span class="nc" id="L56">      return true;</span>
+
+    } else {
+<span class="nc" id="L59">      String clsName = ci.getName();</span>
+
+<span class="nc bnc" id="L61" title="All 2 branches missed.">      if (StringSetMatcher.isMatch(clsName, includes, excludes)){</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">        if (ciLeaf == null || ciLeaf.isInstanceOf(ci)){</span>
+<span class="nc bnc" id="L63" title="All 4 branches missed.">          if (ciRoot == null || ci.isInstanceOf(ciRoot)){</span>
+<span class="nc" id="L64">            return true;</span>
+          }
+        }
+      }
+    }
+
+<span class="nc" id="L70">    return false;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

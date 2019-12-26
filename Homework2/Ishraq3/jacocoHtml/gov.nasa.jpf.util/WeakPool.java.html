@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WeakPool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">WeakPool.java</span></div><h1>WeakPool.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.lang.ref.WeakReference;
+
+/**
+ * This is a simplified hash pool that does not support removal or
+ * numbering of elements.
+ */
+<span class="nc bnc" id="L26" title="All 2 branches missed.">public class WeakPool&lt;E&gt; {</span>
+  private static final boolean DEBUG = false; 
+  
+  static final double MAX_LOAD_WIPE = 0.6;
+  static final double MAX_LOAD_REHASH = 0.4;
+  static final int DEFAULT_POW = 10;
+
+  WeakReference&lt;E&gt;[] table;
+  
+  int count;
+  int pow;
+  int mask;
+  int nextWipe;
+  int nextRehash;
+  
+  /**
+   * Creates a SimplePool that holds about 716 elements before first
+   * rehash.
+   */
+  public WeakPool() {
+<span class="nc" id="L46">    this(DEFAULT_POW);</span>
+<span class="nc" id="L47">  }</span>
+  
+  /**
+   * Creates a SimplePool that holds about 0.7 * 2**pow elements before
+   * first rehash.
+   */
+<span class="nc" id="L53">  public WeakPool(int pow) {</span>
+<span class="nc" id="L54">    this.pow = pow;</span>
+<span class="nc" id="L55">    newTable();</span>
+<span class="nc" id="L56">    count = 0;</span>
+<span class="nc" id="L57">    mask = table.length - 1;</span>
+<span class="nc" id="L58">    nextWipe = (int)(MAX_LOAD_WIPE * mask);</span>
+<span class="nc" id="L59">    nextRehash = (int)(MAX_LOAD_REHASH * mask);</span>
+<span class="nc" id="L60">  }</span>
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  protected void newTable() {
+<span class="nc" id="L64">    table = new WeakReference[1 &lt;&lt; pow];</span>
+<span class="nc" id="L65">  }</span>
+  
+  // ********************** API as simple hash pool ******************* //
+  
+  /**
+   * Asks whether a particular element is already pooled.  NOT A TYPICAL
+   * OPERATION.
+   */
+  public boolean isPooled(E e) {
+<span class="nc bnc" id="L74" title="All 4 branches missed.">    return e == null || query(e) != null;</span>
+  }
+  
+  /**
+   * Returns the matching element if there is one, null if not.
+   */
+  public E query(E e) {
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    if (e == null) return null;</span>
+<span class="nc" id="L82">    int code = e.hashCode();</span>
+<span class="nc" id="L83">    int idx = code &amp; mask;</span>
+<span class="nc" id="L84">    int delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc" id="L85">    int oidx = idx;</span>
+
+    for(;;) {
+<span class="nc" id="L88">      WeakReference&lt;E&gt; r = table[idx];</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (r == null) break;</span>
+<span class="nc" id="L90">      E o = r.get();</span>
+<span class="nc bnc" id="L91" title="All 4 branches missed.">      if (o != null &amp;&amp; e.equals(o)) {</span>
+<span class="nc" id="L92">        return o; // seen before!</span>
+      }
+<span class="nc" id="L94">      idx = (idx + delta) &amp; mask;</span>
+<span class="nc bnc" id="L95" title="All 4 branches missed.">      assert (idx != oidx); // should never wrap around</span>
+<span class="nc" id="L96">    }</span>
+<span class="nc" id="L97">    return null;</span>
+  }
+
+  /**
+   * Returns a pooled element matching e, which will be e if no match
+   * has been previously pooled.
+   */
+  public E pool(E e) {
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (e == null) return null;</span>
+<span class="nc" id="L106">    int code = e.hashCode();</span>
+<span class="nc" id="L107">    int idx = code &amp; mask;</span>
+<span class="nc" id="L108">    int delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc" id="L109">    int oidx = idx;</span>
+
+    for(;;) {
+<span class="nc" id="L112">      WeakReference&lt;E&gt; r = table[idx];</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      if (r == null) break;</span>
+<span class="nc" id="L114">      E o = r.get();</span>
+<span class="nc bnc" id="L115" title="All 4 branches missed.">      if (o != null &amp;&amp; e.equals(o)) {</span>
+<span class="nc" id="L116">        return o; // seen before!</span>
+      }
+<span class="nc" id="L118">      idx = (idx + delta) &amp; mask;</span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">      assert (idx != oidx); // should never wrap around</span>
+<span class="nc" id="L120">    }</span>
+<span class="nc bnc" id="L121" title="All 4 branches missed.">    assert (table[idx] == null); // should never fill up</span>
+    // not seen before; add it
+    
+<span class="nc" id="L124">    count++;</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">    if (count &gt;= nextWipe) { // too full</span>
+      // determine if size needs to be increased or just wipe unused weak refs
+<span class="nc" id="L127">      int oldCount = count;</span>
+<span class="nc" id="L128">      count = 0;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      for (int i = 0; i &lt; table.length; i++) {</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">        if (table[i] != null &amp;&amp; table[i].get() != null) {</span>
+<span class="nc" id="L131">          count++;</span>
+        }
+      }
+      if (DEBUG &amp;&amp; oldCount &gt; count) {
+        System.out.println(&quot;Weak references collected: &quot; + (oldCount - count));
+      }
+<span class="nc bnc" id="L137" title="All 2 branches missed.">      if (count &gt;= nextRehash) {</span>
+<span class="nc" id="L138">        pow++; // needs to be increased in size</span>
+      }
+<span class="nc" id="L140">      WeakReference&lt;E&gt;[] oldTable = table;</span>
+<span class="nc" id="L141">      newTable();</span>
+<span class="nc" id="L142">      mask = table.length - 1;</span>
+<span class="nc" id="L143">      nextWipe = (int)(MAX_LOAD_WIPE * mask);</span>
+<span class="nc" id="L144">      nextRehash = (int)(MAX_LOAD_REHASH * mask);</span>
+
+<span class="nc" id="L146">      int oldLen = oldTable.length;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">      for (int i = 0; i &lt; oldLen; i++) {</span>
+<span class="nc" id="L148">        WeakReference&lt;E&gt; r = oldTable[i];</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (r == null) continue;</span>
+<span class="nc" id="L150">        E o = r.get();</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (o == null) continue;</span>
+        // otherwise:
+<span class="nc" id="L153">        code = o.hashCode();</span>
+<span class="nc" id="L154">        idx = code &amp; mask;</span>
+<span class="nc" id="L155">        delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        while (table[idx] != null) { // we know enough slots exist</span>
+<span class="nc" id="L157">          idx = (idx + delta) &amp; mask;</span>
+        }
+<span class="nc" id="L159">        table[idx] = r;</span>
+      }
+      // done with rehash; now get idx to empty slot
+<span class="nc" id="L162">      code = e.hashCode();</span>
+<span class="nc" id="L163">      idx = code &amp; mask;</span>
+<span class="nc" id="L164">      delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">      while (table[idx] != null) { // we know enough slots exist &amp; new element</span>
+<span class="nc" id="L166">        idx = (idx + delta) &amp; mask;</span>
+      }
+    } else {
+      // idx already pointing to empty slot
+    }
+
+<span class="nc" id="L172">    table[idx] = new WeakReference&lt;E&gt;(e);</span>
+<span class="nc" id="L173">    return e;</span>
+  }
+  
+  
+  // ******************* API as add-only weak hash set *************** //
+  
+  public boolean isMember(E e) {
+<span class="nc bnc" id="L180" title="All 2 branches missed.">    return query(e) != null;</span>
+  }
+  
+  public void add(E e) {
+<span class="nc" id="L184">    /*(void)*/ pool(e);</span>
+<span class="nc" id="L185">  }</span>
+  
+  
+  // ************************** Test main ************************ //
+  
+  /**
+   * BROKEN Test main.
+   */
+  public static void main(String[] args) {
+<span class="nc" id="L194">    WeakPool&lt;Integer&gt; pool = new WeakPool&lt;Integer&gt;(4);</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">    for (int i = 0; i &lt; 1000000; i += 42) {</span>
+<span class="nc" id="L196">      Integer o = new Integer(i);</span>
+<span class="nc" id="L197">      Integer p = pool.pool(o);</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">      if (o != p) throw new RuntimeException();</span>
+<span class="nc" id="L199">      Integer q = pool.pool(p);</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">      if (q != p) throw new RuntimeException();</span>
+    }
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    for (int i = 0; i &lt; 1000000; i += 42) {</span>
+<span class="nc" id="L203">      Integer o = new Integer(i);</span>
+<span class="nc" id="L204">      Integer p = pool.pool(o);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">      if (o == p) throw new RuntimeException();</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">      if (!o.equals(p)) throw new RuntimeException();</span>
+    }
+<span class="nc bnc" id="L208" title="All 2 branches missed.">    for (int i = 1; i &lt; 1000000; i += 42) {</span>
+<span class="nc" id="L209">      Integer o = new Integer(i);</span>
+<span class="nc" id="L210">      Integer p = pool.pool(o);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">      if (o != p) throw new RuntimeException();</span>
+    }
+<span class="nc" id="L213">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

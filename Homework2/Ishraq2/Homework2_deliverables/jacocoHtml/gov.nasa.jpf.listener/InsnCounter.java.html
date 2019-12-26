@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InsnCounter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">InsnCounter.java</span></div><h1>InsnCounter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * simple tools to gather statistics about instructions executed by JPF.
+ * InsnCounter is mostly a VMListener that observes 'instructionExecuted'
+ */
+<span class="nc" id="L30">public class InsnCounter extends ListenerAdapter {</span>
+
+<span class="nc" id="L32">  String[] opCodes = new String[500];</span>
+<span class="nc" id="L33">  int[] counts = new int[500];</span>
+  int   total;
+  
+  //----------------------------------------- SearchKistener interface
+  @Override
+  public void searchFinished(Search search) {
+<span class="nc" id="L39">    reportStatistics();</span>
+<span class="nc" id="L40">  }</span>
+    
+  //----------------------------------------------------- VMListener interface
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+<span class="nc" id="L45">    int bc = executedInsn.getByteCode();</span>
+    
+<span class="nc bnc" id="L47" title="All 2 branches missed.">    if (opCodes[bc] == null) {</span>
+<span class="nc" id="L48">      opCodes[bc] = executedInsn.getMnemonic();</span>
+    }
+<span class="nc" id="L50">    counts[bc]++;</span>
+<span class="nc" id="L51">    total++;</span>
+<span class="nc" id="L52">  }</span>
+
+  
+  //----------------------------------------------------- internal stuff
+  void reportStatistics () {
+<span class="nc" id="L57">    int[] sorted = getSortedCounts();</span>
+    int i;
+    
+<span class="nc" id="L60">    int total = 0;</span>
+    
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    for (i=0; i&lt;sorted.length; i++) {</span>
+<span class="nc" id="L63">      int idx = sorted[i];</span>
+<span class="nc" id="L64">      String opc = opCodes[idx];</span>
+            
+<span class="nc bnc" id="L66" title="All 2 branches missed.">      if (counts[idx] &gt; 0) {</span>
+<span class="nc" id="L67">        System.out.print( i);</span>
+<span class="nc" id="L68">        System.out.print( &quot;  &quot;);</span>
+<span class="nc" id="L69">        System.out.print( opc);</span>
+<span class="nc" id="L70">        System.out.print( &quot; : &quot;);</span>
+<span class="nc" id="L71">        System.out.println( counts[idx]);</span>
+        
+<span class="nc" id="L73">        total += counts[idx];</span>
+      } else {
+        break;
+      }
+    }
+    
+<span class="nc" id="L79">    System.out.println();</span>
+<span class="nc" id="L80">    System.out.println(&quot;total number of executed instructions: &quot; + total);</span>
+<span class="nc" id="L81">  }</span>
+  
+  int[] getSortedCounts () {
+<span class="nc" id="L84">    int[] sorted = new int[256];</span>
+<span class="nc" id="L85">    int last = -1;</span>
+    int i, j;
+    
+<span class="nc bnc" id="L88" title="All 2 branches missed.">    for (i=0; i&lt;256; i++) {</span>
+<span class="nc" id="L89">      int c = counts[i];</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">      if (c &gt; 0) {</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        for (j=0; j&lt;last; j++) {</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">          if (counts[sorted[j]] &lt; c) {</span>
+<span class="nc" id="L93">            System.arraycopy(sorted, j, sorted, j+1, (last-j));</span>
+<span class="nc" id="L94">            break;</span>
+          }
+        }
+<span class="nc" id="L97">        sorted[j] = i;</span>
+<span class="nc" id="L98">        last++;</span>
+      }
+    }
+    
+<span class="nc" id="L102">    return sorted;</span>
+  }
+  
+  void filterArgs (String[] args) {
+    // we don't have any yet
+<span class="nc" id="L107">  }</span>
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

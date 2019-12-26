@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TypeRef.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">TypeRef.java</span></div><h1>TypeRef.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+
+/**
+ * this is a utility construct for type references that should
+ * not cause class loading when instantiated, but cannot use a
+ * classname String because of argument type ambiguity (Strings are just
+ * used everywhere).
+ * 
+ * TypeRefs can be used to specify both native and JPF executed (SUT) classes,
+ * it is up to the caller to use the proper access methods
+ *
+ * NOTE - loading and instantiation of TypeRefs is not allowed to cause loading of
+ * any JPF classes that are not in jpf-classes.jar
+ */
+public class TypeRef {
+  String clsName;
+
+<span class="fc" id="L39">  public TypeRef (String clsName){</span>
+<span class="fc" id="L40">    this.clsName = clsName;</span>
+<span class="fc" id="L41">  }</span>
+  
+  public Class&lt;?&gt; getNativeClass() throws ClassNotFoundException {
+<span class="nc" id="L44">    return Class.forName(clsName);</span>
+  }
+
+  /**
+   * return the host VM class for this ref.
+   * This will cause native on-demand class loading
+   */
+  public &lt;T&gt; Class&lt;? extends T&gt; asNativeSubclass(Class&lt;T&gt; superClazz) throws ClassNotFoundException, ClassCastException {
+<span class="fc" id="L52">    Class&lt;?&gt; clazz = Class.forName(clsName);</span>
+<span class="fc" id="L53">    return clazz.asSubclass(superClazz);</span>
+  }
+
+  /**
+   * obtain the ClassInfo (JPF class) for this ref.
+   * This will cause on-demand class loading by JPF
+   */
+  public ClassInfo getClassInfo (){
+<span class="nc" id="L61">    return ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+  }
+  
+  @Override
+  public String toString(){
+<span class="nc" id="L66">    return &quot;TypeRef(&quot; + clsName + &quot;)&quot;;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

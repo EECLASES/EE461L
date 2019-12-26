@@ -1,0 +1,714 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Misc.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">Misc.java</span></div><h1>Misc.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+
+import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+<span class="nc" id="L31">public class Misc {</span>
+  public static int hashCode(Object o) {
+<span class="nc bnc" id="L33" title="All 2 branches missed.">    return o == null ? 0 : o.hashCode();</span>
+  }
+
+  public static boolean equals(Object a, Object b) {
+<span class="nc bnc" id="L37" title="All 2 branches missed.">    if (a == b) {</span>
+<span class="nc" id="L38">      return true;</span>
+<span class="nc bnc" id="L39" title="All 4 branches missed.">    } else if (a == null || b == null) {</span>
+      // only one could be null
+<span class="nc" id="L41">      return false;</span>
+    } else {
+<span class="nc" id="L43">      return a.equals(b);</span>
+    }
+  }
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;E&gt; Iterator&lt;E&gt; emptyIterator() {
+<span class="nc" id="L49">    return (Iterator&lt;E&gt;) emptyIterator;</span>
+  }
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;E&gt; Iterable&lt;E&gt; emptyIterable() {
+<span class="nc" id="L54">    return (Iterable&lt;E&gt;) emptyIterable;</span>
+  }
+
+  public static &lt;E&gt; Iterable&lt;E&gt; iterableFromIterator(Iterator&lt;E&gt; iter) {
+<span class="nc" id="L58">    return new Iteratorable&lt;E&gt;(iter);</span>
+  }
+
+<span class="fc" id="L61">  public static final Object[] emptyObjectArray = new Object[] {};</span>
+
+<span class="fc" id="L63">  public static final Iterator&lt;?&gt; emptyIterator = new Iterator&lt;Object&gt;() {</span>
+    @Override
+<span class="nc" id="L65">	public boolean hasNext () { return false; }</span>
+    @Override
+<span class="nc" id="L67">	public Object next () { throw new NoSuchElementException(); }</span>
+    @Override
+<span class="nc" id="L69">	public void remove () { throw new NoSuchElementException(); }</span>
+  };
+
+<span class="fc" id="L72">  public static final Iterable&lt;?&gt; emptyIterable = new Iterable&lt;Object&gt;() {</span>
+    @Override
+	@SuppressWarnings(&quot;unchecked&quot;)
+    public Iterator&lt;Object&gt; iterator () {
+<span class="nc" id="L76">      return (Iterator&lt;Object&gt;) emptyIterator;</span>
+    }
+  };
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;B, E extends B&gt; Iterable&lt;B&gt; asBaseIterable (Collection&lt;E&gt; col){
+<span class="nc" id="L82">    Collection&lt;B&gt; base = (Collection)col;</span>
+<span class="nc" id="L83">    return base;</span>
+  }
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;B, E extends B&gt; Iterator&lt;B&gt; getBaseIterator (Collection&lt;E&gt; col){
+<span class="nc" id="L88">    Collection&lt;B&gt; base = (Collection)col;</span>
+<span class="nc" id="L89">    return base.iterator();</span>
+  }
+  
+  public static &lt;E&gt; void addAll(Collection&lt;E&gt; target, Iterable&lt;? extends E&gt; src) {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">    for (E e : src) target.add(e);</span>
+<span class="nc" id="L94">  }</span>
+
+  public static &lt;T&gt; int indexOf (T[] array, Object elem){
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    for (int i=0; i&lt;array.length; i++){</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">      if (array[i].equals(elem)){</span>
+<span class="nc" id="L99">        return i;</span>
+      }
+    }
+    
+<span class="nc" id="L103">    return -1;</span>
+  } 
+
+  public static &lt;T&gt; boolean contains (T[] array, Object elem){
+<span class="nc bnc" id="L107" title="All 2 branches missed.">    for (int i=0; i&lt;array.length; i++){</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">      if (array[i].equals(elem)){</span>
+<span class="nc" id="L109">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L113">    return false;</span>
+  } 
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;T&gt; T[] stripNullElements(T[] oldArray){
+<span class="fc" id="L118">    int count = 0;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">    for (int i=0; i&lt;oldArray.length; i++){</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">      if (oldArray[i] != null){</span>
+<span class="fc" id="L121">        count++;</span>
+      }
+    }
+    
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    if (count == oldArray.length){ // nothing to strip</span>
+<span class="fc" id="L126">      return oldArray;</span>
+      
+    } else {
+<span class="fc" id="L129">      Class&lt;?&gt; ct = oldArray.getClass().getComponentType();</span>
+<span class="fc" id="L130">      T[] newArray = (T[]) Array.newInstance(ct, count);</span>
+
+<span class="fc" id="L132">      int j=0;</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">      for (int i=0; i&lt;oldArray.length; i++){</span>
+<span class="fc" id="L134">        T e = oldArray[i];</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (e != null){</span>
+<span class="fc" id="L136">          newArray[j++] = e;</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">          if (j == count){</span>
+<span class="fc" id="L138">            break;</span>
+          }
+        }
+      }
+      
+<span class="fc" id="L143">      return newArray;</span>
+    }
+  }
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public static &lt;T&gt; T[] getAddedElements (T[] oldArray, T[] newArray) {
+    
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">    if (newArray == null || newArray.length == 0) {</span>
+<span class="nc" id="L151">      return oldArray; </span>
+    }
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">    if (oldArray == null || oldArray.length == 0) {</span>
+<span class="fc" id="L154">      return newArray;</span>
+    }
+    
+<span class="nc" id="L157">    T[] na = newArray.clone();</span>
+<span class="nc" id="L158">    int n = na.length;</span>
+    
+<span class="nc bnc" id="L160" title="All 2 branches missed.">    for (int i=0; i&lt;na.length; i++) {</span>
+<span class="nc" id="L161">      Object eNew = na[i];</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">      if (eNew != null) {</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        for (int j=0; j&lt;oldArray.length; j++) {</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">          if (eNew.equals(oldArray[j])) {</span>
+<span class="nc" id="L165">            na[i] = null;</span>
+<span class="nc" id="L166">            n--;</span>
+<span class="nc" id="L167">            break;</span>
+          }
+        }
+      } else {
+<span class="nc" id="L171">        n--;</span>
+      }
+    }
+    
+<span class="nc" id="L175">    Class&lt;?&gt; ct = newArray.getClass().getComponentType();</span>
+<span class="nc" id="L176">    T[] addedElements = (T[]) Array.newInstance(ct, n);</span>
+    
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    for (int i=0, j=0; i&lt;na.length; i++) {</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">      if (na[i] != null) {</span>
+<span class="nc" id="L180">        addedElements[j++] = na[i];</span>
+      }
+    }
+    
+<span class="nc" id="L184">    return addedElements;</span>
+  }
+  
+  public static &lt;T&gt; T[] getRemovedElements (T[] oldArray, T[] newArray) {
+
+<span class="nc bnc" id="L189" title="All 8 branches missed.">    if (newArray == null || newArray.length == 0 || oldArray == null || oldArray.length == 0) {</span>
+<span class="nc" id="L190">      return null;</span>
+    }
+    
+<span class="nc" id="L193">    T[] oa = oldArray.clone();</span>
+<span class="nc" id="L194">    int n = oa.length;</span>
+    
+<span class="nc bnc" id="L196" title="All 2 branches missed.">    for (int i=0; i&lt;oa.length; i++) {</span>
+<span class="nc" id="L197">      Object eOld = oa[i];</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">      if (eOld != null) {</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (int j=0; j&lt;newArray.length; j++) {</span>
+<span class="nc bnc" id="L200" title="All 2 branches missed.">          if (eOld.equals(newArray[j])) {</span>
+<span class="nc" id="L201">            oa[i] = null;</span>
+<span class="nc" id="L202">            n--;</span>
+<span class="nc" id="L203">            break;</span>
+          }
+        }
+      } else {
+<span class="nc" id="L207">        n--;</span>
+      }
+    }
+    
+<span class="nc" id="L211">    Class&lt;?&gt; ct = oldArray.getClass().getComponentType();</span>
+<span class="nc" id="L212">    T[] addedElements = (T[]) Array.newInstance(ct, n);</span>
+    
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    for (int i=0, j=0; i&lt;oa.length; i++) {</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">      if (oa[i] != null) {</span>
+<span class="nc" id="L216">        addedElements[j++] = oa[i];</span>
+      }
+    }
+    
+<span class="nc" id="L220">    return addedElements;</span>
+  }
+  
+  
+  public static &lt;K,V&gt; ArrayList&lt;String&gt; getSortedKeyStrings (HashMap&lt;K,V&gt; map){
+<span class="nc" id="L225">    ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+    nextKey:
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    for (K key : map.keySet()){</span>
+<span class="nc" id="L229">      String ks = key.toString();</span>
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">      for (int i=0; i&lt;list.size(); i++){</span>
+<span class="nc" id="L232">        String k = list.get(i);</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">        if (ks.compareTo(k) &gt; 0){</span>
+<span class="nc" id="L234">          list.add(i, ks);</span>
+<span class="nc" id="L235">          continue nextKey;</span>
+        }
+      }
+
+<span class="nc" id="L239">      list.add(ks);</span>
+<span class="nc" id="L240">    }</span>
+
+<span class="nc" id="L242">    return list;</span>
+  }
+
+  public static &lt;K,V&gt; ArrayList&lt;Map.Entry&lt;K,V&gt;&gt; createSortedEntryList (HashMap&lt;K,V&gt; map,
+                                                                       Comparator&lt;Map.Entry&lt;K,V&gt;&gt; comparer) {
+<span class="nc" id="L247">    ArrayList&lt;Map.Entry&lt;K,V&gt;&gt; list = new ArrayList&lt;Map.Entry&lt;K,V&gt;&gt;();</span>
+
+    nextEntry:
+<span class="nc bnc" id="L250" title="All 2 branches missed.">      for (Map.Entry&lt;K,V&gt; e : map.entrySet()){</span>
+
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        for (int i=0; i&lt;list.size(); i++){</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">          if (comparer.compare(e,list.get(i)) &gt; 0) {</span>
+<span class="nc" id="L254">            list.add(i, e);</span>
+<span class="nc" id="L255">            continue nextEntry;</span>
+          }
+        }
+<span class="nc" id="L258">        list.add(e);</span>
+<span class="nc" id="L259">      }</span>
+
+
+<span class="nc" id="L262">    return list;</span>
+  }
+
+  public static &lt;K,V,E&gt; ArrayList&lt;E&gt; createSortedList (HashMap&lt;K,V&gt; map,
+                                                    TwoTypeComparator&lt;Map.Entry&lt;K,V&gt;,E&gt; comparer,
+                                                    ElementCreator&lt;Map.Entry&lt;K,V&gt;,E&gt; creator) {
+<span class="nc" id="L268">    ArrayList&lt;E&gt; list = new ArrayList&lt;E&gt;();</span>
+
+    nextEntry:
+<span class="nc bnc" id="L271" title="All 2 branches missed.">      for (Map.Entry&lt;K,V&gt; e : map.entrySet()){</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (int i=0; i&lt;list.size(); i++){</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">          if (comparer.compare(e,list.get(i)) &gt; 0) {</span>
+<span class="nc" id="L275">            list.add(i, creator.create(e));</span>
+<span class="nc" id="L276">            continue nextEntry;</span>
+          }
+        }
+<span class="nc" id="L279">        list.add(creator.create(e));</span>
+<span class="nc" id="L280">      }</span>
+
+
+<span class="nc" id="L283">    return list;</span>
+  }
+
+  public static int compare (Integer i1, Integer i2) {
+<span class="nc" id="L287">    return Integer.signum(i1.intValue() - i2.intValue());</span>
+  }
+
+  public static &lt;E,T&gt; HashMap&lt;E,Integer&gt; createOccurrenceMap (Collection&lt;T&gt; collection,
+                                                            ElementCreator&lt;T,E&gt; creator) {
+<span class="nc" id="L292">    HashMap&lt;E,Integer&gt; map = new HashMap&lt;E,Integer&gt;();</span>
+
+<span class="nc bnc" id="L294" title="All 2 branches missed.">    for (T o : collection) {</span>
+<span class="nc" id="L295">      E e = creator.create(o);</span>
+<span class="nc" id="L296">      Integer nE = map.get(e);</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">      if (nE == null){</span>
+<span class="nc" id="L298">        map.put(e,1);</span>
+      } else {
+<span class="nc" id="L300">        map.put(e,nE.intValue()+1);</span>
+      }
+<span class="nc" id="L302">    }</span>
+
+<span class="nc" id="L304">    return map;</span>
+  }
+
+  public static &lt;T&gt; T createObject (Class&lt;T&gt; cls, Class&lt;?&gt;[] argTypes, Object[] args){
+<span class="nc bnc" id="L308" title="All 2 branches missed.">    if (argTypes.length != args.length){</span>
+<span class="nc" id="L309">      return null;</span>
+    }
+
+<span class="nc bnc" id="L312" title="All 2 branches missed.">    while (argTypes.length &gt;= 0){</span>
+      try {
+<span class="nc" id="L314">        Constructor&lt;T&gt; ctor = cls.getConstructor(argTypes);</span>
+<span class="nc" id="L315">        return ctor.newInstance(args);</span>
+
+<span class="nc" id="L317">      } catch (NoSuchMethodException nsmx){</span>
+<span class="nc" id="L318">        Class&lt;?&gt;[] at = new Class&lt;?&gt;[argTypes.length-1];</span>
+<span class="nc" id="L319">        System.arraycopy(argTypes, 1, at,0, at.length);</span>
+<span class="nc" id="L320">        argTypes = at;</span>
+
+<span class="nc" id="L322">        Object[] a = new Object[at.length];</span>
+<span class="nc" id="L323">        System.arraycopy(args,1, a,0, a.length);</span>
+<span class="nc" id="L324">        args = a;</span>
+
+<span class="nc" id="L326">      } catch (Throwable t){</span>
+<span class="nc" id="L327">        return null;</span>
+<span class="nc" id="L328">      }</span>
+    }
+
+<span class="nc" id="L331">    return null;</span>
+  }
+
+  public static String toString (Object[] collection) {
+<span class="nc" id="L335">    StringBuilder sb = new StringBuilder();</span>
+    
+<span class="nc bnc" id="L337" title="All 2 branches missed.">    for (Object e : collection) {</span>
+<span class="nc" id="L338">      sb.append(e);</span>
+    }
+
+<span class="nc" id="L341">    return sb.toString();</span>
+  }
+  
+  public static String toString (String[] collection) {
+<span class="nc" id="L345">    StringBuilder sb = new StringBuilder();</span>
+    
+<span class="nc bnc" id="L347" title="All 2 branches missed.">    for (Object e : collection) {</span>
+<span class="nc" id="L348">      sb.append(e);</span>
+    }
+
+<span class="nc" id="L351">    return sb.toString();</span>
+  }
+  
+  public static String toString (Iterable&lt;?&gt; collection) {
+<span class="nc" id="L355">    StringBuilder sb = new StringBuilder();</span>
+    
+<span class="nc bnc" id="L357" title="All 2 branches missed.">    for (Object e : collection) {</span>
+<span class="nc" id="L358">      sb.append(e);</span>
+<span class="nc" id="L359">    }</span>
+
+<span class="nc" id="L361">    return sb.toString();</span>
+  }
+  
+  public static String toString( Iterable&lt;?&gt; collection,
+                                 String prefix, String separator, String postfix) {
+<span class="nc" id="L366">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc bnc" id="L368" title="All 2 branches missed.">    if (prefix != null) {</span>
+<span class="nc" id="L369">      sb.append(prefix);</span>
+    }
+
+<span class="nc" id="L372">    int i=0;</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">    for (Object e : collection) {</span>
+<span class="nc bnc" id="L374" title="All 2 branches missed.">      if (i++ &gt; 0) {</span>
+<span class="nc" id="L375">        sb.append(separator);</span>
+      }
+<span class="nc" id="L377">      sb.append(e);</span>
+<span class="nc" id="L378">    }</span>
+
+<span class="nc bnc" id="L380" title="All 2 branches missed.">    if (postfix != null) {</span>
+<span class="nc" id="L381">      sb.append(postfix);</span>
+    }
+
+<span class="nc" id="L384">    return sb.toString();</span>
+  }
+
+  public static String toString( Object[] array,
+                                 String prefix, String separator, String postfix) {
+<span class="nc" id="L389">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc bnc" id="L391" title="All 2 branches missed.">    if (prefix != null) {</span>
+<span class="nc" id="L392">      sb.append(prefix);</span>
+    }
+
+<span class="nc bnc" id="L395" title="All 2 branches missed.">    for (int i=0; i&lt;array.length; i++) {</span>
+<span class="nc bnc" id="L396" title="All 2 branches missed.">      if (i &gt; 0) {</span>
+<span class="nc" id="L397">        sb.append(separator);</span>
+      }
+<span class="nc" id="L399">      sb.append(array[i]);</span>
+    }
+
+<span class="nc bnc" id="L402" title="All 2 branches missed.">    if (postfix != null) {</span>
+<span class="nc" id="L403">      sb.append(postfix);</span>
+    }
+
+<span class="nc" id="L406">    return sb.toString();</span>
+  }
+
+  public static String toString( int[] array, int start, int end, String prefix, String separator, String postfix){
+<span class="nc" id="L410">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc bnc" id="L412" title="All 2 branches missed.">    if (prefix != null) {</span>
+<span class="nc" id="L413">      sb.append(prefix);</span>
+    }
+
+<span class="nc bnc" id="L416" title="All 4 branches missed.">    for (int i=start; i&lt;array.length &amp;&amp; i &lt; end; i++) {</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">      if (i &gt; 0) {</span>
+<span class="nc" id="L418">        sb.append(separator);</span>
+      }
+<span class="nc" id="L420">      sb.append(array[i]);</span>
+    }
+
+<span class="nc bnc" id="L423" title="All 2 branches missed.">    if (postfix != null) {</span>
+<span class="nc" id="L424">      sb.append(postfix);</span>
+    }
+
+<span class="nc" id="L427">    return sb.toString();    </span>
+  }
+
+  public static &lt;T&gt; T[] newArray (T... elements) {
+<span class="nc" id="L431">    return elements;</span>
+  }
+
+  public static &lt;T&gt; T[] appendArray (T[] base, T... elements) {
+<span class="nc bnc" id="L435" title="All 4 branches missed.">    if (base == null || base.length == 0){</span>
+<span class="nc" id="L436">      return elements;</span>
+<span class="nc bnc" id="L437" title="All 4 branches missed.">    } else if (elements == null || elements.length == 0){</span>
+<span class="nc" id="L438">      return base;</span>
+    } else {
+<span class="nc" id="L440">      Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="nc" id="L441">      T[] a = (T[]) Array.newInstance(componentType, base.length + elements.length);</span>
+<span class="nc" id="L442">      System.arraycopy(base, 0, a, 0, base.length);</span>
+<span class="nc" id="L443">      System.arraycopy(elements, 0, a, base.length, elements.length);</span>
+<span class="nc" id="L444">      return a;</span>
+    }
+  }
+
+  public static &lt;T&gt; T[] prependArray (T[] base, T... elements) {
+<span class="nc bnc" id="L449" title="All 4 branches missed.">    if (base == null || base.length == 0){</span>
+<span class="nc" id="L450">      return elements;</span>
+<span class="nc bnc" id="L451" title="All 4 branches missed.">    } else if (elements == null || elements.length == 0){</span>
+<span class="nc" id="L452">      return base;</span>
+    } else {
+<span class="nc" id="L454">      Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="nc" id="L455">      T[] a = (T[]) Array.newInstance(componentType, base.length + elements.length);</span>
+<span class="nc" id="L456">      System.arraycopy(base,0, a,elements.length, base.length);</span>
+<span class="nc" id="L457">      System.arraycopy(elements,0, a,0, elements.length);</span>
+<span class="nc" id="L458">      return a;</span>
+    }
+  }
+
+  public static String[] prependArray (String[] base, String... elements){
+<span class="nc bnc" id="L463" title="All 4 branches missed.">    if (base == null || base.length == 0){</span>
+<span class="nc" id="L464">      return elements;</span>
+<span class="nc bnc" id="L465" title="All 4 branches missed.">    } else if (elements == null || elements.length == 0){</span>
+<span class="nc" id="L466">      return base;</span>
+    } else {
+<span class="nc" id="L468">      String[] a = new String[base.length + elements.length];</span>
+<span class="nc" id="L469">      System.arraycopy(base,0, a,elements.length, base.length);</span>
+<span class="nc" id="L470">      System.arraycopy(elements,0, a,0, elements.length);</span>
+<span class="nc" id="L471">      return a;</span>
+    }
+  }
+
+
+  public static &lt;T&gt; T[] arrayWithoutFirst( T[] base, int nElements){
+<span class="nc bnc" id="L477" title="All 2 branches missed.">    if (base == null){</span>
+<span class="nc" id="L478">      return null;</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">    } else if (nElements &gt;= base.length){</span>
+<span class="nc" id="L480">      Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="nc" id="L481">      T[] a = (T[]) Array.newInstance(componentType, 0);</span>
+<span class="nc" id="L482">      return a;</span>
+    } else {
+<span class="nc" id="L484">      int n = base.length - nElements;</span>
+<span class="nc" id="L485">      Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="nc" id="L486">      T[] a = (T[]) Array.newInstance(componentType, n);</span>
+<span class="nc" id="L487">      System.arraycopy(base, nElements, a, 0, n);</span>
+<span class="nc" id="L488">      return a;</span>
+    }
+  }
+
+  public static &lt;T&gt; T[] appendElement (T[] base, T newElement){
+<span class="fc" id="L493">    int len = base.length;</span>
+
+<span class="fc" id="L495">    Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="fc" id="L496">    T[] a = (T[]) Array.newInstance(componentType, len + 1);</span>
+<span class="fc" id="L497">    System.arraycopy(base, 0, a, 0, len);</span>
+<span class="fc" id="L498">    a[len] = newElement;</span>
+
+<span class="fc" id="L500">    return a;</span>
+  }
+
+  public static &lt;T&gt; T[] appendUniqueElement (T[] base, T newElement){
+<span class="fc" id="L504">    int len = base.length;</span>
+
+<span class="pc bpc" id="L506" title="1 of 2 branches missed.">    for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L507" title="All 2 branches missed.">      if (base[i] == newElement){</span>
+<span class="nc" id="L508">        return base;</span>
+      }
+    }
+
+<span class="fc" id="L512">    return appendElement(base, newElement);</span>
+  }
+
+  
+  public static &lt;T&gt; T[] removeElement (T[] base, T element) {
+<span class="nc" id="L517">    int len = base.length;</span>
+
+<span class="nc bnc" id="L519" title="All 2 branches missed.">    for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">      if (base[i] == element){</span>
+<span class="nc" id="L521">        Class&lt;?&gt; componentType = base.getClass().getComponentType();</span>
+<span class="nc" id="L522">        T[] a = (T[]) Array.newInstance(componentType, len -1);</span>
+<span class="nc" id="L523">        System.arraycopy(base, 0, a, 0, i);</span>
+<span class="nc" id="L524">        System.arraycopy(base, i+1, a, i, len-i-1);</span>
+<span class="nc" id="L525">        return a;</span>
+      }
+    }
+
+<span class="nc" id="L529">    return base;</span>
+  }
+
+  public static &lt;T&gt; boolean hasElementOfType (T[] base, Class&lt;?&gt; elemType){
+<span class="nc" id="L533">    int len = base.length;</span>
+<span class="nc bnc" id="L534" title="All 2 branches missed.">    for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L535" title="All 2 branches missed.">      if (elemType.isInstance(base[i])){</span>
+<span class="nc" id="L536">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L540">    return false;</span>
+  }
+
+  public static &lt;T,E&gt; E getNextElementOfType (T[] base, Class&lt;E&gt; elemType, T prev){
+<span class="pc bpc" id="L544" title="1 of 2 branches missed.">    boolean prevSeen = (prev == null);</span>
+<span class="fc" id="L545">    int len = base.length;</span>
+<span class="pc bpc" id="L546" title="1 of 2 branches missed.">    for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">      if (elemType.isInstance(base[i])){</span>
+<span class="nc bnc" id="L548" title="All 2 branches missed.">        if (prevSeen){</span>
+<span class="nc" id="L549">          return (E)base[i];</span>
+        } else {
+<span class="nc bnc" id="L551" title="All 2 branches missed.">          prevSeen = (base[i] == prev);</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L556">    return null;</span>
+  }
+
+  public static String[] arrayWithoutFirst(String[] base, int nElements){
+<span class="nc" id="L560">    String[] a = new String[base.length-1];</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">    if (a.length &gt; 0){</span>
+<span class="nc" id="L562">      System.arraycopy(base,1,a,0,a.length);</span>
+    }
+<span class="nc" id="L564">    return a;</span>
+  }
+
+  public static boolean equals (Object[] a1, Object[] a2){
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">    if (a1 == a2){</span>
+<span class="fc" id="L569">      return true;</span>
+    }
+
+<span class="nc bnc" id="L572" title="All 2 branches missed.">    if (a1 == null){</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">      if (a2 != null){</span>
+<span class="nc bnc" id="L574" title="All 2 branches missed.">        for (int i=0; i&lt;a2.length; i++){</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">          if (a2[i] != null){</span>
+<span class="nc" id="L576">            return false;</span>
+          }
+        }
+      }
+<span class="nc bnc" id="L580" title="All 2 branches missed.">    } else if (a2 == null){</span>
+<span class="nc bnc" id="L581" title="All 2 branches missed.">      for (int i=0; i&lt;a1.length; i++){</span>
+<span class="nc bnc" id="L582" title="All 2 branches missed.">        if (a1[i] != null){</span>
+<span class="nc" id="L583">          return false;</span>
+        }
+      }
+    } else {
+<span class="nc bnc" id="L587" title="All 2 branches missed.">      if (a1.length != a2.length){</span>
+<span class="nc" id="L588">        return false;</span>
+      }
+
+<span class="nc bnc" id="L591" title="All 2 branches missed.">      for (int i = 0; i &lt; a1.length; i++) {</span>
+<span class="nc" id="L592">        Object o1 = a1[i];</span>
+<span class="nc" id="L593">        Object o2 = a2[i];</span>
+
+<span class="nc bnc" id="L595" title="All 2 branches missed.">        if (o1 != null) {</span>
+<span class="nc bnc" id="L596" title="All 2 branches missed.">          if (!o1.equals(o2)) {</span>
+<span class="nc" id="L597">            return false;</span>
+          }
+<span class="nc bnc" id="L599" title="All 2 branches missed.">        } else if (o2 != null) {</span>
+<span class="nc" id="L600">          return false;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L605">    return true;</span>
+
+  }
+
+  /**
+   * equals first len objects of two reference arrays, which can contain null
+   * elements. If any of the reference arrays is null, this is treated as
+   * if all elements would be null
+   */
+  public static boolean compare (int len, Object[] a1, Object[] a2){
+<span class="nc bnc" id="L615" title="All 4 branches missed.">    if (a1 == null &amp;&amp; a2 == null){</span>
+<span class="nc" id="L616">      return true;</span>
+    }
+    
+<span class="nc bnc" id="L619" title="All 2 branches missed.">    if (a1 == null){</span>
+<span class="nc bnc" id="L620" title="All 2 branches missed.">      if (a2 != null){</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">        if (a2.length &lt; len){</span>
+<span class="nc" id="L622">          return false;</span>
+        }
+<span class="nc bnc" id="L624" title="All 2 branches missed.">        for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L625" title="All 2 branches missed.">          if (a2[i] != null){</span>
+<span class="nc" id="L626">            return false;</span>
+          }
+        }
+      }
+<span class="nc bnc" id="L630" title="All 2 branches missed.">    } else if (a2 == null){</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">      if (a1.length &lt; len){</span>
+<span class="nc" id="L632">        return false;</span>
+      }
+<span class="nc bnc" id="L634" title="All 2 branches missed.">      for (int i=0; i&lt;len; i++){</span>
+<span class="nc bnc" id="L635" title="All 2 branches missed.">        if (a1[i] != null){</span>
+<span class="nc" id="L636">          return false;</span>
+        }
+      }      
+    } else {
+<span class="nc bnc" id="L640" title="All 4 branches missed.">      if (a1.length &lt; len || a2.length &lt; len){</span>
+<span class="nc" id="L641">        return false;</span>
+      }
+
+<span class="nc bnc" id="L644" title="All 2 branches missed.">      for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L645">        Object o1 = a1[i];</span>
+<span class="nc" id="L646">        Object o2 = a2[i];</span>
+
+<span class="nc bnc" id="L648" title="All 2 branches missed.">        if (o1 != null) {</span>
+<span class="nc bnc" id="L649" title="All 2 branches missed.">          if (!o1.equals(o2)) {</span>
+<span class="nc" id="L650">            return false;</span>
+          }
+<span class="nc bnc" id="L652" title="All 2 branches missed.">        } else if (o2 != null) {</span>
+<span class="nc" id="L653">          return false;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L658">    return true;</span>
+  }
+
+  public static String stripToLastDot (String s){
+<span class="nc" id="L662">    int i = s.lastIndexOf('.');</span>
+<span class="nc bnc" id="L663" title="All 2 branches missed.">    if (i&gt;=0){</span>
+<span class="nc" id="L664">      return s.substring(i+1);</span>
+    } else {
+<span class="nc" id="L666">      return s;</span>
+    }
+  }
+
+  public static int setBit (int val, int idx){
+<span class="nc" id="L671">    return (val | (1&lt;&lt;idx));</span>
+  }
+  
+  public static int clearBit (int val, int idx){
+<span class="nc" id="L675">    return (val &amp; ~(1&lt;&lt;idx));</span>
+  }
+
+  public static String upToFirst( String s, char c){
+<span class="fc" id="L679">    int i = s.indexOf(c);</span>
+<span class="pc bpc" id="L680" title="1 of 2 branches missed.">    if (i &gt;= 0){</span>
+<span class="fc" id="L681">      return s.substring(0, i);</span>
+    } else {
+<span class="nc" id="L683">      return s;</span>
+    }
+  }
+  
+  public static String fromFirst( String s, char c){
+<span class="nc" id="L688">    int i = s.indexOf(c);</span>
+<span class="nc bnc" id="L689" title="All 2 branches missed.">    if (i &gt;= 0){</span>
+<span class="nc" id="L690">      return s.substring(i);</span>
+    } else {
+<span class="nc" id="L692">      return s;</span>
+    }
+  }
+  
+  
+  /*=================== PRIVATE STUFF ===================*/
+
+  private static final class Iteratorable&lt;E&gt; implements Iterable&lt;E&gt; {
+    Iterator&lt;E&gt; iter;
+
+<span class="nc" id="L702">    public Iteratorable(Iterator&lt;E&gt; iter) {</span>
+<span class="nc" id="L703">      this.iter = iter;</span>
+<span class="nc" id="L704">    }</span>
+
+    @Override
+	public Iterator&lt;E&gt; iterator () {
+<span class="nc" id="L708">      Iterator&lt;E&gt; ret = iter;</span>
+<span class="nc" id="L709">      iter = null;</span>
+<span class="nc" id="L710">      return ret;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

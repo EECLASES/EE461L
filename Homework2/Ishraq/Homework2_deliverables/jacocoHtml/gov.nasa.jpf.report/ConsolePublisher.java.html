@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConsolePublisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.report</a> &gt; <span class="el_source">ConsolePublisher.java</span></div><h1>ConsolePublisher.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.report;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.util.Left;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.Step;
+import gov.nasa.jpf.vm.Transition;
+
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+public class ConsolePublisher extends Publisher {
+
+  // output destinations
+  String fileName;
+  FileOutputStream fos;
+
+  String port;
+
+  // the various degrees of information for program traces
+  protected boolean showCG;
+  protected boolean showSteps;
+  protected boolean showLocation;
+  protected boolean showSource;
+  protected boolean showMethod;
+  protected boolean showCode;
+
+  public ConsolePublisher(Config conf, Reporter reporter) {
+<span class="fc" id="L57">    super(conf, reporter);</span>
+
+    // options controlling the output destination
+<span class="fc" id="L60">    fileName = conf.getString(&quot;report.console.file&quot;);</span>
+<span class="fc" id="L61">    port = conf.getString(&quot;report.console.port&quot;);</span>
+
+    // options controlling what info should be included in a trace
+<span class="fc" id="L64">    showCG = conf.getBoolean(&quot;report.console.show_cg&quot;, true);</span>
+<span class="fc" id="L65">    showSteps = conf.getBoolean(&quot;report.console.show_steps&quot;, true);</span>
+<span class="fc" id="L66">    showLocation = conf.getBoolean(&quot;report.console.show_location&quot;, true);</span>
+<span class="fc" id="L67">    showSource = conf.getBoolean(&quot;report.console.show_source&quot;, true);</span>
+<span class="fc" id="L68">    showMethod = conf.getBoolean(&quot;report.console.show_method&quot;, false);</span>
+<span class="fc" id="L69">    showCode = conf.getBoolean(&quot;report.console.show_code&quot;, false);</span>
+<span class="fc" id="L70">  }</span>
+
+  @Override
+  public String getName() {
+<span class="fc" id="L74">    return &quot;console&quot;;</span>
+  }
+
+  @Override
+  protected void openChannel(){
+
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">    if (fileName != null) {</span>
+      try {
+<span class="nc" id="L82">        fos = new FileOutputStream(fileName);</span>
+<span class="nc" id="L83">        out = new PrintWriter( fos);</span>
+<span class="nc" id="L84">      } catch (FileNotFoundException x) {</span>
+        // fall back to System.out
+<span class="nc" id="L86">      }</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">    } else if (port != null) {</span>
+      // &lt;2do&gt;
+    }
+
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">    if (out == null){</span>
+<span class="fc" id="L92">      out = new PrintWriter(System.out, true);</span>
+    }
+<span class="fc" id="L94">  }</span>
+
+  @Override
+  protected void closeChannel() {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">    if (fos != null){</span>
+<span class="nc" id="L99">      out.close();</span>
+    }
+<span class="fc" id="L101">  }</span>
+
+  @Override
+  public void publishTopicStart (String topic) {
+<span class="fc" id="L105">    out.println();</span>
+<span class="fc" id="L106">    out.print(&quot;====================================================== &quot;);</span>
+<span class="fc" id="L107">    out.println(topic);</span>
+<span class="fc" id="L108">  }</span>
+
+  @Override
+  public void publishTopicEnd (String topic) {
+    // nothing here
+<span class="nc" id="L113">  }</span>
+
+  @Override
+  public void publishStart() {
+<span class="fc" id="L117">    super.publishStart();</span>
+
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">    if (startItems.length &gt; 0){ // only report if we have output for this phase</span>
+<span class="fc" id="L120">      publishTopicStart(&quot;search started: &quot; + formatDTG(reporter.getStartDate()));</span>
+    }
+<span class="fc" id="L122">  }</span>
+
+  @Override
+  public void publishFinished() {
+<span class="fc" id="L126">    super.publishFinished();</span>
+
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">    if (finishedItems.length &gt; 0){ // only report if we have output for this phase</span>
+<span class="fc" id="L129">      publishTopicStart(&quot;search finished: &quot; + formatDTG(reporter.getFinishedDate()));</span>
+    }
+<span class="fc" id="L131">  }</span>
+
+  @Override
+  protected void publishJPF() {
+<span class="fc" id="L135">    out.println(reporter.getJPFBanner());</span>
+<span class="fc" id="L136">    out.println();</span>
+<span class="fc" id="L137">  }</span>
+
+  @Override
+  protected void publishDTG() {
+<span class="fc" id="L141">    out.println(&quot;started: &quot; + reporter.getStartDate());</span>
+<span class="fc" id="L142">  }</span>
+
+  @Override
+  protected void publishUser() {
+<span class="fc" id="L146">    out.println(&quot;user: &quot; + reporter.getUser());</span>
+<span class="fc" id="L147">  }</span>
+
+  @Override
+  protected void publishJPFConfig() {
+<span class="nc" id="L151">    publishTopicStart(&quot;JPF configuration&quot;);</span>
+
+<span class="nc" id="L153">    TreeMap&lt;Object,Object&gt; map = conf.asOrderedMap();</span>
+<span class="nc" id="L154">    Set&lt;Map.Entry&lt;Object,Object&gt;&gt; eSet = map.entrySet();</span>
+
+<span class="nc bnc" id="L156" title="All 2 branches missed.">    for (Object src : conf.getSources()){</span>
+<span class="nc" id="L157">      out.print(&quot;property source: &quot;);</span>
+<span class="nc" id="L158">      out.println(conf.getSourceName(src));</span>
+<span class="nc" id="L159">    }    </span>
+    
+<span class="nc" id="L161">    out.println(&quot;properties:&quot;);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    for (Map.Entry&lt;Object,Object&gt; e : eSet) {</span>
+<span class="nc" id="L163">      out.println(&quot;  &quot; + e.getKey() + &quot;=&quot; + e.getValue());</span>
+<span class="nc" id="L164">    }</span>
+<span class="nc" id="L165">  }</span>
+
+  @Override
+  protected void publishPlatform() {
+<span class="fc" id="L169">    publishTopicStart(&quot;platform&quot;);</span>
+<span class="fc" id="L170">    out.println(&quot;hostname: &quot; + reporter.getHostName());</span>
+<span class="fc" id="L171">    out.println(&quot;arch: &quot; + reporter.getArch());</span>
+<span class="fc" id="L172">    out.println(&quot;os: &quot; + reporter.getOS());</span>
+<span class="fc" id="L173">    out.println(&quot;java: &quot; + reporter.getJava());</span>
+<span class="fc" id="L174">  }</span>
+
+
+  @Override
+  protected void publishSuT() {
+<span class="fc" id="L179">    publishTopicStart(&quot;system under test&quot;);</span>
+<span class="fc" id="L180">    out.println( reporter.getSuT());</span>
+<span class="fc" id="L181">  }</span>
+
+  @Override
+  protected void publishError() {
+<span class="fc" id="L185">    Error e = reporter.getCurrentError();</span>
+
+<span class="fc" id="L187">    publishTopicStart(&quot;error &quot; + e.getId());</span>
+<span class="fc" id="L188">    out.println(e.getDescription());</span>
+
+<span class="fc" id="L190">    String s = e.getDetails();</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">    if (s != null) {</span>
+<span class="fc" id="L192">      out.println(s);</span>
+    }
+
+<span class="fc" id="L195">  }</span>
+
+  @Override
+  protected void publishConstraint() {
+<span class="fc" id="L199">    String constraint = reporter.getLastSearchConstraint();</span>
+<span class="fc" id="L200">    publishTopicStart(&quot;search constraint&quot;);</span>
+<span class="fc" id="L201">    out.println(constraint);  // not much info here yet</span>
+<span class="fc" id="L202">  }</span>
+
+  @Override
+  protected void publishResult() {
+<span class="fc" id="L206">    List&lt;Error&gt; errors = reporter.getErrors();</span>
+
+<span class="fc" id="L208">    publishTopicStart(&quot;results&quot;);</span>
+
+<span class="fc bfc" id="L210" title="All 2 branches covered.">    if (errors.isEmpty()) {</span>
+<span class="fc" id="L211">      out.println(&quot;no errors detected&quot;);</span>
+    } else {
+<span class="fc bfc" id="L213" title="All 2 branches covered.">      for (Error e : errors) {</span>
+<span class="fc" id="L214">        out.print(&quot;error #&quot;);</span>
+<span class="fc" id="L215">        out.print(e.getId());</span>
+<span class="fc" id="L216">        out.print(&quot;: &quot;);</span>
+<span class="fc" id="L217">        out.print(e.getDescription());</span>
+
+<span class="fc" id="L219">        String s = e.getDetails();</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        if (s != null) {</span>
+<span class="fc" id="L221">          s = s.replace('\n', ' ');</span>
+<span class="fc" id="L222">          s = s.replace('\t', ' ');</span>
+<span class="fc" id="L223">          s = s.replace('\r', ' ');</span>
+<span class="fc" id="L224">          out.print(&quot; \&quot;&quot;);</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">          if (s.length() &gt; 50){</span>
+<span class="fc" id="L226">            out.print(s.substring(0,50));</span>
+<span class="fc" id="L227">            out.print(&quot;...&quot;);</span>
+          } else {
+<span class="nc" id="L229">            out.print(s);</span>
+          }
+<span class="fc" id="L231">          out.print('&quot;');</span>
+        }
+
+<span class="fc" id="L234">        out.println();</span>
+<span class="fc" id="L235">      }</span>
+    }
+<span class="fc" id="L237">  }</span>
+
+  /**
+   * this is done as part of the property violation reporting, i.e.
+   * we have an error
+   */
+  @Override
+  protected void publishTrace() {
+<span class="nc" id="L245">    Path path = reporter.getPath();</span>
+<span class="nc" id="L246">    int i=0;</span>
+
+<span class="nc bnc" id="L248" title="All 2 branches missed.">    if (path.size() == 0) {</span>
+<span class="nc" id="L249">      return; // nothing to publish</span>
+    }
+
+<span class="nc" id="L252">    publishTopicStart(&quot;trace &quot; + reporter.getCurrentErrorId());</span>
+
+<span class="nc bnc" id="L254" title="All 2 branches missed.">    for (Transition t : path) {</span>
+<span class="nc" id="L255">      out.print(&quot;------------------------------------------------------ &quot;);</span>
+<span class="nc" id="L256">      out.println(&quot;transition #&quot; + i++ + &quot; thread: &quot; + t.getThreadIndex());</span>
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">      if (showCG){</span>
+<span class="nc" id="L259">        out.println(t.getChoiceGenerator());</span>
+      }
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">      if (showSteps) {</span>
+<span class="nc" id="L263">        String lastLine = null;</span>
+<span class="nc" id="L264">        MethodInfo lastMi = null;</span>
+<span class="nc" id="L265">        int nNoSrc=0;</span>
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        for (Step s : t) {</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">          if (showSource) {</span>
+<span class="nc" id="L269">            String line = s.getLineString();</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (line != null) {</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">              if (!line.equals(lastLine)) {</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">                if (nNoSrc &gt; 0){</span>
+<span class="nc" id="L273">                  out.println(&quot;      [&quot; + nNoSrc + &quot; insn w/o sources]&quot;);</span>
+                }
+
+<span class="nc" id="L276">                out.print(&quot;  &quot;);</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">                if (showLocation) {</span>
+<span class="nc" id="L278">                  out.print(Left.format(s.getLocationString(),30));</span>
+<span class="nc" id="L279">                  out.print(&quot; : &quot;);</span>
+                }
+<span class="nc" id="L281">                out.println(line.trim());</span>
+<span class="nc" id="L282">                nNoSrc = 0;</span>
+
+              }
+            } else { // no source
+<span class="nc" id="L286">              nNoSrc++;</span>
+            }
+            
+<span class="nc" id="L289">            lastLine = line;</span>
+          }
+
+<span class="nc bnc" id="L292" title="All 2 branches missed.">          if (showCode) {</span>
+<span class="nc" id="L293">            Instruction insn = s.getInstruction();</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">            if (showMethod){</span>
+<span class="nc" id="L295">              MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">              if (mi != lastMi) {</span>
+<span class="nc" id="L297">                ClassInfo mci = mi.getClassInfo();</span>
+<span class="nc" id="L298">                out.print(&quot;    &quot;);</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">                if (mci != null) {</span>
+<span class="nc" id="L300">                  out.print(mci.getName());</span>
+<span class="nc" id="L301">                  out.print(&quot;.&quot;);</span>
+                }
+<span class="nc" id="L303">                out.println(mi.getUniqueName());</span>
+<span class="nc" id="L304">                lastMi = mi;</span>
+              }
+            }
+<span class="nc" id="L307">            out.print(&quot;      &quot;);</span>
+<span class="nc" id="L308">            out.println(insn);</span>
+          }
+<span class="nc" id="L310">        }</span>
+
+<span class="nc bnc" id="L312" title="All 6 branches missed.">        if (showSource &amp;&amp; !showCode &amp;&amp; (nNoSrc &gt; 0)) {</span>
+<span class="nc" id="L313">          out.println(&quot;      [&quot; + nNoSrc + &quot; insn w/o sources]&quot;);</span>
+        }
+      }
+<span class="nc" id="L316">    }</span>
+<span class="nc" id="L317">  }</span>
+
+  @Override
+  protected void publishOutput() {
+<span class="nc" id="L321">    Path path = reporter.getPath();</span>
+
+<span class="nc bnc" id="L323" title="All 2 branches missed.">    if (path.size() == 0) {</span>
+<span class="nc" id="L324">      return; // nothing to publish</span>
+    }
+
+<span class="nc" id="L327">    publishTopicStart(&quot;output &quot; + reporter.getCurrentErrorId());</span>
+
+<span class="nc bnc" id="L329" title="All 2 branches missed.">    if (path.hasOutput()) {</span>
+<span class="nc bnc" id="L330" title="All 2 branches missed.">      for (Transition t : path) {</span>
+<span class="nc" id="L331">        String s = t.getOutput();</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if (s != null){</span>
+<span class="nc" id="L333">          out.print(s);</span>
+        }
+<span class="nc" id="L335">      }</span>
+    } else {
+<span class="nc" id="L337">      out.println(&quot;no output&quot;);</span>
+    }
+<span class="nc" id="L339">  }</span>
+
+  @Override
+  protected void publishSnapshot() {
+<span class="fc" id="L343">    VM vm = reporter.getVM();</span>
+
+    // not so nice - we have to delegate this since it's using a lot of internals, and is also
+    // used in debugging
+<span class="fc" id="L347">    publishTopicStart(&quot;snapshot &quot; + reporter.getCurrentErrorId());</span>
+
+<span class="fc bfc" id="L349" title="All 2 branches covered.">    if (vm.getPathLength() &gt; 0) {</span>
+<span class="fc" id="L350">      vm.printLiveThreadStatus(out);</span>
+    } else {
+<span class="fc" id="L352">      out.println(&quot;initial program state&quot;);</span>
+    }
+<span class="fc" id="L354">  }</span>
+
+  public static final String STATISTICS_TOPIC = &quot;statistics&quot;;
+  
+  // this is useful if somebody wants to monitor progress from a specialized ConsolePublisher
+  public synchronized void printStatistics (PrintWriter pw){
+<span class="nc" id="L360">    publishTopicStart( STATISTICS_TOPIC);</span>
+<span class="nc" id="L361">    printStatistics( pw, reporter);</span>
+<span class="nc" id="L362">  }</span>
+  
+  // this can be used outside a publisher, to show the same info
+  public static void printStatistics (PrintWriter pw, Reporter reporter){
+<span class="nc" id="L366">    Statistics stat = reporter.getStatistics();</span>
+
+<span class="nc" id="L368">    pw.println(&quot;elapsed time:       &quot; + formatHMS(reporter.getElapsedTime()));</span>
+<span class="nc" id="L369">    pw.println(&quot;states:             new=&quot; + stat.newStates + &quot;,visited=&quot; + stat.visitedStates</span>
+            + &quot;,backtracked=&quot; + stat.backtracked + &quot;,end=&quot; + stat.endStates);
+<span class="nc" id="L371">    pw.println(&quot;search:             maxDepth=&quot; + stat.maxDepth + &quot;,constraints=&quot; + stat.constraints);</span>
+<span class="nc" id="L372">    pw.println(&quot;choice generators:  thread=&quot; + stat.threadCGs</span>
+            + &quot; (signal=&quot; + stat.signalCGs + &quot;,lock=&quot; + stat.monitorCGs + &quot;,sharedRef=&quot; + stat.sharedAccessCGs
+            + &quot;,threadApi=&quot; + stat.threadApiCGs + &quot;,reschedule=&quot; + stat.breakTransitionCGs
+            + &quot;), data=&quot; + stat.dataCGs);
+<span class="nc" id="L376">    pw.println(&quot;heap:               &quot; + &quot;new=&quot; + stat.nNewObjects</span>
+            + &quot;,released=&quot; + stat.nReleasedObjects
+            + &quot;,maxLive=&quot; + stat.maxLiveObjects
+            + &quot;,gcCycles=&quot; + stat.gcCycles);
+<span class="nc" id="L380">    pw.println(&quot;instructions:       &quot; + stat.insns);</span>
+<span class="nc" id="L381">    pw.println(&quot;max memory:         &quot; + (stat.maxUsed &gt;&gt; 20) + &quot;MB&quot;);</span>
+
+<span class="nc" id="L383">    pw.println(&quot;loaded code:        classes=&quot; + ClassLoaderInfo.getNumberOfLoadedClasses() + &quot;,methods=&quot;</span>
+<span class="nc" id="L384">            + MethodInfo.getNumberOfLoadedMethods());</span>
+<span class="nc" id="L385">  }</span>
+  
+  @Override
+  public void publishStatistics() {
+<span class="nc" id="L389">    printStatistics(out);</span>
+<span class="nc" id="L390">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

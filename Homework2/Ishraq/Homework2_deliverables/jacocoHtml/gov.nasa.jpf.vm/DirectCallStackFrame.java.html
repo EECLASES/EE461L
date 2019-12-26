@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DirectCallStackFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">DirectCallStackFrame.java</span></div><h1>DirectCallStackFrame.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.SystemAttribute;
+
+/**
+ * DirectCallStackFrames are only used for overlay calls (from native code), i.e.
+ * there is no corresponding INVOKE instruction. The associated MethodInfos are
+ * synthetic, their only code is (usually) a INVOKEx and a DIRECTCALLRETURN.
+ * NOTE: such MethodInfos do not belong to any class
+ * 
+ * Arguments for the invoke insn have to be pushed explicitly by the caller
+ * 
+ * direct calls do not return any values themselves, but they do get the return values of the
+ * called method pushed onto their own operand stack. If the DirectCallStackFrame user
+ * needs such return values, it has to do so via ThreadInfo.getReturnedDirectCall()
+ *
+ */
+public abstract class DirectCallStackFrame extends StackFrame implements SystemAttribute {
+  
+  MethodInfo callee;
+
+  protected DirectCallStackFrame (MethodInfo miDirectCall, MethodInfo callee, int maxLocals, int maxStack){
+<span class="nc" id="L40">    super( miDirectCall, maxLocals, maxStack);    </span>
+<span class="nc" id="L41">    this.callee = callee;</span>
+<span class="nc" id="L42">  }</span>
+  
+  protected DirectCallStackFrame (MethodInfo miDirectCall, MethodInfo callee){
+<span class="fc" id="L45">    super( miDirectCall, miDirectCall.getMaxLocals(), miDirectCall.getMaxStack());</span>
+<span class="fc" id="L46">    this.callee = callee;</span>
+<span class="fc" id="L47">  }</span>
+  
+  public MethodInfo getCallee (){
+<span class="fc" id="L50">    return callee;</span>
+  }
+  
+  @Override
+  public String getStackTraceInfo () {
+<span class="nc" id="L55">    StringBuilder sb = new StringBuilder(128);</span>
+<span class="nc" id="L56">    sb.append('[');</span>
+<span class="nc" id="L57">    sb.append( callee.getUniqueName());</span>
+<span class="nc" id="L58">    sb.append(']');</span>
+<span class="nc" id="L59">    return sb.toString();</span>
+  }
+  
+  public DirectCallStackFrame getPreviousDirectCallStackFrame(){
+<span class="nc" id="L63">    StackFrame f = prev;</span>
+<span class="nc bnc" id="L64" title="All 4 branches missed.">    while (f != null &amp;&amp; !(f instanceof DirectCallStackFrame)){</span>
+<span class="nc" id="L65">      f = f.prev;</span>
+    }
+    
+<span class="nc" id="L68">    return (DirectCallStackFrame) f;</span>
+  }
+  
+  public void setFireWall(){
+<span class="fc" id="L72">    mi.setFirewall(true);</span>
+<span class="fc" id="L73">  }</span>
+
+  @Override
+  public boolean isDirectCallFrame () {
+<span class="fc" id="L77">    return true;</span>
+  }
+  
+  @Override
+  public boolean isSynthetic() {
+<span class="nc" id="L82">    return true;</span>
+  }
+  
+  /*
+   * those set the callee arguments for the invoke insn - the returned value is the slot index OFFSET (not the slot index
+   * itself) for the next argument. This has to be used in a pattern like 
+   *   int argOffset = frame.setArgument( 0, firstArg, a0);
+   *   argOffset = frame.setLongArgument( argOffset, secondArg, a1);
+   *   ...
+   */
+  
+  public abstract int setArgument (int argOffset, int value, Object attr);
+  public abstract int setLongArgument (int argOffset, long value, Object attr);
+  public abstract int setReferenceArgument (int argOffset, int ref, Object attr);
+
+  public int setFloatArgument (int argOffset, float value, Object attr){
+<span class="fc" id="L98">    return setArgument( argOffset, Float.floatToIntBits(value), attr);</span>
+  }
+  public int setDoubleArgument (int argOffset, double value, Object attr){
+<span class="fc" id="L101">    return setLongArgument( argOffset, Double.doubleToLongBits(value), attr);</span>
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

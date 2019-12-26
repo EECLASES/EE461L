@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AllRunnablesSyncPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">AllRunnablesSyncPolicy.java</span></div><h1>AllRunnablesSyncPolicy.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.choice.ThreadChoiceFromSet;
+
+/**
+ * a Scheduler implementation base class that allows filtering of runnable threads and
+ * implements SyncPolicy without backtracking or empty transitions, i.e. choice sets that
+ * include all runnable threads
+ */
+public class AllRunnablesSyncPolicy implements SyncPolicy {
+
+  protected VM vm;
+  protected boolean breakSingleChoice;
+  protected boolean breakLockRelease;
+  protected boolean breakNotify;
+  protected boolean breakSleep;
+  protected boolean breakYield;
+  protected boolean breakPriority;
+  
+<span class="fc" id="L39">  public AllRunnablesSyncPolicy (Config config){</span>
+<span class="fc" id="L40">    breakSingleChoice = config.getBoolean(&quot;cg.break_single_choice&quot;, false);    </span>
+<span class="fc" id="L41">    breakLockRelease = config.getBoolean(&quot;cg.break_lock_release&quot;, true);</span>
+<span class="fc" id="L42">    breakNotify = config.getBoolean(&quot;cg.break_notify&quot;, true);</span>
+<span class="fc" id="L43">    breakSleep = config.getBoolean(&quot;cg.break_sleep&quot;, true);</span>
+<span class="fc" id="L44">    breakYield = config.getBoolean(&quot;cg.break_yield&quot;, true);</span>
+<span class="fc" id="L45">    breakPriority = config.getBoolean(&quot;cg.break_priority&quot;, true);</span>
+<span class="fc" id="L46">  }</span>
+  
+  
+  //--- internal methods
+
+  /**
+   * this is the main policy method that can be overridden by subclasses, e.g. by filtering
+   * out the highest priority runnables, or by ordering according to priority
+   * 
+   * Default behavior is to first try to find runnables within the provided ApplicationContext,
+   * and fall back to any runnable if there are none in this context
+   * 
+   * this includes threads that are in operations that can timeout
+   */
+  protected ThreadInfo[] getTimeoutRunnables (ApplicationContext appCtx){
+<span class="fc" id="L61">    ThreadList tlist = vm.getThreadList();</span>
+    
+<span class="fc bfc" id="L63" title="All 2 branches covered.">    if (tlist.hasProcessTimeoutRunnables(appCtx)){</span>
+<span class="fc" id="L64">      return tlist.getProcessTimeoutRunnables(appCtx);</span>
+    } else {
+<span class="fc" id="L66">      return tlist.getTimeoutRunnables();</span>
+    }
+  }
+
+    
+  protected ChoiceGenerator&lt;ThreadInfo&gt; getRunnableCG (String id, ThreadInfo tiCurrent){
+<span class="fc" id="L72">    ApplicationContext appCtx = tiCurrent.getApplicationContext();</span>
+<span class="fc" id="L73">    ThreadInfo[] choices = getTimeoutRunnables(appCtx);</span>
+    
+<span class="fc bfc" id="L75" title="All 2 branches covered.">    if (choices.length == 0){</span>
+<span class="fc" id="L76">      return null;</span>
+    }
+    
+<span class="fc bfc" id="L79" title="All 6 branches covered.">    if ((choices.length == 1) &amp;&amp; (choices[0] == tiCurrent) &amp;&amp; !tiCurrent.isTimeoutWaiting()){ // no context switch</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">      if (!breakSingleChoice){</span>
+<span class="fc" id="L81">        return null;</span>
+      }
+    }
+    
+<span class="fc" id="L85">    ChoiceGenerator&lt;ThreadInfo&gt; cg = new ThreadChoiceFromSet( id, choices, true);</span>
+    
+<span class="fc bfc" id="L87" title="All 2 branches covered.">    if(!vm.getThreadList().hasProcessTimeoutRunnables(appCtx)) {</span>
+<span class="fc" id="L88">      GlobalSchedulingPoint.setGlobal(cg);</span>
+    }
+    
+<span class="fc" id="L91">    return cg;</span>
+  }
+  
+  protected boolean setNextChoiceGenerator (ChoiceGenerator&lt;ThreadInfo&gt; cg){
+<span class="fc bfc" id="L95" title="All 2 branches covered.">    if (cg != null){</span>
+<span class="fc" id="L96">      return vm.getSystemState().setNextChoiceGenerator(cg); // listeners could still remove CGs</span>
+    } else {
+<span class="fc" id="L98">      return false;</span>
+    }
+  }
+  
+  /**
+   * set a runnable CG that is optional if we are in a atomic section 
+   */
+  protected boolean setNonBlockingCG (String id, ThreadInfo tiCurrent){
+<span class="fc bfc" id="L106" title="All 4 branches covered.">    if (!tiCurrent.isFirstStepInsn() || tiCurrent.isEmptyTransitionEnabled()) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">      if (vm.getSystemState().isAtomic()) {</span>
+<span class="fc" id="L108">        return false;</span>
+      } else {
+<span class="fc" id="L110">        return setNextChoiceGenerator(getRunnableCG(id, tiCurrent));</span>
+      }
+      
+    } else {
+<span class="fc" id="L114">      return false;  // no empty transitions</span>
+    }
+  }
+  
+<span class="fc" id="L118">  protected static ChoiceGenerator&lt;ThreadInfo&gt; blockedWithoutChoice = </span>
+          new ThreadChoiceFromSet(&quot;BLOCKED_NO_CHOICE&quot;, new ThreadInfo[0], true);
+  
+  /**
+   * set a runnable CG that would break a atomic section because it requires
+   * a context switch
+   */
+  protected boolean setBlockingCG (String id, ThreadInfo tiCurrent){
+<span class="fc bfc" id="L126" title="All 4 branches covered.">    if (!tiCurrent.isFirstStepInsn() || tiCurrent.isEmptyTransitionEnabled()) {</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">      if (vm.getSystemState().isAtomic()) {</span>
+<span class="fc" id="L128">        vm.getSystemState().setBlockedInAtomicSection();</span>
+      }
+      
+<span class="fc" id="L131">      ChoiceGenerator&lt;ThreadInfo&gt; cg = getRunnableCG(id, tiCurrent);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">      if (cg == null){ // make sure we don't mask a deadlock</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (vm.getThreadList().hasLiveThreads()){</span>
+<span class="fc" id="L134">          cg = blockedWithoutChoice;</span>
+        }
+      }
+      
+<span class="fc" id="L138">      return setNextChoiceGenerator(cg);</span>
+      
+    } else {
+<span class="fc" id="L141">      return false;  // no empty transitions</span>
+    }
+  }
+    
+  /**
+   * set a runnable CG that only breaks a atomic section if the blocking thread
+   * is the currently executing one
+   */
+  protected boolean setMaybeBlockingCG (String id, ThreadInfo tiCurrent, ThreadInfo tiBlock){
+<span class="fc bfc" id="L150" title="All 2 branches covered.">    if (tiCurrent == tiBlock){</span>
+<span class="fc" id="L151">      return setBlockingCG( id, tiCurrent);</span>
+    } else {
+<span class="fc" id="L153">      return setNonBlockingCG( id, tiCurrent);</span>
+    }
+  }
+  
+  
+  //--- SyncPolicy interface
+  
+  //--- initialization
+  @Override
+  public void initializeSyncPolicy (VM vm, ApplicationContext appCtx){
+<span class="fc" id="L163">    this.vm  = vm;</span>
+<span class="fc" id="L164">  }</span>
+  
+  @Override
+  public void initializeThreadSync (ThreadInfo tiCurrent, ThreadInfo tiNew){
+<span class="fc" id="L168">  }</span>
+    
+  //--- locks
+  @Override
+  public boolean setsBlockedThreadCG (ThreadInfo ti, ElementInfo ei){
+<span class="fc" id="L173">    return setBlockingCG( BLOCK, ti);</span>
+  }
+  
+  @Override
+  public boolean setsLockAcquisitionCG (ThreadInfo ti, ElementInfo ei){
+<span class="fc" id="L178">    return setNonBlockingCG( LOCK, ti);</span>
+  }
+  
+  @Override
+  public boolean setsLockReleaseCG (ThreadInfo ti, ElementInfo ei, boolean didUnblock){
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">    if (breakLockRelease){</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">      if (didUnblock){</span>
+<span class="fc" id="L185">        return setNonBlockingCG( RELEASE, ti);</span>
+      }
+    }
+    
+<span class="fc" id="L189">    return false;</span>
+  }
+  
+  //--- thread termination
+  @Override
+  public boolean setsTerminationCG (ThreadInfo ti){
+<span class="fc" id="L195">    return setBlockingCG( TERMINATE, ti);</span>
+  }
+  
+  //--- java.lang.Object APIs
+  @Override
+  public boolean setsWaitCG (ThreadInfo ti, long timeout){
+<span class="fc" id="L201">    return setBlockingCG( WAIT, ti);</span>
+  }
+  
+  @Override
+  public boolean setsNotifyCG (ThreadInfo ti, boolean didNotify){
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">    if (breakNotify){</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">      if (didNotify){</span>
+<span class="fc" id="L208">        return setNonBlockingCG( NOTIFY, ti);</span>
+      }
+    }
+    
+<span class="fc" id="L212">    return false;</span>
+  }
+  
+  @Override
+  public boolean setsNotifyAllCG (ThreadInfo ti, boolean didNotify){
+<span class="nc bnc" id="L217" title="All 2 branches missed.">    if (breakNotify){</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">      if (didNotify){</span>
+<span class="nc" id="L219">        return setNonBlockingCG( NOTIFYALL, ti);</span>
+      }
+    }
+    
+<span class="nc" id="L223">    return false;</span>
+  }
+  
+    
+  //--- the java.lang.Thread APIs
+  @Override
+  public boolean setsStartCG (ThreadInfo tiCurrent, ThreadInfo tiStarted){
+<span class="fc" id="L230">    return setNonBlockingCG( START, tiCurrent);</span>
+  }
+  
+  @Override
+  public boolean setsYieldCG (ThreadInfo ti){
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">    if (breakYield){</span>
+<span class="fc" id="L236">      return setNonBlockingCG( YIELD, ti);</span>
+    } else {
+<span class="nc" id="L238">      return false;</span>
+    }
+  }
+  
+  @Override
+  public boolean setsPriorityCG (ThreadInfo ti){
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">    if (breakPriority){</span>
+<span class="fc" id="L245">      return setNonBlockingCG( PRIORITY, ti);    </span>
+    } else {
+<span class="nc" id="L247">      return false;</span>
+    }
+  }
+  
+  @Override
+  public boolean setsSleepCG (ThreadInfo ti, long millis, int nanos){
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">    if (breakSleep){</span>
+<span class="fc" id="L254">      return setNonBlockingCG( SLEEP, ti);</span>
+    } else {
+<span class="nc" id="L256">      return false;</span>
+    }
+  }
+  
+  @Override
+  public boolean setsSuspendCG (ThreadInfo tiCurrent, ThreadInfo tiSuspended){
+<span class="fc" id="L262">    return setMaybeBlockingCG( SUSPEND, tiCurrent, tiSuspended);      </span>
+  }
+  
+  @Override
+  public boolean setsResumeCG (ThreadInfo tiCurrent, ThreadInfo tiResumed){
+<span class="fc" id="L267">    return setNonBlockingCG( RESUME, tiCurrent);</span>
+  }
+  
+  @Override
+  public boolean setsJoinCG (ThreadInfo tiCurrent, ThreadInfo tiJoin, long timeout){
+<span class="fc" id="L272">    return setBlockingCG( JOIN, tiCurrent);      </span>
+  }
+  
+  @Override
+  public boolean setsStopCG (ThreadInfo tiCurrent, ThreadInfo tiStopped){
+<span class="fc" id="L277">    return setMaybeBlockingCG( STOP, tiCurrent, tiStopped);</span>
+  }
+  
+  @Override
+  public boolean setsInterruptCG (ThreadInfo tiCurrent, ThreadInfo tiInterrupted){
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">    if (tiInterrupted.isWaiting()){</span>
+<span class="nc" id="L283">      return setNonBlockingCG( INTERRUPT, tiCurrent);</span>
+    } else {
+<span class="fc" id="L285">      return false;</span>
+    }
+  }
+  
+  
+  //--- sun.misc.Unsafe
+  @Override
+  public boolean setsParkCG (ThreadInfo ti, boolean isAbsTime, long timeout){
+<span class="fc" id="L293">    return setBlockingCG( PARK, ti);</span>
+  }
+  
+  @Override
+  public boolean setsUnparkCG (ThreadInfo tiCurrent, ThreadInfo tiUnparked){
+    // if the unparked thread is not blocked there is no point
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">    if (tiUnparked.isBlocked()){</span>
+<span class="nc" id="L300">      return setNonBlockingCG( UNPARK, tiCurrent);</span>
+    } else {
+<span class="fc" id="L302">      return false;</span>
+    }
+  }
+
+  
+  //--- system scheduling events
+  
+  /**
+   * this one has to be guaranteed to set a CG
+   */
+  @Override
+  public void setRootCG (){
+<span class="fc" id="L314">    ThreadInfo[] runnables = vm.getThreadList().getTimeoutRunnables();</span>
+<span class="fc" id="L315">    ChoiceGenerator&lt;ThreadInfo&gt; cg = new ThreadChoiceFromSet( ROOT, runnables, true);</span>
+<span class="fc" id="L316">    vm.getSystemState().setMandatoryNextChoiceGenerator( cg, &quot;no ROOT choice generator&quot;);</span>
+<span class="fc" id="L317">  }</span>
+  
+  
+  //--- gov.nasa.jpf.vm.Verify
+  @Override
+  public boolean setsBeginAtomicCG (ThreadInfo ti){
+<span class="fc" id="L323">    return setNonBlockingCG( BEGIN_ATOMIC, ti);</span>
+  }
+  
+  @Override
+  public boolean setsEndAtomicCG (ThreadInfo ti){
+<span class="fc" id="L328">    return setNonBlockingCG( END_ATOMIC, ti);</span>
+  }
+  
+  //--- ThreadInfo reschedule request
+  @Override
+  public boolean setsRescheduleCG (ThreadInfo ti, String reason){
+<span class="fc" id="L334">    return setNonBlockingCG( reason, ti);</span>
+  }
+  
+  //--- FinalizerThread
+  @Override
+  public boolean setsPostFinalizeCG (ThreadInfo tiFinalizer){
+    // the finalizer is already waiting at this point, i.e. it's not runnable anymore
+<span class="nc" id="L341">    return setBlockingCG( POST_FINALIZE, tiFinalizer);</span>
+  }
+  
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

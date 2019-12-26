@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChoiceGeneratorBase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ChoiceGeneratorBase.java</span></div><h1>ChoiceGeneratorBase.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.ObjectList;
+
+import java.lang.reflect.Array;
+import java.util.Comparator;
+import java.util.Random;
+
+/**
+ * abstract root class for configurable choice generators
+ */
+public abstract class ChoiceGeneratorBase&lt;T&gt; implements ChoiceGenerator&lt;T&gt; {
+
+  /**
+   * choice randomization policies, which can be set from JPF configuration
+   */
+<span class="fc" id="L35">  static enum ChoiceRandomizationPolicy {</span>
+<span class="fc" id="L36">    VAR_SEED,    // randomize choices using a different seed for every JPF run </span>
+<span class="fc" id="L37">    FIXED_SEED,  // randomize choices using a fixed seed for each JPF run (reproducible, seed can be specified as cg.seed)</span>
+<span class="fc" id="L38">    NONE         // don't randomize choices</span>
+  };
+  
+  static ChoiceRandomizationPolicy randomization;
+  
+  // the marker for the current choice used in String conversion
+  public static final char MARKER = '&gt;';
+<span class="fc" id="L45">  protected static Random random = new Random(42);</span>
+  
+  
+  // want the id to be visible to subclasses outside package
+  protected String id;
+  
+  // for subsequent access, there is no need to translate a JPF String object reference
+  // into a host VM String anymore (we just need it for creation to look up
+  // the class if this is a named CG)
+  protected int idRef;
+  
+  // used to cut off further choice enumeration
+  protected boolean isDone;
+  
+  // we keep a linked list of CG's
+  protected ChoiceGenerator&lt;?&gt; prev;
+
+  // the instruction that created this CG
+  protected Instruction insn;
+
+  // the state id of the state in which the CG was created
+  protected int stateId;
+  
+  // and the thread that executed this insn
+  protected ThreadInfo ti;
+
+  // free attributes (set on demand)
+  protected Object attr;
+
+  // answer if this is a cascaded CG, i.e. we had more than one registered
+  // within the same transition. Note this is NOT set for the last CG registered
+  protected boolean isCascaded;
+
+  // in case this is initialized from a VM context
+  public static void init(Config config) {
+
+<span class="fc" id="L81">    randomization = config.getEnum(&quot;cg.randomize_choices&quot;, </span>
+<span class="fc" id="L82">                                   ChoiceRandomizationPolicy.values(), ChoiceRandomizationPolicy.NONE);</span>
+
+    // if the randomize_choices is set to random then we need to 
+    // pick the seed based on the system time. 
+
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">    if (randomization == ChoiceRandomizationPolicy.VAR_SEED) {</span>
+<span class="nc" id="L88">      random.setSeed(System.currentTimeMillis());</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">    } else if (randomization == ChoiceRandomizationPolicy.FIXED_SEED){</span>
+<span class="nc" id="L90">      long seed = config.getLong(&quot;cg.seed&quot;, 42);</span>
+<span class="nc" id="L91">      random.setSeed( seed);</span>
+    }
+<span class="fc" id="L93">  }</span>
+  
+  public static boolean useRandomization() {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">    return (randomization != ChoiceRandomizationPolicy.NONE);</span>
+  }
+
+  /**
+   *  don't use this since it is not safe for cascaded ChoiceGenerators
+   * (we need the 'id' to be as context specific as possible)
+   */
+  @Deprecated
+<span class="nc" id="L104">  protected ChoiceGeneratorBase() {</span>
+<span class="nc" id="L105">    id = &quot;?&quot;;</span>
+<span class="nc" id="L106">  }</span>
+
+<span class="fc" id="L108">  protected ChoiceGeneratorBase(String id) {</span>
+<span class="fc" id="L109">    this.id = id;</span>
+<span class="fc" id="L110">  }</span>
+
+  @Override
+  public ChoiceGeneratorBase&lt;?&gt; clone() throws CloneNotSupportedException {
+<span class="fc" id="L114">    return (ChoiceGeneratorBase&lt;?&gt;)super.clone();</span>
+  }
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; deepClone() throws CloneNotSupportedException {
+<span class="fc" id="L119">    ChoiceGenerator&lt;?&gt; clone = (ChoiceGenerator&lt;?&gt;) super.clone();</span>
+    // we need to deep copy the parent CG
+<span class="fc bfc" id="L121" title="All 2 branches covered.">    if (prev != null){</span>
+<span class="fc" id="L122">      clone.setPreviousChoiceGenerator( prev.deepClone());</span>
+    }
+<span class="fc" id="L124">    return clone;</span>
+  }
+  
+  @Override
+  public String getId() {
+<span class="fc" id="L129">    return id;</span>
+  }
+
+  @Override
+  public int getIdRef() {
+<span class="nc" id="L134">    return idRef;</span>
+  }
+
+  @Override
+  public void setIdRef(int idRef) {
+<span class="nc" id="L139">    this.idRef = idRef;</span>
+<span class="nc" id="L140">  }</span>
+
+  @Override
+  public void setId(String id) {
+<span class="nc" id="L144">    this.id = id;</span>
+<span class="nc" id="L145">  }</span>
+
+  @Override
+  public boolean isSchedulingPoint() {
+<span class="nc" id="L149">    return false;</span>
+  }
+
+  //--- the getters and setters for the CG creation info
+  @Override
+  public void setThreadInfo(ThreadInfo ti) {
+<span class="nc" id="L155">    this.ti = ti;</span>
+<span class="nc" id="L156">  }</span>
+
+  @Override
+  public ThreadInfo getThreadInfo() {
+<span class="nc" id="L160">    return ti;</span>
+  }
+
+  @Override
+  public void setInsn(Instruction insn) {
+<span class="nc" id="L165">    this.insn = insn;</span>
+<span class="nc" id="L166">  }</span>
+
+  @Override
+  public Instruction getInsn() {
+<span class="fc" id="L170">    return insn;</span>
+  }
+
+  @Override
+  public void setContext(ThreadInfo tiCreator) {
+<span class="fc" id="L175">    ti = tiCreator;</span>
+<span class="fc" id="L176">    insn = tiCreator.getPC();</span>
+<span class="fc" id="L177">  }</span>
+  
+  @Override
+  public void setStateId(int stateId){
+<span class="fc" id="L181">    this.stateId = stateId;</span>
+
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">    if (isCascaded){</span>
+<span class="nc" id="L184">      getCascadedParent().setStateId(stateId);</span>
+    }
+<span class="fc" id="L186">  }</span>
+  
+  @Override
+  public int getStateId(){
+<span class="nc" id="L190">    return stateId;</span>
+  }
+
+  @Override
+  public String getSourceLocation() {
+<span class="nc" id="L195">    return insn.getSourceLocation();</span>
+  }
+
+  @Override
+  public boolean supportsReordering(){
+<span class="nc" id="L200">    return false;</span>
+  }
+  
+  /**
+   * reorder according to a user provided comparator
+   * @returns instance to reordered CG of same choice type, 
+   * null if not supported by particular CG subclass
+   * 
+   * Note: this should only be called before the first advance, since it
+   * can reset the CG enumeration status
+   */
+  @Override
+  public ChoiceGenerator&lt;T&gt; reorder (Comparator&lt;T&gt; comparator){
+<span class="nc" id="L213">    return null;</span>
+  }
+  
+  @Override
+  public void setPreviousChoiceGenerator(ChoiceGenerator&lt;?&gt; cg) {
+<span class="fc" id="L218">    prev = cg;</span>
+<span class="fc" id="L219">  }</span>
+
+  @Override
+  public void setCascaded() {
+<span class="fc" id="L223">    isCascaded = true;</span>
+<span class="fc" id="L224">  }</span>
+
+  @Override
+  public boolean isCascaded() {
+<span class="fc" id="L228">    return isCascaded;</span>
+  }
+
+  @Override
+  public &lt;C extends ChoiceGenerator&lt;?&gt;&gt; C getPreviousChoiceGeneratorOfType(Class&lt;C&gt; cls) {
+<span class="fc" id="L233">    ChoiceGenerator&lt;?&gt; cg = prev;</span>
+
+<span class="fc bfc" id="L235" title="All 2 branches covered.">    while (cg != null) {</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">      if (cls.isInstance(cg)) {</span>
+<span class="fc" id="L237">        return (C) cg;</span>
+      }
+<span class="nc" id="L239">      cg = cg.getPreviousChoiceGenerator();</span>
+    }
+<span class="fc" id="L241">    return null;</span>
+  }
+
+  /**
+   * returns the prev CG if it was registered for the same insn
+   */
+  @Override
+  public ChoiceGenerator&lt;?&gt; getCascadedParent() {
+<span class="fc bfc" id="L249" title="All 2 branches covered.">    if (prev != null) {</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">      if (prev.isCascaded()) {</span>
+<span class="fc" id="L251">        return prev;</span>
+      }
+    }
+
+<span class="fc" id="L255">    return null;</span>
+  }
+
+  /**
+   * return array with all cascaded parents and this CG, in registration order
+   */
+  @Override
+  public ChoiceGenerator&lt;?&gt;[] getCascade() {
+<span class="fc" id="L263">    int n = 0;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getCascadedParent()) {</span>
+<span class="fc" id="L265">      n++;</span>
+    }
+
+<span class="fc" id="L268">    ChoiceGenerator&lt;?&gt;[] a = new ChoiceGenerator&lt;?&gt;[n];</span>
+
+<span class="fc bfc" id="L270" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getCascadedParent()) {</span>
+<span class="fc" id="L271">      a[--n] = cg;</span>
+    }
+
+<span class="fc" id="L274">    return a;</span>
+  }
+
+  /**
+   * return array with all parents and this CG, in registration order
+   */
+  @Override
+  public ChoiceGenerator&lt;?&gt;[] getAll() {
+<span class="fc" id="L282">    int n = 0;</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getPreviousChoiceGenerator()) {</span>
+<span class="fc" id="L284">      n++;</span>
+    }
+
+<span class="fc" id="L287">    ChoiceGenerator&lt;?&gt;[] a = new ChoiceGenerator&lt;?&gt;[n];</span>
+
+<span class="fc bfc" id="L289" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getPreviousChoiceGenerator()) {</span>
+<span class="fc" id="L290">      a[--n] = cg;</span>
+    }
+
+<span class="fc" id="L293">    return a;</span>
+  }
+
+  /**
+   * return array with all CGs (including this one) of given 'cgType', in registration order
+   */
+  @Override
+  public &lt;C extends ChoiceGenerator&lt;?&gt;&gt; C[] getAllOfType(Class&lt;C&gt; cgType) {
+<span class="nc" id="L301">    int n = 0;</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getPreviousChoiceGenerator()) {</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">      if (cgType.isAssignableFrom(cg.getClass())) {</span>
+<span class="nc" id="L304">        n++;</span>
+      }
+    }
+
+<span class="nc" id="L308">    C[] a = (C[]) Array.newInstance(cgType, n);</span>
+
+<span class="nc bnc" id="L310" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = this; cg != null; cg = cg.getPreviousChoiceGenerator()) {</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">      if (cgType.isAssignableFrom(cg.getClass())) {</span>
+<span class="nc" id="L312">        a[--n] = (C) cg;</span>
+      }
+    }
+
+<span class="nc" id="L316">    return a;</span>
+  }
+
+  @Override
+  public int getNumberOfParents(){
+<span class="nc" id="L321">    int n=0;</span>
+<span class="nc bnc" id="L322" title="All 2 branches missed.">    for (ChoiceGenerator cg = prev; cg != null; cg = cg.getPreviousChoiceGenerator()){</span>
+<span class="nc" id="L323">      n++;</span>
+    }
+<span class="nc" id="L325">    return n;</span>
+  }
+  
+  @Override
+  public void setCurrent(){
+    // nothing, can be overridden by subclasses to do context specific initialization
+    // the first time this CG becomes the current one
+<span class="fc" id="L332">  }</span>
+  
+  // we can't put the advanceForCurrentInsn() here because it has to do
+  // notifications, which are the SystemState responsibility
+  /**
+   * advance n choices
+   * pretty braindead generic solution, but if more speed is needed, we can easily override
+   * in the concrete CGs (it's used for path replay)
+   */
+  @Override
+  public void advance(int nChoices) {
+<span class="fc bfc" id="L343" title="All 2 branches covered.">    while (nChoices-- &gt; 0) {</span>
+<span class="fc" id="L344">      advance();</span>
+    }
+<span class="fc" id="L346">  }</span>
+
+  @Override
+  public void select (int choiceIndex) {
+<span class="fc" id="L350">    reset();</span>
+<span class="fc" id="L351">    advance(choiceIndex+1);</span>
+<span class="fc" id="L352">    setDone();</span>
+<span class="fc" id="L353">  }</span>
+
+  // override this to support explicit CG enumeration from listeners etc.
+  
+  /**
+   * explicit choice enumeration. Override if supported
+   * @return choice value or null if not supported
+   */
+  @Override
+  public T getChoice (int idx){
+<span class="nc" id="L363">    return null;</span>
+  }
+  
+  //--- generic choice set getter implementation
+  // Note - this requires an overloaded getChoice() and can be very slow (depending on CG implementation)
+  
+  @Override
+  public T[] getAllChoices(){
+<span class="nc" id="L371">    int n = getTotalNumberOfChoices();</span>
+<span class="nc" id="L372">    T[] a = (T[]) new Object[n];</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L374">      T c = getChoice(i);</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">      if (c == null){</span>
+<span class="nc" id="L376">        return null; // CG doesn't support choice enumeration</span>
+      } else {
+<span class="nc" id="L378">        a[i] = c;</span>
+      }
+    }
+<span class="nc" id="L381">    return a;</span>
+  }
+  
+  @Override
+  public T[] getProcessedChoices(){
+<span class="nc" id="L386">    int n = getProcessedNumberOfChoices();</span>
+<span class="nc" id="L387">    T[] a = (T[]) new Object[n];</span>
+<span class="nc bnc" id="L388" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L389">      T c = getChoice(i);</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">      if (c == null){</span>
+<span class="nc" id="L391">        return null; // CG doesn't support choice enumeration</span>
+      } else {
+<span class="nc" id="L393">        a[i] = c;</span>
+      }
+    }
+<span class="nc" id="L396">    return a;    </span>
+  }
+  
+  @Override
+  public T[] getUnprocessedChoices(){
+<span class="nc" id="L401">    int n = getTotalNumberOfChoices();</span>
+<span class="nc" id="L402">    int m = getProcessedNumberOfChoices();</span>
+<span class="nc" id="L403">    T[] a = (T[]) new Object[n];</span>
+<span class="nc bnc" id="L404" title="All 2 branches missed.">    for (int i=m-1; i&lt;n; i++){</span>
+<span class="nc" id="L405">      T c = getChoice(i);</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">      if (c == null){</span>
+<span class="nc" id="L407">        return null; // CG doesn't support choice enumeration</span>
+      } else {
+<span class="nc" id="L409">        a[i] = c;</span>
+      }
+    }
+<span class="nc" id="L412">    return a;    </span>
+  }
+  
+  
+  @Override
+  public boolean isDone() {
+<span class="nc" id="L418">    return isDone;</span>
+  }
+
+  @Override
+  public void setDone() {
+<span class="fc" id="L423">    isDone = true;</span>
+<span class="fc" id="L424">  }</span>
+
+  @Override
+  public boolean isProcessed() {
+<span class="nc bnc" id="L428" title="All 4 branches missed.">    return isDone || !hasMoreChoices();</span>
+  }
+
+  //--- the generic attribute API
+  @Override
+  public boolean hasAttr() {
+<span class="nc bnc" id="L434" title="All 2 branches missed.">    return (attr != null);</span>
+  }
+
+  @Override
+  public boolean hasAttr(Class&lt;?&gt; attrType) {
+<span class="fc" id="L439">    return ObjectList.containsType(attr, attrType);</span>
+  }
+
+  public boolean hasAttrValue (Object a){
+<span class="nc" id="L443">    return ObjectList.contains(attr, a);</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  @Override
+  public Object getAttr() {
+<span class="nc" id="L452">    return attr;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  @Override
+  public void setAttr(Object a) {
+<span class="nc" id="L463">    attr = a;</span>
+<span class="nc" id="L464">  }</span>
+
+  @Override
+  public void addAttr(Object a) {
+<span class="fc" id="L468">    attr = ObjectList.add(attr, a);</span>
+<span class="fc" id="L469">  }</span>
+
+  @Override
+  public void removeAttr(Object a) {
+<span class="nc" id="L473">    attr = ObjectList.remove(attr, a);</span>
+<span class="nc" id="L474">  }</span>
+
+  @Override
+  public void replaceAttr(Object oldAttr, Object newAttr) {
+<span class="nc" id="L478">    attr = ObjectList.replace(attr, oldAttr, newAttr);</span>
+<span class="nc" id="L479">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  @Override
+  public &lt;T&gt; T getAttr(Class&lt;T&gt; attrType) {
+<span class="fc" id="L487">    return ObjectList.getFirst(attr, attrType);</span>
+  }
+
+  @Override
+  public &lt;T&gt; T getNextAttr(Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L492">    return ObjectList.getNext(attr, attrType, prev);</span>
+  }
+
+  @Override
+  public ObjectList.Iterator attrIterator() {
+<span class="nc" id="L497">    return ObjectList.iterator(attr);</span>
+  }
+
+  @Override
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; attrIterator(Class&lt;T&gt; attrType) {
+<span class="nc" id="L502">    return ObjectList.typedIterator(attr, attrType);</span>
+  }
+
+  // -- end attrs --
+  @Override
+  public String toString() {
+<span class="fc" id="L508">    StringBuilder b = new StringBuilder(getClass().getName());</span>
+<span class="fc" id="L509">    b.append(&quot; {id:\&quot;&quot;);</span>
+<span class="fc" id="L510">    b.append(id);</span>
+<span class="fc" id="L511">    b.append(&quot;\&quot; ,&quot;);</span>
+<span class="fc" id="L512">    b.append(getProcessedNumberOfChoices());</span>
+<span class="fc" id="L513">    b.append('/');</span>
+<span class="fc" id="L514">    b.append(getTotalNumberOfChoices());</span>
+<span class="fc" id="L515">    b.append(&quot;,isCascaded:&quot;);</span>
+<span class="fc" id="L516">    b.append(isCascaded);</span>
+
+<span class="pc bpc" id="L518" title="1 of 2 branches missed.">    if (attr != null) {</span>
+<span class="nc" id="L519">      b.append(&quot;,attrs:[&quot;);</span>
+<span class="nc" id="L520">      int i = 0;</span>
+<span class="nc bnc" id="L521" title="All 2 branches missed.">      for (Object a : ObjectList.iterator(attr)) {</span>
+<span class="nc bnc" id="L522" title="All 2 branches missed.">        if (i++ &gt; 1) {</span>
+<span class="nc" id="L523">          b.append(',');</span>
+        }
+<span class="nc" id="L525">        b.append(a);</span>
+<span class="nc" id="L526">      }</span>
+<span class="nc" id="L527">      b.append(']');</span>
+    }
+
+<span class="fc" id="L530">    b.append('}');</span>
+
+<span class="fc" id="L532">    return b.toString();</span>
+  }
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; getPreviousChoiceGenerator() {
+<span class="fc" id="L537">    return prev;</span>
+  }
+
+  // override if there is special choice randomization support
+  @Override
+  public ChoiceGenerator&lt;T&gt; randomize(){
+<span class="nc" id="L543">    return this;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceLocator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ReferenceLocator.java</span></div><h1>ReferenceLocator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.JVMInstanceFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.InstanceInvocation;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+import java.util.Arrays;
+
+/**
+ * tiny utility listener that can be used to find out where a certain
+ * object (specified by reference) gets allocated or accessed (call or field),
+ * and when it gets gc'ed
+ */
+public class ReferenceLocator extends ListenerAdapter {
+  
+  PrintWriter pw;
+  int[] createRefs;
+  int[] releaseRefs;
+  int[] useRefs;
+  
+<span class="nc" id="L45">  public ReferenceLocator (Config conf){</span>
+<span class="nc" id="L46">    createRefs = sort( conf.getIntArray(&quot;refloc.create&quot;));</span>
+<span class="nc" id="L47">    releaseRefs = sort( conf.getIntArray(&quot;refloc.release&quot;));</span>
+<span class="nc" id="L48">    useRefs = sort( conf.getIntArray(&quot;refloc.use&quot;));</span>
+    
+    // &lt;2do&gt; we might want to configure output destination
+<span class="nc" id="L51">    pw = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L52">  }</span>
+  
+  protected int[] sort(int[] a){
+<span class="nc bnc" id="L55" title="All 2 branches missed.">    if (a != null){</span>
+<span class="nc" id="L56">      Arrays.sort(a);</span>
+    }
+<span class="nc" id="L58">    return a;</span>
+  }
+  
+  protected void printLocation(String msg, ThreadInfo ti){
+<span class="nc" id="L62">    pw.println(msg);</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    for (StackFrame frame : ti) {</span>
+<span class="nc" id="L64">      pw.print(&quot;\tat &quot;);</span>
+<span class="nc" id="L65">      pw.println(frame.getStackTraceInfo());</span>
+<span class="nc" id="L66">    }</span>
+
+<span class="nc" id="L68">    pw.println();</span>
+<span class="nc" id="L69">  }</span>
+  
+  @Override
+  public void objectCreated (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="nc" id="L73">    int ref = ei.getObjectRef();</span>
+    
+<span class="nc bnc" id="L75" title="All 4 branches missed.">    if (createRefs != null &amp;&amp; Arrays.binarySearch(createRefs, ref) &gt;= 0){    </span>
+<span class="nc" id="L76">      printLocation(&quot;[ReferenceLocator] object &quot; + ei + &quot; created at:&quot;, ti);</span>
+    } 
+<span class="nc" id="L78">  }</span>
+  
+  @Override
+  public void objectReleased (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="nc" id="L82">    int ref = ei.getObjectRef();</span>
+    
+<span class="nc bnc" id="L84" title="All 4 branches missed.">    if (releaseRefs != null &amp;&amp; Arrays.binarySearch(releaseRefs, ref) &gt;= 0){</span>
+<span class="nc" id="L85">      pw.println(&quot;[ReferenceLocator] object &quot; + ei + &quot; released&quot;);</span>
+    }
+<span class="nc" id="L87">  }</span>
+  
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn){
+    
+<span class="nc bnc" id="L92" title="All 2 branches missed.">    if (useRefs != null){</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (executedInsn instanceof InstanceInvocation) {</span>
+<span class="nc" id="L94">        int ref = ((InstanceInvocation)executedInsn).getCalleeThis(ti);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (Arrays.binarySearch(useRefs, ref) &gt;= 0){</span>
+<span class="nc" id="L96">          printLocation(&quot;[ReferenceLocator] call on object &quot; + ti.getElementInfo(ref) + &quot; at:&quot;, ti);</span>
+        }
+<span class="nc bnc" id="L98" title="All 2 branches missed.">      } else if (executedInsn instanceof JVMInstanceFieldInstruction){</span>
+<span class="nc" id="L99">        int ref = ((JVMInstanceFieldInstruction)executedInsn).getLastThis();</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (Arrays.binarySearch(useRefs, ref) &gt;= 0){</span>
+<span class="nc" id="L101">          printLocation(&quot;[ReferenceLocator] field access of &quot; + ti.getElementInfo(ref) + &quot; at:&quot;, ti);          </span>
+        }
+      }
+    }
+<span class="nc" id="L105">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

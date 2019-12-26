@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<launchConfiguration type="com.google.cloud.tools.eclipse.appengine.AppToolsLaunchConfigurationType">
+<stringAttribute key="com.google.cloud.tools.eclipse.gcpEmulation.accountEmail" value="magr96@gmail.com"/>
+<listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
+<listEntry value="/Guestbook"/>
+</listAttribute>
+<listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_TYPES">
+<listEntry value="4"/>
+</listAttribute>
+<mapAttribute key="org.eclipse.debug.core.environmentVariables">
+<mapEntry key="GOOGLE_CLOUD_PROJECT" value="tutorial5-255123"/>
+</mapAttribute>
+<stringAttribute key="server-id" value="App Engine Standard at localhost"/>
+</launchConfiguration>

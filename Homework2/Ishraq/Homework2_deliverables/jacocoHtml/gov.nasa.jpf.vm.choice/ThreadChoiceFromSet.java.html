@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadChoiceFromSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">ThreadChoiceFromSet.java</span></div><h1>ThreadChoiceFromSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.ThreadChoiceGenerator;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+import java.util.Arrays;
+import java.util.Comparator;
+
+public class ThreadChoiceFromSet extends ChoiceGeneratorBase&lt;ThreadInfo&gt; implements ThreadChoiceGenerator {
+
+  protected boolean isSchedulingPoint;
+  protected ThreadInfo[] values;
+  protected int count;
+    
+  protected ThreadChoiceFromSet (String id){
+<span class="fc" id="L35">    super(id);</span>
+    
+    // all other fields have to be computed by subclass ctor
+<span class="fc" id="L38">    count = -1;</span>
+<span class="fc" id="L39">  }</span>
+  
+  public ThreadChoiceFromSet (String id, ThreadInfo[] set, boolean isSchedulingPoint) {
+<span class="fc" id="L42">    super(id);</span>
+        
+<span class="fc" id="L44">    values = set;</span>
+<span class="fc" id="L45">    count = -1;</span>
+
+<span class="fc" id="L47">    this.isSchedulingPoint = isSchedulingPoint;</span>
+
+    /**
+    if (isSchedulingPoint){
+      // do a sanity check to see if the candidates are acutally runnable
+      for (int i = 0; i &lt; set.length; i++) {
+        if (!set[i].isTimeoutRunnable()) {
+          throw new JPFException(&quot;trying to schedule non-runnable: &quot; + set[i]);
+        }
+      }
+    }
+    **/
+<span class="fc" id="L59">  }</span>
+  
+  @Override
+  public ThreadInfo getChoice (int idx){
+<span class="nc bnc" id="L63" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; values.length){</span>
+<span class="nc" id="L64">      return values[idx];</span>
+    } else {
+<span class="nc" id="L66">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+
+  
+  @Override
+  public void reset () {
+<span class="fc" id="L73">    count = -1;</span>
+
+<span class="fc" id="L75">    isDone = false;</span>
+<span class="fc" id="L76">  }</span>
+  
+  @Override
+  public ThreadInfo getNextChoice () {
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">    if ((count &gt;= 0) &amp;&amp; (count &lt; values.length)) {</span>
+<span class="fc" id="L81">      return values[count];</span>
+    } else {
+      // we don't raise an exception here because this might be (mis)used
+      // from a listener, which shouldn't produce JPFExceptions
+<span class="nc" id="L85">      return null;</span>
+    }
+  }
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="fc bfc" id="L91" title="All 4 branches covered.">    return (!isDone &amp;&amp; (count &lt; values.length-1));</span>
+  }
+
+
+  /**
+   * this has to handle timeouts, which we do with temporary thread status
+   * changes (i.e. the TIMEOUT_WAITING threads are in our list of choices, but
+   * only change their status to TIMEDOUT when they are picked as the next choice)
+   *
+   * &lt;2do&gt; this should be in SystemState.nextSuccessor - there might be
+   * other ThreadChoiceGenerators, and we should handle this consistently
+   */
+  @Override
+  public void advance () {    
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">    if (count &lt; values.length-1) { // at least one choice left</span>
+<span class="fc" id="L106">      count++;</span>
+    }
+<span class="fc" id="L108">  }</span>
+
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="fc" id="L112">    return values.length;</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="fc" id="L117">    return count+1;</span>
+  }
+
+  public Object getNextChoiceObject () {
+<span class="nc" id="L121">    return getNextChoice();</span>
+  }
+  
+  public ThreadInfo[] getChoices(){
+<span class="nc" id="L125">    return values;</span>
+  }
+  
+  @Override
+  public boolean supportsReordering(){
+<span class="nc" id="L130">    return true;</span>
+  }
+  
+  @Override
+  public ThreadChoiceGenerator reorder (Comparator&lt;ThreadInfo&gt; comparator){
+<span class="nc" id="L135">    ThreadInfo[] newValues = values.clone();</span>
+<span class="nc" id="L136">    Arrays.sort(newValues, comparator);</span>
+    
+<span class="nc" id="L138">    return new ThreadChoiceFromSet( id, newValues, isSchedulingPoint);</span>
+  }
+  
+  @Override
+  public void printOn (PrintWriter pw) {
+<span class="nc" id="L143">    pw.print(getClass().getName());</span>
+<span class="nc" id="L144">    pw.append(&quot;[id=\&quot;&quot;);</span>
+<span class="nc" id="L145">    pw.append(id);</span>
+<span class="nc" id="L146">    pw.append('&quot;');</span>
+
+<span class="nc" id="L148">    pw.append(&quot;,isCascaded:&quot;);</span>
+<span class="nc" id="L149">    pw.append(Boolean.toString(isCascaded));</span>
+
+<span class="nc" id="L151">    pw.print(&quot;,{&quot;);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">    for (int i=0; i&lt;values.length; i++) {</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">      if (i &gt; 0) pw.print(',');</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">      if (i == count) {</span>
+<span class="nc" id="L155">        pw.print(MARKER);</span>
+      }
+<span class="nc" id="L157">      pw.print(values[i].getName());</span>
+    }
+<span class="nc" id="L159">    pw.print(&quot;}]&quot;);</span>
+<span class="nc" id="L160">  }</span>
+  
+  @Override
+  public ThreadChoiceFromSet randomize () {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    for (int i = values.length - 1; i &gt; 0; i--) {</span>
+<span class="nc" id="L165">      int j = random.nextInt(i + 1);</span>
+<span class="nc" id="L166">      ThreadInfo tmp = values[i];</span>
+<span class="nc" id="L167">      values[i] = values[j];</span>
+<span class="nc" id="L168">      values[j] = tmp;</span>
+    }
+<span class="nc" id="L170">    return this;</span>
+  }
+  
+  public ThreadInfo[] getAllThreadChoices() {
+<span class="fc" id="L174">	  return values; </span>
+  }
+  
+  @Override
+  public boolean contains (ThreadInfo ti){
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">    for (int i=0; i&lt;values.length; i++){</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">      if (values[i] == ti){</span>
+<span class="fc" id="L181">        return true;</span>
+      }
+    }
+<span class="nc" id="L184">    return false;</span>
+  }
+
+  @Override
+  public Class&lt;ThreadInfo&gt; getChoiceType() {
+<span class="nc" id="L189">    return ThreadInfo.class;</span>
+  }
+  
+  @Override
+  public boolean isSchedulingPoint() {
+<span class="fc" id="L194">    return isSchedulingPoint;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

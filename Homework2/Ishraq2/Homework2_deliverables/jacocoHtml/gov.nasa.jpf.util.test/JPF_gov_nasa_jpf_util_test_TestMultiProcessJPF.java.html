@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPF_gov_nasa_jpf_util_test_TestMultiProcessJPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.test</a> &gt; <span class="el_source">JPF_gov_nasa_jpf_util_test_TestMultiProcessJPF.java</span></div><h1>JPF_gov_nasa_jpf_util_test_TestMultiProcessJPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.test;
+
+import gov.nasa.jpf.annotation.MJI;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ * This is a native peer for multiprocess test class root
+ */
+<span class="fc" id="L30">public class JPF_gov_nasa_jpf_util_test_TestMultiProcessJPF </span>
+  extends JPF_gov_nasa_jpf_util_test_TestJPF {
+
+  @MJI
+  public int getProcessId____I (MJIEnv env, int objRef) {
+<span class="fc" id="L35">    return ThreadInfo.getCurrentThread().getApplicationContext().getId();</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyAssertionErrorDetails__ILjava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int rString1, int rString2) {
+<span class="nc" id="L40">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyAssertionError__I_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int argsRef) {
+<span class="nc" id="L45">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyNoPropertyViolation__I_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int argsRef) {
+<span class="fc" id="L50">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyUnhandledExceptionDetails__ILjava_lang_String_2Ljava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int clsRef, int details, int argsRef) {
+<span class="nc" id="L55">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyUnhandledException__ILjava_lang_String_2_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int clsRef, int argsRef) {
+<span class="nc" id="L60">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyJPFException__ILgov_nasa_jpf_util_TypeRef_2_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int typeRef, int argsRef) {
+<span class="nc" id="L65">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyPropertyViolation__ILgov_nasa_jpf_util_TypeRef_2_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int typeRef, int argsRef) {
+<span class="nc" id="L70">    return true;</span>
+  }
+
+  @MJI
+  public static boolean mpVerifyDeadlock__I_3Ljava_lang_String_2__Z (MJIEnv env, int objRef, int numOfPrc, int argsRef) {
+<span class="nc" id="L75">    return true;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

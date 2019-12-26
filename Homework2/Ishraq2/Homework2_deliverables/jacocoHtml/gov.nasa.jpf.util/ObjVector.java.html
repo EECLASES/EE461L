@@ -1,0 +1,632 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjVector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">ObjVector.java</span></div><h1>ObjVector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * more customizable alternative to java.util.Vector. Other than Vector, it
+ * supports dynamic growth on set() operations. While it supports list
+ * functions such as append, ObjVector resembles mostly an array, i.e.
+ * is meant to be a random-access collection
+ * 
+ * this collection does not keep a count of non-null elements, but does maintain the
+ * highest set index as its size through set/add and remove operations. Note that size
+ * only shrinks through remove operations, not by setting null values. This means there
+ * is no guarantee that data[size-1] is not null. The converse however is true - there is no
+ * non-null element at an index &gt;= size.
+ * 
+ * @author pcd
+ */
+public class ObjVector&lt;E&gt; implements ReadOnlyObjList&lt;E&gt;, Cloneable {
+  public static final int defaultInitCap = 40;  
+
+  /** &lt;i&gt;size&lt;/i&gt; as in a java.util.Vector. */
+  protected int size;
+  
+  /** the backing array. */
+  protected Object[] data;
+  
+  /** growth strategy. */
+  protected Growth growth;
+    
+  
+  //--- constructors
+  
+<span class="fc" id="L56">  public ObjVector(Growth initGrowth, int initCap) {</span>
+<span class="fc" id="L57">    growth = initGrowth;</span>
+<span class="fc" id="L58">    data = new Object[initCap];</span>
+<span class="fc" id="L59">    size = 0;</span>
+<span class="fc" id="L60">  }</span>
+  
+  public ObjVector(Growth initGrowth) {
+<span class="nc" id="L63">    this(initGrowth,defaultInitCap);</span>
+<span class="nc" id="L64">  }</span>
+  
+  public ObjVector(int initCap) { 
+<span class="fc" id="L67">    this(Growth.defaultGrowth, initCap);</span>
+<span class="fc" id="L68">  }</span>
+  
+  public ObjVector() {
+<span class="fc" id="L71">    this(Growth.defaultGrowth,defaultInitCap);</span>
+<span class="fc" id="L72">  }</span>
+  
+  public &lt;F extends E&gt; ObjVector(F[] init) {
+<span class="nc" id="L75">    this(init.length);</span>
+<span class="nc" id="L76">    append(init);</span>
+<span class="nc" id="L77">  }</span>
+  
+<span class="fc" id="L79">  public &lt;F extends E&gt; ObjVector(ObjVector&lt;F&gt; from) {</span>
+<span class="fc" id="L80">    this.data = new Object[from.data.length];</span>
+<span class="fc" id="L81">    this.size = from.size;</span>
+<span class="fc" id="L82">    this.growth = from.growth;</span>
+<span class="fc" id="L83">    System.arraycopy(from.data, 0, this.data, 0, size);</span>
+<span class="fc" id="L84">  }</span>
+  
+  //--- set/add/remove operations  
+  
+  public void add(E x) {
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    if (size &gt;= data.length) {</span>
+<span class="fc" id="L90">      ensureCapacity(size+1);</span>
+    }
+<span class="fc" id="L92">    data[size] = x;</span>
+<span class="fc" id="L93">    size++;</span>
+<span class="fc" id="L94">  }</span>
+  
+  public void addNulls (int length) {
+<span class="nc" id="L97">    int newSize = size + length;</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L99">      ensureCapacity(size + length);</span>
+    }
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    for (int i = size; i &lt; newSize; i++) {</span>
+<span class="nc" id="L102">      data[i] = null;</span>
+    }
+<span class="nc" id="L104">    size = newSize;</span>
+<span class="nc" id="L105">  }</span>
+
+  public &lt;F extends E&gt; void append(F[] x) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">    if (size + x.length &gt; data.length) {</span>
+<span class="nc" id="L109">      ensureCapacity(size + x.length);</span>
+    }
+<span class="nc" id="L111">    System.arraycopy(x, 0, data, size, x.length);</span>
+<span class="nc" id="L112">    size += x.length;</span>
+<span class="nc" id="L113">  }</span>
+
+  public &lt;F extends E&gt; void append(F[] x, int pos, int len) {
+<span class="nc bnc" id="L116" title="All 2 branches missed.">    if (size + len &gt; data.length) {</span>
+<span class="nc" id="L117">      ensureCapacity(size + len);</span>
+    }
+<span class="nc" id="L119">    System.arraycopy(x, pos, data, size, len);</span>
+<span class="nc" id="L120">    size += len;</span>
+<span class="nc" id="L121">  }</span>
+  
+  public &lt;F extends E&gt; void append(ObjVector&lt;F&gt; x) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (size + x.size &gt; data.length) {</span>
+<span class="nc" id="L125">      ensureCapacity(size + x.size);</span>
+    }
+<span class="nc" id="L127">    System.arraycopy(x.data, 0, data, size, x.size);</span>
+<span class="nc" id="L128">    size += x.size;</span>
+<span class="nc" id="L129">  }</span>
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public &lt;F extends E&gt; void append(ObjArray&lt;F&gt; x) {
+<span class="nc" id="L133">    append((F[])(x.data));</span>
+<span class="nc" id="L134">  }</span>
+
+  public &lt;F extends E&gt; void append(ArrayList&lt;F&gt; x){
+<span class="nc" id="L137">    int n = x.size();</span>
+<span class="nc" id="L138">    int newSize = size + n;</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if (newSize &gt; data.length) {</span>
+<span class="nc" id="L140">      ensureCapacity(newSize);</span>
+    }
+<span class="nc bnc" id="L142" title="All 2 branches missed.">    for (int i = size, j=0; i &lt; newSize; i++,j++) {</span>
+<span class="nc" id="L143">      data[i] = x.get(j);</span>
+    }
+<span class="nc" id="L145">    size = newSize;</span>
+<span class="nc" id="L146">  }</span>
+
+  public &lt;F extends E&gt; void addAll(Iterable&lt;F&gt; x) {
+<span class="nc bnc" id="L149" title="All 2 branches missed.">    if (x instanceof ObjVector) {</span>
+<span class="nc" id="L150">      append((ObjVector&lt;F&gt;) x);</span>
+<span class="nc" id="L151">      return;</span>
+    }
+    // else
+<span class="nc bnc" id="L154" title="All 2 branches missed.">    if (x instanceof ObjArray) {</span>
+<span class="nc" id="L155">      append((ObjArray&lt;F&gt;) x);</span>
+<span class="nc" id="L156">      return;</span>
+    }
+    // else
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (x == null) return;</span>
+    // else
+<span class="nc bnc" id="L161" title="All 2 branches missed.">    for (F e : x) {</span>
+<span class="nc" id="L162">      add(e);</span>
+<span class="nc" id="L163">    }</span>
+<span class="nc" id="L164">  }</span>
+
+  public int nextNull (int fromIndex){
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    for (int i=fromIndex; i&lt;size; i++){</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      if (data[i] == null){</span>
+<span class="nc" id="L169">        return i;</span>
+      }
+    }
+
+<span class="nc" id="L173">    ensureCapacity(size+1);</span>
+<span class="nc" id="L174">    return size;</span>
+  }
+
+  @Override
+@SuppressWarnings(&quot;unchecked&quot;)
+  public E get(int idx) {
+<span class="fc bfc" id="L180" title="All 2 branches covered.">    if (idx &gt;= size) {</span>
+<span class="fc" id="L181">      return null;</span>
+    } else {
+<span class="fc" id="L183">      return (E) data[idx];</span>
+    }
+  }
+  
+  public void set(int idx, E v) {
+<span class="fc" id="L188">    ensureSize(idx+1);</span>
+<span class="fc" id="L189">    data[idx] = v;</span>
+<span class="fc" id="L190">  }</span>
+
+  /**
+   * set range of values
+   * @param fromIndex first index (inclusive)
+   * @param toIndex last index (exclusive)
+   * @param val value to set
+   */
+  public void setRange (int fromIndex, int toIndex, E val) {
+<span class="fc" id="L199">    ensureSize(toIndex);</span>
+<span class="fc" id="L200">    Arrays.fill(data, fromIndex, toIndex, val);</span>
+<span class="fc" id="L201">  }</span>
+  
+  public &lt;F&gt; F[] toArray (F[] dst) {
+<span class="nc" id="L204">    System.arraycopy(data,0,dst,0,size);</span>
+<span class="nc" id="L205">    return dst;</span>
+  }
+
+  public ObjArray&lt;E&gt; toObjArray () {
+<span class="nc" id="L209">    ObjArray&lt;E&gt; dst = new ObjArray&lt;E&gt;(size);</span>
+<span class="nc" id="L210">    System.arraycopy(data,0,dst.data,0,size);</span>
+<span class="nc" id="L211">    return dst;</span>
+  }
+
+  public int dumpTo (Object[] dst, int pos) {
+<span class="nc" id="L215">    System.arraycopy(data,0,dst,pos,size);</span>
+<span class="nc" id="L216">    return pos + size;</span>
+  }
+
+  @Override
+  public ObjVector&lt;E&gt; clone() {
+<span class="fc" id="L221">    return new ObjVector&lt;E&gt;(this);</span>
+  }
+  
+  public void squeeze() {
+<span class="nc bnc" id="L225" title="All 4 branches missed.">    while (size &gt; 0 &amp;&amp; data[size - 1] == null) size--;</span>
+<span class="nc" id="L226">  }</span>
+  
+  public void setSize(int sz) {
+<span class="nc bnc" id="L229" title="All 2 branches missed.">    if (sz &gt; size) {</span>
+<span class="nc" id="L230">      ensureCapacity(sz);</span>
+<span class="nc" id="L231">      size = sz;</span>
+    } else {
+<span class="nc bnc" id="L233" title="All 2 branches missed.">      while (size &gt; sz) {</span>
+<span class="nc" id="L234">        size--;</span>
+<span class="nc" id="L235">        data[size] = null;</span>
+      }
+    }
+<span class="nc" id="L238">  }</span>
+
+  public void clear() { 
+    // faster than iterating over the whole array
+<span class="fc" id="L242">    data = new Object[data.length];</span>
+<span class="fc" id="L243">    size = 0;</span>
+<span class="fc" id="L244">  }</span>
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public void clearAllSatisfying (Predicate&lt;E&gt; pred) {
+<span class="nc" id="L248">    Object[] d = data;</span>
+<span class="nc" id="L249">    int newSize = 0;</span>
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    for (int i=size-1; i&gt;=0; i--) {</span>
+<span class="nc" id="L251">      E e = (E)d[i];</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">      if (e != null) {</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (pred.isTrue(e)) {</span>
+<span class="nc" id="L254">          d[i] = null;</span>
+        } else {
+<span class="nc bnc" id="L256" title="All 2 branches missed.">          if (newSize == 0) {</span>
+<span class="nc" id="L257">            newSize = i+1;</span>
+          }
+        }
+      }
+    }
+    
+<span class="nc" id="L263">    size = newSize;</span>
+<span class="nc" id="L264">  }</span>
+  
+  public int size() { 
+<span class="fc" id="L267">    return size; </span>
+  }
+  
+  @Override
+  public int length() {
+<span class="fc" id="L272">    return size;</span>
+  }
+  
+  public void ensureSize(int sz) {
+<span class="fc bfc" id="L276" title="All 2 branches covered.">    if (size &lt; sz) {</span>
+<span class="fc" id="L277">      ensureCapacity(sz);</span>
+<span class="fc" id="L278">      size = sz;</span>
+    }
+<span class="fc" id="L280">  }</span>
+  
+  public void ensureCapacity(int desiredCap) {
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    if (data.length &lt; desiredCap) {</span>
+<span class="fc" id="L284">      Object[] newData = new Object[growth.grow(data.length, desiredCap)];</span>
+<span class="fc" id="L285">      System.arraycopy(data, 0, newData, 0, size);</span>
+<span class="fc" id="L286">      data = newData;</span>
+    }
+<span class="fc" id="L288">  }</span>
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public void sort(Comparator&lt;? super E&gt; comp) {
+<span class="nc" id="L292">    Arrays.sort(data, 0, size, (Comparator&lt;Object&gt;) comp);</span>
+<span class="nc" id="L293">  }</span>
+  
+  public static &lt;E&gt; void copy(ObjVector&lt;? extends E&gt; src, int srcPos,
+                              ObjVector&lt;E&gt; dst, int dstPos, int len) {
+<span class="nc" id="L297">    src.ensureCapacity(srcPos + len);</span>
+<span class="nc" id="L298">    dst.ensureSize(dstPos+len);</span>
+<span class="nc" id="L299">    System.arraycopy(src.data, srcPos, dst.data, dstPos, len);</span>
+<span class="nc" id="L300">  }</span>
+  
+  public static &lt;E&gt; void copy(ObjVector&lt;? extends E&gt; src, int srcPos,
+      E[] dst, int dstPos, int len) {
+<span class="nc" id="L304">    src.ensureCapacity(srcPos + len);</span>
+    //dst.ensureSize(dstPos+len);
+<span class="nc" id="L306">    System.arraycopy(src.data, srcPos, dst, dstPos, len);</span>
+<span class="nc" id="L307">  }</span>
+
+  /**
+   * remove all non-null elements between 'fromIdx' (inclusive) and
+   * 'toIdx' (exclusive)
+   * throw IndexOutOfBoundsException if index values are out of range
+   */
+  public int removeRange(int fromIdx, int toIdx){
+<span class="nc" id="L315">    int n = 0;</span>
+<span class="nc" id="L316">    Object[] data = this.data;</span>
+
+    // it's the callers responsibility to ensure proper index ranges
+    //if (fromIdx &lt; 0) fromIdx = 0;
+    //if (toIdx &gt; size) toIdx = size;
+
+<span class="nc bnc" id="L322" title="All 2 branches missed.">    for (int i=fromIdx; i&lt;toIdx; i++){</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">      if (data[i] != null){</span>
+<span class="nc" id="L324">        data[i] = null;</span>
+<span class="nc" id="L325">        n++;</span>
+      }
+    }
+
+<span class="nc bnc" id="L329" title="All 2 branches missed.">    if (toIdx &gt;= size){</span>
+<span class="nc" id="L330">      int i=fromIdx-1;</span>
+<span class="nc bnc" id="L331" title="All 4 branches missed.">      for (; i&gt;=0 &amp;&amp; (data[i] == null); i--);</span>
+<span class="nc" id="L332">      size = i+1;</span>
+    }
+
+<span class="nc" id="L335">    return n;</span>
+  }
+
+  public int removeFrom(int fromIdx){
+<span class="nc" id="L339">    return removeRange(fromIdx,size);</span>
+  }
+
+  public E remove (int i) {
+<span class="fc" id="L343">    E e = (E) data[i];</span>
+    
+<span class="pc bpc" id="L345" title="1 of 2 branches missed.">    if (e != null) {</span>
+<span class="fc" id="L346">      data[i] = null;</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">      if (i+1 == size) {</span>
+<span class="fc" id="L348">        int j=i-1;</span>
+<span class="pc bpc" id="L349" title="1 of 4 branches missed.">        for (; j&gt;=0 &amp;&amp; (data[j] == null); j--); </span>
+<span class="fc" id="L350">        size = j+1;</span>
+      }
+    }
+    
+<span class="fc" id="L354">    return e;</span>
+  }
+
+  //--- store/restore snapshot operations
+    
+  static final int DEFAULT_MAX_GAP = 10;
+  
+  /**
+   * this is a block operation snapshot that stores chunks of original data with
+   * not more than DEFAULT_MAX_GAP consecutive null elements. Use this if 
+   * elements can be stored directly
+   */
+  public static class Snapshot&lt;E&gt; {
+    static class Block {
+      int baseIndex;
+      Object[] data;
+      Block next;
+      
+<span class="fc" id="L372">      Block (int baseIndex, Object[] data, Block next){</span>
+<span class="fc" id="L373">        this.baseIndex = baseIndex;</span>
+<span class="fc" id="L374">        this.data = data;</span>
+<span class="fc" id="L375">        this.next = next;</span>
+<span class="fc" id="L376">      }</span>
+    }
+    
+    // the ObjVector state we directly store
+    int size;
+    Growth growth;
+    
+    // where we keep the data
+    Block head;
+    
+    int saveBlock (Object[] d, int start, int end) {
+<span class="fc" id="L387">      int len = end-start+1;</span>
+<span class="fc" id="L388">      Object[] bd = new Object[len];</span>
+<span class="fc" id="L389">      System.arraycopy(d, start, bd, 0, len);</span>
+<span class="fc" id="L390">      head = new Block(start, bd, head);      </span>
+      
+<span class="fc" id="L392">      return len;</span>
+    }
+    
+<span class="fc" id="L395">    Snapshot (ObjVector&lt;E&gt; v, int maxGap){</span>
+<span class="fc" id="L396">      int n = v.size;</span>
+<span class="fc" id="L397">      size = n;</span>
+<span class="fc" id="L398">      growth = v.growth;      </span>
+<span class="fc" id="L399">      Object[] d = v.data;</span>
+      
+<span class="fc" id="L401">      int end = -1, start = -1;</span>
+      
+<span class="pc bpc" id="L403" title="1 of 4 branches missed.">      for (int i=n-1; (i&gt;=0) &amp;&amp; (n&gt;0); i--) {</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        if (d[i] != null) {</span>
+<span class="fc bfc" id="L405" title="All 4 branches covered.">          if (start &gt; 0 &amp;&amp; (start - i) &gt; maxGap ) { // store prev block</span>
+<span class="fc" id="L406">            n -= saveBlock( d, start, end);              </span>
+<span class="fc" id="L407">            end = i;</span>
+<span class="fc" id="L408">            start = i;</span>
+            
+          } else {
+<span class="fc bfc" id="L411" title="All 2 branches covered.">            if (end &lt; 0) {</span>
+<span class="fc" id="L412">              end = i;</span>
+            }
+<span class="fc" id="L414">            start = i;</span>
+          }
+        }
+      }
+      
+<span class="pc bpc" id="L419" title="1 of 4 branches missed.">      if (end &gt;=0 &amp;&amp; end &gt;= start) {</span>
+<span class="fc" id="L420">        saveBlock( d, start, end);</span>
+      }
+<span class="fc" id="L422">    }    </span>
+    
+    public void restore (ObjVector&lt;E&gt; v) {
+      // this is faster than iterating through the array
+<span class="fc" id="L426">      Object[] d = new Object[size];</span>
+<span class="fc" id="L427">      v.data = d;</span>
+
+<span class="fc bfc" id="L429" title="All 2 branches covered.">      for (Block block = head; block != null; block = block.next) {</span>
+<span class="fc" id="L430">        Object[] bd = block.data;</span>
+<span class="fc" id="L431">        System.arraycopy(bd, 0, d, block.baseIndex, bd.length);</span>
+      }
+      
+<span class="fc" id="L434">      v.size = size;</span>
+<span class="fc" id="L435">      v.growth = growth;</span>
+<span class="fc" id="L436">    }</span>
+  }
+
+  
+  public Snapshot&lt;E&gt; getSnapshot(){
+<span class="fc" id="L441">    return new Snapshot&lt;E&gt;(this, DEFAULT_MAX_GAP);</span>
+  }
+  
+  /**
+   * create a snapshot that doesn't store more than maxGap consecutive null values
+   */
+  public Snapshot&lt;E&gt; getSnapshot( int maxGap){
+<span class="nc" id="L448">    return new Snapshot&lt;E&gt;(this, maxGap);</span>
+  }
+  
+  public void restore (Snapshot&lt;E&gt; snap) {
+<span class="fc" id="L452">    snap.restore(this);</span>
+<span class="fc" id="L453">  }</span>
+
+  
+  /**
+   *  snapshot that can mutate element values, but therefore can't use block operations.
+   *  This is slower to store/restore, but can be more memory efficient if the elements
+   *  are fragmented (lots of small holes in data)
+   */
+  
+  public static class MutatingSnapshot&lt;E,T&gt;{
+    T[] values;
+    int[] indices;
+    
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L467">    MutatingSnapshot (ObjVector&lt;E&gt; vec, Transformer&lt;E,T&gt; transformer){</span>
+<span class="fc" id="L468">      E[] d = (E[])vec.data;</span>
+<span class="fc" id="L469">      int size = vec.size;</span>
+<span class="fc" id="L470">      int len = 0;</span>
+      
+      //--- get number of non-null elements
+<span class="fc bfc" id="L473" title="All 2 branches covered.">      for (int i=0; i&lt;size; i++) {</span>
+<span class="fc bfc" id="L474" title="All 2 branches covered.">        if (d[i] != null) {</span>
+<span class="fc" id="L475">          len++;</span>
+        }
+      }
+      
+      //--- allocate data
+<span class="fc" id="L480">      T[] values = (T[])new Object[len];</span>
+<span class="fc" id="L481">      int[] indices = new int[len];</span>
+      
+      //--- fill it
+<span class="fc" id="L484">      int j=0;</span>
+<span class="fc bfc" id="L485" title="All 2 branches covered.">      for (int i=0; j &lt; len; i++) {</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">        if (d[i] != null) {</span>
+<span class="fc" id="L487">          indices[j] = i;</span>
+<span class="fc" id="L488">          values[j] = transformer.transform(d[i]);</span>
+<span class="fc" id="L489">          j++;</span>
+        }
+      }
+      
+<span class="fc" id="L493">      this.values = values;</span>
+<span class="fc" id="L494">      this.indices = indices;</span>
+<span class="fc" id="L495">    }</span>
+    
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected void restore (ObjVector&lt;E&gt; vec, Transformer&lt;T,E&gt; transformer) {
+<span class="fc" id="L499">      T[] values = this.values;</span>
+<span class="fc" id="L500">      int[] indices = this.indices;</span>
+<span class="fc" id="L501">      int len = indices.length;</span>
+<span class="fc" id="L502">      int size = indices[len-1] +1;</span>
+
+<span class="fc" id="L504">      vec.clear();</span>
+<span class="fc" id="L505">      vec.ensureSize(size);</span>
+<span class="fc" id="L506">      E[] d = (E[])vec.data;</span>
+
+<span class="fc bfc" id="L508" title="All 2 branches covered.">      for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L509">        E obj = transformer.transform(values[i]);</span>
+<span class="fc" id="L510">        int index = indices[i];</span>
+<span class="fc" id="L511">        d[index] = obj;</span>
+      }
+      
+<span class="fc" id="L514">      vec.size = size;</span>
+<span class="fc" id="L515">    }</span>
+  }
+  
+  public &lt;T&gt; MutatingSnapshot&lt;E,T&gt; getSnapshot( Transformer&lt;E,T&gt; transformer){
+<span class="fc" id="L519">    return new MutatingSnapshot&lt;E,T&gt;(this, transformer);</span>
+  }
+  
+  public &lt;T&gt; void restore (MutatingSnapshot&lt;E,T&gt; snap, Transformer&lt;T,E&gt; transformer) {
+<span class="fc" id="L523">    snap.restore(this, transformer);</span>
+<span class="fc" id="L524">  }</span>
+  
+
+  //--- iterators
+  
+  /**
+   * iterator that goes over all elements regardless of value (i.e. also includes null values)
+   */
+<span class="fc" id="L532">  protected class OVIterator implements Iterator&lt;E&gt; {</span>
+<span class="fc" id="L533">    int idx = 0;</span>
+    
+    @Override
+	public boolean hasNext () {
+<span class="fc bfc" id="L537" title="All 2 branches covered.">      return idx &lt; size;</span>
+    }
+
+    @Override
+	@SuppressWarnings(&quot;unchecked&quot;)
+    public E next () {
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">      if (idx &gt;= data.length) throw new NoSuchElementException();</span>
+<span class="fc" id="L544">      E e = (E) data[idx];</span>
+<span class="fc" id="L545">      idx++;</span>
+<span class="fc" id="L546">      return e;</span>
+    }
+
+    @Override
+	public void remove () {
+<span class="nc" id="L551">      throw new UnsupportedOperationException();</span>
+    }
+  }
+
+  @Override
+  public Iterator&lt;E&gt; iterator () {
+<span class="fc" id="L557">    return new OVIterator();</span>
+  }
+  
+  /**
+   * iterator that only includes element values that are not null
+   */
+<span class="fc" id="L563">  protected class NonNullIterator implements Iterator&lt;E&gt;, Iterable&lt;E&gt; {</span>
+<span class="fc" id="L564">    int idx = 0;</span>
+    //int count = 0;
+
+    @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L569" title="All 2 branches covered.">      return (idx &lt; size); // size is max set index</span>
+    }
+
+    @Override
+	@SuppressWarnings(&quot;unchecked&quot;)
+    public E next () {
+<span class="fc" id="L575">      int len = data.length;</span>
+<span class="pc bpc" id="L576" title="1 of 2 branches missed.">      for (int i=idx; i&lt;len; i++){</span>
+<span class="fc" id="L577">        Object o = data[i];</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        if (o != null){</span>
+          //count++;
+<span class="fc" id="L580">          idx = i+1;</span>
+<span class="fc" id="L581">          return (E)o;</span>
+        }
+      }
+
+<span class="nc" id="L585">      throw new NoSuchElementException();</span>
+    }
+
+    @Override
+	public void remove () {
+<span class="nc" id="L590">      throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+	public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L595">      return this;</span>
+    }
+  }
+  
+
+
+  public Iterator&lt;E&gt; nonNullIterator() {
+<span class="fc" id="L602">    return new NonNullIterator();</span>
+  }
+
+  public Iterable&lt;E&gt; elements() {
+<span class="fc" id="L606">    return new NonNullIterator();</span>
+  }
+
+  public void process (Processor&lt;E&gt; processor) {
+<span class="fc bfc" id="L610" title="All 2 branches covered.">    for (int i=0; i&lt;data.length; i++) {</span>
+<span class="fc" id="L611">      Object o = data[i];</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">      if (o != null) {</span>
+<span class="fc" id="L613">        processor.process( (E)o);</span>
+      }
+    }
+<span class="fc" id="L616">  }</span>
+
+  //--- misc (debugging etc.)
+  
+  public void printOn (PrintStream ps) {
+<span class="nc" id="L621">    ps.println(&quot;ObjVector = [&quot;);</span>
+<span class="nc bnc" id="L622" title="All 2 branches missed.">    for (int i=0; i&lt;size; i++) {</span>
+<span class="nc" id="L623">      ps.print(&quot;  &quot;);</span>
+<span class="nc" id="L624">      ps.print(i);</span>
+<span class="nc" id="L625">      ps.print(&quot;: &quot;);</span>
+<span class="nc" id="L626">      ps.println(get(i));</span>
+    }
+<span class="nc" id="L628">    ps.println(']');</span>
+<span class="nc" id="L629">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

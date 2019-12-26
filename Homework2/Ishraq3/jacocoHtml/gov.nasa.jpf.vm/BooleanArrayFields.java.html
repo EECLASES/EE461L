@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BooleanArrayFields.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">BooleanArrayFields.java</span></div><h1>BooleanArrayFields.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.IntVector;
+
+import java.io.PrintStream;
+
+/**
+ * element values for boolean[] objects
+ */
+public class BooleanArrayFields extends ArrayFields {
+
+  boolean[] values;
+
+<span class="fc" id="L34">  public BooleanArrayFields (int length) {</span>
+<span class="fc" id="L35">    values = new boolean[length];</span>
+<span class="fc" id="L36">  }</span>
+
+  @Override
+  public void copyElements (ArrayFields src, int srcPos, int dstPos, int len){
+<span class="nc" id="L40">    BooleanArrayFields a = (BooleanArrayFields) src;</span>
+<span class="nc" id="L41">    System.arraycopy(a.values, srcPos, values, dstPos, len);</span>
+<span class="nc" id="L42">  }</span>
+  
+  @Override
+  protected void printValue(PrintStream ps, int idx){
+<span class="nc bnc" id="L46" title="All 2 branches missed.">    ps.print(values[idx] ? 't' : 'f');</span>
+<span class="nc" id="L47">  }</span>
+
+  @Override
+  public boolean[] asBooleanArray() {
+<span class="fc" id="L51">    return values;</span>
+  }
+
+  @Override
+  public Object getValues(){
+<span class="fc" id="L56">    return values;</span>
+  }
+
+  @Override
+  public int arrayLength() {
+<span class="fc" id="L61">    return values.length;</span>
+  }
+
+  @Override
+  public int getHeapSize() {
+<span class="nc" id="L66">    return values.length * 4;</span>
+  }
+
+  /**
+   * we check for type and equal element values
+   */
+  @Override
+  public boolean equals (Object o) {
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (o instanceof BooleanArrayFields) {</span>
+<span class="nc" id="L75">      BooleanArrayFields other = (BooleanArrayFields)o;</span>
+
+<span class="nc" id="L77">      boolean[] v = values;</span>
+<span class="nc" id="L78">      boolean[] vOther = other.values;</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      if (v.length != vOther.length) {</span>
+<span class="nc" id="L80">        return false;</span>
+      }
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      for (int i=0; i&lt;v.length; i++) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        if (v[i] != vOther[i]) {</span>
+<span class="nc" id="L85">          return false;</span>
+        }
+      }
+
+<span class="nc" id="L89">      return compareAttrs(other);</span>
+
+    } else {
+<span class="nc" id="L92">      return false;</span>
+    }
+  }
+
+  @Override
+  public BooleanArrayFields clone(){
+<span class="fc" id="L98">    BooleanArrayFields f = (BooleanArrayFields)cloneFields();</span>
+<span class="fc" id="L99">    f.values = values.clone();</span>
+<span class="fc" id="L100">    return f;</span>
+  }
+
+  // for serialization
+  @Override
+  public void appendTo(IntVector v) {
+<span class="fc" id="L106">    v.appendPacked(values);</span>
+<span class="fc" id="L107">  }</span>
+
+  @Override
+  public boolean getBooleanValue (int pos) {
+<span class="fc" id="L111">    return values[pos];</span>
+  }
+
+  @Override
+  public void setBooleanValue (int pos, boolean v) {
+<span class="fc" id="L116">    values[pos] = v;</span>
+<span class="fc" id="L117">  }</span>
+
+  @Override
+  public void hash (HashData hd) {
+<span class="nc" id="L121">    boolean[] v = values;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    for (int i=0; i &lt; v.length; i++) {</span>
+<span class="nc" id="L123">      hd.add(v[i]);</span>
+    }
+<span class="nc" id="L125">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

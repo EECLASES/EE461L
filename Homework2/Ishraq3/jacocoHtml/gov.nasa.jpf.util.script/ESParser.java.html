@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ESParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.script</a> &gt; <span class="el_source">ESParser.java</span></div><h1>ESParser.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.script;
+
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.StreamTokenizer;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * generic parser for event scripts
+ *
+ * &lt;2do&gt; this is still awfully hardwired to StringExpander
+ */
+
+public class ESParser {
+
+  /**** our keywords ****/
+  final public static String K_REPEAT = &quot;REPEAT&quot;;
+  final public static String K_ANY = &quot;ANY&quot;;
+  final public static String K_SECTION = &quot;SECTION&quot;;
+
+  String file;
+  StreamTokenizer scanner;
+
+<span class="nc" id="L48">  boolean done = false;</span>
+
+  EventFactory eventFactory;
+
+  /******************* utilities *****************************************/
+
+  public class Exception extends java.lang.Exception {
+<span class="nc" id="L55">    Exception(String details) {</span>
+<span class="nc" id="L56">      super(&quot;parse error: &quot; + details + &quot;, found: &quot; + scanner);</span>
+<span class="nc" id="L57">    }</span>
+<span class="nc" id="L58">    Exception(String msg, String param) {</span>
+<span class="nc" id="L59">      super(msg + ' ' + param);</span>
+<span class="nc" id="L60">    }</span>
+  }
+
+<span class="nc" id="L63">  public static class DefaultEventFactory implements EventFactory {</span>
+    @Override
+	public Event createEvent (ScriptElement parent, String id, List&lt;String&gt; args, int line) {
+<span class="nc" id="L66">      return new Event(parent, id, args.toArray(new String[args.size()]), line);</span>
+    }
+  }
+
+<span class="nc" id="L70">  public ESParser (String fname, EventFactory eFact) throws Exception {</span>
+
+<span class="nc bnc" id="L72" title="All 2 branches missed.">    eventFactory = eFact != null ? eFact : new DefaultEventFactory();</span>
+
+    try {
+<span class="nc" id="L75">      file = fname;</span>
+<span class="nc" id="L76">      FileReader r = new FileReader(fname);</span>
+
+<span class="nc" id="L78">      scanner = createScanner(r);</span>
+<span class="nc" id="L79">      scanner.nextToken(); // 1 symbol lookahead</span>
+
+<span class="nc" id="L81">    } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L82">      throw new Exception(&quot;file not found:&quot;, fname);</span>
+<span class="nc" id="L83">    } catch (IOException iox) {</span>
+<span class="nc" id="L84">      throw new Exception(&quot;error reading: &quot;, fname);</span>
+<span class="nc" id="L85">    }</span>
+<span class="nc" id="L86">  }</span>
+
+  public ESParser (String fname) throws Exception {
+<span class="nc" id="L89">    this(fname, new DefaultEventFactory());</span>
+<span class="nc" id="L90">  }</span>
+
+  public ESParser (String name, Reader r) throws Exception {
+<span class="nc" id="L93">    this(name, r, new DefaultEventFactory());</span>
+<span class="nc" id="L94">  }</span>
+
+<span class="nc" id="L96">  public ESParser (String name, Reader r, EventFactory eFact) throws Exception {</span>
+<span class="nc" id="L97">    eventFactory = eFact;</span>
+
+    try {
+<span class="nc" id="L100">      file = name;</span>
+
+<span class="nc" id="L102">      scanner = createScanner(r);</span>
+<span class="nc" id="L103">      scanner.nextToken(); // 1 symbol lookahead</span>
+
+<span class="nc" id="L105">    } catch (IOException iox) {</span>
+<span class="nc" id="L106">      throw new Exception(&quot;error reading: &quot;, name);</span>
+<span class="nc" id="L107">    }</span>
+<span class="nc" id="L108">  }</span>
+
+  StreamTokenizer createScanner (Reader r) {
+<span class="nc" id="L111">    StreamTokenizer s = new StreamTokenizer(r);</span>
+
+    // disable number parsing, since it doesn't work in the context of string expansion
+    // and we also would have to preserve the number type (int or double)
+<span class="nc" id="L115">    s.ordinaryChars('0','9');</span>
+<span class="nc" id="L116">    s.wordChars('0','9');</span>
+    //s.wordChars('&quot;', '&quot;');
+
+    // those are used to expand events
+<span class="nc" id="L120">    s.wordChars('[','[');</span>
+<span class="nc" id="L121">    s.wordChars(']',']');</span>
+<span class="nc" id="L122">    s.wordChars('|','|');</span>
+<span class="nc" id="L123">    s.wordChars('-','-');</span>
+<span class="nc" id="L124">    s.wordChars('&lt;','&lt;');</span>
+<span class="nc" id="L125">    s.wordChars('&gt;','&gt;');</span>
+
+    // those can be part of Event IDs
+<span class="nc" id="L128">    s.wordChars('_','_');</span>
+<span class="nc" id="L129">    s.wordChars('#', '#');</span>
+<span class="nc" id="L130">    s.wordChars('*','*');</span>
+<span class="nc" id="L131">    s.wordChars('@','@');</span>
+<span class="nc" id="L132">    s.wordChars('$','$');</span>
+<span class="nc" id="L133">    s.wordChars(':',':');</span>
+<span class="nc" id="L134">    s.wordChars('~','~');</span>
+<span class="nc" id="L135">    s.wordChars('!', '!');</span>
+
+<span class="nc" id="L137">    s.quoteChar('&quot;');</span>
+
+<span class="nc" id="L139">    s.slashSlashComments(true);</span>
+<span class="nc" id="L140">    s.slashStarComments(true);</span>
+
+<span class="nc" id="L142">    s.whitespaceChars(',', ',');</span>
+<span class="nc" id="L143">    s.whitespaceChars(';', ';');</span>
+
+<span class="nc" id="L145">    return s;</span>
+  }
+
+  void nextToken() throws Exception {
+    try {
+<span class="nc bnc" id="L150" title="All 2 branches missed.">      if (scanner.nextToken() == StreamTokenizer.TT_EOF) {</span>
+<span class="nc" id="L151">        done = true;</span>
+      }
+<span class="nc" id="L153">    } catch (IOException iox) {</span>
+<span class="nc" id="L154">      throw new Exception(&quot;could not read input&quot;, iox.toString());</span>
+<span class="nc" id="L155">    }</span>
+<span class="nc" id="L156">  }</span>
+
+  void match (char c) throws Exception {
+<span class="nc bnc" id="L159" title="All 2 branches missed.">    if (scanner.ttype == /*(int)*/c) {</span>
+<span class="nc" id="L160">      nextToken();</span>
+    } else {
+<span class="nc" id="L162">      throw new Exception(&quot;char '&quot; + c + &quot;' expected&quot;);</span>
+    }
+<span class="nc" id="L164">  }</span>
+
+  boolean isMatch (char c) throws Exception {
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    if (scanner.ttype == c) {</span>
+<span class="nc" id="L168">      nextToken();</span>
+<span class="nc" id="L169">      return true;</span>
+    } else {
+<span class="nc" id="L171">      return false;</span>
+    }
+  }
+
+  boolean isMatch (String word) throws Exception {
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (scanner.sval.equals(word)) {</span>
+<span class="nc" id="L178">        nextToken();</span>
+<span class="nc" id="L179">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L183">    return false;</span>
+  }
+
+  String matchKeyword (String key) throws Exception {
+<span class="nc" id="L187">    String s = matchWord();</span>
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    if (!s.equals(key)) {</span>
+<span class="nc" id="L189">      throw new Exception(&quot;expected keyword: &quot; + key);</span>
+    }
+<span class="nc" id="L191">    return s;</span>
+  }
+
+  String matchWord () throws Exception {
+<span class="nc bnc" id="L195" title="All 2 branches missed.">    if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="nc" id="L196">      String s = scanner.sval;</span>
+<span class="nc" id="L197">      nextToken();</span>
+<span class="nc" id="L198">      return s;</span>
+    } else {
+<span class="nc" id="L200">      throw new Exception(&quot;id or keyword expected&quot;);</span>
+    }
+  }
+
+  boolean isInt (String s) {
+<span class="nc" id="L205">    int c = s.charAt(0);</span>
+<span class="nc bnc" id="L206" title="All 4 branches missed.">    return ((c &gt;='0') &amp;&amp; (c &lt;= '9'));</span>
+  }
+
+  int isIntMatch(int defaultValue) throws Exception {
+<span class="nc bnc" id="L210" title="All 4 branches missed.">    if ((scanner.ttype == StreamTokenizer.TT_WORD) &amp;&amp; isInt(scanner.sval)) {</span>
+<span class="nc" id="L211">      int n = Integer.parseInt(scanner.sval);</span>
+<span class="nc" id="L212">      nextToken();</span>
+<span class="nc" id="L213">      return n;</span>
+    } else {
+<span class="nc" id="L215">      return defaultValue;</span>
+    }
+  }
+
+  int matchIntNumber () throws Exception {
+    // Ok, this isn't too effective since our scanner doesn't parse numbers
+<span class="nc bnc" id="L221" title="All 4 branches missed.">    if ((scanner.ttype == StreamTokenizer.TT_WORD) &amp;&amp; isInt(scanner.sval)) {</span>
+<span class="nc" id="L222">      int n = Integer.parseInt(scanner.sval);</span>
+<span class="nc" id="L223">      nextToken();</span>
+<span class="nc" id="L224">      return n;</span>
+    } else {
+<span class="nc" id="L226">      throw new Exception(&quot;number expected&quot;);</span>
+    }
+  }
+
+  /******************* the recursive descend parser *********************/
+
+  /************************************** grammar ***********************
+  script ::= {section | sequence}.
+  section ::= 'SECTION' ID {',' ID} '{' {sequence} '}'.
+  sequence ::= iteration | selection | event.
+  iteration ::= 'REPEAT' [NUM] '{' {sequence} '}'.
+  selection ::= 'ANY' '{' {event} '}'.
+  event ::= ID ['(' [parameter {',' parameter}] ')'].
+  parameter ::= STRING
+
+  all parameters are treated as strings, but string literals preserve the double quotes
+  (we need to preserve the token because of argument expansion and numeric type)
+
+  the event ID can contain '#', '.', ':', '@', '$' '/' and '*' chars (e.g. for further
+  parsing of targets etc.)
+
+
+  ***********************************************************************/
+
+
+  public Script parse() throws Exception {
+<span class="nc" id="L252">    Script s = new Script();</span>
+
+<span class="nc bnc" id="L254" title="All 2 branches missed.">    while (!done) {</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">      if (isMatch(K_SECTION)) {</span>
+<span class="nc" id="L256">        section(s);</span>
+      } else {
+<span class="nc" id="L258">        sequence(s);</span>
+      }
+    }
+
+<span class="nc" id="L262">    return s;</span>
+  }
+
+  protected void section (ScriptElementContainer parent) throws Exception {
+    //matchKeyword(K_SECTION);
+<span class="nc" id="L267">    ArrayList&lt;String&gt; ids = new ArrayList&lt;String&gt;();</span>
+
+<span class="nc" id="L269">    String id = matchWord();</span>
+<span class="nc" id="L270">    ids.add(id);</span>
+
+<span class="nc bnc" id="L272" title="All 2 branches missed.">    while (isMatch(',')) {</span>
+<span class="nc" id="L273">      id = matchWord();</span>
+<span class="nc" id="L274">      ids.add(id);</span>
+    }
+
+<span class="nc" id="L277">    Section sec = new Section(parent, ids, scanner.lineno());</span>
+<span class="nc" id="L278">    parent.add(sec);</span>
+
+<span class="nc" id="L280">    match('{');</span>
+<span class="nc bnc" id="L281" title="All 4 branches missed.">    while (!done &amp;&amp; (scanner.ttype != '}')) {</span>
+<span class="nc" id="L282">      sequence(sec);</span>
+    }
+<span class="nc" id="L284">    match('}');</span>
+
+
+<span class="nc" id="L287">  }</span>
+
+  protected void sequence (ScriptElementContainer parent) throws Exception {
+<span class="nc bnc" id="L290" title="All 2 branches missed.">    if (isMatch(K_REPEAT)) {</span>
+<span class="nc" id="L291">      repetition(parent);</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">    } else if (isMatch(K_ANY)) {</span>
+<span class="nc" id="L293">        alternative(parent);</span>
+    } else {
+<span class="nc bnc" id="L295" title="All 2 branches missed.">      if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="nc" id="L296">        event(parent);</span>
+      } else {
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        if (scanner.ttype == StreamTokenizer.TT_EOF){</span>
+<span class="nc" id="L299">          done = true; // empty sequence</span>
+        } else {
+<span class="nc" id="L301">          throw new Exception(&quot;repetition, alternative or event expected&quot;);</span>
+        }
+      }
+    }
+<span class="nc" id="L305">  }</span>
+
+
+  protected void repetition (ScriptElementContainer parent) throws Exception {
+    //matchKeyword(K_REPEAT);
+<span class="nc" id="L310">    int n = isIntMatch(-1); // default is unbounded</span>
+
+<span class="nc" id="L312">    Repetition r = new Repetition(parent, n, scanner.lineno());</span>
+<span class="nc" id="L313">    parent.add(r);</span>
+
+<span class="nc" id="L315">    match('{');</span>
+<span class="nc bnc" id="L316" title="All 4 branches missed.">    while (!done &amp;&amp; (scanner.ttype != '}')) {</span>
+<span class="nc" id="L317">      sequence(r);</span>
+    }
+<span class="nc" id="L319">    match('}');</span>
+<span class="nc" id="L320">  }</span>
+
+
+  protected void alternative (ScriptElementContainer parent) throws Exception {
+    //matchKeyword(K_ANY);
+
+<span class="nc" id="L326">    Alternative a = new Alternative(parent, scanner.lineno());</span>
+<span class="nc" id="L327">    parent.add(a);</span>
+
+<span class="nc" id="L329">    match('{');</span>
+<span class="nc bnc" id="L330" title="All 4 branches missed.">    while (!done &amp;&amp; (scanner.ttype != '}')) {</span>
+<span class="nc" id="L331">      event(a);</span>
+    }
+<span class="nc" id="L333">    match('}');</span>
+<span class="nc" id="L334">  }</span>
+
+
+  protected void event (ScriptElementContainer parent) throws Exception {
+<span class="nc" id="L338">    String id = matchWord();</span>
+
+<span class="nc" id="L340">    ArrayList&lt;String&gt; args = new ArrayList&lt;String&gt;();</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">    if (isMatch('(')) {</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">      while (!isMatch(')')) {</span>
+
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="nc" id="L345">          args.add(scanner.sval);</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">        } else if (scanner.ttype == '&quot;'){ // string literal</span>
+<span class="nc" id="L347">          args.add( &quot;\&quot;&quot; + scanner.sval + '&quot;');</span>
+        }
+
+<span class="nc" id="L350">        nextToken();</span>
+      }
+    }
+
+<span class="nc" id="L354">    Event e = eventFactory.createEvent(parent, id, args, scanner.lineno());</span>
+<span class="nc" id="L355">    parent.add(e);</span>
+<span class="nc" id="L356">  }</span>
+
+  /********** test functions ************/
+
+
+  public static void tokenize (String fname) {
+    try {
+<span class="nc" id="L363">      ESParser parser = new ESParser(fname);</span>
+<span class="nc" id="L364">      StreamTokenizer s = parser.scanner;</span>
+
+<span class="nc bnc" id="L366" title="All 2 branches missed.">      while (s.ttype != StreamTokenizer.TT_EOF) {</span>
+<span class="nc bnc" id="L367" title="All 3 branches missed.">        switch (s.ttype) {</span>
+          case StreamTokenizer.TT_WORD:
+<span class="nc" id="L369">            System.out.println(&quot;WORD: &quot; + s.sval);</span>
+<span class="nc" id="L370">            break;</span>
+
+          case StreamTokenizer.TT_NUMBER:
+<span class="nc" id="L373">            System.out.println(&quot;NUM:  &quot; + s.nval);</span>
+<span class="nc" id="L374">            break;</span>
+
+          default:
+<span class="nc" id="L377">            char c = (char)s.ttype;</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">            if (c == '&quot;'){ // string literal</span>
+<span class="nc" id="L379">              System.out.println(&quot;STRING: \&quot;&quot; + s.sval + '&quot;');</span>
+            } else {
+<span class="nc" id="L381">              System.out.println(&quot;CHAR: &quot; + (char)s.ttype);</span>
+            }
+        }
+<span class="nc" id="L384">        s.nextToken();</span>
+      }
+<span class="nc" id="L386">    } catch (Throwable t) {</span>
+<span class="nc" id="L387">      t.printStackTrace();</span>
+<span class="nc" id="L388">    }</span>
+<span class="nc" id="L389">  }</span>
+
+  static void showScript (String fname){
+    try {
+<span class="nc" id="L393">      ESParser parser = new ESParser(fname);</span>
+<span class="nc" id="L394">      Script script = parser.parse();</span>
+
+<span class="nc" id="L396">      PrintWriter pw = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L397">      pw.println(&quot;------------------ script AST:&quot;);</span>
+<span class="nc" id="L398">      script.dump(pw);</span>
+
+<span class="nc" id="L400">      pw.println(&quot;------------------ generated CG sequence:&quot;);</span>
+
+<span class="nc" id="L402">      StringSetGenerator p = new StringSetGenerator();</span>
+<span class="nc" id="L403">      script.process(p);</span>
+
+<span class="nc" id="L405">      LinkedHashMap&lt;String,ArrayList&lt;CG&gt;&gt; sections = p.getSections();</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">      for (Map.Entry&lt;String,ArrayList&lt;CG&gt;&gt; e : sections.entrySet()) {</span>
+<span class="nc" id="L407">        ArrayList&lt;CG&gt; queue = e.getValue();</span>
+<span class="nc" id="L408">        System.out.println(e.getKey() + &quot; {&quot;);</span>
+<span class="nc bnc" id="L409" title="All 2 branches missed.">        for (CG cg : queue) {</span>
+<span class="nc" id="L410">          System.out.print(&quot;  &quot;);</span>
+<span class="nc" id="L411">          System.out.println(cg);</span>
+<span class="nc" id="L412">        }</span>
+<span class="nc" id="L413">        System.out.println(&quot;}&quot;);</span>
+<span class="nc" id="L414">        System.out.println();</span>
+<span class="nc" id="L415">      }</span>
+
+ /** this only shows the last section
+      List&lt;CG&gt; queue = p.getCGQueue();
+      for (CG cg : queue) {
+        System.out.println(cg);
+      }
+**/
+
+<span class="nc" id="L424">    } catch (Throwable t){</span>
+<span class="nc" id="L425">      t.printStackTrace();</span>
+<span class="nc" id="L426">    }</span>
+
+<span class="nc" id="L428">  }</span>
+
+  public static void main(String[] args) {
+    //tokenize(args[0]);
+<span class="nc" id="L432">    showScript(args[0]);</span>
+<span class="nc" id="L433">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

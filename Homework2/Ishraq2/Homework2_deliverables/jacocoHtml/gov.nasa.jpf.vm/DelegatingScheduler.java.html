@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DelegatingScheduler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">DelegatingScheduler.java</span></div><h1>DelegatingScheduler.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+
+/**
+ * a generic scheduler with configured SyncPolicy and SharednesPolicy objects it delegates to
+ */
+public class DelegatingScheduler implements Scheduler {
+  
+  protected SyncPolicy syncPolicy;
+  protected SharednessPolicy sharednessPolicy;
+  
+  
+<span class="fc" id="L32">  public DelegatingScheduler (Config config){</span>
+<span class="fc" id="L33">    syncPolicy = config.getEssentialInstance(&quot;vm.scheduler.sync.class&quot;, SyncPolicy.class);</span>
+<span class="fc" id="L34">    sharednessPolicy = config.getEssentialInstance(&quot;vm.scheduler.sharedness.class&quot;, SharednessPolicy.class);</span>
+<span class="fc" id="L35">  }</span>
+  
+  //--- Scheduler interface
+
+  @Override
+  public void initialize (VM vm, ApplicationContext appCtx) {
+<span class="fc" id="L41">    syncPolicy.initializeSyncPolicy(vm, appCtx);</span>
+<span class="fc" id="L42">    sharednessPolicy.initializeSharednessPolicy(vm, appCtx);</span>
+<span class="fc" id="L43">  }</span>
+
+  
+  //--- SyncPolicy interface
+  
+  @Override
+  public void initializeSyncPolicy (VM vm, ApplicationContext appCtx) {
+<span class="nc" id="L50">    syncPolicy.initializeSyncPolicy(vm, appCtx);</span>
+<span class="nc" id="L51">  }</span>
+
+  @Override
+  public void initializeThreadSync (ThreadInfo tiCurrent, ThreadInfo tiNew) {
+<span class="fc" id="L55">    syncPolicy.initializeThreadSync(tiCurrent, tiNew);</span>
+<span class="fc" id="L56">  }</span>
+
+  @Override
+  public void setRootCG (){
+<span class="fc" id="L60">    syncPolicy.setRootCG();</span>
+<span class="fc" id="L61">  }</span>
+  
+  @Override
+  public boolean setsBlockedThreadCG (ThreadInfo ti, ElementInfo ei) {
+<span class="fc" id="L65">    return syncPolicy.setsBlockedThreadCG(ti, ei);</span>
+  }
+
+  @Override
+  public boolean setsLockAcquisitionCG (ThreadInfo ti, ElementInfo ei) {
+<span class="fc" id="L70">    return syncPolicy.setsLockAcquisitionCG(ti, ei);</span>
+  }
+
+  @Override
+  public boolean setsLockReleaseCG (ThreadInfo ti, ElementInfo ei, boolean didUnblock) {
+<span class="fc" id="L75">    return syncPolicy.setsLockReleaseCG(ti, ei, didUnblock);</span>
+  }
+
+  @Override
+  public boolean setsTerminationCG (ThreadInfo ti) {
+<span class="fc" id="L80">    return syncPolicy.setsTerminationCG(ti);</span>
+  }
+
+  @Override
+  public boolean setsWaitCG (ThreadInfo ti, long timeout) {
+<span class="fc" id="L85">    return syncPolicy.setsWaitCG(ti, timeout);</span>
+  }
+
+  @Override
+  public boolean setsNotifyCG (ThreadInfo ti, boolean didNotify) {
+<span class="fc" id="L90">    return syncPolicy.setsNotifyCG(ti, didNotify);</span>
+  }
+
+  @Override
+  public boolean setsNotifyAllCG (ThreadInfo ti, boolean didNotify) {
+<span class="nc" id="L95">    return syncPolicy.setsNotifyAllCG(ti, didNotify);</span>
+  }
+
+  @Override
+  public boolean setsStartCG (ThreadInfo tiCurrent, ThreadInfo tiStarted) {
+<span class="fc" id="L100">    return syncPolicy.setsStartCG(tiCurrent, tiStarted);</span>
+  }
+
+  @Override
+  public boolean setsYieldCG (ThreadInfo ti) {
+<span class="fc" id="L105">    return syncPolicy.setsYieldCG(ti);</span>
+  }
+
+  @Override
+  public boolean setsPriorityCG (ThreadInfo ti) {
+<span class="fc" id="L110">    return syncPolicy.setsPriorityCG(ti);</span>
+  }
+
+  
+  @Override
+  public boolean setsSleepCG (ThreadInfo ti, long millis, int nanos) {
+<span class="fc" id="L116">    return syncPolicy.setsSleepCG(ti, millis, nanos);</span>
+  }
+
+  @Override
+  public boolean setsSuspendCG (ThreadInfo tiCurrent, ThreadInfo tiSuspended) {
+<span class="fc" id="L121">    return syncPolicy.setsSuspendCG(tiCurrent, tiSuspended);</span>
+  }
+
+  @Override
+  public boolean setsResumeCG (ThreadInfo tiCurrent, ThreadInfo tiResumed) {
+<span class="fc" id="L126">    return syncPolicy.setsResumeCG(tiCurrent, tiResumed);</span>
+  }
+
+  @Override
+  public boolean setsJoinCG (ThreadInfo tiCurrent, ThreadInfo tiJoin, long timeout) {
+<span class="fc" id="L131">    return syncPolicy.setsJoinCG(tiCurrent, tiJoin, timeout);</span>
+  }
+
+  @Override
+  public boolean setsStopCG (ThreadInfo tiCurrent, ThreadInfo tiStopped) {
+<span class="fc" id="L136">    return syncPolicy.setsStopCG(tiCurrent, tiStopped);</span>
+  }
+
+  @Override
+  public boolean setsInterruptCG (ThreadInfo tiCurrent, ThreadInfo tiInterrupted) {
+<span class="fc" id="L141">    return syncPolicy.setsInterruptCG(tiCurrent, tiInterrupted);</span>
+  }
+
+  @Override
+  public boolean setsParkCG (ThreadInfo ti, boolean isAbsTime, long timeout) {
+<span class="fc" id="L146">    return syncPolicy.setsParkCG(ti, isAbsTime, timeout);</span>
+  }
+
+  @Override
+  public boolean setsUnparkCG (ThreadInfo tiCurrent, ThreadInfo tiUnparked) {
+<span class="fc" id="L151">    return syncPolicy.setsUnparkCG(tiCurrent, tiUnparked);</span>
+  }
+
+  @Override
+  public boolean setsBeginAtomicCG (ThreadInfo ti) {
+<span class="fc" id="L156">    return syncPolicy.setsBeginAtomicCG(ti);</span>
+  }
+
+  @Override
+  public boolean setsEndAtomicCG (ThreadInfo ti) {
+<span class="fc" id="L161">    return syncPolicy.setsEndAtomicCG(ti);</span>
+  }
+
+  @Override
+  public boolean setsRescheduleCG (ThreadInfo ti, String reason) {
+<span class="fc" id="L166">    return syncPolicy.setsRescheduleCG(ti, reason);</span>
+  }
+
+  @Override
+  public boolean setsPostFinalizeCG (ThreadInfo tiFinalizer) {
+<span class="nc" id="L171">    return syncPolicy.setsPostFinalizeCG(tiFinalizer);</span>
+  }
+
+  
+  //--- SharednessPolicy interface
+  
+  @Override
+  public void initializeSharednessPolicy (VM vm, ApplicationContext appCtx) {
+<span class="nc" id="L179">    sharednessPolicy.initializeSharednessPolicy( vm, appCtx);</span>
+<span class="nc" id="L180">  }</span>
+
+  @Override
+  public void initializeObjectSharedness (ThreadInfo allocThread, DynamicElementInfo ei) {
+<span class="fc" id="L184">    sharednessPolicy.initializeObjectSharedness(allocThread, ei);</span>
+<span class="fc" id="L185">  }</span>
+
+  @Override
+  public void initializeClassSharedness (ThreadInfo allocThread, StaticElementInfo ei) {
+<span class="fc" id="L189">    sharednessPolicy.initializeClassSharedness(allocThread, ei);</span>
+<span class="fc" id="L190">  }</span>
+
+  @Override
+  public boolean canHaveSharedObjectCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi) {
+<span class="fc" id="L194">    return sharednessPolicy.canHaveSharedObjectCG(ti, insn, eiFieldOwner, fi);</span>
+  }
+
+  @Override
+  public ElementInfo updateObjectSharedness (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="fc" id="L199">    return sharednessPolicy.updateObjectSharedness(ti, ei, fi);</span>
+  }
+
+  @Override
+  public boolean setsSharedObjectCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi) {
+<span class="fc" id="L204">    return sharednessPolicy.setsSharedObjectCG(ti, insn, eiFieldOwner, fi);</span>
+  }
+
+  @Override
+  public boolean canHaveSharedClassCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi) {
+<span class="fc" id="L209">    return sharednessPolicy.canHaveSharedClassCG(ti,insn,eiFieldOwner, fi);</span>
+  }
+
+  @Override
+  public ElementInfo updateClassSharedness (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+<span class="fc" id="L214">    return sharednessPolicy.updateClassSharedness(ti, ei, fi);</span>
+  }
+
+  @Override
+  public boolean setsSharedClassCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi) {
+<span class="fc" id="L219">    return sharednessPolicy.setsSharedClassCG(ti, insn, eiFieldOwner, fi);</span>
+  }
+
+  @Override
+  public boolean canHaveSharedArrayCG (ThreadInfo ti, Instruction insn, ElementInfo eiArray, int idx) {
+<span class="fc" id="L224">    return sharednessPolicy.canHaveSharedArrayCG(ti, insn, eiArray, idx);</span>
+  }
+
+  @Override
+  public ElementInfo updateArraySharedness (ThreadInfo ti, ElementInfo eiArray, int idx) {
+<span class="fc" id="L229">    return sharednessPolicy.updateArraySharedness(ti,eiArray,idx);</span>
+  }
+
+  @Override
+  public boolean setsSharedArrayCG (ThreadInfo ti, Instruction insn, ElementInfo eiArray, int idx) {
+<span class="fc" id="L234">    return sharednessPolicy.setsSharedArrayCG(ti, insn, eiArray, idx);</span>
+  }
+
+  @Override
+  public boolean setsSharedObjectExposureCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi, ElementInfo eiExposed) {
+<span class="fc" id="L239">    return sharednessPolicy.setsSharedObjectExposureCG(ti,insn,eiFieldOwner,fi,eiExposed);</span>
+  }
+
+  @Override
+  public boolean setsSharedClassExposureCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi, ElementInfo eiExposed) {
+<span class="fc" id="L244">    return sharednessPolicy.setsSharedClassExposureCG(ti, insn, eiFieldOwner, fi, eiExposed);</span>
+  }
+
+  @Override
+  public void cleanupThreadTermination (ThreadInfo ti) {
+<span class="fc" id="L249">    sharednessPolicy.cleanupThreadTermination(ti);</span>
+<span class="fc" id="L250">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

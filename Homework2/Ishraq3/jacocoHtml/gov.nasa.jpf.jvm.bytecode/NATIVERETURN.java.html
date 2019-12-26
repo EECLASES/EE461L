@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NATIVERETURN.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">NATIVERETURN.java</span></div><h1>NATIVERETURN.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.NativeStackFrame;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+/**
+ * synthetic return instruction for native method invocations, so that
+ * we don't have to do special provisions to copy the caller args in case
+ * a post exec listener wants them.
+ */
+<span class="fc" id="L32">public class NATIVERETURN extends JVMReturnInstruction {</span>
+
+  Object ret;
+  Object retAttr;
+  Byte retType;
+
+  // this is more simple than a normal JVMReturnInstruction because NativeMethodInfos
+  // are not synchronized, and NativeStackFrames are never the first frame in a thread
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc bfc" id="L42" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) {</span>
+<span class="fc" id="L43">      ti.leave();  // takes care of unlocking before potentially creating a CG</span>
+      // NativeMethodInfo is never synchronized, so no thread CG here
+    }
+
+<span class="fc" id="L47">    StackFrame frame = ti.getModifiableTopFrame();    </span>
+<span class="fc" id="L48">    getAndSaveReturnValue(frame);</span>
+
+    // NativeStackFrame can never can be the first stack frame, so no thread CG
+
+<span class="fc" id="L52">    frame = ti.popAndGetModifiableTopFrame();</span>
+
+    // remove args, push return value and continue with next insn
+<span class="fc" id="L55">    frame.removeArguments(mi);</span>
+<span class="fc" id="L56">    pushReturnValue(frame);</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">    if (retAttr != null) {</span>
+<span class="fc" id="L59">      setReturnAttr(ti, retAttr);</span>
+    }
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    if (mi.isClinit()) {</span>
+      // this is in the clinit RETURN insn for non-MJIs so we have to duplicate here
+      // Duplication could be avoided in DIRECTCALLRETURN, but there is no reliable
+      // way to check if the direct call did return from a clinit since the corresponding
+      // synthetic method could do anything
+<span class="fc" id="L67">      mi.getClassInfo().setInitialized();</span>
+    }
+
+<span class="fc" id="L70">    return frame.getPC().getNext();</span>
+  }
+
+  @Override
+  public void cleanupTransients(){
+<span class="fc" id="L75">    ret = null;</span>
+<span class="fc" id="L76">    retAttr = null;</span>
+<span class="fc" id="L77">    returnFrame = null;</span>
+<span class="fc" id="L78">  }</span>
+  
+  @Override
+  public boolean isExtendedInstruction() {
+<span class="nc" id="L82">    return true;</span>
+  }
+
+  public static final int OPCODE = 260;
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L89">    return OPCODE;</span>
+  }
+
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L94">	  insVisitor.visit(this);</span>
+<span class="fc" id="L95">  }</span>
+
+  @Override
+  protected void getAndSaveReturnValue (StackFrame frame) {
+    // it's got to be a NativeStackFrame since this insn is created by JPF
+<span class="fc" id="L100">    NativeStackFrame nativeFrame = (NativeStackFrame)frame;</span>
+
+<span class="fc" id="L102">    returnFrame = nativeFrame;</span>
+
+<span class="fc" id="L104">    ret = nativeFrame.getReturnValue();</span>
+<span class="fc" id="L105">    retAttr = nativeFrame.getReturnAttr();</span>
+<span class="fc" id="L106">    retType = nativeFrame.getMethodInfo().getReturnTypeCode();</span>
+<span class="fc" id="L107">  }</span>
+
+  @Override
+  public int getReturnTypeSize() {
+<span class="nc bnc" id="L111" title="All 3 branches missed.">    switch (retType) {</span>
+    case Types.T_BOOLEAN:
+    case Types.T_BYTE:
+    case Types.T_CHAR:
+    case Types.T_SHORT:
+    case Types.T_INT:
+    case Types.T_FLOAT:
+<span class="nc" id="L118">      return 1;</span>
+      
+    case Types.T_LONG:
+    case Types.T_DOUBLE:
+<span class="nc" id="L122">      return 2;</span>
+
+    default:
+<span class="nc" id="L125">      return 1;</span>
+    }
+  }
+
+  // this is only called internally right before we return
+  @Override
+  protected Object getReturnedOperandAttr (StackFrame frame) {
+<span class="nc" id="L132">    return retAttr;</span>
+  }
+
+  // &lt;2do&gt; this should use the getResult..() methods of NativeStackFrame
+  
+  @Override
+  protected void pushReturnValue (StackFrame fr) {
+    int  ival;
+    long lval;
+<span class="fc" id="L141">    int  retSize = 1;</span>
+
+    // in case of a return type mismatch, we get a ClassCastException, which
+    // is handled in executeMethod() and reported as a InvocationTargetException
+    // (not completely accurate, but we rather go with safety)
+<span class="fc bfc" id="L146" title="All 2 branches covered.">    if (ret != null) {</span>
+<span class="pc bpc" id="L147" title="1 of 9 branches missed.">      switch (retType) {</span>
+      case Types.T_BOOLEAN:
+<span class="fc" id="L149">        ival = Types.booleanToInt(((Boolean) ret).booleanValue());</span>
+<span class="fc" id="L150">        fr.push(ival);</span>
+<span class="fc" id="L151">        break;</span>
+
+      case Types.T_BYTE:
+<span class="nc" id="L154">        fr.push(((Byte) ret).byteValue());</span>
+<span class="nc" id="L155">        break;</span>
+
+      case Types.T_CHAR:
+<span class="fc" id="L158">        fr.push(((Character) ret).charValue());</span>
+<span class="fc" id="L159">        break;</span>
+
+      case Types.T_SHORT:
+<span class="fc" id="L162">        fr.push(((Short) ret).shortValue());</span>
+<span class="fc" id="L163">        break;</span>
+
+      case Types.T_INT:
+<span class="fc" id="L166">        fr.push(((Integer) ret).intValue());</span>
+<span class="fc" id="L167">        break;</span>
+
+      case Types.T_LONG:
+<span class="fc" id="L170">        fr.pushLong(((Long)ret).longValue());</span>
+<span class="fc" id="L171">        retSize=2;</span>
+<span class="fc" id="L172">        break;</span>
+
+      case Types.T_FLOAT:
+<span class="fc" id="L175">        ival = Types.floatToInt(((Float) ret).floatValue());</span>
+<span class="fc" id="L176">        fr.push(ival);</span>
+<span class="fc" id="L177">        break;</span>
+
+      case Types.T_DOUBLE:
+<span class="fc" id="L180">        lval = Types.doubleToLong(((Double) ret).doubleValue());</span>
+<span class="fc" id="L181">        fr.pushLong(lval);</span>
+<span class="fc" id="L182">        retSize=2;</span>
+<span class="fc" id="L183">        break;</span>
+
+      default:
+        // everything else is supposed to be a reference
+<span class="fc" id="L187">        fr.push(((Integer) ret).intValue(), true);</span>
+      }
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">      if (retAttr != null) {</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (retSize == 1) {</span>
+<span class="nc" id="L192">          fr.setOperandAttr(retAttr);</span>
+        } else {
+<span class="fc" id="L194">          fr.setLongOperandAttr(retAttr);</span>
+        }
+      }
+    }
+<span class="fc" id="L198">  }</span>
+
+  @Override
+  public Object getReturnAttr (ThreadInfo ti) {
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    if (isCompleted(ti)){</span>
+<span class="nc" id="L203">      return retAttr;</span>
+    } else {
+<span class="nc" id="L205">      NativeStackFrame nativeFrame = (NativeStackFrame) ti.getTopFrame();</span>
+<span class="nc" id="L206">      return nativeFrame.getReturnAttr();</span>
+    }
+  }
+
+
+  @Override
+  public Object getReturnValue(ThreadInfo ti) {
+<span class="nc bnc" id="L213" title="All 2 branches missed.">    if (isCompleted(ti)){</span>
+<span class="nc" id="L214">      return ret;</span>
+    } else {
+<span class="nc" id="L216">      NativeStackFrame nativeFrame = (NativeStackFrame) ti.getTopFrame();</span>
+<span class="nc" id="L217">      return nativeFrame.getReturnValue();</span>
+    }
+  }
+
+  @Override
+  public String toString(){
+<span class="nc" id="L223">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L224">    sb.append(&quot;nativereturn &quot;);</span>
+<span class="nc" id="L225">    sb.append(mi.getFullName());</span>
+
+<span class="nc" id="L227">    return sb.toString();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

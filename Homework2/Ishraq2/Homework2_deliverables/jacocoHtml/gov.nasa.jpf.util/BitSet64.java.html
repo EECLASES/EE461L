@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitSet64.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">BitSet64.java</span></div><h1>BitSet64.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+/**
+ *
+ */
+public class BitSet64 extends AbstractFixedBitSet implements Cloneable {
+
+  static final int INDEX_MASK = 0xffffffc0; // ( i&gt;=0 &amp;&amp; i&lt;64)
+
+  long l0;
+
+<span class="fc" id="L30">  public BitSet64 (){</span>
+    // nothing in here
+<span class="fc" id="L32">  }</span>
+
+<span class="nc" id="L34">  public BitSet64 (int i){</span>
+<span class="nc" id="L35">    set(i);</span>
+<span class="nc" id="L36">  }</span>
+
+<span class="nc" id="L38">  public BitSet64 (int... idx){</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">    for (int i : idx){</span>
+<span class="nc" id="L40">      set(i);</span>
+    }
+<span class="nc" id="L42">  }</span>
+
+  @Override
+  public void hash (HashData hd){
+<span class="nc" id="L46">    hd.add(l0);</span>
+<span class="nc" id="L47">  }</span>
+
+
+  private final int computeCardinality (){
+<span class="nc" id="L51">    return Long.bitCount(l0);</span>
+  }
+
+  //--- public interface (much like java.util.BitSet)
+
+  @Override
+  public void set (int i){
+<span class="fc bfc" id="L58" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0){</span>
+<span class="fc" id="L59">      long bitPattern = (1L &lt;&lt; i);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">      if ((l0 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L61">        cardinality++;</span>
+<span class="fc" id="L62">        l0 |= bitPattern;</span>
+      }
+<span class="fc" id="L64">    } else {</span>
+<span class="fc" id="L65">      throw new IndexOutOfBoundsException(&quot;BitSet64 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L67">  }</span>
+
+  @Override
+  public void clear (int i){
+<span class="fc bfc" id="L71" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0){</span>
+<span class="fc" id="L72">      long bitPattern = (1L &lt;&lt; i);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      if ((l0 &amp; bitPattern) != 0L) { // bit is set</span>
+<span class="fc" id="L74">        cardinality--;</span>
+<span class="fc" id="L75">        l0 &amp;= ~bitPattern;</span>
+      }
+<span class="fc" id="L77">    } else {</span>
+<span class="fc" id="L78">      throw new IndexOutOfBoundsException(&quot;BitSet64 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L80">  }</span>
+
+
+  @Override
+  public boolean get (int i){
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0){</span>
+<span class="fc" id="L86">      long bitPattern = (1L &lt;&lt; i);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">      return ((l0 &amp; bitPattern) != 0);</span>
+    } else {
+<span class="fc" id="L89">      throw new IndexOutOfBoundsException(&quot;BitSet64 index out of range: &quot; + i);</span>
+    }
+  }
+
+  @Override
+  public int capacity(){
+<span class="nc" id="L95">    return 64;</span>
+  }
+  
+  /**
+   * number of bits we can store
+   */
+  @Override
+  public int size() {
+<span class="fc" id="L103">    return 64;</span>
+  }
+
+  /**
+   * index of highest set bit + 1
+   */
+  @Override
+  public int length() {
+<span class="fc" id="L111">    return 64 - Long.numberOfLeadingZeros(l0);</span>
+  }
+
+
+  @Override
+  public void clear() {
+<span class="fc" id="L117">    l0 = 0L;</span>
+<span class="fc" id="L118">    cardinality = 0;</span>
+<span class="fc" id="L119">  }</span>
+
+  @Override
+  public int nextSetBit (int fromIdx){
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0){</span>
+      //int n = Long.numberOfTrailingZeros(l0 &amp; (0xffffffffffffffffL &lt;&lt; fromIdx));
+<span class="fc" id="L125">      int n = Long.numberOfTrailingZeros(l0 &gt;&gt; fromIdx) + fromIdx;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">      if (n &lt; 64) {</span>
+<span class="fc" id="L127">        return n;</span>
+      } else {
+<span class="fc" id="L129">        return -1;</span>
+      }
+    } else {
+      //throw new IndexOutOfBoundsException(&quot;BitSet64 index out of range: &quot; + fromIdx);
+<span class="nc" id="L133">      return -1;</span>
+    }
+  }
+
+  @Override
+  public int nextClearBit (int fromIdx){
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0){</span>
+      //int n = Long.numberOfTrailingZeros(~l0 &amp; (0xffffffffffffffffL &lt;&lt; fromIdx));
+<span class="nc" id="L141">      int n = Long.numberOfTrailingZeros(~l0 &gt;&gt; fromIdx) + fromIdx;</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (n &lt; 64) {</span>
+<span class="nc" id="L143">        return n;</span>
+      } else {
+<span class="nc" id="L145">        return -1;</span>
+      }
+    } else {
+      //throw new IndexOutOfBoundsException(&quot;BitSet64 index out of range: &quot; + fromIdx);
+<span class="nc" id="L149">      return -1;</span>
+    }
+  }
+
+  public void and (BitSet64 other){
+<span class="nc" id="L154">    l0 &amp;= other.l0;</span>
+
+<span class="nc" id="L156">    cardinality = computeCardinality();</span>
+<span class="nc" id="L157">  }</span>
+
+  public void andNot (BitSet64 other){
+<span class="nc" id="L160">    l0 &amp;= ~other.l0;</span>
+
+<span class="nc" id="L162">    cardinality = computeCardinality();</span>
+<span class="nc" id="L163">  }</span>
+
+  public void or (BitSet64 other){
+<span class="nc" id="L166">    l0 |= other.l0;</span>
+
+<span class="nc" id="L168">    cardinality = computeCardinality();</span>
+<span class="nc" id="L169">  }</span>
+
+  @Override
+  public boolean equals (Object o){
+<span class="nc bnc" id="L173" title="All 2 branches missed.">    if (o instanceof BitSet64){</span>
+<span class="nc" id="L174">      BitSet64 other = (BitSet64)o;</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">      if (l0 != other.l0) return false;</span>
+<span class="nc" id="L176">      return true;</span>
+    } else {
+      // &lt;2do&gt; we could compare to a normal java.util.BitSet here
+<span class="nc" id="L179">      return false;</span>
+    }
+  }
+
+
+  /**
+   * answer the same hashCodes as java.util.BitSet
+   */
+  @Override
+  public int hashCode() {
+<span class="nc" id="L189">    long hc = 1234;</span>
+<span class="nc" id="L190">    hc ^= l0;</span>
+<span class="nc" id="L191">    return (int) ((hc &gt;&gt;32) ^ hc);</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

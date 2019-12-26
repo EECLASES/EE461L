@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChoiceSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ChoiceSelector.java</span></div><h1>ChoiceSelector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.annotation.JPFOption;
+import gov.nasa.jpf.annotation.JPFOptions;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ChoicePoint;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.Random;
+
+/**
+ * this is a listener that only executes single choices until it detects
+ * that it should start to search. If nothing is specified, this is pretty
+ * much a simulator that randomly picks choices. Otherwise the user can
+ * give it any combination of
+ *  - a set of thread names
+ *  - a set of method names
+ *  - a start search depth
+ * to turn on the search. If more than one condition is given, all have to be
+ * satisfied
+ */
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">@JPFOptions({</span>
+  @JPFOption(type = &quot;Int&quot;, key = &quot;choice.seed&quot;, defaultValue= &quot;42&quot;, comment = &quot;&quot;),
+  @JPFOption(type = &quot;StringArray&quot;, key = &quot;choice.threads&quot;, defaultValue = &quot;&quot;, comment=&quot;start search, when all threads in the set are active&quot;),
+  @JPFOption(type = &quot;StringArray&quot;, key = &quot;choice.calls&quot;, defaultValue = &quot;&quot;, comment = &quot;start search, when any of the methods is called&quot;),
+  @JPFOption(type = &quot;Int&quot;, key = &quot;choice.depth&quot;, defaultValue = &quot;-1&quot;, comment = &quot;start search, when reaching this depth&quot;),
+  @JPFOption(type = &quot;String&quot;, key = &quot;choice.use_trace&quot;, defaultValue =&quot;&quot;, comment = &quot;&quot;),
+  @JPFOption(type = &quot;Boolean&quot;, key = &quot;choice.search_after_trace&quot;, defaultValue = &quot;true&quot;, comment=&quot;start search, when reaching the end of the stored trace&quot;)
+})
+public class ChoiceSelector extends ListenerAdapter {
+
+  Random random;
+<span class="fc" id="L60">  boolean singleChoice = true;</span>
+
+  // those are our singleChoice end conditions (i.e. where we start the search)
+  StringSetMatcher threadSet; // we start when all threads in the set are active
+<span class="fc" id="L64">  boolean threadsAlive = true;;</span>
+
+  StringSetMatcher calls; // .. when any of the methods is called
+<span class="fc" id="L67">  boolean callSeen = true;</span>
+
+  int startDepth; // .. when reaching this depth
+<span class="fc" id="L70">  boolean depthReached = true;</span>
+
+  // set if we replay a trace
+  ChoicePoint trace;
+
+  // start the search when reaching the end of the stored trace. If not set,
+  // the listener will just randomly select single choices once the trace
+  // got processed
+  boolean searchAfterTrace;
+  
+
+<span class="fc" id="L81">  public ChoiceSelector (Config config, JPF jpf) {</span>
+<span class="fc" id="L82">    random = new Random( config.getInt(&quot;choice.seed&quot;, 42));</span>
+
+<span class="fc" id="L84">    threadSet = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;choice.threads&quot;));</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">    if (threadSet != null) {</span>
+<span class="nc" id="L86">      threadsAlive = false;</span>
+    }
+
+<span class="fc" id="L89">    calls = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;choice.calls&quot;));</span>
+<span class="fc" id="L90">    callSeen = false;</span>
+
+<span class="fc" id="L92">    startDepth = config.getInt(&quot;choice.depth&quot;, -1);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">    if (startDepth != -1) {</span>
+<span class="nc" id="L94">      depthReached = false;</span>
+    }
+
+    // if nothing was specified, we just do single choice (simulation)
+<span class="pc bpc" id="L98" title="3 of 6 branches missed.">    if ((threadSet == null) &amp;&amp; (calls == null) &amp;&amp; (startDepth == -1)) {</span>
+<span class="fc" id="L99">      threadsAlive = false;</span>
+<span class="fc" id="L100">      callSeen = false;</span>
+<span class="fc" id="L101">      depthReached = false;</span>
+    }
+
+<span class="fc" id="L104">    VM vm = jpf.getVM();</span>
+<span class="fc" id="L105">    trace = ChoicePoint.readTrace(config.getString(&quot;choice.use_trace&quot;), vm.getSUTName());</span>
+<span class="fc" id="L106">    searchAfterTrace = config.getBoolean(&quot;choice.search_after_trace&quot;, true);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">    vm.setTraceReplay(trace != null);</span>
+<span class="fc" id="L108">  }</span>
+
+  void checkSingleChoiceCond() {
+<span class="nc bnc" id="L111" title="All 6 branches missed.">    singleChoice = !(depthReached &amp;&amp; callSeen &amp;&amp; threadsAlive);</span>
+<span class="nc" id="L112">  }</span>
+
+  @Override
+  public void choiceGeneratorAdvanced (VM vm, ChoiceGenerator&lt;?&gt; currentCG) {
+<span class="fc" id="L116">    int n = currentCG.getTotalNumberOfChoices();</span>
+
+<span class="fc bfc" id="L118" title="All 2 branches covered.">    if (trace != null) { // this is a replay</span>
+
+      // &lt;2do&gt; maybe that should just be a warning, and then a single choice
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">      assert currentCG.getClass().getName().equals(trace.getCgClassName()) :</span>
+<span class="nc" id="L122">        &quot;wrong choice generator class, expecting: &quot; + trace.getCgClassName()</span>
+<span class="nc" id="L123">        + &quot;, read: &quot; + currentCG.getClass().getName();</span>
+
+<span class="fc" id="L125">      int choiceIndex = trace.getChoiceIndex();</span>
+<span class="fc" id="L126">      currentCG.select(choiceIndex);</span>
+
+<span class="fc" id="L128">    } else {</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">      if (singleChoice) {</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (n &gt; 1) {</span>
+<span class="nc" id="L131">          int r = random.nextInt(n);</span>
+<span class="nc" id="L132">          currentCG.select(r); // sets it done, so we never backtrack into it</span>
+        }
+      }
+    }
+<span class="fc" id="L136">  }</span>
+
+  @Override
+  public void threadStarted(VM vm, ThreadInfo ti) {
+<span class="nc bnc" id="L140" title="All 4 branches missed.">    if (singleChoice &amp;&amp; (threadSet != null)) {</span>
+<span class="nc" id="L141">      String tname = ti.getName();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (threadSet.matchesAny( tname)){</span>
+<span class="nc" id="L143">        threadsAlive = true;</span>
+<span class="nc" id="L144">        checkSingleChoiceCond();</span>
+      }
+    }
+<span class="nc" id="L147">  }</span>
+
+  @Override
+  public void executeInstruction(VM vm, ThreadInfo ti, Instruction insnToExecute) {
+<span class="pc bpc" id="L151" title="2 of 6 branches missed.">    if (singleChoice &amp;&amp; !callSeen &amp;&amp; (calls != null)) {</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">      if (insnToExecute instanceof JVMInvokeInstruction) {</span>
+<span class="nc" id="L153">        String mthName = ((JVMInvokeInstruction)insnToExecute).getInvokedMethod(ti).getBaseName();</span>
+
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (calls.matchesAny(mthName)){</span>
+<span class="nc" id="L156">          callSeen = true;</span>
+<span class="nc" id="L157">          checkSingleChoiceCond();</span>
+        }
+      }
+    }
+<span class="fc" id="L161">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+
+<span class="fc bfc" id="L166" title="All 2 branches covered.">    if (trace != null) {</span>
+      // there is no backtracking or restoring as long as we replay
+<span class="fc" id="L168">      trace = trace.getNext();</span>
+
+<span class="fc bfc" id="L170" title="All 2 branches covered.">      if (trace == null){</span>
+<span class="fc" id="L171">        search.getVM().setTraceReplay(false);</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (searchAfterTrace){</span>
+<span class="fc" id="L173">          singleChoice = false;</span>
+        }
+      }
+
+    } else {
+<span class="pc bpc" id="L178" title="2 of 6 branches missed.">      if (singleChoice &amp;&amp; !depthReached &amp;&amp; (startDepth &gt;= 0)) {</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (search.getDepth() == startDepth) {</span>
+<span class="nc" id="L180">          depthReached = true;</span>
+<span class="nc" id="L181">          checkSingleChoiceCond();</span>
+        }
+      }
+    }
+<span class="fc" id="L185">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

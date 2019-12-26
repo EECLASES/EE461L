@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IfInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">IfInstruction.java</span></div><h1>IfInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.BooleanChoiceGenerator;
+import gov.nasa.jpf.vm.KernelState;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.SystemState;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * abstraction for all comparison instructions
+ */
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">public abstract class IfInstruction extends Instruction implements JVMInstruction {</span>
+  protected int targetPosition;  // insn position at jump insnIndex
+  protected Instruction target;  // jump target
+  
+  protected boolean conditionValue;  /** value of last evaluation of branch condition */
+
+<span class="fc" id="L37">  protected IfInstruction(int targetPosition){</span>
+<span class="fc" id="L38">    this.targetPosition = targetPosition;</span>
+<span class="fc" id="L39">  }</span>
+
+  /**
+   * return which branch was taken. Only useful after instruction got executed
+   * WATCH OUT - 'true' means the jump condition is met, which logically is
+   * the 'false' branch
+   */
+  public boolean getConditionValue() {
+<span class="nc" id="L47">    return conditionValue;</span>
+  }
+    
+  /**
+   *  Added so that SimpleIdleFilter can detect do-while loops when 
+   * the while statement evaluates to true.
+   */
+  @Override
+  public boolean isBackJump () { 
+<span class="fc bfc" id="L56" title="All 4 branches covered.">    return (conditionValue) &amp;&amp; (targetPosition &lt;= position);</span>
+  }
+    
+  /** 
+   * retrieve value of jump condition from operand stack
+   * (not ideal to have this public, but some listeners might need it for
+   * skipping the insn, plus we require it for subclass factorization)
+   */
+  public abstract boolean popConditionValue(StackFrame frame);
+  
+  public Instruction getTarget() {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    if (target == null) {</span>
+<span class="fc" id="L68">      target = mi.getInstructionAt(targetPosition);</span>
+    }
+<span class="fc" id="L70">    return target;</span>
+  }
+  
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L75">    StackFrame frame = ti.getModifiableTopFrame();</span>
+
+<span class="fc" id="L77">    conditionValue = popConditionValue(frame);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">    if (conditionValue) {</span>
+<span class="fc" id="L79">      return getTarget();</span>
+    } else {
+<span class="fc" id="L81">      return getNext(ti);</span>
+    }
+  }
+
+  /**
+   * use this as a delegatee in overridden executes of derived IfInstructions
+   * (e.g. for symbolic execution)
+   */
+  protected Instruction executeBothBranches (SystemState ss, KernelState ks, ThreadInfo ti){
+<span class="nc bnc" id="L90" title="All 2 branches missed.">    if (!ti.isFirstStepInsn()) {</span>
+<span class="nc" id="L91">      BooleanChoiceGenerator cg = new BooleanChoiceGenerator(ti.getVM().getConfig(), &quot;ifAll&quot;);</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="nc" id="L93">        return this;</span>
+
+      } else {
+<span class="nc" id="L96">        StackFrame frame = ti.getModifiableTopFrame();</span>
+        // some listener did override the CG, fallback to normal operation
+<span class="nc" id="L98">        conditionValue = popConditionValue(frame);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (conditionValue) {</span>
+<span class="nc" id="L100">          return getTarget();</span>
+        } else {
+<span class="nc" id="L102">          return getNext(ti);</span>
+        }
+      }
+      
+    } else {
+<span class="nc" id="L107">      BooleanChoiceGenerator cg = ss.getCurrentChoiceGenerator(&quot;ifAll&quot;, BooleanChoiceGenerator.class);</span>
+<span class="nc bnc" id="L108" title="All 4 branches missed.">      assert (cg != null) : &quot;no BooleanChoiceGenerator&quot;;</span>
+      
+<span class="nc" id="L110">      StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L111">      popConditionValue(frame); // we are not interested in concrete values</span>
+      
+<span class="nc" id="L113">      conditionValue = cg.getNextChoice();</span>
+      
+<span class="nc bnc" id="L115" title="All 2 branches missed.">      if (conditionValue) {</span>
+<span class="nc" id="L116">        return getTarget();</span>
+      } else {
+<span class="nc" id="L118">        return getNext(ti);</span>
+      }
+
+    }
+  }
+  
+  @Override
+  public String toString () {
+<span class="fc" id="L126">    return getMnemonic() + &quot; &quot; + targetPosition;</span>
+  }
+  
+  @Override
+  public int getLength() {
+<span class="nc" id="L131">    return 3; // usually opcode, bb1, bb2</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L136">	  insVisitor.visit(this);</span>
+<span class="nc" id="L137">  }</span>
+
+  @Override
+  public Instruction typeSafeClone(MethodInfo mi) {
+<span class="fc" id="L141">    IfInstruction clone = null;</span>
+
+    try {
+<span class="fc" id="L144">      clone = (IfInstruction) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L147">      clone.mi = mi;</span>
+
+<span class="fc" id="L149">      clone.target = null;</span>
+<span class="nc" id="L150">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L151">      e.printStackTrace();</span>
+<span class="fc" id="L152">    }</span>
+
+<span class="fc" id="L154">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

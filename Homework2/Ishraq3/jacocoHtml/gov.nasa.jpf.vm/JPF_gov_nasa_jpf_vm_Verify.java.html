@@ -1,0 +1,1284 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPF_gov_nasa_jpf_vm_Verify.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">JPF_gov_nasa_jpf_vm_Verify.java</span></div><h1>JPF_gov_nasa_jpf_vm_Verify.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.annotation.MJI;
+import gov.nasa.jpf.util.IntTable;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.ObjectConverter;
+import gov.nasa.jpf.util.ObjectList;
+import gov.nasa.jpf.util.RunListener;
+import gov.nasa.jpf.util.RunRegistry;
+import gov.nasa.jpf.util.json.CGCall;
+import gov.nasa.jpf.util.json.JSONLexer;
+import gov.nasa.jpf.util.json.JSONObject;
+import gov.nasa.jpf.util.json.JSONParser;
+import gov.nasa.jpf.vm.choice.DoubleChoiceFromList;
+import gov.nasa.jpf.vm.choice.FloatChoiceFromList;
+import gov.nasa.jpf.vm.choice.IntChoiceFromSet;
+import gov.nasa.jpf.vm.choice.IntIntervalGenerator;
+import gov.nasa.jpf.vm.choice.LongChoiceFromList;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.PrintStream;
+import java.util.BitSet;
+import java.util.List;
+
+/**
+ * native peer class for programmatic JPF interface (that can be used inside
+ * of apps to verify - if you are aware of the danger that comes with it)
+ * 
+ * this peer is a bit different in that it only uses static fields and methods because
+ * its use is supposed to be JPF global (without classloader namespaces)
+ */
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">public class JPF_gov_nasa_jpf_vm_Verify extends NativePeer {</span>
+  static final int MAX_COUNTERS = 127;
+
+  static boolean isInitialized;
+  
+  // those are used to store search global int values (e.g. from TestJPF derived classes)
+  static int[] counter;
+  static IntTable&lt;String&gt; map;
+
+  public static int heuristicSearchValue;
+  
+  static boolean supportIgnorePath;
+  static boolean breakSingleChoice;
+  static boolean enableAtomic;
+
+  static Config config;  // we need to keep this around for CG creation
+
+  // our const ChoiceGenerator ctor argtypes
+<span class="fc" id="L73">  static Class[] cgArgTypes = { Config.class, String.class };</span>
+  // this is our cache for ChoiceGenerator ctor parameters
+<span class="fc" id="L75">  static Object[] cgArgs = { null, null };</span>
+
+  static BitSet[] bitSets;
+  static int nextBitSet;
+
+  static PrintStream out;
+  
+  public static boolean init (Config conf) {
+
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">    if (!isInitialized){</span>
+<span class="fc" id="L85">      supportIgnorePath = conf.getBoolean(&quot;vm.verify.ignore_path&quot;);</span>
+<span class="fc" id="L86">      breakSingleChoice = conf.getBoolean(&quot;cg.break_single_choice&quot;);</span>
+<span class="fc" id="L87">      enableAtomic = conf.getBoolean(&quot;cg.enable_atomic&quot;, true);</span>
+
+<span class="fc" id="L89">      heuristicSearchValue = conf.getInt(&quot;search.heuristic.default_value&quot;);</span>
+
+<span class="fc" id="L91">      counter = null;</span>
+<span class="fc" id="L92">      map = null;</span>
+      
+<span class="fc" id="L94">      config = conf;</span>
+
+<span class="fc" id="L96">      String outFile = conf.getString(&quot;vm.verify.output_file&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">      if (outFile != null){</span>
+        try {
+<span class="nc" id="L99">          out = new PrintStream(outFile);</span>
+<span class="nc" id="L100">        } catch (FileNotFoundException fnx){</span>
+<span class="nc" id="L101">          System.err.println(&quot;error: could not open verify output file &quot; + outFile + &quot;, using System.out&quot;);</span>
+<span class="nc" id="L102">          out = System.out;</span>
+<span class="nc" id="L103">        }</span>
+      } else {
+<span class="fc" id="L105">        out = System.out;</span>
+      }
+      
+<span class="fc" id="L108">      Verify.setPeerClass( JPF_gov_nasa_jpf_vm_Verify.class);</span>
+
+<span class="fc" id="L110">      RunRegistry.getDefaultRegistry().addListener( new RunListener() {</span>
+        @Override
+		    public void reset (RunRegistry reg){
+<span class="fc" id="L113">          isInitialized = false;</span>
+<span class="fc" id="L114">        }</span>
+      });
+    }
+<span class="fc" id="L117">    return true;</span>
+  }
+
+  
+  public static final int NO_VALUE = -1;
+  
+  @MJI
+  public static int getValue__Ljava_lang_String_2__I (MJIEnv env, int clsObjRef, int keyRef) {
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    if (map == null) {</span>
+<span class="fc" id="L126">      return NO_VALUE;</span>
+    } else {
+<span class="fc" id="L128">      String key = env.getStringObject(keyRef);</span>
+<span class="fc" id="L129">      IntTable.Entry&lt;String&gt; e = map.get(key);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">      if (e != null) {</span>
+<span class="fc" id="L131">        return e.val;</span>
+      } else {
+<span class="fc" id="L133">        return NO_VALUE;</span>
+      }
+    }
+  }
+  
+  @MJI
+  public static void putValue__Ljava_lang_String_2I__V (MJIEnv env, int clsObjRef, int keyRef, int val) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">    if (map == null) {</span>
+<span class="fc" id="L141">      map = new IntTable&lt;String&gt;();</span>
+    }
+    
+<span class="fc" id="L144">    String key = env.getStringObject(keyRef);</span>
+<span class="fc" id="L145">    map.put(key, val);</span>
+<span class="fc" id="L146">  }</span>
+  
+  @MJI
+  public static int getCounter__I__I (MJIEnv env, int clsObjRef, int counterId) {
+<span class="pc bpc" id="L150" title="2 of 6 branches missed.">    if ((counter == null) || (counterId &lt; 0) || (counterId &gt;= counter.length)) {</span>
+<span class="fc" id="L151">      return 0;</span>
+    }
+
+<span class="fc" id="L154">    return counter[counterId];</span>
+  }
+
+  private static void ensureCounterCapacity (int counterId){
+<span class="fc bfc" id="L158" title="All 2 branches covered.">    if (counter == null) {</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">      counter = new int[(counterId &gt;= MAX_COUNTERS) ? counterId+1 : MAX_COUNTERS];</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">    } else if (counterId &gt;= counter.length) {</span>
+<span class="nc" id="L161">      int[] newCounter = new int[counterId+1];</span>
+<span class="nc" id="L162">      System.arraycopy(counter, 0, newCounter, 0, counter.length);</span>
+<span class="nc" id="L163">      counter = newCounter;</span>
+    }    
+<span class="fc" id="L165">  }</span>
+  
+  @MJI
+  public static void resetCounter__I__V (MJIEnv env, int clsObjRef, int counterId) {
+<span class="pc bpc" id="L169" title="2 of 6 branches missed.">    if ((counter == null) || (counterId &lt; 0) || (counterId &gt;= counter.length)) {</span>
+<span class="fc" id="L170">      return;</span>
+    }
+<span class="fc" id="L172">    counter[counterId] = 0;</span>
+<span class="fc" id="L173">  }</span>
+
+  @MJI
+  public static void setCounter__II__V (MJIEnv env, int clsObjRef, int counterId, int val) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">    if (counterId &lt; 0){</span>
+<span class="nc" id="L178">      return;</span>
+    }
+    
+<span class="fc" id="L181">    ensureCounterCapacity(counterId);</span>
+<span class="fc" id="L182">    counter[counterId] = val;</span>
+<span class="fc" id="L183">  }</span>
+  
+  @MJI
+  public static int incrementCounter__I__I (MJIEnv env, int clsObjRef, int counterId) {
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">    if (counterId &lt; 0) {</span>
+<span class="nc" id="L188">      return 0;</span>
+    }
+
+<span class="fc" id="L191">    ensureCounterCapacity(counterId);</span>
+<span class="fc" id="L192">    return ++counter[counterId];</span>
+  }
+
+  private static void checkBitSetId(int id) {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">    if (bitSets == null) {</span>
+<span class="fc" id="L197">      bitSets = new BitSet[id + 1];</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">    } else if (id &gt;= bitSets.length) {</span>
+<span class="nc" id="L199">      BitSet[] newBitSets = new BitSet[id + 1];</span>
+<span class="nc" id="L200">      System.arraycopy(bitSets, 0, newBitSets, 0, bitSets.length);</span>
+<span class="nc" id="L201">      bitSets = newBitSets;</span>
+    }
+
+<span class="fc bfc" id="L204" title="All 2 branches covered.">    if (bitSets[id] == null) {</span>
+<span class="fc" id="L205">      bitSets[id] = new BitSet();</span>
+    }
+<span class="fc" id="L207">  }</span>
+
+  @MJI
+  public static void setBitInBitSet__IIZ__V(MJIEnv env, int clsObjRef, int id, int bitNum, boolean value) {
+<span class="fc" id="L211">    checkBitSetId(id);</span>
+<span class="fc" id="L212">    bitSets[id].set(bitNum, value);</span>
+<span class="fc" id="L213">  }</span>
+
+  @MJI
+  public static boolean getBitInBitSet__II__Z(MJIEnv env, int clsObjRef, int id, int bitNum) {
+<span class="fc" id="L217">    checkBitSetId(id);</span>
+<span class="fc" id="L218">    return bitSets[id].get(bitNum);</span>
+  }
+
+  @MJI
+  public static long currentTimeMillis____J (MJIEnv env, int clsObjRef) {
+<span class="nc" id="L223">    return System.currentTimeMillis();</span>
+  }
+
+  @MJI
+  public static String getType (int objRef, MJIEnv env) {
+<span class="nc" id="L228">    return Types.getTypeName(env.getElementInfo(objRef).getType());</span>
+  }
+
+  @MJI
+  public static void addComment__Ljava_lang_String_2__V (MJIEnv env, int clsObjRef, int stringRef) {
+<span class="nc" id="L233">    SystemState ss = env.getSystemState();</span>
+<span class="nc" id="L234">    String      cmt = env.getStringObject(stringRef);</span>
+<span class="nc" id="L235">    ss.getTrail().setAnnotation(cmt);</span>
+<span class="nc" id="L236">  }</span>
+
+  @MJI
+  public static void assertTrue__Z__V (MJIEnv env, int clsObjRef, boolean b) {
+<span class="nc bnc" id="L240" title="All 2 branches missed.">    if (!b) {</span>
+<span class="nc" id="L241">      env.throwException(&quot;java.lang.AssertionError&quot;, &quot;assertTrue failed&quot;);</span>
+    }
+<span class="nc" id="L243">  }</span>
+
+  // those are evil - use with extreme care. If something blocks inside of
+  // an atomic section we have to raise an exception
+  
+  @MJI
+  public static void beginAtomic____V (MJIEnv env, int clsObjRef) {
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">    if (enableAtomic){</span>
+<span class="fc" id="L251">      ThreadInfo tiAtomic = env.getThreadInfo();</span>
+      
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">      if (tiAtomic.getScheduler().setsBeginAtomicCG(tiAtomic)){</span>
+<span class="nc" id="L254">        env.repeatInvocation();</span>
+<span class="nc" id="L255">        return;</span>
+      }
+
+<span class="fc" id="L258">      env.getSystemState().incAtomic();</span>
+    }
+<span class="fc" id="L260">  }</span>
+  
+  @MJI
+  public static void endAtomic____V (MJIEnv env, int clsObjRef) {
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">    if (enableAtomic){</span>
+<span class="fc" id="L265">      ThreadInfo tiAtomic = env.getThreadInfo();</span>
+
+<span class="fc bfc" id="L267" title="All 2 branches covered.">      if (!tiAtomic.isFirstStepInsn()){</span>
+<span class="fc" id="L268">        env.getSystemState().decAtomic();</span>
+      }
+      
+<span class="fc bfc" id="L271" title="All 2 branches covered.">      if (tiAtomic.getScheduler().setsEndAtomicCG(tiAtomic)){</span>
+<span class="fc" id="L272">        env.repeatInvocation();</span>
+<span class="fc" id="L273">        return;</span>
+      }
+    }
+<span class="fc" id="L276">  }</span>
+
+  @MJI
+  public static void busyWait__J__V (MJIEnv env, int clsObjRef, long duration) {
+    // nothing required here (we systematically explore scheduling
+    // sequences anyway), but we need to intercept the call
+<span class="nc" id="L282">  }</span>
+
+  @MJI
+  public static void ignoreIf__Z__V (MJIEnv env, int clsObjRef, boolean cond) {
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">    if (supportIgnorePath) {</span>
+<span class="fc" id="L287">      env.getSystemState().setIgnored(cond);</span>
+    }
+<span class="fc" id="L289">  }</span>
+
+  @MJI
+  public static void interesting__Z__V (MJIEnv env, int clsObjRef, boolean cond) {
+<span class="nc" id="L293">    env.getSystemState().setInteresting(cond);</span>
+<span class="nc" id="L294">  }</span>
+
+  @MJI
+  public static void breakTransition__Ljava_lang_String_2__V (MJIEnv env, int clsObjRef, int reasonRef){
+<span class="fc" id="L298">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L299">    String reason = env.getStringObject(reasonRef);</span>
+<span class="fc" id="L300">    ti.breakTransition(reason);</span>
+<span class="fc" id="L301">  }</span>
+
+  /**
+   * mostly for debugging purposes - this does not optimize away single choice CGs 
+   */
+  @MJI
+  public int breakTransition__Ljava_lang_String_2II__I (MJIEnv env, int clsObjRef, int reasonRef, int min, int max) {
+<span class="fc" id="L308">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L309">    SystemState ss = env.getSystemState();</span>
+<span class="fc" id="L310">    String reason = env.getStringObject(reasonRef);</span>
+    
+<span class="fc bfc" id="L312" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L313">      IntChoiceGenerator cg = new IntIntervalGenerator( reason, min,max);</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L315">        env.repeatInvocation();</span>
+      }
+<span class="fc" id="L317">      return -1;</span>
+      
+    } else {
+<span class="fc" id="L320">      return getNextChoice(ss, reason, IntChoiceGenerator.class, Integer.class);</span>
+    } 
+  }
+
+  @MJI
+  public static boolean isCalledFromClass__Ljava_lang_String_2__Z (MJIEnv env, int clsObjRef,
+                                           int clsNameRef) {
+<span class="nc" id="L327">    String refClassName = env.getStringObject(clsNameRef);</span>
+<span class="nc" id="L328">    ThreadInfo ti = env.getThreadInfo();</span>
+
+<span class="nc" id="L330">    StackFrame caller = ti.getLastInvokedStackFrame();</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">    if (caller != null){</span>
+<span class="nc" id="L332">      ClassInfo ci = caller.getClassInfo();</span>
+<span class="nc" id="L333">      return ci.isInstanceOf(refClassName);</span>
+    }
+
+<span class="nc" id="L336">    return false;</span>
+  }
+
+
+  static &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T createChoiceGenerator (Class&lt;T&gt; cgClass, SystemState ss, String id) {
+<span class="fc" id="L341">    T gen = null;</span>
+
+<span class="fc" id="L343">    cgArgs[0] = config;</span>
+<span class="fc" id="L344">    cgArgs[1] = id; // good thing we are not multithreaded (other fields are const)</span>
+
+<span class="fc" id="L346">    String key = id + &quot;.class&quot;;</span>
+<span class="fc" id="L347">    gen = config.getEssentialInstance(key, cgClass, cgArgTypes, cgArgs);</span>
+<span class="fc" id="L348">    return gen;</span>
+  }
+
+  static &lt;T&gt; T registerChoiceGenerator (MJIEnv env, SystemState ss, ThreadInfo ti, ChoiceGenerator&lt;T&gt; cg, T dummyVal){
+
+<span class="fc" id="L353">    int n = cg.getTotalNumberOfChoices();</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">    if (n == 0) {</span>
+      // nothing, just return the default value
+
+<span class="pc bpc" id="L357" title="1 of 4 branches missed.">    } else if (n == 1 &amp;&amp; !breakSingleChoice) {</span>
+      // no choice -&gt; no CG optimization
+<span class="fc" id="L359">      cg.advance();</span>
+<span class="fc" id="L360">      return cg.getNextChoice();</span>
+
+    } else {
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L364">        env.repeatInvocation();</span>
+      }
+    }
+
+<span class="fc" id="L368">    return dummyVal;</span>
+  }
+
+  static &lt;T,C extends ChoiceGenerator&lt;T&gt;&gt; T getNextChoice (SystemState ss, String id, Class&lt;C&gt; cgClass, Class&lt;T&gt; choiceClass){
+<span class="fc" id="L372">    ChoiceGenerator&lt;?&gt; cg = ss.getCurrentChoiceGenerator(id, cgClass);</span>
+
+<span class="pc bpc" id="L374" title="2 of 4 branches missed.">    assert (cg != null) : &quot;no ChoiceGenerator of type &quot; + cgClass.getName();</span>
+<span class="fc" id="L375">    return ((ChoiceGenerator&lt;T&gt;)cg).getNextChoice();</span>
+  }
+
+  @MJI
+  public static boolean getBoolean____Z (MJIEnv env, int clsObjRef) {
+<span class="fc" id="L380">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L381">    SystemState ss = env.getSystemState();</span>
+    ChoiceGenerator&lt;?&gt; cg;
+
+<span class="fc bfc" id="L384" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L385">      cg = new BooleanChoiceGenerator(config, &quot;verifyGetBoolean&quot;);</span>
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L387">        env.repeatInvocation();</span>
+      }
+<span class="fc" id="L389">      return true;  // not used if we repeat</span>
+
+    } else {  // this is what really returns results
+<span class="fc" id="L392">      return getNextChoice(ss,&quot;verifyGetBoolean&quot;, BooleanChoiceGenerator.class,Boolean.class);</span>
+    }
+  }
+
+  @MJI
+  public static boolean getBoolean__Z__Z (MJIEnv env, int clsObjRef, boolean falseFirst) {
+<span class="fc" id="L398">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L399">    SystemState ss = env.getSystemState();</span>
+    ChoiceGenerator&lt;?&gt; cg;
+
+<span class="fc bfc" id="L402" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L403">      cg = new BooleanChoiceGenerator( &quot;verifyGetBoolean(Z)&quot;, falseFirst );</span>
+<span class="pc bpc" id="L404" title="1 of 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L405">        env.repeatInvocation();</span>
+      }
+<span class="fc" id="L407">      return true;  // not used if we repeat</span>
+
+    } else {  // this is what really returns results
+<span class="fc" id="L410">      return getNextChoice(ss,&quot;verifyGetBoolean(Z)&quot;, BooleanChoiceGenerator.class, Boolean.class);</span>
+    }
+  }
+
+  @MJI
+  public static int getInt__II__I (MJIEnv env, int clsObjRef, int min, int max) {
+<span class="fc" id="L416">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L417">    SystemState ss = env.getSystemState();</span>
+
+<span class="fc bfc" id="L419" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">      if (min &gt; max){</span>
+<span class="nc" id="L422">        int t = max;</span>
+<span class="nc" id="L423">        max = min;</span>
+<span class="nc" id="L424">        min = t;</span>
+      }
+
+<span class="fc" id="L427">      IntChoiceGenerator cg = new IntIntervalGenerator( &quot;verifyGetInt(II)&quot;, min,max);</span>
+<span class="fc" id="L428">      return registerChoiceGenerator(env,ss,ti,cg,0);</span>
+
+    } else {
+<span class="fc" id="L431">      return getNextChoice(ss, &quot;verifyGetInt(II)&quot;, IntChoiceGenerator.class, Integer.class);</span>
+    }
+  }
+
+  static int getIntFromList (MJIEnv env, int[] values){
+<span class="fc" id="L436">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L437">    SystemState ss = env.getSystemState();</span>
+
+<span class="fc bfc" id="L439" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L440">      ChoiceGenerator&lt;Integer&gt; cg = new IntChoiceFromSet( &quot;verifyGetIntSet([I)&quot;, values);</span>
+<span class="fc" id="L441">      return registerChoiceGenerator(env,ss,ti,cg,0);</span>
+
+    } else {
+<span class="fc" id="L444">      return getNextChoice(ss, &quot;verifyGetIntSet([I)&quot;, IntChoiceGenerator.class, Integer.class);</span>
+    }    
+  }
+  
+  @MJI
+  public static int getIntFromList___3I__I (MJIEnv env, int clsObjRef, int valArrayRef){
+<span class="fc" id="L450">    int[] values = env.getIntArrayObject(valArrayRef);</span>
+<span class="fc" id="L451">    return getIntFromList( env, values);</span>
+  }
+
+  @MJI
+  public static int getInt__Ljava_lang_String_2__I (MJIEnv env, int clsObjRef, int idRef) {
+<span class="fc" id="L456">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L457">    SystemState ss = env.getSystemState();</span>
+
+
+<span class="fc bfc" id="L460" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L461">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L462">      IntChoiceGenerator cg = createChoiceGenerator( IntChoiceGenerator.class, ss, id);</span>
+<span class="fc" id="L463">      return registerChoiceGenerator(env,ss,ti,cg, 0);</span>
+
+    } else {
+<span class="fc" id="L466">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L467">      return getNextChoice(ss, id, IntChoiceGenerator.class,Integer.class);</span>
+    }
+  }
+
+  static long getLongFromList (MJIEnv env, long[] values){
+<span class="nc" id="L472">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="nc" id="L473">    SystemState ss = env.getSystemState();</span>
+
+<span class="nc bnc" id="L475" title="All 2 branches missed.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="nc" id="L476">      ChoiceGenerator&lt;Long&gt; cg = new LongChoiceFromList( &quot;verifyLongList([J)&quot;, values);</span>
+<span class="nc" id="L477">      return registerChoiceGenerator(env,ss,ti,cg,0L);</span>
+
+    } else {
+<span class="nc" id="L480">      return getNextChoice(ss, &quot;verifyLongList([J)&quot;, LongChoiceGenerator.class, Long.class);</span>
+    }    
+  }
+  
+  @MJI
+  public static long getLongFromList___3J__J (MJIEnv env, int clsObjRef, int valArrayRef){
+<span class="nc" id="L486">    long[] values = env.getLongArrayObject(valArrayRef);</span>
+<span class="nc" id="L487">    return getLongFromList( env, values);    </span>
+  }
+  
+  @MJI
+  public static int getObject__Ljava_lang_String_2__Ljava_lang_Object_2 (MJIEnv env, int clsObjRef, int idRef) {
+<span class="fc" id="L492">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L493">    SystemState ss = env.getSystemState();</span>
+
+<span class="fc bfc" id="L495" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L496">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L497">      ReferenceChoiceGenerator cg = createChoiceGenerator( ReferenceChoiceGenerator.class, ss, id);</span>
+<span class="fc" id="L498">      return registerChoiceGenerator(env,ss,ti,cg, MJIEnv.NULL);</span>
+
+    } else {
+<span class="fc" id="L501">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L502">      return getNextChoice(ss, id, ReferenceChoiceGenerator.class,Integer.class);</span>
+    }
+  }
+
+  @MJI
+  public static double getDouble__Ljava_lang_String_2__D (MJIEnv env, int clsObjRef, int idRef) {
+<span class="fc" id="L508">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L509">    SystemState ss = env.getSystemState();</span>
+
+<span class="fc bfc" id="L511" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L512">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L513">      DoubleChoiceGenerator cg = createChoiceGenerator( DoubleChoiceGenerator.class, ss, id);</span>
+<span class="fc" id="L514">      return registerChoiceGenerator(env,ss,ti,cg, 0.0);</span>
+
+    } else {
+<span class="fc" id="L517">      String id = env.getStringObject(idRef);</span>
+<span class="fc" id="L518">      return getNextChoice(ss, id, DoubleChoiceGenerator.class,Double.class);</span>
+    }
+  }
+
+  @MJI
+  public static double getDoubleFromList (MJIEnv env, double[] values){
+<span class="fc" id="L524">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L525">    SystemState ss = env.getSystemState();</span>
+
+<span class="fc bfc" id="L527" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="fc" id="L528">      ChoiceGenerator&lt;Double&gt; cg = new DoubleChoiceFromList(&quot;verifyDoubleList([D)&quot;, values);</span>
+<span class="fc" id="L529">      return registerChoiceGenerator(env,ss,ti,cg, 0.0);</span>
+
+    } else {
+<span class="fc" id="L532">      return getNextChoice(ss, &quot;verifyDoubleList([D)&quot;, DoubleChoiceFromList.class,Double.class);</span>
+    }    
+  }
+  
+  @MJI
+  public static double getDoubleFromList___3D__D (MJIEnv env, int clsObjRef, int valArrayRef){
+<span class="fc" id="L538">    double[] values = env.getDoubleArrayObject(valArrayRef);</span>
+<span class="fc" id="L539">    return getDoubleFromList( env, values);</span>
+  }
+
+  @MJI
+  public static float getFloatFromList (MJIEnv env, float[] values){
+<span class="nc" id="L544">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="nc" id="L545">    SystemState ss = env.getSystemState();</span>
+
+<span class="nc bnc" id="L547" title="All 2 branches missed.">    if (!ti.isFirstStepInsn()) { // first time around</span>
+<span class="nc" id="L548">      ChoiceGenerator&lt;Float&gt; cg = new FloatChoiceFromList(&quot;verifyFloatList([F)&quot;, values);</span>
+<span class="nc" id="L549">      return registerChoiceGenerator(env,ss,ti,cg, 0.0f);</span>
+
+    } else {
+<span class="nc" id="L552">      return getNextChoice(ss, &quot;verifyFloatList([F)&quot;, FloatChoiceFromList.class, Float.class);</span>
+    }    
+  }
+  
+  @MJI
+  public static float getFloatFromList___3F__F (MJIEnv env, int clsObjRef, int valArrayRef){
+<span class="nc" id="L558">    float[] values = env.getFloatArrayObject(valArrayRef);</span>
+<span class="nc" id="L559">    return getFloatFromList( env, values);</span>
+  }
+
+  @MJI
+  public static void threadPrint__Ljava_lang_String_2__V (MJIEnv env, int clsRef, int sRef){
+<span class="fc" id="L564">    String s = env.getStringObject(sRef);</span>
+<span class="fc" id="L565">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L566">    System.out.print(ti.getName());</span>
+<span class="fc" id="L567">    System.out.print(s);</span>
+<span class="fc" id="L568">  }</span>
+  
+  @MJI
+  public static void print__Ljava_lang_String_2I__V (MJIEnv env, int clsRef, int sRef, int val){
+<span class="fc" id="L572">    String s = env.getStringObject(sRef);</span>
+<span class="fc" id="L573">    System.out.print(s + &quot; : &quot; + val);</span>
+<span class="fc" id="L574">  }</span>
+
+  @MJI
+  public static void print__Ljava_lang_String_2Z__V (MJIEnv env, int clsRef, int sRef, boolean val){
+<span class="nc" id="L578">    String s = env.getStringObject(sRef);</span>
+<span class="nc" id="L579">    System.out.print(s + &quot; : &quot; + val);</span>
+<span class="nc" id="L580">  }</span>
+
+  @MJI
+  public static void print___3Ljava_lang_String_2__V (MJIEnv env, int clsRef, int argsRef){
+<span class="fc" id="L584">    int n = env.getArrayLength(argsRef);</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++){</span>
+<span class="fc" id="L586">      int aref = env.getReferenceArrayElement(argsRef, i);</span>
+<span class="fc" id="L587">      String s = env.getStringObject(aref);</span>
+<span class="fc" id="L588">      System.out.print(s);</span>
+    }
+<span class="fc" id="L590">  }</span>
+  
+  @MJI
+  public static void print__Ljava_lang_String_2__V (MJIEnv env, int clsRef, int sRef){
+<span class="fc" id="L594">    String s = env.getStringObject(sRef);</span>
+<span class="fc" id="L595">    System.out.print(s);</span>
+<span class="fc" id="L596">  }</span>
+
+  @MJI
+  public static void println__Ljava_lang_String_2__V (MJIEnv env, int clsRef, int sRef){
+<span class="fc" id="L600">    String s = env.getStringObject(sRef);</span>
+<span class="fc" id="L601">    System.out.println(s);</span>
+<span class="fc" id="L602">  }</span>
+
+  @MJI
+  public static void threadPrintln__Ljava_lang_String_2__V (MJIEnv env, int clsRef, int sRef){
+<span class="fc" id="L606">    threadPrint__Ljava_lang_String_2__V(env, clsRef, sRef);</span>
+<span class="fc" id="L607">    System.out.println();</span>
+<span class="fc" id="L608">  }</span>
+
+  
+  @MJI
+  public static void println____V (MJIEnv env, int clsRef){
+<span class="fc" id="L613">    System.out.println();</span>
+<span class="fc" id="L614">  }</span>
+  
+  //--- various attribute test methods
+  
+  private static int getAttribute (MJIEnv env, Object a){
+<span class="fc bfc" id="L619" title="All 2 branches covered.">    if (a != null) {</span>
+<span class="pc bpc" id="L620" title="1 of 2 branches missed.">      if (a instanceof Integer) {</span>
+<span class="fc" id="L621">        return ((Integer) a).intValue();</span>
+      } else {
+<span class="nc" id="L623">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;element attribute not an Integer: &quot; + a);</span>
+      }
+    }
+
+<span class="fc" id="L627">    return 0;</span>
+  }
+  
+  private static int getAttributeList (MJIEnv env, Object a){
+<span class="pc bpc" id="L631" title="1 of 2 branches missed.">    if (a != null) {</span>
+<span class="fc" id="L632">      int l = ObjectList.size(a);</span>
+<span class="fc" id="L633">      int[] attrs = new int[l];</span>
+<span class="fc" id="L634">      int i = 0;</span>
+<span class="fc bfc" id="L635" title="All 2 branches covered.">      for (Integer v : ObjectList.typedIterator(a, Integer.class)) {</span>
+<span class="fc" id="L636">        attrs[i++] = v;</span>
+<span class="fc" id="L637">      }</span>
+<span class="pc bpc" id="L638" title="1 of 2 branches missed.">      if (i != l) {</span>
+<span class="nc" id="L639">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;found non-Integer attributes&quot;);</span>
+<span class="nc" id="L640">        return 0;</span>
+      }
+
+<span class="fc" id="L643">      return env.newIntArray(attrs);</span>
+      
+    } else {
+<span class="nc" id="L646">      return MJIEnv.NULL;</span>
+    }
+  }
+  
+  @MJI
+  public static void setObjectAttribute__Ljava_lang_Object_2I__V (MJIEnv env, int clsRef, int oRef, int attr){
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L653">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="fc" id="L654">      ei.setObjectAttr(Integer.valueOf(attr));</span>
+    }
+<span class="fc" id="L656">  }</span>
+  
+  @MJI
+  public static int getObjectAttribute__Ljava_lang_Object_2__I (MJIEnv env, int clsRef, int oRef){
+<span class="pc bpc" id="L660" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L661">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="fc" id="L662">      return getAttribute( env, ei.getObjectAttr());</span>
+    }
+
+<span class="nc" id="L665">    return 0;</span>
+  }
+  
+  @MJI
+  public static void addObjectAttribute__Ljava_lang_Object_2I__V (MJIEnv env, int clsRef, int oRef, int attr){
+<span class="nc bnc" id="L670" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L671">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="nc" id="L672">      ei.addObjectAttr(Integer.valueOf(attr));</span>
+    }
+<span class="nc" id="L674">  }</span>
+  
+  @MJI
+  public static int getObjectAttributes__Ljava_lang_Object_2___3I (MJIEnv env, int clsRef, int oRef){
+<span class="nc bnc" id="L678" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L679">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="nc" id="L680">      return getAttributeList( env, ei.getObjectAttr());</span>
+    }
+
+<span class="nc" id="L683">    return MJIEnv.NULL;</span>
+  }
+  
+  @MJI
+  public static void setFieldAttribute__Ljava_lang_Object_2Ljava_lang_String_2I__V (MJIEnv env, int clsRef,
+                                                                                    int oRef, int fnRef, int attr){
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L690">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="pc bpc" id="L691" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="fc" id="L692">        String fname = env.getStringObject(fnRef);</span>
+<span class="fc" id="L693">        FieldInfo fi = ei.getFieldInfo(fname);</span>
+
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">        if (fi != null) {</span>
+<span class="fc" id="L696">          ei.setFieldAttr(fi, Integer.valueOf(attr));</span>
+        } else {
+<span class="nc" id="L698">          env.throwException(&quot;java.lang.NoSuchFieldException&quot;,</span>
+<span class="nc" id="L699">                  ei.getClassInfo().getName() + '.' + fname);</span>
+        }
+<span class="fc" id="L701">      } else {</span>
+<span class="nc" id="L702">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+<span class="fc" id="L705">  }</span>
+  
+  @MJI
+  public static int getFieldAttribute__Ljava_lang_Object_2Ljava_lang_String_2__I (MJIEnv env, int clsRef,
+                                                                                    int oRef, int fnRef){
+<span class="pc bpc" id="L710" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L711">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="pc bpc" id="L712" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="fc" id="L713">        String fname = env.getStringObject(fnRef);</span>
+<span class="fc" id="L714">        FieldInfo fi = ei.getFieldInfo(fname);</span>
+
+<span class="pc bpc" id="L716" title="1 of 2 branches missed.">        if (fi != null) {</span>
+<span class="fc" id="L717">          return getAttribute( env, ei.getFieldAttr(fi));</span>
+        } else {
+<span class="nc" id="L719">          env.throwException(&quot;java.lang.NoSuchFieldException&quot;,</span>
+<span class="nc" id="L720">                  ei.toString() + '.' + fname);</span>
+        }
+<span class="nc" id="L722">      } else {</span>
+<span class="nc" id="L723">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+
+<span class="nc" id="L727">    return 0;</span>
+  }
+  
+  @MJI
+  public static void addFieldAttribute__Ljava_lang_Object_2Ljava_lang_String_2I__V (MJIEnv env, int clsRef,
+                                                                                    int oRef, int fnRef, int attr){
+<span class="nc bnc" id="L733" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L734">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="nc bnc" id="L735" title="All 2 branches missed.">      if (ei != null){</span>
+<span class="nc" id="L736">        String fname = env.getStringObject(fnRef);</span>
+<span class="nc" id="L737">        FieldInfo fi = ei.getFieldInfo(fname);</span>
+
+<span class="nc bnc" id="L739" title="All 2 branches missed.">        if (fi != null) {</span>
+<span class="nc" id="L740">          ei.addFieldAttr(fi, Integer.valueOf(attr));</span>
+        } else {
+<span class="nc" id="L742">          env.throwException(&quot;java.lang.NoSuchFieldException&quot;,</span>
+<span class="nc" id="L743">                  ei.getClassInfo().getName() + '.' + fname);</span>
+        }
+<span class="nc" id="L745">      } else {</span>
+<span class="nc" id="L746">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+<span class="nc" id="L749">  }</span>
+
+  @MJI
+  public static int getFieldAttributes__Ljava_lang_Object_2Ljava_lang_String_2___3I (MJIEnv env, int clsRef,
+                                                                                    int oRef, int fnRef){
+<span class="nc bnc" id="L754" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L755">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="nc bnc" id="L756" title="All 2 branches missed.">      if (ei != null){</span>
+<span class="nc" id="L757">        String fname = env.getStringObject(fnRef);</span>
+<span class="nc" id="L758">        FieldInfo fi = ei.getFieldInfo(fname);</span>
+
+<span class="nc bnc" id="L760" title="All 2 branches missed.">        if (fi != null) {</span>
+<span class="nc" id="L761">          return getAttributeList( env, ei.getFieldAttr(fi));          </span>
+        } else {
+<span class="nc" id="L763">          env.throwException(&quot;java.lang.NoSuchFieldException&quot;,</span>
+<span class="nc" id="L764">                  ei.toString() + '.' + fname);</span>
+        }
+<span class="nc" id="L766">      } else {</span>
+<span class="nc" id="L767">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+
+<span class="nc" id="L771">    return MJIEnv.NULL;</span>
+  }
+
+  @MJI
+  public static void setLocalAttribute__Ljava_lang_String_2I__V (MJIEnv env, int clsRef, int varRef, int attr) {
+<span class="fc" id="L776">    String slotName = env.getStringObject(varRef);</span>
+<span class="fc" id="L777">    StackFrame frame = env.getModifiableCallerStackFrame(); // we are executing in a NativeStackFrame</span>
+
+<span class="pc bpc" id="L779" title="1 of 4 branches missed.">    if (!frame.getMethodInfo().isStatic() &amp;&amp;  slotName.equals(&quot;this&quot;)) {</span>
+<span class="fc" id="L780">      frame.setLocalAttr(0, Integer.valueOf(attr)); // only for instance methods of course</span>
+
+    } else {
+<span class="fc" id="L783">      int slotIdx = frame.getLocalVariableSlotIndex(slotName);</span>
+<span class="pc bpc" id="L784" title="1 of 2 branches missed.">      if (slotIdx &gt;= 0) {</span>
+<span class="fc" id="L785">        frame.setLocalAttr(slotIdx, Integer.valueOf(attr));</span>
+      } else {
+<span class="nc" id="L787">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;local variable not found: &quot; + slotName);</span>
+      }
+    }
+<span class="fc" id="L790">  }</span>
+
+  @MJI
+  public static int getLocalAttribute__Ljava_lang_String_2__I (MJIEnv env, int clsRef, int varRef) {
+<span class="fc" id="L794">    String slotName = env.getStringObject(varRef);</span>
+<span class="fc" id="L795">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L796">    StackFrame frame = env.getCallerStackFrame();</span>
+
+<span class="fc" id="L798">    int slotIdx = frame.getLocalVariableSlotIndex(slotName);</span>
+<span class="pc bpc" id="L799" title="1 of 2 branches missed.">    if (slotIdx &gt;= 0) {</span>
+<span class="fc" id="L800">      return getAttribute( env, frame.getLocalAttr(slotIdx));</span>
+    } else {
+<span class="nc" id="L802">      env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;local variable not found: &quot; + slotName);</span>
+<span class="nc" id="L803">      return 0;</span>
+    }
+  }
+
+  @MJI
+  public static void addLocalAttribute__Ljava_lang_String_2I__V (MJIEnv env, int clsRef, int varRef, int attr) {
+<span class="fc" id="L809">    String slotName = env.getStringObject(varRef);</span>
+<span class="fc" id="L810">    StackFrame frame = env.getModifiableCallerStackFrame(); // we are executing in a NativeStackFrame</span>
+
+<span class="pc bpc" id="L812" title="2 of 4 branches missed.">    if (!frame.getMethodInfo().isStatic() &amp;&amp;  slotName.equals(&quot;this&quot;)) {</span>
+<span class="nc" id="L813">      frame.addLocalAttr(0, Integer.valueOf(attr)); // only for instance methods of course</span>
+
+    } else {
+<span class="fc" id="L816">      int slotIdx = frame.getLocalVariableSlotIndex(slotName);</span>
+<span class="pc bpc" id="L817" title="1 of 2 branches missed.">      if (slotIdx &gt;= 0) {</span>
+<span class="fc" id="L818">        frame.addLocalAttr(slotIdx, Integer.valueOf(attr));</span>
+      } else {
+<span class="nc" id="L820">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;local variable not found: &quot; + slotName);</span>
+      }
+    }
+<span class="fc" id="L823">  }</span>
+  
+  @MJI
+  public static int getLocalAttributes__Ljava_lang_String_2___3I (MJIEnv env, int clsRef, int varRef) {
+<span class="fc" id="L827">    String slotName = env.getStringObject(varRef);</span>
+<span class="fc" id="L828">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L829">    StackFrame frame = env.getCallerStackFrame();</span>
+
+<span class="fc" id="L831">    int slotIdx = frame.getLocalVariableSlotIndex(slotName);</span>
+<span class="pc bpc" id="L832" title="1 of 2 branches missed.">    if (slotIdx &gt;= 0) {</span>
+<span class="fc" id="L833">      return getAttributeList( env, frame.getLocalAttr(slotIdx));</span>
+    } else {
+<span class="nc" id="L835">      env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;local variable not found: &quot; + slotName);</span>
+    }
+    
+<span class="nc" id="L838">    return MJIEnv.NULL;</span>
+  }
+  
+  @MJI
+  public static void setElementAttribute__Ljava_lang_Object_2II__V (MJIEnv env, int clsRef,
+                                                                    int oRef, int idx, int attr){
+<span class="pc bpc" id="L844" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L845">      ElementInfo ei = env.getElementInfo(oRef);</span>
+
+<span class="pc bpc" id="L847" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="pc bpc" id="L848" title="1 of 2 branches missed.">        if (ei.isArray()) {</span>
+<span class="pc bpc" id="L849" title="1 of 2 branches missed.">          if (idx &lt; ei.arrayLength()) {</span>
+<span class="fc" id="L850">            ei.setElementAttr(idx, Integer.valueOf(attr));</span>
+          } else {
+<span class="nc" id="L852">            env.throwException(&quot;java.lang.ArrayIndexOutOfBoundsException&quot;,</span>
+<span class="nc" id="L853">                    Integer.toString(idx));</span>
+          }
+        } else {
+<span class="nc" id="L856">          env.throwException(&quot;java.lang.RuntimeException&quot;,</span>
+                  &quot;not an array: &quot; + ei);
+        }
+      } else {
+<span class="nc" id="L860">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+<span class="fc" id="L863">  }</span>
+
+  @MJI
+  public static int getElementAttribute__Ljava_lang_Object_2I__I (MJIEnv env, int clsRef,
+                                                                  int oRef, int idx){
+<span class="pc bpc" id="L868" title="1 of 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="fc" id="L869">      ElementInfo ei = env.getElementInfo(oRef);</span>
+
+<span class="pc bpc" id="L871" title="1 of 2 branches missed.">      if (ei != null) {</span>
+<span class="pc bpc" id="L872" title="1 of 2 branches missed.">        if (ei.isArray()) {</span>
+<span class="pc bpc" id="L873" title="1 of 2 branches missed.">          if (idx &lt; ei.arrayLength()) {</span>
+<span class="fc" id="L874">            return getAttribute( env, ei.getElementAttr( idx));</span>
+          } else {
+<span class="nc" id="L876">            env.throwException(&quot;java.lang.ArrayIndexOutOfBoundsException&quot;,</span>
+<span class="nc" id="L877">                    Integer.toString(idx));</span>
+          }
+        } else {
+<span class="nc" id="L880">          env.throwException(&quot;java.lang.RuntimeException&quot;,</span>
+                  &quot;not an array: &quot; + ei);
+        }
+      } else {
+<span class="nc" id="L884">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+
+<span class="nc" id="L888">    return 0;</span>
+  }
+
+  @MJI
+  public static void addElementAttribute__Ljava_lang_Object_2II__V (MJIEnv env, int clsRef,
+                                                                    int oRef, int idx, int attr){
+<span class="nc bnc" id="L894" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L895">      ElementInfo ei = env.getElementInfo(oRef);</span>
+
+<span class="nc bnc" id="L897" title="All 2 branches missed.">      if (ei != null){</span>
+<span class="nc bnc" id="L898" title="All 2 branches missed.">        if (ei.isArray()) {</span>
+<span class="nc bnc" id="L899" title="All 2 branches missed.">          if (idx &lt; ei.arrayLength()) {</span>
+<span class="nc" id="L900">            ei.addElementAttr(idx, Integer.valueOf(attr));</span>
+          } else {
+<span class="nc" id="L902">            env.throwException(&quot;java.lang.ArrayIndexOutOfBoundsException&quot;,</span>
+<span class="nc" id="L903">                    Integer.toString(idx));</span>
+          }
+        } else {
+<span class="nc" id="L906">          env.throwException(&quot;java.lang.RuntimeException&quot;,</span>
+                  &quot;not an array: &quot; + ei);
+        }
+      } else {
+<span class="nc" id="L910">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+<span class="nc" id="L913">  }</span>
+
+  @MJI
+  public static int getElementAttributes__Ljava_lang_Object_2I___3I (MJIEnv env, int clsRef,
+                                                                        int oRef, int idx){
+<span class="nc bnc" id="L918" title="All 2 branches missed.">    if (oRef != MJIEnv.NULL){</span>
+<span class="nc" id="L919">      ElementInfo ei = env.getElementInfo(oRef);</span>
+<span class="nc bnc" id="L920" title="All 2 branches missed.">      if (ei != null) {</span>
+<span class="nc bnc" id="L921" title="All 2 branches missed.">        if (ei.isArray()) {</span>
+<span class="nc bnc" id="L922" title="All 2 branches missed.">          if (idx &lt; ei.arrayLength()) {</span>
+<span class="nc" id="L923">            return getAttributeList( env, ei.getElementAttr( idx));</span>
+          } else {
+<span class="nc" id="L925">            env.throwException(&quot;java.lang.ArrayIndexOutOfBoundsException&quot;,</span>
+<span class="nc" id="L926">                    Integer.toString(idx));</span>
+          }
+        } else {
+<span class="nc" id="L929">          env.throwException(&quot;java.lang.RuntimeException&quot;,</span>
+                  &quot;not an array: &quot; + ei);
+        }
+      } else {
+<span class="nc" id="L933">        env.throwException(&quot;java.lang.RuntimeException&quot;, &quot;illegal reference value: &quot; + oRef);</span>
+      }
+    }
+
+<span class="nc" id="L937">    return MJIEnv.NULL;</span>
+  }
+
+  
+  /**
+   *  deprecated, use getBoolean()
+   */
+  @MJI
+  public static boolean randomBool (MJIEnv env, int clsObjRef) {
+    //SystemState ss = env.getSystemState();
+    //return (ss.random(2) != 0);
+
+<span class="fc" id="L949">    return getBoolean____Z(env, clsObjRef);</span>
+  }
+
+
+
+  /**
+   * deprecated, use getInt
+   */
+  @MJI
+  public static int random__I__I (MJIEnv env, int clsObjRef, int x) {
+<span class="nc" id="L959">   return getInt__II__I(env, clsObjRef, 0, x);</span>
+  }
+
+  static void boring__Z__V (MJIEnv env, int clsObjRef, boolean b) {
+<span class="nc" id="L963">    env.getSystemState().setBoring(b);</span>
+<span class="nc" id="L964">  }</span>
+
+  @MJI
+  public static boolean isRunningInJPF____Z(MJIEnv env, int clsObjRef) {
+<span class="fc" id="L968">    return true;</span>
+  }
+
+  @MJI
+  public static boolean vmIsMatchingStates____Z(MJIEnv env, int clsObjRef) {
+<span class="nc bnc" id="L973" title="All 2 branches missed.">    return env.getVM().getStateSet() != null;</span>
+  }
+
+  @MJI
+  public static void storeTrace__Ljava_lang_String_2Ljava_lang_String_2__V (MJIEnv env, int clsObjRef,
+                                      int filenameRef, int commentRef) {
+<span class="fc" id="L979">    String fileName = env.getStringObject(filenameRef);</span>
+<span class="fc" id="L980">    String comment = env.getStringObject(commentRef);</span>
+<span class="fc" id="L981">    env.getVM().storeTrace(fileName, comment, config.getBoolean(&quot;trace.verbose&quot;, false));</span>
+<span class="fc" id="L982">  }</span>
+
+  @MJI
+  public static void terminateSearch____V (MJIEnv env, int clsObjRef) {
+<span class="fc" id="L986">    JPF jpf = env.getVM().getJPF();</span>
+<span class="fc" id="L987">    jpf.getSearch().terminate();</span>
+<span class="fc" id="L988">  }</span>
+
+  @MJI public static void setHeuristicSearchValue__I__V (MJIEnv env, int clsObjRef, int val){
+<span class="nc" id="L991">    heuristicSearchValue =  val;</span>
+<span class="nc" id="L992">  }</span>
+
+  @MJI public static int getHeuristicSearchValue____I (MJIEnv env, int clsObjRef){
+<span class="nc" id="L995">    return heuristicSearchValue;</span>
+  }
+
+  @MJI public static void resetHeuristicSearchValue____V (MJIEnv env, int clsObjRef){
+<span class="nc" id="L999">    heuristicSearchValue = config.getInt(&quot;search.heuristic.default_value&quot;);</span>
+<span class="nc" id="L1000">  }</span>
+
+
+
+  @MJI
+  public static boolean isTraceReplay____Z (MJIEnv env, int clsObjRef) {
+<span class="fc" id="L1006">    return env.getVM().isTraceReplay();</span>
+  }
+
+  @MJI
+  public static boolean isShared__Ljava_lang_Object_2__Z (MJIEnv env, int clsObjRef, int objRef){
+<span class="nc bnc" id="L1011" title="All 2 branches missed.">    if (objRef != MJIEnv.NULL){</span>
+<span class="nc" id="L1012">      ElementInfo ei = env.getElementInfo(objRef);</span>
+<span class="nc bnc" id="L1013" title="All 2 branches missed.">      if (ei != null){</span>
+<span class="nc" id="L1014">        return ei.isShared();</span>
+      }
+    }
+    
+<span class="nc" id="L1018">    return false;</span>
+  }
+  
+  @MJI
+  public static void setShared__Ljava_lang_Object_2Z__V (MJIEnv env, int clsObjRef, int objRef, boolean isShared) {
+<span class="pc bpc" id="L1023" title="1 of 2 branches missed.">    if (objRef != MJIEnv.NULL){</span>
+<span class="fc" id="L1024">      ElementInfo ei = env.getElementInfo(objRef);</span>
+<span class="pc bpc" id="L1025" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">        if (ei.getClassInfo() == ClassLoaderInfo.getCurrentSystemClassLoader().getClassClassInfo()) {</span>
+          // it's a class object, set static fields shared
+<span class="fc" id="L1028">          ei = env.getStaticElementInfo(objRef);</span>
+        }
+        
+<span class="pc bpc" id="L1031" title="1 of 2 branches missed.">        if (ei.isShared() != isShared) {</span>
+<span class="nc" id="L1032">          ei = ei.getModifiableInstance();</span>
+<span class="nc" id="L1033">          ei.setShared( env.getThreadInfo(), isShared);</span>
+        }
+      }
+    }    
+<span class="fc" id="L1037">  }</span>
+
+  @MJI
+  public static void freezeSharedness__Ljava_lang_Object_2Z__V (MJIEnv env, int clsObjRef, int objRef, boolean freeze) {
+<span class="pc bpc" id="L1041" title="1 of 2 branches missed.">    if (objRef != MJIEnv.NULL){</span>
+<span class="fc" id="L1042">      ElementInfo ei = env.getElementInfo(objRef);</span>
+<span class="pc bpc" id="L1043" title="1 of 2 branches missed.">      if (ei != null) {</span>
+<span class="fc bfc" id="L1044" title="All 2 branches covered.">        if (ei.getClassInfo() == ClassLoaderInfo.getCurrentSystemClassLoader().getClassClassInfo()) { </span>
+          // it's a class object, freeze sharedness of static fields
+<span class="fc" id="L1046">          ei = env.getStaticElementInfo(objRef);</span>
+        }
+
+<span class="pc bpc" id="L1049" title="1 of 2 branches missed.">        if (ei.isSharednessFrozen() != freeze) {</span>
+<span class="fc" id="L1050">          ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L1051">          ei.freezeSharedness(freeze);</span>
+        }
+      }
+    }    
+<span class="fc" id="L1055">  }</span>
+
+  @MJI
+  public static void setProperties___3Ljava_lang_String_2__V (MJIEnv env, int clsObjRef, int argRef) {
+<span class="pc bpc" id="L1059" title="1 of 2 branches missed.">    if (argRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L1060">      Config conf = env.getConfig();</span>
+
+<span class="fc" id="L1062">      int n = env.getArrayLength(argRef);</span>
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">      for (int i=0; i&lt;n; i++) {</span>
+<span class="fc" id="L1064">        int pRef = env.getReferenceArrayElement(argRef, i);</span>
+<span class="pc bpc" id="L1065" title="1 of 2 branches missed.">        if (pRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L1066">          String p = env.getStringObject(pRef);</span>
+<span class="fc" id="L1067">          config.parse(p);</span>
+        }
+      }
+    }
+<span class="fc" id="L1071">  }</span>
+
+  @MJI
+  public static int getProperty__Ljava_lang_String_2__Ljava_lang_String_2 (MJIEnv env, int clsObjRef, int keyRef) {
+<span class="pc bpc" id="L1075" title="1 of 2 branches missed.">    if (keyRef != MJIEnv.NULL){</span>
+<span class="fc" id="L1076">      Config conf = env.getConfig();</span>
+
+<span class="fc" id="L1078">      String key = env.getStringObject(keyRef);</span>
+<span class="fc" id="L1079">      String val = config.getString(key);</span>
+
+<span class="pc bpc" id="L1081" title="1 of 2 branches missed.">      if (val != null){</span>
+<span class="fc" id="L1082">        return env.newString(val);</span>
+      } else {
+<span class="nc" id="L1084">        return MJIEnv.NULL;</span>
+      }
+
+    } else {
+<span class="nc" id="L1088">      return MJIEnv.NULL;</span>
+    }
+  }
+
+  @MJI
+  public static void printPathOutput__ZLjava_lang_String_2__V (MJIEnv env, int clsObjRef, boolean cond, int msgRef){
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">    if (cond){</span>
+<span class="nc" id="L1095">      printPathOutput__Ljava_lang_String_2__V(env,clsObjRef,msgRef);</span>
+    }
+<span class="nc" id="L1097">  }</span>
+
+  @MJI
+  public static void printPathOutput__Ljava_lang_String_2__V (MJIEnv env, int clsObjRef, int msgRef){
+<span class="fc" id="L1101">    VM vm = env.getVM();</span>
+
+<span class="fc" id="L1103">    System.out.println();</span>
+<span class="pc bpc" id="L1104" title="1 of 2 branches missed.">    if (msgRef != MJIEnv.NULL){</span>
+<span class="fc" id="L1105">      String msg = env.getStringObject(msgRef);</span>
+<span class="fc" id="L1106">      System.out.println(&quot;~~~~~~~~~~~~~~~~~~~~~~~ begin program output at: &quot; + msg);</span>
+<span class="fc" id="L1107">    } else {</span>
+<span class="nc" id="L1108">      System.out.println(&quot;~~~~~~~~~~~~~~~~~~~~~~~ begin path output&quot;);</span>
+    }
+
+<span class="fc bfc" id="L1111" title="All 2 branches covered.">    for (Transition t : vm.getPath()) {</span>
+<span class="fc" id="L1112">      String s = t.getOutput();</span>
+<span class="fc bfc" id="L1113" title="All 2 branches covered.">      if (s != null) {</span>
+<span class="fc" id="L1114">        System.out.print(s);</span>
+      }
+<span class="fc" id="L1116">    }</span>
+
+    // we might be in the middle of a transition that isn't stored yet in the path
+<span class="fc" id="L1119">    String s = vm.getPendingOutput();</span>
+<span class="pc bpc" id="L1120" title="1 of 2 branches missed.">    if (s != null) {</span>
+<span class="fc" id="L1121">      System.out.print(s);</span>
+    }
+
+<span class="fc" id="L1124">    System.out.println(&quot;~~~~~~~~~~~~~~~~~~~~~~~ end path output&quot;);</span>
+<span class="fc" id="L1125">  }</span>
+
+
+  // the JSON object initialization
+  @MJI
+  public static int createFromJSON__Ljava_lang_Class_2Ljava_lang_String_2__Ljava_lang_Object_2(
+          MJIEnv env, int clsObjRef, int newObjClsRef, int jsonStringRef) {
+<span class="fc" id="L1132">    ThreadInfo ti = env.getThreadInfo();</span>
+<span class="fc" id="L1133">    SystemState ss = env.getSystemState();</span>
+    
+<span class="fc" id="L1135">    String jsonString = env.getStringObject(jsonStringRef);    </span>
+<span class="fc" id="L1136">    JSONLexer lexer = new JSONLexer(jsonString);</span>
+<span class="fc" id="L1137">    JSONParser parser = new JSONParser(lexer);</span>
+<span class="fc" id="L1138">    JSONObject jsonObject = parser.parse();</span>
+        
+<span class="pc bpc" id="L1140" title="1 of 2 branches missed.">    if (jsonObject != null) {</span>
+<span class="fc" id="L1141">      ClassInfo ci = env.getReferredClassInfo( newObjClsRef);</span>
+      
+      // check if we need any class init (and hence reexecution) before creating any CGs
+<span class="pc bpc" id="L1144" title="1 of 2 branches missed.">      if (jsonObject.requiresClinitExecution(ci,ti)){</span>
+<span class="nc" id="L1145">        env.repeatInvocation();</span>
+<span class="nc" id="L1146">        return MJIEnv.NULL;</span>
+      }
+
+<span class="fc bfc" id="L1149" title="All 2 branches covered.">      if (!ti.isFirstStepInsn()) {</span>
+        // Top half - get and register CGs we need to set to fill object from JSON
+<span class="fc" id="L1151">        List&lt;ChoiceGenerator&lt;?&gt;&gt; cgList = CGCall.createCGList(jsonObject);</span>
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">        if (cgList.isEmpty()){</span>
+<span class="fc" id="L1153">          return jsonObject.fillObject(env, ci, null, &quot;&quot;);</span>
+          
+        } else {
+<span class="fc bfc" id="L1156" title="All 2 branches covered.">          for (ChoiceGenerator&lt;?&gt; cg : cgList) {</span>
+<span class="fc" id="L1157">            ss.setNextChoiceGenerator(cg);</span>
+<span class="fc" id="L1158">          }</span>
+
+<span class="fc" id="L1160">          env.repeatInvocation();</span>
+<span class="fc" id="L1161">          return MJIEnv.NULL;</span>
+        }
+        
+      } else {
+        // Bottom half - fill object with JSON and current values of CGs
+<span class="fc" id="L1166">        ChoiceGenerator&lt;?&gt;[] cgs = ss.getChoiceGenerators();</span>
+
+<span class="fc" id="L1168">        return jsonObject.fillObject(env, ci, cgs, &quot;&quot;);</span>
+      }
+
+    } else {
+<span class="nc" id="L1172">      return MJIEnv.NULL;</span>
+    }
+  }
+  
+  @MJI
+  public static int readObjectFromFile__Ljava_lang_Class_2Ljava_lang_String_2__Ljava_lang_Object_2(
+          MJIEnv env, int clsObjRef, int newObjClsRef, int fileNameRef) {
+<span class="fc" id="L1179">    int typeNameRef = env.getReferenceField(newObjClsRef, &quot;name&quot;);</span>
+<span class="fc" id="L1180">    String typeName = env.getStringObject(typeNameRef);</span>
+<span class="fc" id="L1181">    String fileName = env.getStringObject(fileNameRef);</span>
+
+    try {
+
+<span class="fc" id="L1185">      FileInputStream fis = new FileInputStream(fileName);</span>
+<span class="fc" id="L1186">      ObjectInputStream ois = new ObjectInputStream(fis);</span>
+<span class="fc" id="L1187">      Object javaObject = ois.readObject();</span>
+<span class="fc" id="L1188">      String readObjectTypeName = javaObject.getClass().getCanonicalName();</span>
+      
+<span class="fc" id="L1190">      int readObjRef = ObjectConverter.JPFObjectFromJavaObject(env, javaObject);</span>
+
+<span class="fc" id="L1192">      return readObjRef;</span>
+      
+<span class="fc" id="L1194">    } catch (ClinitRequired clix){</span>
+<span class="fc" id="L1195">      env.repeatInvocation();</span>
+<span class="fc" id="L1196">      return MJIEnv.NULL;</span>
+      
+<span class="nc" id="L1198">    } catch (IOException iox){</span>
+<span class="nc" id="L1199">      throw new JPFException(&quot;failure reading object from file: &quot; + fileName, iox);</span>
+<span class="nc" id="L1200">    } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L1201">      throw new JPFException(&quot;failure reading object from file: &quot; + fileName, cnfx);      </span>
+    }
+  }
+  
+  //--- those need to be kept in sync with the model side
+  public static final int SEVERE = 1;
+  public static final int WARNING = 2;
+  public static final int INFO = 3;
+  public static final int FINE = 4;
+  public static final int FINER = 5;
+  public static final int FINEST = 6;
+
+  
+  private static void log (JPFLogger logger, int logLevel, String msg){
+<span class="nc bnc" id="L1215" title="All 7 branches missed.">    switch (logLevel){</span>
+    case SEVERE:
+<span class="nc" id="L1217">      logger.severe( msg);</span>
+<span class="nc" id="L1218">      break;</span>
+    case WARNING:
+<span class="nc" id="L1220">      logger.warning( msg);</span>
+<span class="nc" id="L1221">      break;</span>
+    case INFO:
+<span class="nc" id="L1223">      logger.info( msg);</span>
+<span class="nc" id="L1224">      break;</span>
+    case FINE:
+<span class="nc" id="L1226">      logger.fine( msg);</span>
+<span class="nc" id="L1227">      break;</span>
+    case FINER:
+<span class="nc" id="L1229">      logger.finer( msg);</span>
+<span class="nc" id="L1230">      break;</span>
+    case FINEST:
+<span class="nc" id="L1232">      logger.finest( msg);</span>
+<span class="nc" id="L1233">      break;</span>
+    default:
+<span class="nc" id="L1235">      throw new JPFException(&quot;unknown log level &quot; + logLevel + &quot; for logger &quot; + logger.getName());</span>
+    }    
+<span class="nc" id="L1237">  }</span>
+  
+  @MJI
+  public static void log__Ljava_lang_String_2ILjava_lang_String_2__V (MJIEnv env, int clsObjRef,
+      int loggerIdRef, int logLevel, int msgRef){
+<span class="nc" id="L1242">    String loggerId = env.getStringObject(loggerIdRef);</span>
+<span class="nc" id="L1243">    String msg = env.getStringObject(msgRef);</span>
+<span class="nc" id="L1244">    JPFLogger logger = JPF.getLogger(loggerId);</span>
+    
+<span class="nc" id="L1246">    log( logger, logLevel, msg);</span>
+<span class="nc" id="L1247">  }</span>
+
+  @MJI
+  public static void log__Ljava_lang_String_2ILjava_lang_String_2Ljava_lang_String_2__V (MJIEnv env, int clsObjRef,
+      int loggerIdRef, int logLevel, int arg1Ref, int arg2Ref){
+<span class="nc" id="L1252">    String loggerId = env.getStringObject(loggerIdRef);</span>
+<span class="nc" id="L1253">    String msg = env.getStringObject(arg1Ref) + env.getStringObject(arg2Ref);</span>
+<span class="nc" id="L1254">    JPFLogger logger = JPF.getLogger(loggerId);</span>
+    
+<span class="nc" id="L1256">    log( logger, logLevel, msg);</span>
+<span class="nc" id="L1257">  }</span>
+
+  @MJI
+  public static void log__Ljava_lang_String_2ILjava_lang_String_2_3Ljava_lang_Object_2__V (MJIEnv env, int clsObjRef,
+      int loggerIdRef, int logLevel, int fmtRef, int argsRef){
+<span class="nc" id="L1262">    String loggerId = env.getStringObject(loggerIdRef);</span>
+<span class="nc" id="L1263">    String fmt = env.getStringObject(fmtRef);</span>
+<span class="nc" id="L1264">    JPFLogger logger = JPF.getLogger(loggerId);</span>
+
+<span class="nc" id="L1266">    int[] argRefs = env.getReferenceArrayObject( argsRef);</span>
+<span class="nc" id="L1267">    Object[] args = new Object[argRefs.length];</span>
+<span class="nc bnc" id="L1268" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc" id="L1269">      ElementInfo eiArg = env.getElementInfo(argRefs[i]);</span>
+<span class="nc bnc" id="L1270" title="All 2 branches missed.">      if (eiArg.isStringObject()){</span>
+<span class="nc" id="L1271">        args[i] = env.getStringObject(argRefs[i]);</span>
+<span class="nc bnc" id="L1272" title="All 2 branches missed.">      } else if (eiArg.isBoxObject()){</span>
+<span class="nc" id="L1273">        args[i] = eiArg.asBoxObject(); </span>
+      } else {
+<span class="nc" id="L1275">        args[i] = eiArg.toString();</span>
+      }
+    }
+    
+<span class="nc" id="L1279">    String msg = String.format(fmt, args);</span>
+    
+<span class="nc" id="L1281">    log( logger, logLevel, msg);</span>
+<span class="nc" id="L1282">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PUTFIELD.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">PUTFIELD.java</span></div><h1>PUTFIELD.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.util.InstructionState;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.Scheduler;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.WriteInstruction;
+
+/**
+ * Set field in object
+ * ..., objectref, value =&gt; ...
+ */
+public class PUTFIELD extends JVMInstanceFieldInstruction implements WriteInstruction {
+
+  public PUTFIELD(String fieldName, String clsDescriptor, String fieldDescriptor){
+<span class="fc" id="L37">    super(fieldName, clsDescriptor, fieldDescriptor);</span>
+<span class="fc" id="L38">  }  </span>
+
+  @Override
+  public int getObjectSlot (StackFrame frame){
+<span class="nc" id="L42">    return frame.getTopPos() - size;</span>
+  }
+
+  /**
+   * where do we get the value from?
+   * NOTE: only makes sense in a executeInstruction() context 
+   */
+  @Override
+  public int getValueSlot (StackFrame frame){
+<span class="fc" id="L51">    return frame.getTopPos();</span>
+  }
+
+  
+  /**
+   * where do we write to?
+   * NOTE: this should only be used from a executeInstruction()/instructionExecuted() context
+   */
+  @Override
+  public ElementInfo getElementInfo(ThreadInfo ti){
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">    if (isCompleted(ti)){</span>
+<span class="nc" id="L62">      return ti.getElementInfo(lastThis);</span>
+    } else {
+<span class="fc" id="L64">      return peekElementInfo(ti); // get it from the stack</span>
+    }
+  }
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L70">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L71">    int objRef = frame.peek( size);</span>
+<span class="fc" id="L72">    lastThis = objRef;</span>
+    
+<span class="fc bfc" id="L74" title="All 2 branches covered.">    if (objRef == MJIEnv.NULL) {</span>
+<span class="fc" id="L75">      return ti.createAndThrowException(&quot;java.lang.NullPointerException&quot;, &quot;referencing field '&quot; + fname + &quot;' on null object&quot;);</span>
+    }
+
+<span class="fc" id="L78">    ElementInfo eiFieldOwner = ti.getModifiableElementInfo(objRef);</span>
+<span class="fc" id="L79">    FieldInfo fieldInfo = getFieldInfo();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">    if (fieldInfo == null) {</span>
+<span class="nc" id="L81">      return ti.createAndThrowException(&quot;java.lang.NoSuchFieldError&quot;, &quot;no field &quot; + fname + &quot; in &quot; + eiFieldOwner);</span>
+    }
+    
+    //--- check scheduling point due to shared object access
+<span class="fc" id="L85">    Scheduler scheduler = ti.getScheduler();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">    if (scheduler.canHaveSharedObjectCG(ti,this,eiFieldOwner,fieldInfo)){</span>
+<span class="fc" id="L87">      eiFieldOwner = scheduler.updateObjectSharedness( ti, eiFieldOwner, fi);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">      if (scheduler.setsSharedObjectCG( ti, this, eiFieldOwner, fieldInfo)){</span>
+<span class="fc" id="L89">        return this; // re-execute</span>
+      }
+    }
+    
+    // this might be re-executed
+<span class="fc bfc" id="L94" title="All 2 branches covered.">    if (frame.getAndResetFrameAttr(InstructionState.class) == null){</span>
+<span class="fc" id="L95">      lastValue = PutHelper.setField(ti, frame, eiFieldOwner, fieldInfo);</span>
+    }
+    
+    //--- check scheduling point due to exposure through shared object
+<span class="fc bfc" id="L99" title="All 2 branches covered.">    if (isReferenceField()){</span>
+<span class="fc" id="L100">      int refValue = frame.peek();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">      if (refValue != MJIEnv.NULL){</span>
+<span class="fc" id="L102">        ElementInfo eiExposed = ti.getElementInfo(refValue);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (scheduler.setsSharedObjectExposureCG(ti, this, eiFieldOwner, fi, eiExposed)){</span>
+<span class="fc" id="L104">          frame.addFrameAttr( InstructionState.processed);</span>
+<span class="fc" id="L105">          return this; // re-execute AFTER assignment</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L110">    popOperands(frame);      </span>
+<span class="fc" id="L111">    return getNext();</span>
+  }
+
+  protected void popOperands (StackFrame frame){
+<span class="fc bfc" id="L115" title="All 2 branches covered.">    if (size == 1){</span>
+<span class="fc" id="L116">      frame.pop(2); // .. objref, val =&gt; ..</span>
+    } else {
+<span class="fc" id="L118">      frame.pop(3); // .. objref, highVal,lowVal =&gt; ..    </span>
+    }
+<span class="fc" id="L120">  }</span>
+    
+  @Override
+  public ElementInfo peekElementInfo (ThreadInfo ti) {
+<span class="fc" id="L124">    FieldInfo fi = getFieldInfo();</span>
+<span class="fc" id="L125">    int storageSize = fi.getStorageSize();</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">    int objRef = ti.getTopFrame().peek( (storageSize == 1) ? 1 : 2);</span>
+<span class="fc" id="L127">    ElementInfo ei = ti.getElementInfo( objRef);</span>
+
+<span class="fc" id="L129">    return ei;</span>
+  }
+
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L135">    return 3; // opcode, index1, index2</span>
+  }
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L140">    return 0xB5;</span>
+  }
+
+  @Override
+  public boolean isRead() {
+<span class="fc" id="L145">    return false;</span>
+  }
+
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L150">	  insVisitor.visit(this);</span>
+<span class="fc" id="L151">  }</span>
+}
+
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

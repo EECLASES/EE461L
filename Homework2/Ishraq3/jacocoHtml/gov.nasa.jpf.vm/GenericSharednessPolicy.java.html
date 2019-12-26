@@ -1,0 +1,615 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GenericSharednessPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">GenericSharednessPolicy.java</span></div><h1>GenericSharednessPolicy.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.SystemAttribute;
+import gov.nasa.jpf.util.FieldSpecMatcher;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.MethodSpecMatcher;
+import gov.nasa.jpf.util.TypeSpecMatcher;
+import gov.nasa.jpf.vm.choice.ThreadChoiceFromSet;
+
+/**
+ * an abstract SharednessPolicy implementation that makes use of both
+ * shared field access CGs and exposure CGs.
+ * 
+ * This class is highly configurable, both in terms of using exposure CGs and filters.
+ * The *never_break filters should be used with care to avoid missing defects, especially
+ * the (transitive) method filters.
+ * NOTE - the default settings from jpf-core/jpf.properties include several
+ * java.util.concurrent* and java.lang.* fields/methods that can in fact contribute to
+ * concurrency defects, esp. in SUTs that explicitly use Thread/ThreadGroup objects, in
+ * which case they should be removed.
+ * 
+ * The *always_break field filter should only be used for white box SUT analysis if JPF
+ * fails to detect sharedness (e.g. because no exposure is used). This should only
+ * go into application property files
+ */
+public abstract class GenericSharednessPolicy implements SharednessPolicy, Attributor {
+  
+  //--- auxiliary types to configure filters
+<span class="fc" id="L49">  static class NeverBreakIn implements SystemAttribute {</span>
+<span class="fc" id="L50">    static NeverBreakIn singleton = new NeverBreakIn();</span>
+  } 
+<span class="fc" id="L52">  static class NeverBreakOn implements SystemAttribute {</span>
+<span class="fc" id="L53">    static NeverBreakOn singleton = new NeverBreakOn();</span>
+  } 
+<span class="nc" id="L55">  static class AlwaysBreakOn implements SystemAttribute {</span>
+<span class="nc" id="L56">    static AlwaysBreakOn singleton = new AlwaysBreakOn();</span>
+  } 
+  
+<span class="fc" id="L59">  protected static JPFLogger logger = JPF.getLogger(&quot;shared&quot;);</span>
+  
+  
+  //--- options used for concurrent field access detection
+  
+  protected TypeSpecMatcher neverBreakOnTypes;
+  
+  protected TypeSpecMatcher alwaysBreakOnTypes;
+  
+  /**
+   * never break or expose if a matching method is on the stack
+   */
+  protected MethodSpecMatcher neverBreakInMethods;
+  
+  /**
+   * never break on matching fields 
+   */  
+  protected FieldSpecMatcher neverBreakOnFields;
+    
+  /**
+   * always break matching fields, no matter if object is already shared or not
+   */  
+  protected FieldSpecMatcher alwaysBreakOnFields;
+  
+
+  /**
+   * do we break on final field access 
+   */
+  protected boolean skipFinals;
+  protected boolean skipConstructedFinals;
+  protected boolean skipStaticFinals;
+  
+  /**
+   * do we break inside of constructors
+   * (note that 'this' references could leak from ctors, but
+   * this is rather unusual)
+   */
+  protected boolean skipInits;
+
+  /**
+   * do we add CGs for objects that could become shared, e.g. when storing
+   * a reference to a non-shared object in a shared object field.
+   * NOTE: this is a conservative measure since we don't know yet at the
+   * point of exposure if the object will ever be shared, which means it
+   * can cause state explosion.
+   */
+  protected boolean breakOnExposure;
+  
+  /**
+   * options to filter out lock protected field access, which is not
+   * supposed to cause shared CGs
+   * (this has no effect on exposure though)
+   */
+  protected boolean useSyncDetection;
+  protected int lockThreshold;  
+  
+  protected VM vm;
+  
+  
+<span class="fc" id="L118">  protected GenericSharednessPolicy (Config config){</span>
+<span class="fc" id="L119">    neverBreakInMethods = MethodSpecMatcher.create( config.getStringArray(&quot;vm.shared.never_break_methods&quot;));</span>
+    
+<span class="fc" id="L121">    neverBreakOnTypes = TypeSpecMatcher.create(config.getStringArray(&quot;vm.shared.never_break_types&quot;));</span>
+<span class="fc" id="L122">    alwaysBreakOnTypes = TypeSpecMatcher.create(config.getStringArray(&quot;vm.shared.always_break_types&quot;));</span>
+    
+<span class="fc" id="L124">    neverBreakOnFields = FieldSpecMatcher.create( config.getStringArray(&quot;vm.shared.never_break_fields&quot;));</span>
+<span class="fc" id="L125">    alwaysBreakOnFields = FieldSpecMatcher.create( config.getStringArray(&quot;vm.shared.always_break_fields&quot;));</span>
+    
+<span class="fc" id="L127">    skipFinals = config.getBoolean(&quot;vm.shared.skip_finals&quot;, true);</span>
+<span class="fc" id="L128">    skipConstructedFinals = config.getBoolean(&quot;vm.shared.skip_constructed_finals&quot;, false);</span>
+<span class="fc" id="L129">    skipStaticFinals = config.getBoolean(&quot;vm.shared.skip_static_finals&quot;, true);</span>
+<span class="fc" id="L130">    skipInits = config.getBoolean(&quot;vm.shared.skip_inits&quot;, true);</span>
+    
+<span class="fc" id="L132">    breakOnExposure = config.getBoolean(&quot;vm.shared.break_on_exposure&quot;, true);</span>
+    
+<span class="fc" id="L134">    useSyncDetection = config.getBoolean(&quot;vm.shared.sync_detection&quot;, true);</span>
+<span class="fc" id="L135">    lockThreshold = config.getInt(&quot;vm.shared.lockthreshold&quot;, 5);  </span>
+<span class="fc" id="L136">  }</span>
+  
+  //--- internal methods (potentially overridden by subclass)
+  
+  
+  //--- attribute management
+
+  protected void setTypeAttributes (TypeSpecMatcher neverMatcher, TypeSpecMatcher alwaysMatcher, ClassInfo ciLoaded){
+    // we flatten this for performance reasons
+<span class="fc bfc" id="L145" title="All 2 branches covered.">    for (ClassInfo ci = ciLoaded; ci!= null; ci = ci.getSuperClass()){</span>
+<span class="pc bpc" id="L146" title="3 of 4 branches missed.">      if (alwaysMatcher != null &amp;&amp; alwaysMatcher.matches(ci)){</span>
+<span class="nc" id="L147">        ciLoaded.addAttr(AlwaysBreakOn.singleton);</span>
+<span class="nc" id="L148">        return;</span>
+      }
+<span class="pc bpc" id="L150" title="1 of 4 branches missed.">      if (neverMatcher != null &amp;&amp; neverMatcher.matches(ci)){</span>
+<span class="fc" id="L151">        ciLoaded.addAttr( NeverBreakOn.singleton);</span>
+<span class="fc" id="L152">        return;</span>
+      }
+    }
+<span class="fc" id="L155">  }</span>
+  
+  protected void setFieldAttributes (FieldSpecMatcher neverMatcher, FieldSpecMatcher alwaysMatcher, ClassInfo ci){
+<span class="fc bfc" id="L158" title="All 2 branches covered.">    for (FieldInfo fi : ci.getDeclaredInstanceFields()) {</span>
+      // invisible fields (created by compiler)
+<span class="fc bfc" id="L160" title="All 2 branches covered.">      if (fi.getName().startsWith(&quot;this$&quot;)) {</span>
+<span class="fc" id="L161">        fi.addAttr( NeverBreakOn.singleton);</span>
+<span class="fc" id="L162">        continue;</span>
+      }        
+
+      // configuration
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">      if (neverMatcher != null &amp;&amp; neverMatcher.matches(fi)) {</span>
+<span class="fc" id="L167">        fi.addAttr( NeverBreakOn.singleton);</span>
+      }
+<span class="pc bpc" id="L169" title="3 of 4 branches missed.">      if (alwaysMatcher != null &amp;&amp; alwaysMatcher.matches(fi)) {</span>
+<span class="nc" id="L170">        fi.addAttr( AlwaysBreakOn.singleton);</span>
+      }
+      
+      // annotation
+<span class="fc bfc" id="L174" title="All 2 branches covered.">      if (fi.hasAnnotation(&quot;gov.nasa.jpf.annotation.NeverBreak&quot;)){</span>
+<span class="fc" id="L175">        fi.addAttr( NeverBreakOn.singleton);        </span>
+      }
+    }
+
+<span class="fc bfc" id="L179" title="All 2 branches covered.">    for (FieldInfo fi : ci.getDeclaredStaticFields()) {</span>
+      // invisible fields (created by compiler)
+<span class="fc bfc" id="L181" title="All 2 branches covered.">      if (&quot;$assertionsDisabled&quot;.equals(fi.getName())) {</span>
+<span class="fc" id="L182">        fi.addAttr( NeverBreakOn.singleton);</span>
+<span class="fc" id="L183">        continue;</span>
+      }
+
+      // configuration
+<span class="pc bpc" id="L187" title="1 of 4 branches missed.">      if (neverMatcher != null &amp;&amp; neverMatcher.matches(fi)) {</span>
+<span class="fc" id="L188">        fi.addAttr( NeverBreakOn.singleton);</span>
+      }
+<span class="pc bpc" id="L190" title="3 of 4 branches missed.">      if (alwaysMatcher != null &amp;&amp; alwaysMatcher.matches(fi)) {</span>
+<span class="nc" id="L191">        fi.addAttr( AlwaysBreakOn.singleton);</span>
+      }
+      
+      // annotation
+<span class="fc bfc" id="L195" title="All 2 branches covered.">      if (fi.hasAnnotation(&quot;gov.nasa.jpf.annotation.NeverBreak&quot;)){</span>
+<span class="fc" id="L196">        fi.addAttr( NeverBreakOn.singleton);        </span>
+      }
+    }
+<span class="fc" id="L199">  }</span>
+  
+  protected boolean isInNeverBreakMethod (ThreadInfo ti){
+<span class="fc bfc" id="L202" title="All 2 branches covered.">    for (StackFrame frame = ti.getTopFrame(); frame != null; frame=frame.getPrevious()){</span>
+<span class="fc" id="L203">      MethodInfo mi = frame.getMethodInfo();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">      if (mi.hasAttr( NeverBreakIn.class)){</span>
+<span class="fc" id="L205">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L209">    return false;</span>
+  }
+  
+  protected abstract boolean checkOtherRunnables (ThreadInfo ti);
+  
+  // this needs a three-way return value, hence Boolean
+  protected Boolean canHaveSharednessCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi){
+    //--- thread
+<span class="fc bfc" id="L217" title="All 2 branches covered.">    if (ti.isFirstStepInsn()){ // no empty transitions</span>
+<span class="fc" id="L218">      return Boolean.FALSE;</span>
+    }
+    
+<span class="fc bfc" id="L221" title="All 2 branches covered.">    if (!checkOtherRunnables(ti)){ // nothing to reschedule</span>
+<span class="fc" id="L222">      return Boolean.FALSE;</span>
+    }
+    
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">    if (ti.hasAttr( NeverBreakIn.class)){</span>
+<span class="nc" id="L226">      return Boolean.FALSE;</span>
+    }
+    
+    //--- method
+<span class="fc bfc" id="L230" title="All 2 branches covered.">    if (isInNeverBreakMethod(ti)){</span>
+<span class="fc" id="L231">      return false;</span>
+    }
+    
+    //--- type
+<span class="fc" id="L235">    ClassInfo ciFieldOwner = eiFieldOwner.getClassInfo();</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">    if (ciFieldOwner.hasAttr(NeverBreakOn.class)){</span>
+<span class="fc" id="L237">      return Boolean.FALSE;</span>
+    }
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">    if (ciFieldOwner.hasAttr(AlwaysBreakOn.class)){</span>
+<span class="nc" id="L240">      return Boolean.TRUE;</span>
+    }
+    
+    //--- field
+<span class="fc bfc" id="L244" title="All 2 branches covered.">    if (fi != null){</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">      if (fi.hasAttr(AlwaysBreakOn.class)) {</span>
+<span class="nc" id="L246">        return Boolean.TRUE;</span>
+      }
+<span class="fc bfc" id="L248" title="All 2 branches covered.">      if (fi.hasAttr(NeverBreakOn.class)) {</span>
+<span class="fc" id="L249">        return Boolean.FALSE;</span>
+      }
+    }
+    
+<span class="fc" id="L253">    return null;    </span>
+  }
+
+  //--- FieldLockInfo management
+  
+  /**
+   * static attribute filters that determine if the check..Access() and check..Exposure() methods should be called.
+   * This is only called once per instruction execution since it filters all cases that would set a CG.
+   * Filter conditions have to apply to both field access and object exposure.
+   */
+  protected abstract FieldLockInfo createFieldLockInfo (ThreadInfo ti, ElementInfo ei, FieldInfo fi);
+
+  
+  /**
+   * generic version of FieldLockInfo update, which relies on FieldLockInfo implementation to determine
+   * if ElementInfo needs to be cloned
+   */  
+  protected ElementInfo updateFieldLockInfo (ThreadInfo ti, ElementInfo ei, FieldInfo fi){
+<span class="fc" id="L271">    FieldLockInfo fli = ei.getFieldLockInfo(fi);</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">    if (fli == null){</span>
+<span class="fc" id="L273">      fli = createFieldLockInfo(ti, ei, fi);</span>
+<span class="fc" id="L274">      ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L275">      ei.setFieldLockInfo(fi, fli);</span>
+      
+    } else {
+<span class="fc" id="L278">      FieldLockInfo newFli = fli.checkProtection(ti, ei, fi);</span>
+<span class="fc bfc" id="L279" title="All 2 branches covered.">      if (newFli != fli) {</span>
+<span class="fc" id="L280">        ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L281">        ei.setFieldLockInfo(fi,newFli);</span>
+      }
+    }
+    
+<span class="fc" id="L285">    return ei;</span>
+  }
+  
+  
+  //--- runnable computation &amp; CG creation
+
+  // NOTE - we don't schedule threads outside this process since field access if process local
+  
+  protected ThreadInfo[] getRunnables (ApplicationContext appCtx){
+<span class="fc" id="L294">    return vm.getThreadList().getProcessTimeoutRunnables(appCtx);</span>
+  }
+  
+  protected ChoiceGenerator&lt;ThreadInfo&gt; getRunnableCG (String id, ThreadInfo tiCurrent){
+<span class="fc bfc" id="L298" title="All 2 branches covered.">    if (vm.getSystemState().isAtomic()){ // no CG if we are in a atomic section</span>
+<span class="fc" id="L299">      return null;</span>
+    }
+    
+<span class="fc" id="L302">    ThreadInfo[] choices = getRunnables(tiCurrent.getApplicationContext());</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">    if (choices.length &lt;= 1){ // field access doesn't block, i.e. the current thread is always runnable</span>
+<span class="fc" id="L304">      return null;</span>
+    }
+    
+<span class="fc" id="L307">    return new ThreadChoiceFromSet( id, choices, true);</span>
+  }
+  
+  protected boolean setNextChoiceGenerator (ChoiceGenerator&lt;ThreadInfo&gt; cg){
+<span class="fc bfc" id="L311" title="All 2 branches covered.">    if (cg != null){</span>
+<span class="fc" id="L312">      return vm.getSystemState().setNextChoiceGenerator(cg); // listeners could still remove CGs</span>
+    }
+    
+<span class="fc" id="L315">    return false;</span>
+  }
+  
+  
+  //--- internal policy methods that can be overridden by subclasses
+  
+  protected ElementInfo updateSharedness (ThreadInfo ti, ElementInfo ei, FieldInfo fi){
+<span class="fc" id="L322">    ThreadInfoSet tis = ei.getReferencingThreads();</span>
+<span class="fc" id="L323">    ThreadInfoSet newTis = tis.add(ti);</span>
+    
+<span class="fc bfc" id="L325" title="All 2 branches covered.">    if (tis != newTis){</span>
+<span class="fc" id="L326">      ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L327">      ei.setReferencingThreads(newTis);</span>
+    }
+      
+    // we only change from non-shared to shared
+<span class="fc bfc" id="L331" title="All 6 branches covered.">    if (newTis.isShared(ti, ei) &amp;&amp; !ei.isShared() &amp;&amp; !ei.isSharednessFrozen()) {</span>
+<span class="fc" id="L332">      ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L333">      ei.setShared(ti, true);</span>
+    }
+
+<span class="fc bfc" id="L336" title="All 4 branches covered.">    if (ei.isShared() &amp;&amp; fi != null){</span>
+<span class="fc" id="L337">      ei = updateFieldLockInfo(ti,ei,fi);</span>
+    }
+    
+<span class="fc" id="L340">    return ei;</span>
+  }
+
+  protected boolean setsExposureCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi, ElementInfo eiExposed){
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">    if (breakOnExposure){</span>
+<span class="fc" id="L345">      ClassInfo ciExposed = eiExposed.getClassInfo();</span>
+      
+      //--- exposed type
+<span class="fc bfc" id="L348" title="All 2 branches covered.">      if (ciExposed.hasAttr(NeverBreakOn.class)){</span>
+<span class="fc" id="L349">        return false;</span>
+      }      
+<span class="pc bpc" id="L351" title="1 of 2 branches missed.">      if (ciExposed.hasAttr(AlwaysBreakOn.class)){</span>
+<span class="nc" id="L352">        logger.info(&quot;type exposure CG setting field &quot;, fi, &quot; to &quot;, eiExposed);</span>
+<span class="nc" id="L353">        return setNextChoiceGenerator(getRunnableCG(&quot;EXPOSE&quot;, ti));</span>
+      }        
+        
+      // we can't filter on immutability since the race subject could be a reference
+      // that is exposed through the exposed object
+      
+<span class="fc bfc" id="L359" title="All 2 branches covered.">      if (isInNeverBreakMethod(ti)){</span>
+<span class="fc" id="L360">        return false;</span>
+      }
+      
+<span class="fc bfc" id="L363" title="All 4 branches covered.">      if (eiFieldOwner.isExposedOrShared() &amp;&amp; isFirstExposure(eiFieldOwner, eiExposed)){        </span>
+        // don't check against the 'old' field value because this might get called after the field was already updated
+        // we should solely depend on different object sharedness
+<span class="fc" id="L366">        eiExposed = eiExposed.getExposedInstance(ti, eiFieldOwner);</span>
+<span class="fc" id="L367">        logger.info(&quot;exposure CG setting field &quot;, fi, &quot; to &quot;, eiExposed);</span>
+<span class="fc" id="L368">        return setNextChoiceGenerator(getRunnableCG(&quot;EXPOSE&quot;, ti));</span>
+      }
+    }
+
+<span class="fc" id="L372">    return false;</span>
+  }
+
+  protected boolean isFirstExposure (ElementInfo eiFieldOwner, ElementInfo eiExposed){
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">    if (!eiExposed.isImmutable()){</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">      if (!eiExposed.isExposedOrShared()) {</span>
+<span class="fc" id="L378">         return (eiFieldOwner.isExposedOrShared());</span>
+      }
+    }
+        
+<span class="fc" id="L382">    return false;</span>
+  }
+
+  
+  //------------------------------------------------ Attributor interface
+    
+  /**
+   * this can be used to initializeSharednessPolicy per-application mechanisms such as ClassInfo attribution
+   */
+  @Override
+  public void initializeSharednessPolicy (VM vm, ApplicationContext appCtx){
+<span class="fc" id="L393">    this.vm = vm;</span>
+    
+<span class="fc" id="L395">    SystemClassLoaderInfo sysCl = appCtx.getSystemClassLoader();</span>
+<span class="fc" id="L396">    sysCl.addAttributor(this);</span>
+<span class="fc" id="L397">  }</span>
+  
+  
+  @Override
+  public void setAttributes (ClassInfo ci){
+<span class="fc" id="L402">    setTypeAttributes( neverBreakOnTypes, alwaysBreakOnTypes, ci);</span>
+    
+<span class="fc" id="L404">    setFieldAttributes( neverBreakOnFields, alwaysBreakOnFields, ci);</span>
+    
+    // this one is more expensive to iterate over and should be avoided
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">    if (neverBreakInMethods != null){</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">      for (MethodInfo mi : ci.getDeclaredMethods().values()){</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (neverBreakInMethods.matches(mi)){</span>
+<span class="fc" id="L410">          mi.setAttr( NeverBreakIn.singleton);</span>
+        }
+<span class="fc" id="L412">      }</span>
+    }
+    
+<span class="fc" id="L415">  }</span>
+    
+  //------------------------------------------------ SharednessPolicy interface
+  
+  @Override
+  public ElementInfo updateObjectSharedness (ThreadInfo ti, ElementInfo ei, FieldInfo fi){
+<span class="fc" id="L421">    return updateSharedness(ti, ei, fi);</span>
+  }
+  @Override
+  public ElementInfo updateClassSharedness (ThreadInfo ti, ElementInfo ei, FieldInfo fi){
+<span class="fc" id="L425">    return updateSharedness(ti, ei, fi);</span>
+  }
+  @Override
+  public ElementInfo updateArraySharedness (ThreadInfo ti, ElementInfo ei, int idx){
+    // NOTE - we don't support per-element FieldLockInfos (yet)
+<span class="fc" id="L430">    return updateSharedness(ti, ei, null);</span>
+  }
+
+  
+  /**
+   * check to determine if call site, object/class attributes and thread execution state
+   * could cause CGs. This is called before sharedness is updated, i.e. can be used to
+   * filter objects/classes that should not be sharedness tracked
+   */
+  @Override
+  public boolean canHaveSharedObjectCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi){
+<span class="fc" id="L441">    Boolean ret = canHaveSharednessCG( ti, insn, eiFieldOwner, fi);</span>
+<span class="fc bfc" id="L442" title="All 2 branches covered.">    if (ret != null){</span>
+<span class="fc" id="L443">      return ret;</span>
+    }
+    
+<span class="pc bpc" id="L446" title="1 of 2 branches missed.">    if  (eiFieldOwner.isImmutable()){</span>
+<span class="nc" id="L447">      return false;</span>
+    }
+    
+<span class="fc bfc" id="L450" title="All 4 branches covered.">    if (skipFinals &amp;&amp; fi.isFinal()){</span>
+<span class="fc" id="L451">      return false;</span>
+    }
+        
+    //--- mixed (dynamic) attributes
+<span class="pc bpc" id="L455" title="3 of 6 branches missed.">    if (skipConstructedFinals &amp;&amp; fi.isFinal() &amp;&amp; eiFieldOwner.isConstructed()){</span>
+<span class="nc" id="L456">      return false;</span>
+    }
+    
+<span class="pc bpc" id="L459" title="1 of 4 branches missed.">    if (skipInits &amp;&amp; insn.getMethodInfo().isInit()){</span>
+<span class="fc" id="L460">      return false;</span>
+    }
+    
+<span class="fc" id="L463">    return true;</span>
+  }
+  
+  @Override
+  public boolean canHaveSharedClassCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi){
+<span class="fc" id="L468">    Boolean ret = canHaveSharednessCG( ti, insn, eiFieldOwner, fi);</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">    if (ret != null){</span>
+<span class="fc" id="L470">      return ret;</span>
+    }
+
+<span class="pc bpc" id="L473" title="1 of 2 branches missed.">    if  (eiFieldOwner.isImmutable()){</span>
+<span class="nc" id="L474">      return false;</span>
+    }
+    
+<span class="pc bpc" id="L477" title="1 of 4 branches missed.">    if (skipStaticFinals &amp;&amp; fi.isFinal()){</span>
+<span class="fc" id="L478">      return false;</span>
+    }
+
+    // call site. This could be transitive, in which case it has to be dynamic and can't be moved to isRelevant..()
+<span class="fc" id="L482">    MethodInfo mi = insn.getMethodInfo();</span>
+<span class="fc bfc" id="L483" title="All 4 branches covered.">    if (mi.isClinit() &amp;&amp; (fi.getClassInfo() == mi.getClassInfo())) {</span>
+      // clinits are all synchronized, so they are lock protected per se
+<span class="fc" id="L485">      return false;</span>
+    }
+    
+<span class="fc" id="L488">    return true;</span>
+  }
+  
+  @Override
+  public boolean canHaveSharedArrayCG (ThreadInfo ti, Instruction insn, ElementInfo eiArray, int idx){
+<span class="fc" id="L493">    Boolean ret = canHaveSharednessCG( ti, insn, eiArray, null);</span>
+<span class="fc bfc" id="L494" title="All 2 branches covered.">    if (ret != null){</span>
+<span class="fc" id="L495">      return ret;</span>
+    }
+
+    // more array specific checks here
+    
+<span class="fc" id="L500">    return true;</span>
+  }
+  
+  
+  /**
+   * &lt;2do&gt; explain why not transitive
+   * 
+   * these are the public interfaces towards FieldInstructions. Callers have to be aware this will 
+   * change the /referenced/ ElementInfo in case the respective object becomes exposed
+   */
+  @Override
+  public boolean setsSharedObjectCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi){
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">    if (eiFieldOwner.getClassInfo().hasAttr(AlwaysBreakOn.class) ||</span>
+<span class="pc bpc" id="L513" title="1 of 4 branches missed.">            (eiFieldOwner.isShared() &amp;&amp; !eiFieldOwner.isLockProtected(fi))) {</span>
+<span class="fc" id="L514">      logger.info(&quot;CG accessing shared instance field &quot;, fi);</span>
+<span class="fc" id="L515">      return setNextChoiceGenerator( getRunnableCG(&quot;SHARED_OBJECT&quot;, ti));</span>
+    }
+    
+<span class="fc" id="L518">    return false;</span>
+  }
+
+  @Override
+  public boolean setsSharedClassCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi){
+<span class="pc bpc" id="L523" title="1 of 2 branches missed.">    if (eiFieldOwner.getClassInfo().hasAttr(AlwaysBreakOn.class) ||</span>
+<span class="pc bpc" id="L524" title="1 of 4 branches missed.">            (eiFieldOwner.isShared() &amp;&amp; !eiFieldOwner.isLockProtected(fi))) {</span>
+<span class="fc" id="L525">      logger.info(&quot;CG accessing shared static field &quot;, fi);</span>
+<span class="fc" id="L526">      return setNextChoiceGenerator( getRunnableCG(&quot;SHARED_CLASS&quot;, ti));</span>
+    }
+    
+<span class="fc" id="L529">    return false;</span>
+  }
+  
+  @Override
+  public boolean setsSharedArrayCG (ThreadInfo ti, Instruction insn, ElementInfo eiArray, int index){
+<span class="fc bfc" id="L534" title="All 2 branches covered.">    if (eiArray.isShared()){</span>
+      // &lt;2do&gt; we should check lock protection for the whole array here
+<span class="fc" id="L536">      logger.info(&quot;CG accessing shared array &quot;, eiArray);</span>
+<span class="fc" id="L537">      return setNextChoiceGenerator( getRunnableCG(&quot;SHARED_ARRAY&quot;, ti));</span>
+    }
+    
+<span class="fc" id="L540">    return false;</span>
+  }
+
+  
+  //--- internal policy methods that can be overridden by subclasses
+    
+  protected boolean isRelevantStaticFieldAccess (ThreadInfo ti, Instruction insn, ElementInfo ei, FieldInfo fi){
+<span class="nc bnc" id="L547" title="All 2 branches missed.">    if (!ei.isShared()){</span>
+<span class="nc" id="L548">      return false;</span>
+    }
+    
+<span class="nc bnc" id="L551" title="All 2 branches missed.">    if  (ei.isImmutable()){</span>
+<span class="nc" id="L552">      return false;</span>
+    }
+    
+<span class="nc bnc" id="L555" title="All 4 branches missed.">    if (skipStaticFinals &amp;&amp; fi.isFinal()){</span>
+<span class="nc" id="L556">      return false;</span>
+    }    
+    
+<span class="nc bnc" id="L559" title="All 2 branches missed.">    if (!ti.hasOtherRunnables()){ // nothing to break for</span>
+<span class="nc" id="L560">      return false;</span>
+    }
+
+    // call site. This could be transitive, in which case it has to be dynamic and can't be moved to isRelevant..()
+<span class="nc" id="L564">    MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L565" title="All 4 branches missed.">    if (mi.isClinit() &amp;&amp; (fi.getClassInfo() == mi.getClassInfo())) {</span>
+      // clinits are all synchronized, so they are lock protected per se
+<span class="nc" id="L567">      return false;</span>
+    }
+    
+<span class="nc" id="L570">    return true;</span>
+  }
+
+  
+  protected boolean isRelevantArrayAccess (ThreadInfo ti, Instruction insn, ElementInfo ei, int index){
+    // &lt;2do&gt; this is too simplistic, we should support filters for array objects
+    
+<span class="nc bnc" id="L577" title="All 2 branches missed.">    if (!ti.hasOtherRunnables()){</span>
+<span class="nc" id="L578">      return false;</span>
+    }
+    
+<span class="nc bnc" id="L581" title="All 2 branches missed.">    if (!ei.isShared()){</span>
+<span class="nc" id="L582">      return false;</span>
+    }
+    
+<span class="nc bnc" id="L585" title="All 2 branches missed.">    if (ti.isFirstStepInsn()){ // we already did break</span>
+<span class="nc" id="L586">      return false;</span>
+    }
+
+<span class="nc" id="L589">    return true;</span>
+  }
+  
+  //--- object exposure 
+
+  // &lt;2do&gt; explain why not transitive
+  
+  @Override
+  public boolean setsSharedObjectExposureCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi, ElementInfo eiExposed){
+<span class="fc" id="L598">    return setsExposureCG(ti,insn,eiFieldOwner,fi,eiExposed);</span>
+  }
+
+  @Override
+  public boolean setsSharedClassExposureCG (ThreadInfo ti, Instruction insn, ElementInfo eiFieldOwner, FieldInfo fi, ElementInfo eiExposed){
+<span class="fc" id="L603">    return setsExposureCG(ti,insn,eiFieldOwner,fi,eiExposed);</span>
+  }  
+
+  // since exposure is about the object being exposed (the element), there is no separate setsSharedArrayExposureCG
+  
+  
+  @Override
+  public void cleanupThreadTermination(ThreadInfo ti) {
+    // default action is to do nothing
+<span class="fc" id="L612">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

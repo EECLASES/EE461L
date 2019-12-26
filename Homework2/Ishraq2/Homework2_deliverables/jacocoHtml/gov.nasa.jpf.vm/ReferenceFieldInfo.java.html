@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReferenceFieldInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ReferenceFieldInfo.java</span></div><h1>ReferenceFieldInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+
+
+/**
+ * field info for object fields
+ */
+public class ReferenceFieldInfo extends SingleSlotFieldInfo {
+  int init;  //  = MJIEnv.NULL; // not required for MJIEnv.NULL = 0
+  
+  String sInit; // &lt;2do&gt; pcm - just a temporary quirk to init from string literals
+                // check if there are other non-object reference inits
+
+  public ReferenceFieldInfo (String name, String type, int modifiers) {
+<span class="fc" id="L33">    super(name, type, modifiers);</span>
+<span class="fc" id="L34">  }</span>
+
+  @Override
+  public String valueToString (Fields f) {
+<span class="nc" id="L38">    int i = f.getIntValue(storageOffset);</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">    if (i == MJIEnv.NULL) {</span>
+<span class="nc" id="L40">      return &quot;null&quot;;</span>
+    } else {
+<span class="nc" id="L42">      return (VM.getVM().getHeap().get(i)).toString();</span>
+    }
+  }
+
+  @Override
+  public boolean isReference () {
+<span class="fc" id="L48">    return true;</span>
+  }
+
+  @Override
+  public Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; getChoiceGeneratorType() {
+<span class="nc" id="L53">    return ReferenceChoiceGenerator.class;</span>
+  }
+
+  @Override
+  public boolean isArrayField () {
+<span class="nc" id="L58">    return ci.isArray;</span>
+  }
+
+  @Override
+  public void setConstantValue (Object constValue){
+    // &lt;2do&gt; pcm - check what other constants we might encounter, this is most
+    // probably not just used for Strings.
+    // Besides the type issue, there is an even bigger problem with identities.
+    // For instance, all String refs initialized via the same string literal
+    // inside a single classfile are in fact refering to the same object. This
+    // means we have to keep a registry (hashtab) with string-literal created
+    // String objects per ClassInfo, and use this when we assign or init
+    // String references.
+    // For the sake of progress, we ignore this for now, but have to come back
+    // to it because it violates the VM spec
+
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">    if (constValue instanceof String){</span>
+<span class="fc" id="L75">      cv = constValue;</span>
+<span class="fc" id="L76">      sInit = (String)constValue;</span>
+    } else {
+<span class="nc" id="L78">      throw new JPFException (&quot;unsupported reference initialization: &quot; + constValue);</span>
+    }
+<span class="fc" id="L80">  }</span>
+
+  @Override
+  public void initialize (ElementInfo ei, ThreadInfo ti) {
+<span class="fc" id="L84">    int ref = init;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">    if (sInit != null) {</span>
+<span class="fc" id="L86">      VM vm = ti.getVM();</span>
+<span class="fc" id="L87">      Heap heap = vm.getHeap();</span>
+<span class="fc" id="L88">      ref = heap.newString(sInit, ti).getObjectRef();</span>
+    }
+<span class="fc" id="L90">    ei.getFields().setReferenceValue( storageOffset, ref);</span>
+<span class="fc" id="L91">  }</span>
+
+  @Override
+  public Object getValueObject (Fields f){
+<span class="nc" id="L95">    int i = f.getIntValue(storageOffset);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (i == MJIEnv.NULL) {</span>
+<span class="nc" id="L97">      return null;</span>
+    } else {
+<span class="nc" id="L99">      Heap heap = VM.getVM().getHeap();</span>
+<span class="nc" id="L100">      return heap.get(i);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

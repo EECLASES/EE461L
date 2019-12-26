@@ -1,0 +1,784 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SparseClusterArray.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SparseClusterArray.java</span></div><h1>SparseClusterArray.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * A generic sparse reference array that assumes clusters, and more
+ * frequent intra-cluster access.
+ *
+ * This is motivated by looking for a more suitable ADT to model a heap address
+ * space, where reference values consist of segment/offset pairs, we have
+ * reasonably dense and very dynamic population inside of well separated segment
+ * clusters, and intra-cluster access is more likely than inter-cluster access.
+ *
+ * An especially important feature is to be able to iterate efficiently over
+ * set/unset elements in index intervals (cluster sizes).
+ *
+ * The result should find a compromise between the fast element access &amp; iteration
+ * of a simple, dense array, and the efficient memory storage of a HashMap
+ * (if only it could avoid box objects).
+ *
+ * &lt;2do&gt; so far, we are totally ignorant of population constraints
+ */
+public class SparseClusterArray &lt;E&gt; implements Iterable&lt;E&gt; {
+
+  public static final int CHUNK_BITS = 8;
+  public static final int CHUNK_SIZE = 256;
+  public static final int N_ELEM = 1 &lt;&lt; CHUNK_BITS;     // 8 bits chunk index -&gt; 24 bits segment key (3x8bits / 256 segs)
+  protected static final int ELEM_MASK = 0xff;
+  protected static final int BM_ENTRIES = N_ELEM / 64;     // number of bitmap long entries
+  protected static final int MAX_BM_INDEX = BM_ENTRIES-1;
+
+
+  // 8 bits per segment -&gt; 256 children
+  public static final int SEG_BITS = 8;
+  public static final int N_SEG = 1 &lt;&lt; SEG_BITS;
+  protected static final int SEG_MASK = 0xff;
+  public static final int S1 = 32-SEG_BITS; // L1 shift
+  public static final int S2 = S1-SEG_BITS; // L2 shift
+  public static final int S3 = S2-SEG_BITS; // L3 shift
+  protected static final int CHUNK_BASEMASK = ~SEG_MASK;
+
+  public static final int MAX_CLUSTERS = CHUNK_SIZE;      // max int with CHUNK_BITS bits (8)
+  public static final int MAX_CLUSTER_ENTRIES = 0xffffff; // max int with 32-CHUNK_BITS bits (24) = 16,777,215 elements
+
+  protected Root root;
+  protected Chunk lastChunk;
+  protected Chunk head;   // linked list for traversal
+  protected int   nSet; // number of set elements;
+
+<span class="pc" id="L69">  protected boolean trackChanges = false;</span>
+  protected Entry changes; // on demand change (LIFO) queue
+
+  //------------------------------------ public types
+  public static class Snapshot&lt;T,E&gt; {
+    Object[] values;
+    int[] indices;
+
+<span class="fc" id="L77">    public Snapshot (int size){</span>
+<span class="fc" id="L78">      values = new Object[size];</span>
+<span class="fc" id="L79">      indices = new int[size];</span>
+<span class="fc" id="L80">    }</span>
+
+    public int size() {
+<span class="fc" id="L83">      return indices.length;</span>
+    }
+    public T getValue(int i){
+<span class="fc" id="L86">      return (T) values[i];</span>
+    }
+    public int getIndex(int i){
+<span class="fc" id="L89">      return indices[i];</span>
+    }
+  }
+
+
+  public static class Entry&lt;E&gt; {  // queued element
+    int index;
+    E value;
+
+    Entry&lt;E&gt; next;
+
+<span class="fc" id="L100">    Entry (int index, E value){</span>
+<span class="fc" id="L101">      this.index = index;</span>
+<span class="fc" id="L102">      this.value = value;</span>
+<span class="fc" id="L103">    }</span>
+  }
+
+  //------------------------------------ internal types
+
+  //--- how we keep our data - index based trie
+<span class="fc" id="L109">  protected static class Root {</span>
+<span class="fc" id="L110">    public Node[] seg = new Node[N_SEG];</span>
+  }
+
+  /**
+   * this corresponds to a toplevel cluster (e.g. thread heap)
+   */
+<span class="fc" id="L116">  protected static class Node  {</span>
+<span class="fc" id="L117">    public ChunkNode[] seg = new ChunkNode[N_SEG];</span>
+    //int minNextFree; // where to start looking for free elements, also used to determine if Node is full
+  }
+
+<span class="fc" id="L121">  protected static class ChunkNode  {</span>
+<span class="fc" id="L122">    public Chunk[] seg  = new Chunk[N_SEG];</span>
+    //int minNextFree; // where to start looking for free elements, also used to determine if ChunkNode is full
+  }
+
+  protected static class Chunk implements Cloneable { // with some extra info to optimize in-chunk access
+    public int base, top;
+    public Chunk next;
+    public Object[] elements;  // it's actually E[], but of course we can't create arrays of a generic type
+    public long[] bitmap;
+
+    //int minNextFree; // where to start looking for free elements, also used to determine if Chunk is full
+
+<span class="nc" id="L134">    protected Chunk() {}</span>
+
+<span class="fc" id="L136">    protected Chunk(int base){</span>
+<span class="fc" id="L137">      this.base = base;</span>
+<span class="fc" id="L138">      this.top = base + N_ELEM;</span>
+
+<span class="fc" id="L140">      elements = new Object[N_ELEM];</span>
+<span class="fc" id="L141">      bitmap = new long[BM_ENTRIES];</span>
+<span class="fc" id="L142">    }</span>
+
+    @Override
+	public String toString() {
+<span class="nc" id="L146">      return &quot;Chunk [base=&quot; + base + &quot;,top=&quot; + top + ']';</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;E&gt; Chunk deepCopy( Cloner&lt;E&gt; cloner) throws CloneNotSupportedException {
+<span class="fc" id="L151">      Chunk nc = (Chunk) super.clone();</span>
+
+<span class="fc" id="L153">      E[] elem = (E[])elements;   // bad, but we have to cope with type erasure</span>
+<span class="fc" id="L154">      Object[] e = new Object[N_ELEM];</span>
+
+<span class="fc bfc" id="L156" title="All 2 branches covered.">      for (int i=nextSetBit(0); i&gt;=0; i=nextSetBit(i+1)) {</span>
+<span class="fc" id="L157">        e[i] = cloner.clone(elem[i]);</span>
+      }
+
+<span class="fc" id="L160">      nc.elements = e;</span>
+<span class="fc" id="L161">      nc.bitmap = bitmap.clone();</span>
+
+<span class="fc" id="L163">      return nc;</span>
+    }
+
+    protected int nextSetBit (int iStart) {
+<span class="fc bfc" id="L167" title="All 2 branches covered.">      if (iStart &lt; CHUNK_SIZE){</span>
+<span class="fc" id="L168">        long[] bm = bitmap;</span>
+<span class="fc" id="L169">        int j = (iStart &gt;&gt; 6); // bm word : iStart/64</span>
+<span class="fc" id="L170">        long l = bm[j] &amp; (0xffffffffffffffffL &lt;&lt; iStart);</span>
+
+        while (true) {
+<span class="fc bfc" id="L173" title="All 2 branches covered.">          if (l != 0) {</span>
+<span class="fc" id="L174">            return Long.numberOfTrailingZeros(l) + (j &lt;&lt; 6);</span>
+          } else {
+<span class="fc bfc" id="L176" title="All 2 branches covered.">            if (++j &lt; BM_ENTRIES) {</span>
+<span class="fc" id="L177">              l = bm[j];</span>
+            } else {
+<span class="fc" id="L179">              return -1;</span>
+            }
+          }
+        }
+      } else {
+<span class="fc" id="L184">        return -1;</span>
+      }
+    }
+
+    protected int nextClearBit (int iStart) {
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">      if (iStart &lt; CHUNK_SIZE){</span>
+<span class="fc" id="L190">        long[] bm = bitmap;</span>
+<span class="fc" id="L191">        int j = (iStart &gt;&gt; 6); // bm word : iStart/64</span>
+<span class="fc" id="L192">        long l = ~bm[j] &amp; (0xffffffffffffffffL &lt;&lt; iStart);</span>
+
+        while (true) {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">          if (l != 0) {</span>
+<span class="fc" id="L196">            return Long.numberOfTrailingZeros(l) + (j &lt;&lt; 6);</span>
+          } else {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">            if (++j &lt; BM_ENTRIES) {</span>
+<span class="fc" id="L199">              l = ~bm[j];</span>
+            } else {
+<span class="fc" id="L201">              return -1;</span>
+            }
+          }
+        }
+      } else {
+<span class="nc" id="L206">        return -1;</span>
+      }
+    }
+
+
+    public boolean isEmpty() {
+<span class="fc" id="L212">      long[] bm = bitmap;</span>
+
+<span class="fc bfc" id="L214" title="All 2 branches covered.">      for (int i=0; i&lt;BM_ENTRIES; i++){</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (bm[i] != 0) return false;</span>
+      }
+
+<span class="fc" id="L218">      return true;</span>
+    }
+  }
+
+  //--- iteration over set elements
+
+  protected class ElementIterator&lt;T&gt;  implements Iterator&lt;T&gt;, Iterable&lt;T&gt; {
+    int idx;    // next chunk index
+    Chunk cur;  // next chunk
+
+<span class="fc" id="L228">    public ElementIterator () {</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">      for (Chunk c = head; c != null; c = c.next){</span>
+<span class="fc" id="L230">        int i = c.nextSetBit(0);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (i&gt;=0){</span>
+<span class="fc" id="L232">          cur = c;</span>
+<span class="fc" id="L233">          idx = i;</span>
+<span class="fc" id="L234">          return;</span>
+        }
+      }
+<span class="nc" id="L237">    }</span>
+
+    @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">      return (cur != null);</span>
+    }
+
+    @Override
+	@SuppressWarnings(&quot;unchecked&quot;)
+    public T next() {
+<span class="fc" id="L247">      Chunk c = cur;</span>
+<span class="fc" id="L248">      int i = idx;</span>
+
+<span class="pc bpc" id="L250" title="2 of 4 branches missed.">      if (i &lt; 0 || c == null){</span>
+<span class="nc" id="L251">        throw new NoSuchElementException();</span>
+      }
+
+<span class="fc" id="L254">      Object ret = c.elements[i];</span>
+<span class="fc" id="L255">      cur = null;</span>
+
+<span class="fc bfc" id="L257" title="All 2 branches covered.">      while (c!=null){</span>
+<span class="fc" id="L258">        i = c.nextSetBit(i+1);</span>
+<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (i&gt;= 0){</span>
+<span class="fc" id="L260">          idx = i;</span>
+<span class="fc" id="L261">          cur = c;</span>
+
+<span class="fc bfc" id="L263" title="All 2 branches covered.">          if (ret == null){</span>
+            // try to recover from a concurrent modification, maybe there is one left
+<span class="fc" id="L265">            ret = c.elements[i];</span>
+<span class="fc" id="L266">            continue;</span>
+          } else {
+            break;
+          }
+        } else {
+<span class="fc" id="L271">          i = -1;</span>
+        }
+<span class="fc" id="L273">        c = c.next;</span>
+      }
+
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">      if (ret == null){</span>
+        // somebody pulled the rug under our feet
+<span class="nc" id="L278">        throw new ConcurrentModificationException();</span>
+      }
+<span class="fc" id="L280">      return (T)ret;</span>
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L285">      throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+	public Iterator&lt;T&gt; iterator() {
+<span class="nc" id="L290">      return this;</span>
+    }
+  }
+
+  protected class ElementIndexIterator implements IndexIterator {
+    int idx;
+    Chunk cur;
+
+<span class="nc" id="L298">    public ElementIndexIterator () {</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">      for (Chunk c = head; c != null; c = c.next){</span>
+<span class="nc" id="L300">        int i = c.nextSetBit(0);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        if (i&gt;=0){</span>
+<span class="nc" id="L302">          cur = c;</span>
+<span class="nc" id="L303">          idx = i;</span>
+<span class="nc" id="L304">          return;</span>
+        }
+      }
+<span class="nc" id="L307">    }</span>
+
+<span class="fc" id="L309">    public ElementIndexIterator (int startIdx){</span>
+      // locate the start chunk (they are sorted)
+      Chunk c;
+      int i;
+
+      // get the first chunk at or above the startIdx
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">      for (c=head; c!= null; c=c.next) {</span>
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">        if (c.top &gt; startIdx) {</span>
+<span class="fc" id="L317">          cur = c;</span>
+<span class="fc" id="L318">          break;</span>
+        }
+      }
+
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">      if (c.base &lt; startIdx){</span>
+<span class="fc" id="L323">        i = startIdx &amp; ELEM_MASK;</span>
+      } else {
+<span class="nc" id="L325">        i = 0;</span>
+      }
+
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">      for (; c != null; c = c.next){</span>
+<span class="fc" id="L329">        i = c.nextSetBit(i);</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (i&gt;=0){</span>
+<span class="fc" id="L331">          cur = c;</span>
+<span class="fc" id="L332">          idx = i;</span>
+<span class="fc" id="L333">          return;</span>
+        } else {
+<span class="nc" id="L335">          i = 0;</span>
+        }
+      }
+<span class="nc" id="L338">    }</span>
+
+
+    @Override
+	public int next () {
+<span class="fc" id="L343">      Chunk c = cur;</span>
+<span class="fc" id="L344">      int i = idx;</span>
+
+<span class="pc bpc" id="L346" title="1 of 4 branches missed.">      if (i &lt; 0 || c == null){</span>
+<span class="fc" id="L347">        return -1;</span>
+      }
+
+<span class="fc bfc" id="L350" title="All 2 branches covered.">      int iRet = (c.elements[i] != null) ? c.base + i : -1;</span>
+<span class="fc" id="L351">      cur = null;</span>
+
+<span class="fc bfc" id="L353" title="All 2 branches covered.">      while (c!=null){</span>
+<span class="fc" id="L354">        i = c.nextSetBit(i+1);</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">        if (i&gt;= 0){</span>
+<span class="fc" id="L356">          idx = i;</span>
+<span class="fc" id="L357">          cur = c;</span>
+
+<span class="fc bfc" id="L359" title="All 2 branches covered.">          if (iRet &lt; 0){</span>
+            // try to recover from a concurrent modification, maybe there is one left
+<span class="fc" id="L361">            iRet = c.base + i;</span>
+<span class="fc" id="L362">            continue;</span>
+          } else {
+            break;
+          }
+        } else {
+<span class="fc" id="L367">          i = -1;</span>
+        }
+<span class="fc" id="L369">        c = c.next;</span>
+      }
+
+<span class="pc bpc" id="L372" title="1 of 2 branches missed.">      if (iRet &lt; 0){</span>
+        // somebody pulled the rug under our feet
+<span class="nc" id="L374">        throw new ConcurrentModificationException();</span>
+      }
+<span class="fc" id="L376">      return iRet;</span>
+    }
+
+  }
+
+
+  //------------------------------------ internal methods
+
+  void sortInChunk (Chunk newChunk) {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">    if (head == null) {</span>
+<span class="fc" id="L386">      head = newChunk;</span>
+    } else {
+<span class="fc" id="L388">      int base = newChunk.base;</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">      if (base &lt; head.base) {</span>
+<span class="nc" id="L390">        newChunk.next = head;</span>
+<span class="nc" id="L391">        head = newChunk;</span>
+      } else {
+        Chunk cprev, c;
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        for (cprev=head, c=cprev.next; c != null; cprev=c, c=c.next) {</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">          if (base &lt; c.base) {</span>
+<span class="fc" id="L396">            newChunk.next = c;</span>
+<span class="fc" id="L397">            break;</span>
+          }
+        }
+<span class="fc" id="L400">        cprev.next = newChunk;</span>
+      }
+    }
+<span class="fc" id="L403">  }</span>
+
+  //------------------------------------ public API
+
+<span class="fc" id="L407">  public SparseClusterArray (){</span>
+<span class="fc" id="L408">    root = new Root();</span>
+<span class="fc" id="L409">  }</span>
+
+  /**
+   * be careful, this should only be used to get old stored elements during
+   * a Snapshot restore
+   */
+<span class="nc" id="L415">  protected SparseClusterArray (SparseClusterArray base){</span>
+<span class="nc" id="L416">    root = base.root;</span>
+<span class="nc" id="L417">    nSet = base.nSet;</span>
+<span class="nc" id="L418">    head = base.head;</span>
+<span class="nc" id="L419">  }</span>
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public E get (int i) {
+    Node l1;
+    ChunkNode l2;
+<span class="fc" id="L425">    Chunk l3 = lastChunk;</span>
+
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">    if (i &lt; 0){</span>
+<span class="nc" id="L428">      throw new IndexOutOfBoundsException();</span>
+    }
+
+<span class="fc bfc" id="L431" title="All 4 branches covered.">    if (l3 != null &amp;&amp; (l3.base == (i &amp; CHUNK_BASEMASK))) {  // cache optimization for in-cluster access</span>
+<span class="fc" id="L432">      return (E) l3.elements[i &amp; ELEM_MASK];</span>
+    }
+
+<span class="fc" id="L435">    int  j = i &gt;&gt;&gt;  S1;</span>
+<span class="pc bpc" id="L436" title="1 of 2 branches missed.">    if ((l1 = root.seg[j]) != null) {           // L1</span>
+<span class="fc" id="L437">      j = (i &gt;&gt;&gt; S2) &amp; SEG_MASK;</span>
+<span class="pc bpc" id="L438" title="1 of 2 branches missed.">      if ((l2 = l1.seg[j]) != null) {           // L2</span>
+<span class="fc" id="L439">        j = (i &gt;&gt;&gt; S3) &amp; SEG_MASK;</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        if ((l3 = l2.seg[j]) != null) {         // L3</span>
+          // too bad we can't get rid of this cast
+<span class="fc" id="L442">          lastChunk = l3;</span>
+<span class="fc" id="L443">          return  (E) l3.elements[i &amp; ELEM_MASK];</span>
+        }
+      }
+    }
+
+<span class="fc" id="L448">    lastChunk = null;</span>
+<span class="fc" id="L449">    return null;</span>
+  }
+
+
+  public void set (int i, E e) {
+    Node l1;
+    ChunkNode l2;
+<span class="fc" id="L456">    Chunk l3 = lastChunk;</span>
+    int j;
+
+<span class="pc bpc" id="L459" title="1 of 2 branches missed.">    if (i &lt; 0){</span>
+<span class="nc" id="L460">      throw new IndexOutOfBoundsException();</span>
+    }
+
+<span class="fc bfc" id="L463" title="All 4 branches covered.">    if (l3 == null || (l3.base != (i &amp; CHUNK_BASEMASK))) { // cache optimization for in-cluster access</span>
+<span class="fc" id="L464">      j = i &gt;&gt;&gt;  S1;</span>
+<span class="fc bfc" id="L465" title="All 2 branches covered.">      if ((l1 = root.seg[j]) == null) {         // new L1 -&gt; new L2,L3</span>
+<span class="fc" id="L466">        l1 = new Node();</span>
+<span class="fc" id="L467">        root.seg[j] = l1;</span>
+
+<span class="fc" id="L469">        j = (i &gt;&gt;&gt; S2) &amp; SEG_MASK;</span>
+<span class="fc" id="L470">        l2 = new ChunkNode();</span>
+<span class="fc" id="L471">        l1.seg[j] = l2;</span>
+
+<span class="fc" id="L473">        j = (i &gt;&gt;&gt; S3) &amp; SEG_MASK;</span>
+<span class="fc" id="L474">        l3 = new Chunk(i &amp; ~ELEM_MASK);</span>
+<span class="fc" id="L475">        sortInChunk(l3);</span>
+<span class="fc" id="L476">        l2.seg[j] = l3;</span>
+
+      } else {                                  // had L1
+<span class="fc" id="L479">        j = (i &gt;&gt;&gt; S2) &amp; SEG_MASK;</span>
+<span class="fc bfc" id="L480" title="All 2 branches covered.">        if ((l2 = l1.seg[j]) == null) {         // new L2 -&gt; new L3</span>
+<span class="fc" id="L481">          l2 = new ChunkNode();</span>
+<span class="fc" id="L482">          l1.seg[j] = l2;</span>
+
+<span class="fc" id="L484">          j = (i &gt;&gt;&gt; S3) &amp; SEG_MASK;</span>
+<span class="fc" id="L485">          l3 = new Chunk(i &amp; ~ELEM_MASK);</span>
+<span class="fc" id="L486">          sortInChunk(l3);</span>
+<span class="fc" id="L487">          l2.seg[j] = l3;</span>
+
+        } else {                                // had L2
+<span class="fc" id="L490">          j = (i &gt;&gt;&gt; S3) &amp; SEG_MASK;</span>
+<span class="fc bfc" id="L491" title="All 2 branches covered.">          if ((l3 = l2.seg[j]) == null) {       // new L3</span>
+<span class="fc" id="L492">            l3 = new Chunk(i &amp; ~ELEM_MASK);</span>
+<span class="fc" id="L493">            sortInChunk(l3);</span>
+<span class="fc" id="L494">            l2.seg[j] = l3;</span>
+          }
+        }
+      }
+
+<span class="fc" id="L499">      lastChunk = l3;</span>
+    }
+
+<span class="fc" id="L502">    j = i &amp; ELEM_MASK;</span>
+
+<span class="fc" id="L504">    long[] bm = l3.bitmap;</span>
+<span class="fc" id="L505">    int u = (j &gt;&gt; 6);    // j / 64 (64 bits per bm entry)</span>
+<span class="fc" id="L506">    int v = (i &amp; 0x7f);  // index into bm[u] bitset</span>
+<span class="fc bfc" id="L507" title="All 2 branches covered.">    boolean isSet = ((bm[u] &gt;&gt; v) &amp; 0x1) &gt; 0;</span>
+
+<span class="fc bfc" id="L509" title="All 2 branches covered.">    if (trackChanges) {</span>
+<span class="fc" id="L510">      Entry entry = new Entry(i,l3.elements[j]);</span>
+<span class="fc" id="L511">      entry.next = changes;</span>
+<span class="fc" id="L512">      changes = entry;</span>
+    }
+
+<span class="fc bfc" id="L515" title="All 2 branches covered.">    if (e != null) {</span>
+<span class="fc bfc" id="L516" title="All 2 branches covered.">      if (!isSet) {</span>
+<span class="fc" id="L517">        l3.elements[j] = e;</span>
+<span class="fc" id="L518">        bm[u] |= (1L&lt;&lt;v);</span>
+<span class="fc" id="L519">        nSet++;</span>
+      }
+
+    } else {
+<span class="fc bfc" id="L523" title="All 2 branches covered.">      if (isSet) {</span>
+<span class="fc" id="L524">        l3.elements[j] = null;</span>
+<span class="fc" id="L525">        bm[u] &amp;= ~(1L&lt;&lt;v);</span>
+<span class="fc" id="L526">        nSet--;</span>
+        // &lt;2do&gt; discard upwards if chunk is empty ? (maybe as an option)
+      }
+    }
+<span class="fc" id="L530">  }</span>
+
+  /**
+   * find first null element within given range [i, i+length[
+   * @return -1 if there is none
+   */
+  public int firstNullIndex (int i, int length) {
+    Node l1;
+    ChunkNode l2;
+<span class="fc" id="L539">    Chunk l3 = lastChunk;</span>
+    int j;
+<span class="fc" id="L541">    int iMax = i + length;</span>
+
+<span class="fc bfc" id="L543" title="All 4 branches covered.">    if (l3 == null || (l3.base != (i &amp; CHUNK_BASEMASK))) { // cache optimization for in-cluster access</span>
+<span class="fc" id="L544">      j = i &gt;&gt;&gt;  S1;</span>
+<span class="fc bfc" id="L545" title="All 2 branches covered.">      if ((l1 = root.seg[j]) != null) {         // new L1 -&gt; new L2,L3</span>
+<span class="fc" id="L546">        j = (i &gt;&gt;&gt; S2) &amp; SEG_MASK;</span>
+<span class="pc bpc" id="L547" title="1 of 2 branches missed.">        if ((l2 = l1.seg[j]) != null) {         // new L2 -&gt; new L3</span>
+<span class="fc" id="L548">          j = (i &gt;&gt;&gt; S3) &amp; SEG_MASK;</span>
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">          if ((l3 = l2.seg[j]) == null){</span>
+<span class="nc" id="L550">            return i; // no such l3 segment -&gt; index is free</span>
+          }
+        } else {
+<span class="nc" id="L553">          return i; // no such l2 segment yet -&gt; index is free</span>
+        }
+      } else { // we don't have that root segment yet -&gt; index is free
+<span class="fc" id="L556">        return i;</span>
+      }
+    }
+
+<span class="fc" id="L560">    int k = i &amp; SEG_MASK;</span>
+<span class="pc bpc" id="L561" title="1 of 2 branches missed.">    while (l3 != null) {</span>
+<span class="fc" id="L562">      k = l3.nextClearBit(k);</span>
+
+<span class="fc bfc" id="L564" title="All 2 branches covered.">      if (k &gt;= 0) {             // Ok, got one in the chunk</span>
+<span class="fc" id="L565">        lastChunk = l3;</span>
+<span class="fc" id="L566">        i = l3.base + k;</span>
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">        return (i &lt; iMax) ? i : -1;</span>
+
+      } else {                  // chunk full
+<span class="fc" id="L570">        Chunk l3Next = l3.next;</span>
+<span class="fc" id="L571">        int nextBase = l3.base + CHUNK_SIZE;</span>
+<span class="pc bpc" id="L572" title="1 of 4 branches missed.">        if ((l3Next != null) &amp;&amp; (l3Next.base == nextBase)) {</span>
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">          if (nextBase &lt; iMax) {</span>
+<span class="fc" id="L574">            l3 = l3Next;</span>
+<span class="fc" id="L575">            k=0;</span>
+          } else {
+<span class="nc" id="L577">            return -1;</span>
+          }
+        } else {
+<span class="fc" id="L580">          lastChunk = null;</span>
+<span class="fc bfc" id="L581" title="All 2 branches covered.">          return (nextBase &lt; iMax) ? nextBase : -1;</span>
+        }
+<span class="fc" id="L583">      }</span>
+    }
+
+    // no allocated chunk for 'i'
+<span class="nc" id="L587">    lastChunk = null;</span>
+<span class="nc" id="L588">    return i;</span>
+  }
+
+  /**
+   * deep copy
+   * we need to do this depth first, right-to-left, to maintain the
+   * Chunk list ordering. We also compact during cloning, i.e. remove
+   * empty chunks and ChunkNodes/Nodes w/o descendants
+   */
+  public SparseClusterArray&lt;E&gt; deepCopy (Cloner&lt;E&gt; elementCloner) {
+<span class="fc" id="L598">    SparseClusterArray&lt;E&gt; a = new SparseClusterArray&lt;E&gt;();</span>
+<span class="fc" id="L599">    a.nSet = nSet;</span>
+
+<span class="fc" id="L601">    Node[] newNodeList = a.root.seg;</span>
+
+<span class="fc" id="L603">    Node newNode = null;</span>
+<span class="fc" id="L604">    ChunkNode newChunkNode = null;</span>
+<span class="fc" id="L605">    Chunk newChunk = null, lastChunk = null;</span>
+
+<span class="fc" id="L607">    Node[] nList = root.seg;</span>
+
+    try {
+<span class="fc bfc" id="L610" title="All 2 branches covered.">      for (int i=0, i1=0; i&lt;nList.length; i++) {</span>
+<span class="fc" id="L611">        Node n = nList[i];</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">        if (n != null) {</span>
+<span class="fc" id="L613">          ChunkNode[] cnList = n.seg;</span>
+
+<span class="fc bfc" id="L615" title="All 2 branches covered.">          for (int j=0, j1=0; j&lt;cnList.length; j++) {</span>
+<span class="fc" id="L616">            ChunkNode cn = cnList[j];</span>
+<span class="fc bfc" id="L617" title="All 2 branches covered.">            if (cn != null) {</span>
+<span class="fc" id="L618">              Chunk[] cList = cn.seg;</span>
+
+<span class="fc bfc" id="L620" title="All 2 branches covered.">              for (int k=0, k1=0; k&lt;cList.length; k++) {</span>
+<span class="fc" id="L621">                Chunk c = cList[k];</span>
+
+<span class="fc bfc" id="L623" title="All 4 branches covered.">                if (c != null &amp;&amp; !c.isEmpty()) {</span>
+<span class="fc" id="L624">                  newChunk = c.deepCopy(elementCloner);</span>
+<span class="pc bpc" id="L625" title="1 of 2 branches missed.">                  if (lastChunk == null) {</span>
+<span class="fc" id="L626">                    a.head = lastChunk = newChunk;</span>
+                  } else {
+<span class="nc" id="L628">                    lastChunk.next = newChunk;</span>
+<span class="nc" id="L629">                    lastChunk = newChunk;</span>
+                  }
+
+                  // create the required ChunkNode/Node instances
+<span class="pc bpc" id="L633" title="1 of 2 branches missed.">                  if (newNode == null) {</span>
+<span class="fc" id="L634">                    newNode = new Node();</span>
+<span class="fc" id="L635">                    j1 = k1 = 0;</span>
+<span class="fc" id="L636">                    newNodeList[i1++] = newNode;</span>
+                  }
+
+<span class="pc bpc" id="L639" title="1 of 2 branches missed.">                  if (newChunkNode == null) {</span>
+<span class="fc" id="L640">                    newChunkNode = new ChunkNode();</span>
+<span class="fc" id="L641">                    newNode.seg[j1++] = newChunkNode;</span>
+                  }
+
+<span class="fc" id="L644">                  newChunkNode.seg[k1++] = newChunk;</span>
+                }
+              }
+            }
+<span class="fc" id="L648">            newChunkNode = null;</span>
+          }
+        }
+<span class="fc" id="L651">        newNode = null;</span>
+      }
+<span class="nc" id="L653">    } catch (CloneNotSupportedException cnsx) {</span>
+<span class="nc" id="L654">      return null; // maybe we should re-raise</span>
+<span class="fc" id="L655">    }</span>
+
+<span class="fc" id="L657">    return a;</span>
+  }
+
+  /**
+   * create a snapshot that can be used to restore a certain state of our array
+   * This is more suitable than cloning in case the array is very sparse, or
+   * the elements contain a lot of transient data we don't want to store
+   */
+  public &lt;T&gt; Snapshot&lt;E,T&gt; getSnapshot (Transformer&lt;E,T&gt; transformer){
+<span class="fc" id="L666">    Snapshot&lt;E,T&gt; snap = new Snapshot&lt;E,T&gt;(nSet);</span>
+<span class="fc" id="L667">    populateSnapshot(snap, transformer);</span>
+
+<span class="fc" id="L669">    return snap;</span>
+  }
+
+  protected &lt;T&gt; void populateSnapshot (Snapshot&lt;E,T&gt; snap, Transformer&lt;E,T&gt; transformer){
+<span class="fc" id="L673">    int n = nSet;</span>
+
+<span class="fc" id="L675">    Object[] values = snap.values;</span>
+<span class="fc" id="L676">    int[] indices = snap.indices;</span>
+
+<span class="fc" id="L678">    int j=0;</span>
+<span class="fc bfc" id="L679" title="All 2 branches covered.">    for (Chunk c = head; c != null; c = c.next) {</span>
+<span class="fc" id="L680">      int base = c.base;</span>
+<span class="fc" id="L681">      int i=-1;</span>
+<span class="fc bfc" id="L682" title="All 2 branches covered.">      while ((i=c.nextSetBit(i+1)) &gt;= 0) {</span>
+<span class="fc" id="L683">        Object val = transformer.transform((E)c.elements[i]);</span>
+<span class="fc" id="L684">        values[j] = val;</span>
+<span class="fc" id="L685">        indices[j] = base + i;</span>
+
+<span class="fc bfc" id="L687" title="All 2 branches covered.">        if (++j &gt;= n) {</span>
+<span class="fc" id="L688">          break;</span>
+        }
+<span class="fc" id="L690">      }</span>
+    }
+<span class="fc" id="L692">  }</span>
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public &lt;T&gt; void restore (Snapshot&lt;E,T&gt; snap, Transformer&lt;T,E&gt; transformer) {
+    // &lt;2do&gt; - there are more efficient ways to restore small changes,
+    // but since snapshot elements are ordered it should be reasonably fast
+<span class="fc" id="L698">    clear();</span>
+
+<span class="fc" id="L700">    T[] values = (T[])snap.values;</span>
+<span class="fc" id="L701">    int[] indices = snap.indices;</span>
+<span class="fc" id="L702">    int len = indices.length;</span>
+
+<span class="fc bfc" id="L704" title="All 2 branches covered.">    for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L705">      E obj = transformer.transform(values[i]);</span>
+<span class="fc" id="L706">      int index = indices[i];</span>
+
+<span class="fc" id="L708">      set(index,obj);</span>
+    }
+<span class="fc" id="L710">  }</span>
+
+  public void clear() {
+<span class="fc" id="L713">    lastChunk = null;</span>
+<span class="fc" id="L714">    head = null;</span>
+<span class="fc" id="L715">    root = new Root();</span>
+<span class="fc" id="L716">    nSet = 0;</span>
+
+<span class="fc" id="L718">    changes = null;</span>
+<span class="fc" id="L719">  }</span>
+
+  public void trackChanges () {
+<span class="fc" id="L722">    trackChanges = true;</span>
+<span class="fc" id="L723">  }</span>
+
+  public void stopTrackingChanges() {
+<span class="nc" id="L726">    trackChanges = false;</span>
+<span class="nc" id="L727">  }</span>
+
+  public boolean isTrackingChanges() {
+<span class="nc" id="L730">    return trackChanges;</span>
+  }
+
+  public Entry&lt;E&gt; getChanges() {
+<span class="fc" id="L734">    return changes;</span>
+  }
+
+  public void resetChanges() {
+<span class="nc" id="L738">    changes = null;</span>
+<span class="nc" id="L739">  }</span>
+
+  public void revertChanges (Entry&lt;E&gt; changes) {
+<span class="fc bfc" id="L742" title="All 2 branches covered.">    for (Entry&lt;E&gt; e = changes; e != null; e = e.next) {</span>
+<span class="fc" id="L743">      set(e.index, e.value);</span>
+    }
+<span class="fc" id="L745">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L749">    return &quot;SparseClusterArray [nSet=&quot; + nSet + ']';</span>
+  }
+
+  public int numberOfElements() {
+<span class="nc" id="L753">    return nSet;</span>
+  }
+  
+  public int numberOfChunks() {
+    // that's only for debugging purposes, we should probably cache
+<span class="nc" id="L758">    int n = 0;</span>
+<span class="nc bnc" id="L759" title="All 2 branches missed.">    for (Chunk c = head; c != null; c = c.next) {</span>
+<span class="nc" id="L760">      n++;</span>
+    }
+<span class="nc" id="L762">    return n;</span>
+  }
+
+  //--- iteration over set elements
+
+  public IndexIterator getElementIndexIterator () {
+<span class="nc" id="L768">    return new ElementIndexIterator();</span>
+  }
+
+  public IndexIterator getElementIndexIterator (int fromIndex) {
+<span class="fc" id="L772">    return new ElementIndexIterator(fromIndex);</span>
+  }
+  
+  @Override
+  public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L777">    return new ElementIterator&lt;E&gt;();</span>
+  }
+
+  public int cardinality () {
+<span class="fc" id="L781">    return nSet;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

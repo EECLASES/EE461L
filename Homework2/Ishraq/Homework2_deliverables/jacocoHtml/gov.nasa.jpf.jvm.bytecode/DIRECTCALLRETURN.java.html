@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DIRECTCALLRETURN.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">DIRECTCALLRETURN.java</span></div><h1>DIRECTCALLRETURN.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.ReturnInstruction;
+
+/**
+ * this is used to return from a DirectCallStackFrame
+ *
+ * Note that it is NOT a ReturnInstruction, in case listeners monitor these
+ * and expect corresponding InvokeInstructions. Although this would seem intuitive, it
+ * would be pointless to derive because the ReturnInstruction.enter() does
+ * a lot of things we would have to cut off, i.e. it would require more effort
+ * to undo this (no sync, no return value, no pc advance on the returned-to
+ * stackframe etc.)
+ *
+ * However, having a dedicated direct call return instruction makes sense so
+ * that the ReturnInstruction of the called method does not have to handle
+ * direct calls specifically
+ */
+<span class="fc" id="L40">public class DIRECTCALLRETURN extends ReturnInstruction implements JVMInstruction  {</span>
+
+  @Override
+  public boolean isExtendedInstruction() {
+<span class="nc" id="L44">    return true;</span>
+  }
+
+  public static final int OPCODE = 261;
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L51">    return OPCODE;</span>
+  }
+
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L56">	  insVisitor.visit(this);</span>
+<span class="fc" id="L57">  }</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc bfc" id="L61" title="All 2 branches covered.">    if (ti.getStackDepth() == 1){ // thread exit point</span>
+      // this can execute several times because of the different locks involved
+    
+<span class="fc bfc" id="L64" title="All 2 branches covered.">      if (!ti.exit()){</span>
+<span class="fc" id="L65">        return this; // repeat, we couldn't get the lock</span>
+      } else {
+<span class="fc" id="L67">        return null;</span>
+      }      
+      
+    } else {
+      // pop the current frame but do not advance the new top frame, and do
+      // not touch its operand stack
+    
+<span class="fc" id="L74">      StackFrame frame = ti.popDirectCallFrame();</span>
+<span class="fc" id="L75">      return frame.getPC();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

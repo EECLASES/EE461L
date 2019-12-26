@@ -1,0 +1,1229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CoverageAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">CoverageAnalyzer.java</span></div><h1>CoverageAnalyzer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.GOTO;
+import gov.nasa.jpf.jvm.bytecode.IfInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMReturnInstruction;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.report.PublisherExtension;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.AnnotationInfo;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassInfoException;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ExceptionHandler;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.logging.Logger;
+
+/**
+ * a listener to report coverage statistics
+ *
+ * The idea is to collect per-class/-method/-thread information about
+ * executed instructions, and then analyze this deeper when it comes to
+ * report time (e.g. branch coverage, basic blocks, ..)
+ *
+ * Keep in mind that this is potentially a concurrent, model checked program,
+ * i.e. there is more to coverage than what hits the eye of a static analyzer
+ * (exceptions, data and thread CGs)
+ */
+public class CoverageAnalyzer extends ListenerAdapter implements PublisherExtension {
+
+<span class="nc" id="L71">  static Logger log = JPF.getLogger(&quot;gov.nasa.jpf.listener.CoverageAnalyzer&quot;);</span>
+
+  static class Coverage {
+
+    int total;
+    int covered;
+
+<span class="nc" id="L78">    Coverage(int total, int covered) {</span>
+<span class="nc" id="L79">      this.total = total;</span>
+<span class="nc" id="L80">      this.covered = covered;</span>
+<span class="nc" id="L81">    }</span>
+
+    public void add(Coverage cov) {
+<span class="nc" id="L84">      total += cov.total;</span>
+<span class="nc" id="L85">      covered += cov.covered;</span>
+<span class="nc" id="L86">    }</span>
+
+    public int percent() {
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (total &gt; 0) {</span>
+<span class="nc" id="L90">        return covered * 100 / total;</span>
+      }
+
+<span class="nc" id="L93">      return (Integer.MIN_VALUE);</span>
+    }
+
+    public int covered() {
+<span class="nc" id="L97">      return covered;</span>
+    }
+
+    public int total() {
+<span class="nc" id="L101">      return total;</span>
+    }
+
+    public boolean isPartiallyCovered() {
+<span class="nc bnc" id="L105" title="All 4 branches missed.">      return ((covered &gt; 0) &amp;&amp; (covered &lt; total));</span>
+    }
+
+    public boolean isNotCovered() {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">      return (covered == 0);</span>
+    }
+
+    public boolean isFullyCovered() {
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      return (covered == total);</span>
+    }
+  }
+
+  static class MethodCoverage {
+
+    MethodInfo mi;
+
+    // we base everything else on bytecode instruction coverage
+    BitSet[] covered;
+    BitSet basicBlocks; // set on demand
+    BitSet handlers; // set on demand
+    BitSet branches; // set on demand
+    BitSet branchTrue;
+    BitSet branchFalse;
+
+<span class="nc" id="L129">    MethodCoverage(MethodInfo mi) {</span>
+<span class="nc" id="L130">      this.mi = mi;</span>
+<span class="nc" id="L131">      log.info(&quot;add method: &quot; + mi.getUniqueName());</span>
+<span class="nc" id="L132">    }</span>
+
+    MethodInfo getMethodInfo() {
+<span class="nc" id="L135">      return mi;</span>
+    }
+
+    void setExecuted(ThreadInfo ti, Instruction insn) {
+<span class="nc" id="L139">      int idx = ti.getId();</span>
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      if (covered == null) {</span>
+<span class="nc" id="L142">        covered = new BitSet[idx + 1];</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      } else if (idx &gt;= covered.length) {</span>
+<span class="nc" id="L144">        BitSet[] a = new BitSet[idx + 1];</span>
+<span class="nc" id="L145">        System.arraycopy(covered, 0, a, 0, covered.length);</span>
+<span class="nc" id="L146">        covered = a;</span>
+      }
+
+<span class="nc bnc" id="L149" title="All 2 branches missed.">      if (covered[idx] == null) {</span>
+<span class="nc" id="L150">        covered[idx] = new BitSet(mi.getInstructions().length);</span>
+      }
+
+<span class="nc" id="L153">      int off = insn.getInstructionIndex();</span>
+<span class="nc" id="L154">      covered[idx].set(off);</span>
+
+<span class="nc bnc" id="L156" title="All 4 branches missed.">      if (showBranchCoverage &amp;&amp; (insn instanceof IfInstruction)) {</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (branchTrue == null) {</span>
+<span class="nc" id="L158">          branchTrue = new BitSet(mi.getInstructions().length);</span>
+<span class="nc" id="L159">          branchFalse = new BitSet(branchTrue.size());</span>
+        }
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (!((IfInstruction) insn).getConditionValue()) {</span>
+<span class="nc" id="L162">          branchTrue.set(off);</span>
+        } else {
+<span class="nc" id="L164">          branchFalse.set(off);</span>
+        }
+      }
+<span class="nc" id="L167">    }</span>
+
+    void setCGed(ThreadInfo ti, Instruction insn) {
+<span class="nc" id="L170">      ti = null;  // Remove IDE warning about unused variable.</span>
+      // Hmm, we have to store the bb set at this point
+<span class="nc" id="L172">      BitSet bb = getBasicBlocks();</span>
+<span class="nc" id="L173">      Instruction next = insn.getNext();</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">      if (next != null) { // insn might be a sync return</span>
+<span class="nc" id="L175">        bb.set(next.getInstructionIndex());</span>
+      }
+<span class="nc" id="L177">    }</span>
+
+    BitSet getExecutedInsn() {
+<span class="nc" id="L180">      int nTotal = mi.getInstructions().length;</span>
+<span class="nc" id="L181">      BitSet bUnion = new BitSet(nTotal);</span>
+
+<span class="nc bnc" id="L183" title="All 2 branches missed.">      if (covered != null) {</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        for (BitSet b : covered) {</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">          if (b != null) {</span>
+<span class="nc" id="L186">            bUnion.or(b);</span>
+          }
+        }
+      }
+
+<span class="nc" id="L191">      return bUnion;</span>
+    }
+
+    Coverage getCoveredInsn() {
+<span class="nc" id="L195">      int nTotal = mi.getInstructions().length;</span>
+
+<span class="nc bnc" id="L197" title="All 2 branches missed.">      if (excludeHandlers) {</span>
+<span class="nc" id="L198">        nTotal -= getHandlers().cardinality();</span>
+      }
+
+<span class="nc bnc" id="L201" title="All 2 branches missed.">      if (covered != null) {</span>
+<span class="nc" id="L202">        BitSet bExec = getExecutedInsn();</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (excludeHandlers) {</span>
+<span class="nc" id="L204">          bExec.andNot(getHandlers());</span>
+        }
+<span class="nc" id="L206">        return new Coverage(nTotal, bExec.cardinality());</span>
+      } else {
+<span class="nc" id="L208">        return new Coverage(nTotal, 0);</span>
+      }
+    }
+
+    Coverage getCoveredLines() {
+<span class="nc" id="L213">      BitSet executable = new BitSet();</span>
+<span class="nc" id="L214">      BitSet covered = new BitSet();</span>
+
+<span class="nc" id="L216">      getCoveredLines(executable, covered);</span>
+
+<span class="nc" id="L218">      return new Coverage(executable.cardinality(), covered.cardinality());</span>
+    }
+
+    boolean getCoveredLines(BitSet executable, BitSet covered) {
+<span class="nc" id="L222">      Instruction inst[] = mi.getInstructions();</span>
+      BitSet insn;
+      int i, line;
+
+<span class="nc bnc" id="L226" title="All 2 branches missed.">      if (covered == null) {</span>
+<span class="nc" id="L227">        return false;</span>
+      }
+
+<span class="nc" id="L230">      insn = getExecutedInsn();</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">      if (excludeHandlers) {</span>
+<span class="nc" id="L232">        insn.andNot(getHandlers());</span>
+      }
+
+<span class="nc bnc" id="L235" title="All 2 branches missed.">      if (branchTrue != null) {</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">        for (i = branchTrue.length() - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L237">          boolean cTrue = branchTrue.get(i);</span>
+<span class="nc" id="L238">          boolean cFalse = branchFalse.get(i);</span>
+
+<span class="nc bnc" id="L240" title="All 6 branches missed.">          if ((!cTrue || !cFalse) &amp;&amp; (inst[i] instanceof IfInstruction)) {</span>
+<span class="nc" id="L241">            insn.clear(i);</span>
+          }
+        }
+      }
+
+<span class="nc bnc" id="L246" title="All 2 branches missed.">      for (i = inst.length - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L247">        line = inst[i].getLineNumber();</span>
+         
+<span class="nc bnc" id="L249" title="All 2 branches missed.">        if (line &gt; 0) {</span>
+<span class="nc" id="L250">          executable.set(line);</span>
+<span class="nc" id="L251">          covered.set(line);</span>
+        }
+      }
+
+<span class="nc bnc" id="L255" title="All 2 branches missed.">      for (i = inst.length - 1; i &gt;= 0; i--) {</span>
+<span class="nc" id="L256">        line = inst[i].getLineNumber();</span>
+<span class="nc bnc" id="L257" title="All 4 branches missed.">        if ((!insn.get(i)) &amp;&amp; (line &gt; 0)) {         // TODO What do we do with instructions that don't have a line number.  Is this even possible?</span>
+<span class="nc" id="L258">          covered.clear(line);</span>
+        }
+      }
+
+<span class="nc" id="L262">      return true;</span>
+    }
+
+    Coverage getCoveredBranches() {
+<span class="nc" id="L266">      BitSet b = getBranches();</span>
+<span class="nc" id="L267">      int nTotal = b.cardinality();</span>
+<span class="nc" id="L268">      int nCovered = 0;</span>
+
+<span class="nc bnc" id="L270" title="All 2 branches missed.">      if (branchTrue != null) {</span>
+<span class="nc" id="L271">        int n = branchTrue.size();</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L274">          boolean cTrue = branchTrue.get(i);</span>
+<span class="nc" id="L275">          boolean cFalse = branchFalse.get(i);</span>
+
+<span class="nc bnc" id="L277" title="All 4 branches missed.">          if (cTrue &amp;&amp; cFalse) {</span>
+<span class="nc" id="L278">            nCovered++;</span>
+          }
+        }
+      }
+
+<span class="nc" id="L283">      return new Coverage(nTotal, nCovered);</span>
+    }
+
+    BitSet getHandlerStarts() {
+<span class="nc" id="L287">      BitSet b = new BitSet(mi.getInstructions().length);</span>
+<span class="nc" id="L288">      ExceptionHandler[] handler = mi.getExceptions();</span>
+
+<span class="nc bnc" id="L290" title="All 2 branches missed.">      if (handler != null) {</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        for (int i = 0; i &lt; handler.length; i++) {</span>
+<span class="nc" id="L292">          Instruction hs = mi.getInstructionAt(handler[i].getHandler());</span>
+<span class="nc" id="L293">          b.set(hs.getInstructionIndex());</span>
+        }
+      }
+
+<span class="nc" id="L297">      return b;</span>
+    }
+
+    BitSet getHandlers() {
+      // this algorithm is a bit subtle - we walk through the code until
+      // we hit a forward GOTO (or RETURN). If the insn following the goto is the
+      // beginning of a handler, we mark everything up to the jump address
+      // as a handler block
+
+<span class="nc bnc" id="L306" title="All 2 branches missed.">      if (handlers == null) {</span>
+<span class="nc" id="L307">        BitSet hs = getHandlerStarts();</span>
+<span class="nc" id="L308">        Instruction[] code = mi.getInstructions();</span>
+<span class="nc" id="L309">        BitSet b = new BitSet(code.length);</span>
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (!hs.isEmpty()) {</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">          for (int i = 0; i &lt; code.length; i++) {</span>
+<span class="nc" id="L313">            Instruction insn = code[i];</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">            if (insn instanceof GOTO) {</span>
+<span class="nc" id="L315">              GOTO gotoInsn = (GOTO) insn;</span>
+<span class="nc bnc" id="L316" title="All 4 branches missed.">              if (!gotoInsn.isBackJump() &amp;&amp; hs.get(i + 1)) { // jump around handler</span>
+<span class="nc" id="L317">                int handlerEnd = gotoInsn.getTarget().getInstructionIndex();</span>
+<span class="nc bnc" id="L318" title="All 2 branches missed.">                for (i++; i &lt; handlerEnd; i++) {</span>
+<span class="nc" id="L319">                  b.set(i);</span>
+                }
+              }
+<span class="nc bnc" id="L322" title="All 2 branches missed.">            } else if (insn instanceof JVMReturnInstruction) { // everything else is handler</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">              for (i++; i &lt; code.length; i++) {</span>
+<span class="nc" id="L324">                b.set(i);</span>
+              }
+            }
+          }
+        }
+
+<span class="nc" id="L330">        handlers = b;</span>
+      }
+
+<span class="nc" id="L333">      return handlers;</span>
+    }
+
+    // that's kind of redundant with basic blocks, but not really - here
+    // we are interested in the logic behind branches, i.e. we want to know
+    // what the condition values were. We are not interested in GOTOs and exceptions
+    BitSet getBranches() {
+<span class="nc bnc" id="L340" title="All 2 branches missed.">      if (branches == null) {</span>
+<span class="nc" id="L341">        Instruction[] code = mi.getInstructions();</span>
+<span class="nc" id="L342">        BitSet br = new BitSet(code.length);</span>
+
+<span class="nc bnc" id="L344" title="All 2 branches missed.">        for (int i = 0; i &lt; code.length; i++) {</span>
+<span class="nc" id="L345">          Instruction insn = code[i];</span>
+<span class="nc bnc" id="L346" title="All 2 branches missed.">          if (insn instanceof IfInstruction) {</span>
+<span class="nc" id="L347">            br.set(i);</span>
+          }
+        }
+
+<span class="nc" id="L351">        branches = br;</span>
+      }
+
+<span class="nc" id="L354">      return branches;</span>
+    }
+
+    BitSet getBasicBlocks() {
+<span class="nc bnc" id="L358" title="All 2 branches missed.">      if (basicBlocks == null) {</span>
+<span class="nc" id="L359">        Instruction[] code = mi.getInstructions();</span>
+<span class="nc" id="L360">        BitSet bb = new BitSet(code.length);</span>
+
+<span class="nc" id="L362">        bb.set(0); // first insn is always a bb start</span>
+
+        // first, look at the insn type
+<span class="nc bnc" id="L365" title="All 2 branches missed.">        for (int i = 0; i &lt; code.length; i++) {</span>
+<span class="nc" id="L366">          Instruction insn = code[i];</span>
+<span class="nc bnc" id="L367" title="All 2 branches missed.">          if (insn instanceof IfInstruction) {</span>
+<span class="nc" id="L368">            IfInstruction ifInsn = (IfInstruction) insn;</span>
+
+<span class="nc" id="L370">            Instruction tgt = ifInsn.getTarget();</span>
+<span class="nc" id="L371">            bb.set(tgt.getInstructionIndex());</span>
+
+<span class="nc" id="L373">            tgt = ifInsn.getNext();</span>
+<span class="nc" id="L374">            bb.set(tgt.getInstructionIndex());</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">          } else if (insn instanceof GOTO) {</span>
+<span class="nc" id="L376">            Instruction tgt = ((GOTO) insn).getTarget();</span>
+<span class="nc" id="L377">            bb.set(tgt.getInstructionIndex());</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">          } else if (insn instanceof JVMInvokeInstruction) {</span>
+            // hmm, this might be a bit too conservative, but who says we
+            // don't jump out of a caller into a handler, or even that we
+            // ever return from the call?
+<span class="nc" id="L382">            Instruction tgt = insn.getNext();</span>
+<span class="nc" id="L383">            bb.set(tgt.getInstructionIndex());</span>
+          }
+        }
+
+        // and now look at the handlers (every first insn is a bb start)
+<span class="nc" id="L388">        ExceptionHandler[] handlers = mi.getExceptions();</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (handlers != null) {</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">          for (int i = 0; i &lt; handlers.length; i++) {</span>
+<span class="nc" id="L391">            Instruction tgt = mi.getInstructionAt(handlers[i].getHandler());</span>
+<span class="nc" id="L392">            bb.set(tgt.getInstructionIndex());</span>
+          }
+        }
+
+<span class="nc" id="L396">        basicBlocks = bb;</span>
+
+      /** dump
+      System.out.println();
+      System.out.println(mi.getFullName());
+      for (int i=0; i&lt;code.length; i++) {
+      System.out.print(String.format(&quot;%1$2d %2$c &quot;,i, bb.get(i) ? '&gt;' : ' '));
+      System.out.println(code[i]);
+      }
+       **/
+      }
+
+<span class="nc" id="L408">      return basicBlocks;</span>
+    }
+
+    Coverage getCoveredBasicBlocks() {
+<span class="nc" id="L412">      BitSet bExec = getExecutedInsn();</span>
+<span class="nc" id="L413">      BitSet bb = getBasicBlocks();</span>
+<span class="nc" id="L414">      int nCov = 0;</span>
+
+<span class="nc bnc" id="L416" title="All 2 branches missed.">      if (excludeHandlers) {</span>
+<span class="nc" id="L417">        BitSet handlers = getHandlers();</span>
+<span class="nc" id="L418">        bb.and(handlers);</span>
+      }
+
+<span class="nc bnc" id="L421" title="All 2 branches missed.">      if (bExec != null) {</span>
+<span class="nc" id="L422">        BitSet bCov = new BitSet(bb.size());</span>
+<span class="nc" id="L423">        bCov.or(bb);</span>
+<span class="nc" id="L424">        bCov.and(bExec);</span>
+<span class="nc" id="L425">        nCov = bCov.cardinality();</span>
+      }
+
+<span class="nc" id="L428">      return new Coverage(bb.cardinality(), nCov);</span>
+    }
+  }
+
+  static class ClassCoverage {
+
+    String className; // need to store since we never might get a ClassInfo
+    ClassInfo ci;     // not initialized before the class is loaded
+    boolean covered;
+    HashMap&lt;MethodInfo, MethodCoverage&gt; methods;
+
+<span class="nc" id="L439">    ClassCoverage(String className) {</span>
+<span class="nc" id="L440">      this.className = className;</span>
+<span class="nc" id="L441">    }</span>
+
+    void setLoaded(ClassInfo ci) {
+<span class="nc bnc" id="L444" title="All 2 branches missed.">      if (methods == null) {</span>
+<span class="nc" id="L445">        this.ci = ci;</span>
+<span class="nc" id="L446">        covered = true;</span>
+<span class="nc" id="L447">        log.info(&quot;used class: &quot; + className);</span>
+
+<span class="nc" id="L449">        methods = new HashMap&lt;MethodInfo, MethodCoverage&gt;();</span>
+<span class="nc bnc" id="L450" title="All 2 branches missed.">        for (MethodInfo mi : ci.getDeclaredMethodInfos()) {</span>
+          // &lt;2do&gt; what about MJI methods? we should report why we don't cover them
+<span class="nc bnc" id="L452" title="All 4 branches missed.">          if (!mi.isNative() &amp;&amp; !mi.isAbstract()) {</span>
+<span class="nc" id="L453">            MethodCoverage mc = new MethodCoverage(mi);</span>
+<span class="nc" id="L454">            methods.put(mi, mc);</span>
+          }
+        }
+      }
+<span class="nc" id="L458">    }</span>
+
+    boolean isInterface() {
+<span class="nc bnc" id="L461" title="All 2 branches missed.">      if (ci == null)           // never loaded</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        if (!isCodeLoaded())    // can it be loaded?</span>
+<span class="nc" id="L463">          return false;         // will never load</span>
+
+<span class="nc" id="L465">      return ci.isInterface();</span>
+    }
+    
+    boolean isCodeLoaded() {
+<span class="nc bnc" id="L469" title="All 2 branches missed.">      if (ci != null)</span>
+<span class="nc" id="L470">        return true;</span>
+
+      try {
+<span class="nc" id="L473">        ci = ClassLoaderInfo.getCurrentResolvedClassInfo(className);</span>
+<span class="nc" id="L474">      } catch (ClassInfoException cie) {</span>
+<span class="nc" id="L475">        log.warning(&quot;CoverageAnalyzer problem: &quot; + cie);   // Just log the problem but don't fail.  We still want the report to be written.</span>
+<span class="nc" id="L476">      }</span>
+      
+<span class="nc bnc" id="L478" title="All 2 branches missed.">      return ci != null;</span>
+    }
+
+    MethodCoverage getMethodCoverage(MethodInfo mi) {
+<span class="nc bnc" id="L482" title="All 2 branches missed.">      if (methods == null) {</span>
+<span class="nc" id="L483">        setLoaded(ci);</span>
+      }
+<span class="nc" id="L485">      return methods.get(mi);</span>
+    }
+
+    Coverage getCoveredMethods() {
+<span class="nc" id="L489">      Coverage cov = new Coverage(0, 0);</span>
+
+<span class="nc bnc" id="L491" title="All 2 branches missed.">      if (methods != null) {</span>
+<span class="nc" id="L492">        cov.total = methods.size();</span>
+
+<span class="nc bnc" id="L494" title="All 2 branches missed.">        for (MethodCoverage mc : methods.values()) {</span>
+<span class="nc bnc" id="L495" title="All 2 branches missed.">          if (mc.covered != null) {</span>
+<span class="nc" id="L496">            cov.covered++;</span>
+          }
+<span class="nc" id="L498">        }</span>
+      }
+
+<span class="nc" id="L501">      return cov;</span>
+    }
+
+    Coverage getCoveredInsn() {
+<span class="nc" id="L505">      Coverage cov = new Coverage(0, 0);</span>
+
+<span class="nc bnc" id="L507" title="All 2 branches missed.">      if (methods != null) {</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">        for (MethodCoverage mc : methods.values()) {</span>
+<span class="nc" id="L509">          Coverage c = mc.getCoveredInsn();</span>
+<span class="nc" id="L510">          cov.total += c.total;</span>
+<span class="nc" id="L511">          cov.covered += c.covered;</span>
+<span class="nc" id="L512">        }</span>
+      }
+
+<span class="nc" id="L515">      return cov;</span>
+    }
+
+    boolean getCoveredLines(BitSet executable, BitSet covered) {
+<span class="nc" id="L519">      boolean result = false;</span>
+
+<span class="nc bnc" id="L521" title="All 2 branches missed.">      if (methods == null) {</span>
+<span class="nc" id="L522">        return false;</span>
+      }
+
+<span class="nc bnc" id="L525" title="All 2 branches missed.">      for (MethodCoverage mc : methods.values()) {</span>
+<span class="nc bnc" id="L526" title="All 4 branches missed.">        result = mc.getCoveredLines(executable, covered) || result;</span>
+<span class="nc" id="L527">      }</span>
+
+<span class="nc" id="L529">      return result;</span>
+    }
+
+    Coverage getCoveredLines() {
+<span class="nc" id="L533">      BitSet executable = new BitSet();</span>
+<span class="nc" id="L534">      BitSet covered = new BitSet();</span>
+
+<span class="nc" id="L536">      getCoveredLines(executable, covered);</span>
+
+<span class="nc" id="L538">      return new Coverage(executable.cardinality(), covered.cardinality());</span>
+    }
+
+    Coverage getCoveredBasicBlocks() {
+<span class="nc" id="L542">      Coverage cov = new Coverage(0, 0);</span>
+
+<span class="nc bnc" id="L544" title="All 2 branches missed.">      if (methods != null) {</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">        for (MethodCoverage mc : methods.values()) {</span>
+<span class="nc" id="L546">          Coverage c = mc.getCoveredBasicBlocks();</span>
+<span class="nc" id="L547">          cov.total += c.total;</span>
+<span class="nc" id="L548">          cov.covered += c.covered;</span>
+<span class="nc" id="L549">        }</span>
+      }
+
+<span class="nc" id="L552">      return cov;</span>
+    }
+
+    Coverage getCoveredBranches() {
+<span class="nc" id="L556">      Coverage cov = new Coverage(0, 0);</span>
+
+<span class="nc bnc" id="L558" title="All 2 branches missed.">      if (methods != null) {</span>
+<span class="nc bnc" id="L559" title="All 2 branches missed.">        for (MethodCoverage mc : methods.values()) {</span>
+<span class="nc" id="L560">          Coverage c = mc.getCoveredBranches();</span>
+<span class="nc" id="L561">          cov.total += c.total;</span>
+<span class="nc" id="L562">          cov.covered += c.covered;</span>
+<span class="nc" id="L563">        }</span>
+      }
+
+<span class="nc" id="L566">      return cov;</span>
+    }
+  }
+
+<span class="nc" id="L570">  StringSetMatcher includes = null; //  means all</span>
+<span class="nc" id="L571">  StringSetMatcher excludes = null; //  means none</span>
+  StringSetMatcher loaded;
+  static boolean loadedOnly; // means we only check loaded classes that are not filtered
+  static boolean showMethods;      // do we want to show per-method coverage?
+  static boolean showMethodBodies;
+  static boolean excludeHandlers;  // do we count the handlers in? (off-nominal CF)
+  static boolean showBranchCoverage; // makes only sense with showMethods
+  static boolean showRequirements; // report requirements coverage
+<span class="nc" id="L579">  HashMap&lt;String, ClassCoverage&gt; classes = new HashMap&lt;String, ClassCoverage&gt;();</span>
+
+<span class="nc" id="L581">  public CoverageAnalyzer(Config conf, JPF jpf) {</span>
+<span class="nc" id="L582">    includes = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;coverage.include&quot;));</span>
+<span class="nc" id="L583">    excludes = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;coverage.exclude&quot;));</span>
+
+<span class="nc" id="L585">    showMethods = conf.getBoolean(&quot;coverage.show_methods&quot;, false);</span>
+<span class="nc" id="L586">    showMethodBodies = conf.getBoolean(&quot;coverage.show_bodies&quot;, false);</span>
+<span class="nc" id="L587">    excludeHandlers = conf.getBoolean(&quot;coverage.exclude_handlers&quot;, false);</span>
+<span class="nc" id="L588">    showBranchCoverage = conf.getBoolean(&quot;coverage.show_branches&quot;, true);</span>
+<span class="nc" id="L589">    loadedOnly = conf.getBoolean(&quot;coverage.loaded_only&quot;, true);</span>
+<span class="nc" id="L590">    showRequirements = conf.getBoolean(&quot;coverage.show_requirements&quot;, false);</span>
+
+<span class="nc bnc" id="L592" title="All 2 branches missed.">    if (!loadedOnly) {</span>
+<span class="nc" id="L593">      getCoverageCandidates(); // this might take a little while</span>
+    }
+
+<span class="nc" id="L596">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="nc" id="L597">  }</span>
+
+  void getCoverageCandidates() {
+
+    // doesn't matter in which order we process this, since we
+    // just store one entry per qualified class name (i.e. there won't be
+    // multiple entries)
+    // NOTE : this doesn't yet deal with ClassLoaders, but that's also true for BCEL
+<span class="nc" id="L605">    ClassLoaderInfo cl = ClassLoaderInfo.getCurrentClassLoader();</span>
+<span class="nc bnc" id="L606" title="All 2 branches missed.">    for (String s : cl.getClassPathElements()) {</span>
+<span class="nc" id="L607">      log.fine(&quot;analyzing classpath element: &quot; + s);</span>
+<span class="nc" id="L608">      File f = new File(s);</span>
+<span class="nc bnc" id="L609" title="All 2 branches missed.">      if (f.exists()) {</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">        if (f.isDirectory()) {</span>
+<span class="nc" id="L611">          traverseDir(f, null);</span>
+<span class="nc bnc" id="L612" title="All 2 branches missed.">        } else if (s.endsWith(&quot;.jar&quot;)) {</span>
+<span class="nc" id="L613">          traverseJar(f);</span>
+        }
+      }
+    }
+<span class="nc" id="L617">  }</span>
+
+  void addClassEntry(String clsName) {
+<span class="nc" id="L620">    ClassCoverage cc = new ClassCoverage(clsName);</span>
+<span class="nc" id="L621">    classes.put(clsName, cc);</span>
+<span class="nc" id="L622">    log.info(&quot;added class candidate: &quot; + clsName);</span>
+<span class="nc" id="L623">  }</span>
+
+  boolean isAnalyzedClass(String clsName) {
+<span class="nc" id="L626">    return StringSetMatcher.isMatch(clsName, includes, excludes);</span>
+  }
+
+  void traverseDir(File dir, String pkgPrefix) {
+<span class="nc bnc" id="L630" title="All 2 branches missed.">    for (File f : dir.listFiles()) {</span>
+<span class="nc bnc" id="L631" title="All 2 branches missed.">      if (f.isDirectory()) {</span>
+<span class="nc" id="L632">        String prefix = f.getName();</span>
+<span class="nc bnc" id="L633" title="All 2 branches missed.">        if (pkgPrefix != null) {</span>
+<span class="nc" id="L634">          prefix = pkgPrefix + '.' + prefix;</span>
+        }
+<span class="nc" id="L636">        traverseDir(f, prefix);</span>
+<span class="nc" id="L637">      } else {</span>
+<span class="nc" id="L638">        String fname = f.getName();</span>
+<span class="nc bnc" id="L639" title="All 2 branches missed.">        if (fname.endsWith(&quot;.class&quot;)) {</span>
+<span class="nc bnc" id="L640" title="All 4 branches missed.">          if (f.canRead() &amp;&amp; (f.length() &gt; 0)) {</span>
+<span class="nc" id="L641">            String clsName = fname.substring(0, fname.length() - 6);</span>
+<span class="nc bnc" id="L642" title="All 2 branches missed.">            if (pkgPrefix != null) {</span>
+<span class="nc" id="L643">              clsName = pkgPrefix + '.' + clsName;</span>
+            }
+
+<span class="nc bnc" id="L646" title="All 2 branches missed.">            if (isAnalyzedClass(clsName)) {</span>
+<span class="nc" id="L647">              addClassEntry(clsName);</span>
+            }
+<span class="nc" id="L649">          } else {</span>
+<span class="nc" id="L650">            log.warning(&quot;cannot read class file: &quot; + fname);</span>
+          }
+        }
+      }
+    }
+<span class="nc" id="L655">  }</span>
+
+  void traverseJar(File jar) {
+    try {
+<span class="nc" id="L659">      JarFile jf = new JarFile(jar);</span>
+<span class="nc bnc" id="L660" title="All 2 branches missed.">      for (Enumeration&lt;JarEntry&gt; entries = jf.entries(); entries.hasMoreElements();) {</span>
+<span class="nc" id="L661">        JarEntry e = entries.nextElement();</span>
+<span class="nc bnc" id="L662" title="All 2 branches missed.">        if (!e.isDirectory()) {</span>
+<span class="nc" id="L663">          String eName = e.getName();</span>
+<span class="nc bnc" id="L664" title="All 2 branches missed.">          if (eName.endsWith(&quot;.class&quot;)) {</span>
+<span class="nc bnc" id="L665" title="All 2 branches missed.">            if (e.getSize() &gt; 0) {</span>
+<span class="nc" id="L666">              String clsName = eName.substring(0, eName.length() - 6);</span>
+<span class="nc" id="L667">              clsName = clsName.replace('/', '.');</span>
+<span class="nc bnc" id="L668" title="All 2 branches missed.">              if (isAnalyzedClass(clsName)) {</span>
+<span class="nc" id="L669">                addClassEntry(clsName);</span>
+              }
+<span class="nc" id="L671">            } else {</span>
+<span class="nc" id="L672">              log.warning(&quot;cannot read jar entry: &quot; + eName);</span>
+            }
+          }
+        }
+<span class="nc" id="L676">      }</span>
+<span class="nc" id="L677">    } catch (IOException iox) {</span>
+<span class="nc" id="L678">      iox.printStackTrace();</span>
+<span class="nc" id="L679">    }</span>
+<span class="nc" id="L680">  }</span>
+
+
+  HashMap&lt;String, Integer&gt; getGlobalRequirementsMethods() {
+<span class="nc" id="L684">    HashMap&lt;String, Integer&gt; map = new HashMap&lt;String, Integer&gt;();</span>
+
+    // &lt;2do&gt; this is extremely braindead, since inefficient
+    // it would be much better to do this with Class&lt;?&gt; instead of ClassInfo, but
+    // then we need a JPF- ClassLoader, since the path might be different. As a
+    // middle ground, we could use BCEL
+
+<span class="nc bnc" id="L691" title="All 2 branches missed.">    for (ClassCoverage cc : classes.values()) {</span>
+<span class="nc" id="L692">      ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(cc.className);</span>
+<span class="nc bnc" id="L693" title="All 2 branches missed.">      for (MethodInfo mi : ci.getDeclaredMethodInfos()) {</span>
+<span class="nc" id="L694">        AnnotationInfo ai = getRequirementsAnnotation(mi);</span>
+<span class="nc bnc" id="L695" title="All 2 branches missed.">        if (ai != null) {</span>
+<span class="nc bnc" id="L696" title="All 2 branches missed.">          for (String id : ai.getValueAsStringArray()) {</span>
+<span class="nc" id="L697">            Integer n = map.get(id);</span>
+<span class="nc bnc" id="L698" title="All 2 branches missed.">            if (n == null) {</span>
+<span class="nc" id="L699">              map.put(id, 1);</span>
+            } else {
+<span class="nc" id="L701">              map.put(id, n + 1);</span>
+            }
+          }
+        }
+      }
+<span class="nc" id="L706">    }</span>
+
+<span class="nc" id="L708">    return map;</span>
+  }
+
+  int computeTotalRequirementsMethods(HashMap&lt;String, Integer&gt; map) {
+<span class="nc" id="L712">    int n = 0;</span>
+<span class="nc bnc" id="L713" title="All 2 branches missed.">    for (Integer i : map.values()) {</span>
+<span class="nc" id="L714">      n += i;</span>
+<span class="nc" id="L715">    }</span>
+<span class="nc" id="L716">    return n;</span>
+  }
+
+  private void computeCoverages(String packageFilter, List&lt;Map.Entry&lt;String, ClassCoverage&gt;&gt; clsEntries, Coverage cls, Coverage mth, Coverage branch, Coverage block, Coverage line, Coverage insn) {
+<span class="nc bnc" id="L720" title="All 2 branches missed.">    for (Map.Entry&lt;String, ClassCoverage&gt; e : clsEntries) {</span>
+<span class="nc bnc" id="L721" title="All 2 branches missed.">      if (e.getKey().startsWith(packageFilter)) {</span>
+<span class="nc" id="L722">        ClassCoverage cc = e.getValue();</span>
+
+<span class="nc bnc" id="L724" title="All 2 branches missed.">        if (cc.isInterface()) {</span>
+<span class="nc" id="L725">          continue; // no code</span>
+        }
+
+<span class="nc" id="L728">        cls.total++;</span>
+        
+<span class="nc bnc" id="L730" title="All 2 branches missed.">        if (cc.covered) {</span>
+<span class="nc" id="L731">          cls.covered++;</span>
+        }
+
+<span class="nc" id="L734">        insn.add(cc.getCoveredInsn());</span>
+<span class="nc" id="L735">        line.add(cc.getCoveredLines());</span>
+<span class="nc" id="L736">        block.add(cc.getCoveredBasicBlocks());</span>
+<span class="nc" id="L737">        branch.add(cc.getCoveredBranches());</span>
+<span class="nc" id="L738">        mth.add(cc.getCoveredMethods());</span>
+      }
+<span class="nc" id="L740">    }</span>
+<span class="nc" id="L741">  }</span>
+
+
+  /**
+   * print uncovered source ranges
+   */
+
+  //-------- the listener interface
+  @Override
+  public void classLoaded(VM vm, ClassInfo ci) {
+<span class="nc" id="L751">    String clsName = ci.getName();</span>
+
+<span class="nc bnc" id="L753" title="All 2 branches missed.">    if (loadedOnly) {</span>
+<span class="nc bnc" id="L754" title="All 2 branches missed.">      if (isAnalyzedClass(clsName)) {</span>
+<span class="nc" id="L755">        addClassEntry(clsName);</span>
+      }
+    }
+
+<span class="nc" id="L759">    ClassCoverage cc = classes.get(clsName);</span>
+<span class="nc bnc" id="L760" title="All 2 branches missed.">    if (cc != null) {</span>
+<span class="nc" id="L761">      cc.setLoaded(ci);</span>
+    }
+<span class="nc" id="L763">  }</span>
+<span class="nc" id="L764">  MethodInfo lastMi = null;</span>
+<span class="nc" id="L765">  MethodCoverage lastMc = null;</span>
+
+  MethodCoverage getMethodCoverage(Instruction insn) {
+
+<span class="nc bnc" id="L769" title="All 2 branches missed.">    if (!insn.isExtendedInstruction()) {</span>
+<span class="nc" id="L770">      MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L771" title="All 2 branches missed.">      if (mi != lastMi) {</span>
+<span class="nc" id="L772">        lastMc = null;</span>
+<span class="nc" id="L773">        lastMi = mi;</span>
+<span class="nc" id="L774">        ClassInfo ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L775" title="All 2 branches missed.">        if (ci != null) {</span>
+<span class="nc" id="L776">          ClassCoverage cc = classes.get(ci.getName());</span>
+<span class="nc bnc" id="L777" title="All 2 branches missed.">          if (cc != null) {</span>
+<span class="nc" id="L778">            lastMc = cc.getMethodCoverage(mi);</span>
+          }
+        }
+      }
+
+<span class="nc" id="L783">      return lastMc;</span>
+    }
+
+<span class="nc" id="L786">    return null;</span>
+  }
+  HashMap&lt;String, HashSet&lt;MethodCoverage&gt;&gt; requirements;
+
+  void updateRequirementsCoverage(String[] ids, MethodCoverage mc) {
+<span class="nc bnc" id="L791" title="All 2 branches missed.">    if (requirements == null) {</span>
+<span class="nc" id="L792">      requirements = new HashMap&lt;String, HashSet&lt;MethodCoverage&gt;&gt;();</span>
+    }
+
+<span class="nc bnc" id="L795" title="All 2 branches missed.">    for (String id : ids) {</span>
+<span class="nc" id="L796">      HashSet&lt;MethodCoverage&gt; mcs = requirements.get(id);</span>
+<span class="nc bnc" id="L797" title="All 2 branches missed.">      if (mcs == null) {</span>
+<span class="nc" id="L798">        mcs = new HashSet&lt;MethodCoverage&gt;();</span>
+<span class="nc" id="L799">        requirements.put(id, mcs);</span>
+      }
+
+<span class="nc bnc" id="L802" title="All 2 branches missed.">      if (!mcs.contains(mc)) {</span>
+<span class="nc" id="L803">        mcs.add(mc);</span>
+      }
+    }
+<span class="nc" id="L806">  }</span>
+
+  AnnotationInfo getRequirementsAnnotation(MethodInfo mi) {
+    // &lt;2do&gt; should probably look for overridden method annotations
+<span class="nc" id="L810">    return mi.getAnnotation(&quot;gov.nasa.jpf.Requirement&quot;);</span>
+  }
+
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+<span class="nc" id="L815">    MethodCoverage mc = getMethodCoverage(executedInsn);</span>
+
+<span class="nc bnc" id="L817" title="All 2 branches missed.">    if (mc != null) {</span>
+<span class="nc" id="L818">      mc.setExecuted(ti, executedInsn);</span>
+
+<span class="nc bnc" id="L820" title="All 2 branches missed.">      if (showRequirements) {</span>
+<span class="nc bnc" id="L821" title="All 2 branches missed.">        if (executedInsn.getPosition() == 0) { // first insn in method, check for Requirements</span>
+<span class="nc" id="L822">          AnnotationInfo ai = getRequirementsAnnotation(mc.getMethodInfo());</span>
+<span class="nc bnc" id="L823" title="All 2 branches missed.">          if (ai != null) {</span>
+<span class="nc" id="L824">            String[] ids = ai.getValueAsStringArray();</span>
+<span class="nc" id="L825">            updateRequirementsCoverage(ids, mc);</span>
+          }
+        }
+      }
+    }
+<span class="nc" id="L830">  }</span>
+
+  @Override
+  public void choiceGeneratorSet(VM vm, ChoiceGenerator&lt;?&gt; newCG) {
+    /*** should be an option
+    Instruction insn = vm.getLastInstruction();
+    MethodCoverage mc = getMethodCoverage(vm);
+    mc.setCGed(vm.getLastThreadInfo(),insn);
+     ***/
+<span class="nc" id="L839">  }</span>
+
+  //-------- the publisher interface
+  private Publisher publisher;
+  private ArrayList&lt;Map.Entry&lt;String, ClassCoverage&gt;&gt; clsEntries;
+
+
+  abstract class Publish {
+    PrintWriter pw;
+
+<span class="nc" id="L849">    Publish () {}</span>
+<span class="nc" id="L850">    Publish (Publisher p){</span>
+<span class="nc" id="L851">      pw = p.getOut();</span>
+<span class="nc" id="L852">    }</span>
+
+    abstract void publish();
+    abstract void printClassCoverages();
+    abstract void printRequirementsCoverage();
+  }
+
+  class PublishConsole extends Publish {
+<span class="nc" id="L860">    PublishConsole (ConsolePublisher p){</span>
+<span class="nc" id="L861">      super(p);</span>
+<span class="nc" id="L862">    }</span>
+
+    @Override
+	void publish() {
+<span class="nc" id="L866">      publisher.publishTopicStart(&quot;coverage statistics&quot;);</span>
+
+<span class="nc" id="L868">      printClassCoverages();</span>
+
+<span class="nc bnc" id="L870" title="All 2 branches missed.">      if (showRequirements) {</span>
+<span class="nc" id="L871">        printRequirementsCoverage();</span>
+      }
+
+<span class="nc" id="L874">    }</span>
+
+    void printCoverage (Coverage cov){
+<span class="nc" id="L877">      int nTotal = cov.total();</span>
+<span class="nc" id="L878">      int nCovered = cov.covered();</span>
+
+      String s;
+<span class="nc bnc" id="L881" title="All 2 branches missed.">      if (nTotal &lt;= 0) {</span>
+<span class="nc" id="L882">        s = &quot; -  &quot;;</span>
+      } else {
+<span class="nc" id="L884">        s = String.format(&quot;%.2f (%d/%d)&quot;, ((double) nCovered / nTotal), nCovered, nTotal);</span>
+      }
+<span class="nc" id="L886">      pw.print(String.format(&quot;%1$-18s&quot;, s));</span>
+<span class="nc" id="L887">    }</span>
+
+
+    @Override
+	void printClassCoverages() {
+<span class="nc" id="L892">      String space = &quot;  &quot;;</span>
+<span class="nc" id="L893">      Coverage clsCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L894">      Coverage mthCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L895">      Coverage bbCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L896">      Coverage lineCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L897">      Coverage insnCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L898">      Coverage branchCoverage = new Coverage(0, 0);</span>
+
+<span class="nc" id="L900">      computeCoverages(&quot;&quot;, clsEntries, clsCoverage, mthCoverage, branchCoverage, bbCoverage, lineCoverage, insnCoverage);</span>
+
+<span class="nc" id="L902">      pw.println();</span>
+<span class="nc" id="L903">      pw.println(&quot;-------------------------------------------- class coverage ------------------------------------------------&quot;);</span>
+<span class="nc" id="L904">      pw.println(&quot;bytecode            line                basic-block         branch              methods             location&quot;);</span>
+<span class="nc" id="L905">      pw.println(&quot;------------------------------------------------------------------------------------------------------------&quot;);</span>
+
+      // Write Body
+<span class="nc bnc" id="L908" title="All 2 branches missed.">      for (Map.Entry&lt;String, ClassCoverage&gt; e : clsEntries) {</span>
+<span class="nc" id="L909">        ClassCoverage cc = e.getValue();</span>
+
+<span class="nc" id="L911">        printCoverage(cc.getCoveredInsn());</span>
+<span class="nc" id="L912">        pw.print(space);</span>
+
+<span class="nc" id="L914">        printCoverage(cc.getCoveredLines());</span>
+<span class="nc" id="L915">        pw.print(space);</span>
+
+<span class="nc" id="L917">        printCoverage(cc.getCoveredBasicBlocks());</span>
+<span class="nc" id="L918">        pw.print(space);</span>
+
+<span class="nc" id="L920">        printCoverage(cc.getCoveredBranches());</span>
+<span class="nc" id="L921">        pw.print(space);</span>
+
+<span class="nc" id="L923">        printCoverage(cc.getCoveredMethods());</span>
+<span class="nc" id="L924">        pw.print(space);</span>
+
+<span class="nc" id="L926">        pw.println(e.getKey());</span>
+
+<span class="nc bnc" id="L928" title="All 2 branches missed.">        if (showMethods) {</span>
+<span class="nc" id="L929">          printMethodCoverages(cc);</span>
+        }
+<span class="nc" id="L931">      }</span>
+
+<span class="nc" id="L933">      pw.println();</span>
+<span class="nc" id="L934">      pw.println(&quot;------------------------------------------------------------------------------------------------------------&quot;);</span>
+
+<span class="nc" id="L936">      printCoverage(insnCoverage);</span>
+<span class="nc" id="L937">      pw.print(space);</span>
+<span class="nc" id="L938">      printCoverage(lineCoverage);</span>
+<span class="nc" id="L939">      pw.print(space);</span>
+<span class="nc" id="L940">      printCoverage(bbCoverage);</span>
+<span class="nc" id="L941">      pw.print(space);</span>
+<span class="nc" id="L942">      printCoverage(branchCoverage);</span>
+<span class="nc" id="L943">      pw.print(space);</span>
+<span class="nc" id="L944">      printCoverage(mthCoverage);</span>
+<span class="nc" id="L945">      pw.print(space);</span>
+<span class="nc" id="L946">      printCoverage(clsCoverage);</span>
+<span class="nc" id="L947">      pw.println(&quot; total&quot;);</span>
+
+<span class="nc" id="L949">    }</span>
+
+    @Override
+	void printRequirementsCoverage() {
+<span class="nc" id="L953">      HashMap&lt;String, Integer&gt; reqMethods = getGlobalRequirementsMethods();</span>
+
+<span class="nc" id="L955">      String space = &quot;  &quot;;</span>
+<span class="nc" id="L956">      Coverage bbAll = new Coverage(0, 0);</span>
+<span class="nc" id="L957">      Coverage insnAll = new Coverage(0, 0);</span>
+<span class="nc" id="L958">      Coverage branchAll = new Coverage(0, 0);</span>
+<span class="nc" id="L959">      Coverage mthAll = new Coverage(0, 0);</span>
+<span class="nc" id="L960">      Coverage reqAll = new Coverage(0, 0);</span>
+
+<span class="nc" id="L962">      reqAll.total = reqMethods.size();</span>
+<span class="nc" id="L963">      mthAll.total = computeTotalRequirementsMethods(reqMethods);</span>
+
+<span class="nc" id="L965">      pw.println();</span>
+<span class="nc" id="L966">      pw.println();</span>
+<span class="nc" id="L967">      pw.println(&quot;--------------------------------- requirements coverage -----------------------------------&quot;);</span>
+<span class="nc" id="L968">      pw.println(&quot;bytecode            basic-block         branch              methods             requirement&quot;);</span>
+<span class="nc" id="L969">      pw.println(&quot;-------------------------------------------------------------------------------------------&quot;);</span>
+
+<span class="nc bnc" id="L971" title="All 2 branches missed.">      for (String id : Misc.getSortedKeyStrings(reqMethods)) {</span>
+
+<span class="nc" id="L973">        Coverage bbCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L974">        Coverage insnCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L975">        Coverage branchCoverage = new Coverage(0, 0);</span>
+<span class="nc" id="L976">        Coverage reqMth = new Coverage(reqMethods.get(id), 0);</span>
+
+<span class="nc bnc" id="L978" title="All 4 branches missed.">        if (requirements != null &amp;&amp; requirements.containsKey(id)) {</span>
+<span class="nc" id="L979">          reqAll.covered++;</span>
+<span class="nc bnc" id="L980" title="All 2 branches missed.">          for (MethodCoverage mc : requirements.get(id)) {</span>
+<span class="nc" id="L981">            insnCoverage.add(mc.getCoveredInsn());</span>
+<span class="nc" id="L982">            bbCoverage.add(mc.getCoveredBasicBlocks());</span>
+<span class="nc" id="L983">            branchCoverage.add(mc.getCoveredBranches());</span>
+
+<span class="nc" id="L985">            mthAll.covered++;</span>
+<span class="nc" id="L986">            reqMth.covered++;</span>
+<span class="nc" id="L987">          }</span>
+
+
+<span class="nc" id="L990">          printCoverage(insnCoverage);</span>
+<span class="nc" id="L991">          pw.print(space);</span>
+<span class="nc" id="L992">          printCoverage(bbCoverage);</span>
+<span class="nc" id="L993">          pw.print(space);</span>
+<span class="nc" id="L994">          printCoverage(branchCoverage);</span>
+<span class="nc" id="L995">          pw.print(space);</span>
+<span class="nc" id="L996">          printCoverage(reqMth);</span>
+<span class="nc" id="L997">          pw.print(&quot;\&quot;&quot; + id + &quot;\&quot;&quot;);</span>
+
+
+<span class="nc" id="L1000">          pw.println();</span>
+
+<span class="nc bnc" id="L1002" title="All 2 branches missed.">          if (showMethods) {</span>
+<span class="nc bnc" id="L1003" title="All 2 branches missed.">            for (MethodCoverage mc : requirements.get(id)) {</span>
+
+<span class="nc" id="L1005">              pw.print(space);</span>
+<span class="nc" id="L1006">              printCoverage(mc.getCoveredInsn());</span>
+<span class="nc" id="L1007">              pw.print(space);</span>
+<span class="nc" id="L1008">              printCoverage(mc.getCoveredBasicBlocks());</span>
+<span class="nc" id="L1009">              pw.print(space);</span>
+<span class="nc" id="L1010">              printCoverage(mc.getCoveredBranches());</span>
+<span class="nc" id="L1011">              pw.print(space);</span>
+
+<span class="nc" id="L1013">              pw.print(mc.getMethodInfo().getFullName());</span>
+<span class="nc" id="L1014">              pw.println();</span>
+<span class="nc" id="L1015">            }</span>
+          }
+        } else { // requirement not covered
+<span class="nc" id="L1018">          pw.print(&quot; -                   -                   -                  &quot;);</span>
+
+<span class="nc" id="L1020">          printCoverage(reqMth);</span>
+<span class="nc" id="L1021">          pw.print(&quot;\&quot;&quot; + id + &quot;\&quot;&quot;);</span>
+<span class="nc" id="L1022">          pw.println();</span>
+        }
+
+<span class="nc" id="L1025">        insnAll.add(insnCoverage);</span>
+<span class="nc" id="L1026">        bbAll.add(bbCoverage);</span>
+<span class="nc" id="L1027">        branchAll.add(branchCoverage);</span>
+<span class="nc" id="L1028">      }</span>
+
+<span class="nc" id="L1030">      pw.println();</span>
+<span class="nc" id="L1031">      pw.println(&quot;------------------------------------------------------------------------------------------&quot;);</span>
+
+<span class="nc" id="L1033">      printCoverage(insnAll);</span>
+<span class="nc" id="L1034">      pw.print(space);</span>
+<span class="nc" id="L1035">      printCoverage(bbAll);</span>
+<span class="nc" id="L1036">      pw.print(space);</span>
+<span class="nc" id="L1037">      printCoverage(branchAll);</span>
+<span class="nc" id="L1038">      pw.print(space);</span>
+<span class="nc" id="L1039">      printCoverage(mthAll);</span>
+<span class="nc" id="L1040">      pw.print(space);</span>
+<span class="nc" id="L1041">      printCoverage(reqAll);</span>
+<span class="nc" id="L1042">      pw.print(&quot; total&quot;);</span>
+
+<span class="nc" id="L1044">      pw.println();</span>
+<span class="nc" id="L1045">    }</span>
+
+    void printMethodCoverages(ClassCoverage cc) {
+<span class="nc" id="L1048">      String space = &quot;  &quot;;</span>
+<span class="nc" id="L1049">      boolean result = true;</span>
+
+<span class="nc bnc" id="L1051" title="All 2 branches missed.">      if (cc.methods == null) {</span>
+<span class="nc" id="L1052">        return;</span>
+      }
+
+<span class="nc" id="L1055">      ArrayList&lt;Map.Entry&lt;MethodInfo, MethodCoverage&gt;&gt; mthEntries =</span>
+<span class="nc" id="L1056">              Misc.createSortedEntryList(cc.methods, new Comparator&lt;Map.Entry&lt;MethodInfo, MethodCoverage&gt;&gt;() {</span>
+
+        @Override
+		public int compare(Map.Entry&lt;MethodInfo, MethodCoverage&gt; o1,
+                Map.Entry&lt;MethodInfo, MethodCoverage&gt; o2) {
+<span class="nc" id="L1061">          int a = o2.getValue().getCoveredInsn().percent();</span>
+<span class="nc" id="L1062">          int b = o1.getValue().getCoveredInsn().percent();</span>
+
+<span class="nc bnc" id="L1064" title="All 2 branches missed.">          if (a == b) {</span>
+<span class="nc" id="L1065">            return o2.getKey().getUniqueName().compareTo(o1.getKey().getUniqueName());</span>
+          } else {
+<span class="nc" id="L1067">            return a - b;</span>
+          }
+        }
+      });
+
+<span class="nc" id="L1072">      Coverage emptyCoverage = new Coverage(0, 0);</span>
+
+<span class="nc bnc" id="L1074" title="All 2 branches missed.">      for (Map.Entry&lt;MethodInfo, MethodCoverage&gt; e : mthEntries) {</span>
+<span class="nc" id="L1075">        MethodCoverage mc = e.getValue();</span>
+<span class="nc" id="L1076">        MethodInfo mi = mc.getMethodInfo();</span>
+<span class="nc" id="L1077">        Coverage insnCoverage = mc.getCoveredInsn();</span>
+<span class="nc" id="L1078">        Coverage lineCoverage = mc.getCoveredLines();</span>
+<span class="nc" id="L1079">        Coverage branchCoverage = mc.getCoveredBranches();</span>
+
+<span class="nc bnc" id="L1081" title="All 4 branches missed.">        result = result &amp;&amp; insnCoverage.isFullyCovered();</span>
+
+
+<span class="nc" id="L1084">        pw.print(space);</span>
+<span class="nc" id="L1085">        printCoverage(insnCoverage);</span>
+
+<span class="nc" id="L1087">        pw.print(space);</span>
+<span class="nc" id="L1088">        printCoverage(lineCoverage);</span>
+
+<span class="nc" id="L1090">        pw.print(space);</span>
+<span class="nc" id="L1091">        printCoverage(mc.getCoveredBasicBlocks());</span>
+
+<span class="nc" id="L1093">        pw.print(space);</span>
+<span class="nc" id="L1094">        printCoverage(branchCoverage);</span>
+
+<span class="nc" id="L1096">        pw.print(space);</span>
+<span class="nc" id="L1097">        printCoverage(emptyCoverage);</span>
+
+<span class="nc" id="L1099">        pw.print(space);</span>
+<span class="nc" id="L1100">        pw.print(mi.getLongName());</span>
+<span class="nc" id="L1101">        pw.println();</span>
+
+<span class="nc bnc" id="L1103" title="All 2 branches missed.">        if (showMethodBodies &amp;&amp;</span>
+<span class="nc bnc" id="L1104" title="All 4 branches missed.">                (!insnCoverage.isFullyCovered() || !branchCoverage.isFullyCovered())) {</span>
+<span class="nc" id="L1105">          printBodyCoverage(mc);</span>
+        }
+<span class="nc" id="L1107">      }</span>
+<span class="nc" id="L1108">    }</span>
+
+    void printBodyCoverage(MethodCoverage mc) {
+<span class="nc" id="L1111">      MethodInfo mi = mc.getMethodInfo();</span>
+<span class="nc" id="L1112">      Instruction[] code = mi.getInstructions();</span>
+<span class="nc" id="L1113">      BitSet cov = mc.getExecutedInsn();</span>
+<span class="nc" id="L1114">      int i, start = -1;</span>
+
+<span class="nc" id="L1116">      BitSet handlers = mc.getHandlers();</span>
+
+<span class="nc bnc" id="L1118" title="All 2 branches missed.">      if (excludeHandlers) {</span>
+<span class="nc" id="L1119">        cov.andNot(handlers);</span>
+      }
+
+<span class="nc bnc" id="L1122" title="All 2 branches missed.">      for (i = 0; i &lt; code.length; i++) {</span>
+<span class="nc bnc" id="L1123" title="All 2 branches missed.">        if (!cov.get(i)) { // not covered</span>
+<span class="nc bnc" id="L1124" title="All 2 branches missed.">          if (start == -1) {</span>
+<span class="nc" id="L1125">            start = i;</span>
+          }
+        } else { // covered
+<span class="nc bnc" id="L1128" title="All 2 branches missed.">          if (start != -1) {</span>
+<span class="nc" id="L1129">            printSourceRange(code, handlers, start, i - 1, &quot;&quot;);</span>
+<span class="nc" id="L1130">            start = -1;</span>
+          }
+        }
+      }
+<span class="nc bnc" id="L1134" title="All 2 branches missed.">      if (start != -1) {</span>
+<span class="nc" id="L1135">        printSourceRange(code, handlers, start, i - 1, &quot;&quot;);</span>
+      }
+
+      // now print the missing branches
+<span class="nc" id="L1139">      BitSet branches = mc.getBranches();</span>
+<span class="nc" id="L1140">      lastStart = -1; // reset in case condition and branch are in same line</span>
+<span class="nc bnc" id="L1141" title="All 2 branches missed.">      for (i = 0; i &lt; code.length; i++) {</span>
+<span class="nc bnc" id="L1142" title="All 2 branches missed.">        if (branches.get(i)) {</span>
+<span class="nc" id="L1143">          String prefix = &quot;&quot;;</span>
+<span class="nc" id="L1144">          BitSet bTrue = mc.branchTrue;</span>
+<span class="nc" id="L1145">          BitSet bFalse = mc.branchFalse;</span>
+<span class="nc bnc" id="L1146" title="All 2 branches missed.">          if (bTrue != null) { // means we have condition bit sets</span>
+<span class="nc" id="L1147">            boolean cTrue = bTrue.get(i);</span>
+<span class="nc" id="L1148">            boolean cFalse = bFalse.get(i);</span>
+<span class="nc bnc" id="L1149" title="All 2 branches missed.">            if (cTrue) {</span>
+<span class="nc bnc" id="L1150" title="All 2 branches missed.">              prefix = cFalse ? &quot;&quot; : &quot;F &quot;; // covered or false missing</span>
+            } else {
+<span class="nc bnc" id="L1152" title="All 2 branches missed.">              prefix = cFalse ? &quot;T &quot; : &quot;N &quot;; // true or both missing</span>
+            }
+<span class="nc" id="L1154">          } else {</span>
+<span class="nc" id="L1155">            prefix = &quot;N &quot;;                   // not covered at all</span>
+          }
+
+<span class="nc bnc" id="L1158" title="All 2 branches missed.">          if (prefix != null) {</span>
+<span class="nc" id="L1159">            printSourceRange(code, handlers, i, i, prefix);</span>
+          }
+        }
+      }
+<span class="nc" id="L1163">    }</span>
+
+    // there might be several ranges within the same source line
+<span class="nc" id="L1166">    int lastStart = -1;</span>
+
+    void printSourceRange(Instruction[] code, BitSet handlers,
+            int start, int end, String prefix) {
+
+<span class="nc" id="L1171">      int line = code[start].getLineNumber();</span>
+
+<span class="nc bnc" id="L1173" title="All 2 branches missed.">      if (lastStart == line) {</span>
+<span class="nc" id="L1174">        return;</span>
+      }
+
+<span class="nc" id="L1177">      lastStart = line;</span>
+
+<span class="nc bnc" id="L1179" title="All 2 branches missed.">      printLocation(prefix, &quot;at&quot;, code[start].getSourceLocation(), handlers.get(start) ? &quot;x&quot; : &quot;&quot;);</span>
+
+<span class="nc bnc" id="L1181" title="All 2 branches missed.">      if (line != code[end].getLineNumber()) {</span>
+<span class="nc bnc" id="L1182" title="All 2 branches missed.">        printLocation(prefix, &quot;..&quot;, code[end].getSourceLocation(), handlers.get(end) ? &quot;x&quot; : &quot;&quot;);</span>
+      }
+    // we need the &quot;(..)&quot; wrapper so that Eclipse parses this
+    // as a source location when displaying the report in a console
+<span class="nc" id="L1186">    }</span>
+
+    private void printLocation(String prefix, String at, String location, String suffix) {
+
+<span class="nc" id="L1190">      printBlanks(pw, 84);</span>
+<span class="nc" id="L1191">      pw.print(prefix);</span>
+<span class="nc" id="L1192">      pw.print(at);</span>
+<span class="nc" id="L1193">      pw.print(' ');</span>
+<span class="nc" id="L1194">      pw.print(location);</span>
+<span class="nc" id="L1195">      pw.print(' ');</span>
+<span class="nc" id="L1196">      pw.println(suffix);</span>
+<span class="nc" id="L1197">    }</span>
+
+    void printBlanks(PrintWriter pw, int n) {
+<span class="nc bnc" id="L1200" title="All 2 branches missed.">      for (int i = 0; i &lt; n; i++) {</span>
+<span class="nc" id="L1201">        pw.print(' ');</span>
+      }
+<span class="nc" id="L1203">    }</span>
+
+  }
+
+
+  @Override
+  public void publishFinished(Publisher publisher) {
+
+<span class="nc bnc" id="L1211" title="All 2 branches missed.">    if (clsEntries == null) {</span>
+<span class="nc" id="L1212">      clsEntries = Misc.createSortedEntryList(classes, new Comparator&lt;Map.Entry&lt;String, ClassCoverage&gt;&gt;() {</span>
+
+        @Override
+		public int compare(Map.Entry&lt;String, ClassCoverage&gt; o1,
+                Map.Entry&lt;String, ClassCoverage&gt; o2) {
+<span class="nc" id="L1217">          return o2.getKey().compareTo(o1.getKey());</span>
+        }
+      });
+    }
+
+<span class="nc" id="L1222">    this.publisher = publisher;</span>
+
+<span class="nc bnc" id="L1224" title="All 2 branches missed.">    if (publisher instanceof ConsolePublisher) {</span>
+<span class="nc" id="L1225">      new PublishConsole((ConsolePublisher) publisher).publish();</span>
+    }
+<span class="nc" id="L1227">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

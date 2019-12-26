@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StaticElementInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">StaticElementInfo.java</span></div><h1>StaticElementInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.HashData;
+
+/**
+ * A specialized version of ElementInfo that is used for static fields. Each
+ * registered ClassInfo instance has its own StaticElementInfo instance
+ */
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">public final class StaticElementInfo extends ElementInfo {</span>
+
+  // this is kind of dangerous - make sure these flags are still unused in ElementInfo
+  static final int ATTR_COR_CHANGED    = 0x100000;
+  static final int ATTR_STATUS_CHANGED = 0x200000;
+
+  static final int ATTR_ANY_CHANGED = ElementInfo.ATTR_ANY_CHANGED | ATTR_COR_CHANGED | ATTR_STATUS_CHANGED;
+  
+<span class="pc" id="L35">  protected int classObjectRef = MJIEnv.NULL;</span>
+<span class="pc" id="L36">  protected int status = ClassInfo.UNINITIALIZED;</span>
+
+  
+<span class="nc" id="L39">  public StaticElementInfo () {</span>
+<span class="nc" id="L40">  }</span>
+
+  public StaticElementInfo (int id, ClassInfo ci, Fields f, Monitor m, ThreadInfo ti, ElementInfo eiClsObj) {
+<span class="fc" id="L43">    super(id, ci, f, m, ti);</span>
+
+    // startup classes don't have a class object yet
+<span class="fc bfc" id="L46" title="All 2 branches covered.">    if (eiClsObj != null) {</span>
+<span class="fc" id="L47">      classObjectRef = eiClsObj.getObjectRef();</span>
+    }
+
+<span class="fc" id="L50">    ti.getScheduler().initializeClassSharedness(ti, this);</span>
+<span class="fc" id="L51">  }</span>
+  
+  @Override
+  public ElementInfo getModifiableInstance() {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">    if (!isFrozen()) {</span>
+<span class="fc" id="L56">      return this;</span>
+    } else {
+<span class="fc" id="L58">      Statics statics = ci.getStatics();</span>
+<span class="fc" id="L59">      return statics.getModifiable( objRef);</span>
+    }
+  }
+  
+  @Override
+  public boolean isObject(){
+<span class="nc" id="L65">    return false;</span>
+  }
+
+  @Override
+  public boolean isArray(){
+<span class="nc" id="L70">    return false;</span>
+  }
+  
+  @Override
+  public boolean hasFinalizer() {
+<span class="nc" id="L75">    return false;</span>
+  }
+  
+  @Override
+  protected int getNumberOfFieldsOrElements(){
+    // static fields can't be arrays, those are always heap objects
+<span class="fc" id="L81">    return ci.getNumberOfStaticFields();</span>
+  }
+
+  @Override
+  public boolean hasChanged() {
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    return (attributes &amp; ATTR_ANY_CHANGED) != 0;</span>
+  }
+
+  @Override
+  public void markUnchanged() {
+<span class="fc" id="L91">    attributes &amp;= ~ATTR_ANY_CHANGED;</span>
+<span class="fc" id="L92">  }</span>
+  
+  @Override
+  public void hash(HashData hd) {
+<span class="nc" id="L96">    super.hash(hd);</span>
+<span class="nc" id="L97">    hd.add(classObjectRef);</span>
+<span class="nc" id="L98">    hd.add(status);</span>
+<span class="nc" id="L99">  }</span>
+
+  @Override
+  public boolean equals(Object o) {
+<span class="nc bnc" id="L103" title="All 4 branches missed.">    if (super.equals(o) &amp;&amp; o instanceof StaticElementInfo) {</span>
+<span class="nc" id="L104">      StaticElementInfo other = (StaticElementInfo) o;</span>
+
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      if (classObjectRef != other.classObjectRef) {</span>
+<span class="nc" id="L107">        return false;</span>
+      }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">      if (status != other.status) {</span>
+<span class="nc" id="L110">        return false;</span>
+      }
+
+<span class="nc" id="L113">      return true;</span>
+
+    } else {
+<span class="nc" id="L116">      return false;</span>
+    }
+  }
+
+
+  /**
+  public boolean isShared() {
+    // static fields are always thread global
+    return true;
+  }
+  **/
+
+  public int getStatus() {
+<span class="fc" id="L129">    return status;</span>
+  }
+  
+  void setStatus (int newStatus) {
+<span class="fc" id="L133">    checkIsModifiable();</span>
+    
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">    if (status != newStatus) {</span>
+<span class="fc" id="L136">      status = newStatus;</span>
+<span class="fc" id="L137">      attributes |= ATTR_STATUS_CHANGED;</span>
+    }
+<span class="fc" id="L139">  }</span>
+
+  
+  @Override
+  protected FieldInfo getDeclaredFieldInfo (String clsBase, String fname) {
+<span class="nc" id="L144">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsBase); // &lt;2do&gt; should use CL argument</span>
+<span class="nc" id="L145">    FieldInfo fi = ci.getDeclaredStaticField(fname);</span>
+    
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    if (fi == null) {</span>
+<span class="nc" id="L148">      throw new JPFException(&quot;class &quot; + ci.getName() +</span>
+                                         &quot; has no static field &quot; + fname);
+    }
+<span class="nc" id="L151">    return fi;</span>
+  }
+
+  @Override
+  public FieldInfo getFieldInfo (String fname) {
+<span class="fc" id="L156">    ClassInfo ci = getClassInfo();</span>
+<span class="fc" id="L157">    return ci.getStaticField(fname);</span>
+  }
+  
+  protected void checkFieldInfo (FieldInfo fi) {
+<span class="nc bnc" id="L161" title="All 2 branches missed.">    if (getClassInfo() != fi.getClassInfo()) {</span>
+<span class="nc" id="L162">      throw new JPFException(&quot;wrong static FieldInfo : &quot; + fi.getName()</span>
+<span class="nc" id="L163">          + &quot; , no such field in class &quot; + getClassInfo().getName());</span>
+    }
+<span class="nc" id="L165">  }</span>
+
+  @Override
+  public int getNumberOfFields () {
+<span class="fc" id="L169">    return getClassInfo().getNumberOfStaticFields();</span>
+  }
+  
+  @Override
+  public FieldInfo getFieldInfo (int fieldIndex) {
+<span class="nc" id="L174">    return getClassInfo().getStaticField(fieldIndex);</span>
+  }
+    
+  /**
+   * gc mark all objects stored in static reference fields
+   */
+  void markStaticRoot (Heap heap) {
+<span class="fc" id="L181">    ClassInfo ci = getClassInfo();</span>
+<span class="fc" id="L182">    int n = ci.getNumberOfStaticFields();</span>
+    
+<span class="fc bfc" id="L184" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="fc" id="L185">      FieldInfo fi = ci.getStaticField(i);</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">      if (fi.isReference()) {</span>
+<span class="fc" id="L187">        int objref = fields.getIntValue(fi.getStorageOffset());</span>
+<span class="fc" id="L188">        heap.markStaticRoot(objref);</span>
+      }
+    }
+    
+    // don't forget the class object itself (which is not a field)
+<span class="fc" id="L193">    heap.markStaticRoot(classObjectRef);</span>
+<span class="fc" id="L194">  }</span>
+      
+  public int getClassObjectRef () {
+<span class="fc" id="L197">    return classObjectRef;</span>
+  }
+  
+  public void setClassObjectRef(int r) {
+<span class="fc" id="L201">    checkIsModifiable();</span>
+    
+<span class="fc" id="L203">    classObjectRef = r;</span>
+<span class="fc" id="L204">    attributes |= ATTR_COR_CHANGED;</span>
+<span class="fc" id="L205">  }</span>
+
+  @Override
+  public String toString() {
+<span class="fc" id="L209">    return getClassInfo().getName(); // don't append objRef (useless and misleading for statics)</span>
+  }
+
+  protected ElementInfo getReferencedElementInfo (FieldInfo fi){
+<span class="nc bnc" id="L213" title="All 4 branches missed.">    assert fi.isReference();</span>
+<span class="nc" id="L214">    Heap heap = VM.getVM().getHeap();</span>
+<span class="nc" id="L215">    return heap.get(getIntField(fi));</span>
+  }
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

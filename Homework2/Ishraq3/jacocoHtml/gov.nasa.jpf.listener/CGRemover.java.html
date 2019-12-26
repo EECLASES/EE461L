@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CGRemover.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">CGRemover.java</span></div><h1>CGRemover.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.LocationSpec;
+import gov.nasa.jpf.util.MethodSpec;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+/**
+ * listener that removes CGs for specified locations, method calls or method bodies
+ *
+ * This is an application specific state space optimizer that should be used
+ * carefully since it has to be aware of which CGs can be removed, and which
+ * ones can't (e.g. blocking sync or wait). You also have to be aware of the
+ * order of listener registration, since subsequently registered listeners can
+ * still add new CGs after they got removed here. THIS IS ONLY AN OPTIMIZATION
+ * TOOL THAT SHOULD BE USED IN A WELL KNOWN APPLICATION CONTEXT.
+ *
+ *  cgrm.thread.cg_class = gov.nasa.jpf.vm.ThreadChoiceGenerator
+ *  cgrm.thread.locations = Foobar.java:42                // either a LocationSpec
+ *  cgrm.thread.method_bodies = a.SomeClass.someMethod()  // ..or a MethodSpec for a body
+ *  cgrm.thread.method_calls = b.A.foo(int)               // ..or a MethodSpec for a call
+ *
+ * NOTE: in its current implementation, this listener has to be registered
+ * before targeted classes are loaded
+ */
+public class CGRemover extends ListenerAdapter {
+
+<span class="fc" id="L59">  static JPFLogger log = JPF.getLogger(&quot;gov.nasa.jpf.CGRemover&quot;);</span>
+
+  static class Category {
+    String id;
+
+    Class&lt;?&gt; cgClass;
+
+<span class="fc" id="L66">    ArrayList&lt;LocationSpec&gt; locations = new ArrayList&lt;LocationSpec&gt;();</span>
+<span class="fc" id="L67">    ArrayList&lt;MethodSpec&gt; methodBodies = new ArrayList&lt;MethodSpec&gt;();</span>
+<span class="fc" id="L68">    ArrayList&lt;MethodSpec&gt; methodCalls = new ArrayList&lt;MethodSpec&gt;();</span>
+
+<span class="fc" id="L70">    Category (String id){</span>
+<span class="fc" id="L71">      this.id = id;</span>
+<span class="fc" id="L72">    }</span>
+
+    boolean checkSpecification() {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">      return cgClass != null &amp;&amp;</span>
+<span class="pc bpc" id="L76" title="1 of 6 branches missed.">              (!locations.isEmpty() || !methodBodies.isEmpty() || !methodCalls.isEmpty());</span>
+    }
+  }
+
+  List&lt;Category&gt; categories;
+
+  HashMap&lt;MethodInfo,Category&gt; methodBodies;
+  HashMap&lt;MethodInfo,Category&gt; methodCalls;
+  HashMap&lt;Instruction,Category&gt; locations;
+
+
+<span class="fc" id="L87">  public CGRemover (Config conf){</span>
+<span class="fc" id="L88">    categories = parseCategories(conf);</span>
+<span class="fc" id="L89">  }</span>
+
+  protected List&lt;Category&gt; parseCategories (Config conf){
+<span class="fc" id="L92">    ArrayList&lt;Category&gt; list = new ArrayList&lt;Category&gt;();</span>
+<span class="fc" id="L93">    Category category = null;</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">    for (String key : conf.getKeysStartingWith(&quot;cgrm.&quot;)){</span>
+<span class="fc" id="L96">      String[] kc = conf.getKeyComponents(key);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">      if (kc.length == 3){</span>
+<span class="fc" id="L98">        String k = kc[1];</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if (category != null){</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">          if (!category.id.equals(k)){</span>
+<span class="nc" id="L101">            addCategory(list, category);</span>
+
+<span class="nc" id="L103">            category = new Category(k);</span>
+          }
+        } else {
+<span class="fc" id="L106">          category = new Category(k);</span>
+        }
+
+<span class="fc" id="L109">        k = kc[2];</span>
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (&quot;cg_class&quot;.equals(k)){</span>
+<span class="fc" id="L112">          category.cgClass = conf.getClass(key);</span>
+
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        } else if (&quot;locations&quot;.equals(k)){</span>
+<span class="fc" id="L115">          parseLocationSpecs(category.locations, conf.getStringArray(key));</span>
+
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        } else if (&quot;method_bodies&quot;.equals(k)){</span>
+<span class="fc" id="L118">          parseMethodSpecs(category.methodBodies, conf.getStringArray(key));</span>
+
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        } else if (&quot;method_calls&quot;.equals(k)){</span>
+<span class="fc" id="L121">          parseMethodSpecs(category.methodCalls, conf.getStringArray(key));</span>
+
+        } else {
+          // we might have more options in the future
+<span class="nc" id="L125">          log.warning(&quot;illegal CGRemover option: &quot;, key);</span>
+        }
+
+<span class="fc" id="L128">      } else {</span>
+<span class="nc" id="L129">        log.warning(&quot;illegal CGRemover key: &quot;, key);</span>
+      }
+    }
+
+<span class="fc" id="L133">    addCategory(list, category);</span>
+<span class="fc" id="L134">    return list;</span>
+  }
+
+  protected void addCategory (List&lt;Category&gt; list, Category cat){
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">    if (cat != null) {</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">      if (cat.checkSpecification()) {</span>
+<span class="fc" id="L140">        list.add(cat);</span>
+<span class="fc" id="L141">        log.info(&quot;added category: &quot;, cat.id);</span>
+      } else {
+<span class="nc" id="L143">        log.warning(&quot;incomplete CGRemover category: &quot;, cat.id);</span>
+      }
+    }
+<span class="fc" id="L146">  }</span>
+
+  protected void parseLocationSpecs (List&lt;LocationSpec&gt; list, String[] specs){
+<span class="fc bfc" id="L149" title="All 2 branches covered.">    for (String spec : specs) {</span>
+<span class="fc" id="L150">      LocationSpec locSpec = LocationSpec.createLocationSpec(spec);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">      if (locSpec != null) {</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (locSpec.isAnyLine()){</span>
+<span class="nc" id="L153">          log.warning(&quot;whole file location specs not supported by CGRemover (use cgrm...method_bodies)&quot;);</span>
+        } else {
+<span class="fc" id="L155">          list.add(locSpec);</span>
+        }
+      } else {
+<span class="nc" id="L158">        log.warning(&quot;location spec did not parse: &quot;, spec);</span>
+      }
+    }
+<span class="fc" id="L161">  }</span>
+
+  protected void parseMethodSpecs (List&lt;MethodSpec&gt; list, String[] specs){
+<span class="fc bfc" id="L164" title="All 2 branches covered.">    for (String spec : specs) {</span>
+<span class="fc" id="L165">      MethodSpec mthSpec = MethodSpec.createMethodSpec(spec);</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">      if (mthSpec != null) {</span>
+<span class="fc" id="L167">        list.add(mthSpec);</span>
+      } else {
+<span class="nc" id="L169">        log.warning(&quot;methos spec did not parse: &quot;, spec);</span>
+      }
+    }
+<span class="fc" id="L172">  }</span>
+
+
+  protected void processClass (ClassInfo ci, Category cat){
+<span class="fc" id="L176">    String fname = ci.getSourceFileName();</span>
+
+<span class="fc bfc" id="L178" title="All 2 branches covered.">    for (LocationSpec loc : cat.locations){</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">      if (loc.matchesFile(fname)){ // Ok, we have to dig out the corresponding insns (if any)</span>
+<span class="fc" id="L180">        Instruction[] insns = ci.getMatchingInstructions(loc);</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (insns != null){</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">          if (locations == null){</span>
+<span class="fc" id="L183">            locations = new HashMap&lt;Instruction,Category&gt;();</span>
+          }
+<span class="fc bfc" id="L185" title="All 2 branches covered.">          for (Instruction insn : insns){</span>
+<span class="fc" id="L186">            locations.put(insn, cat);</span>
+          }
+        } else {
+<span class="fc" id="L189">          log.warning(&quot;no insns for location: &quot;, loc, &quot; in class: &quot;, ci.getName());</span>
+        }
+      }
+<span class="fc" id="L192">    }</span>
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">    for (MethodSpec ms : cat.methodBodies){</span>
+<span class="fc" id="L195">      List&lt;MethodInfo&gt; list = ci.getMatchingMethodInfos(ms);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">      if (list != null){</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (MethodInfo mi : list){</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">          if (methodBodies == null){</span>
+<span class="fc" id="L199">            methodBodies = new HashMap&lt;MethodInfo,Category&gt;();</span>
+          }
+<span class="fc" id="L201">          methodBodies.put(mi, cat);</span>
+<span class="fc" id="L202">        }</span>
+      }
+<span class="fc" id="L204">    }</span>
+
+<span class="fc bfc" id="L206" title="All 2 branches covered.">    for (MethodSpec ms : cat.methodCalls){</span>
+<span class="fc" id="L207">      List&lt;MethodInfo&gt; list = ci.getMatchingMethodInfos(ms);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">      if (list != null){</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (MethodInfo mi : list){</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">          if (methodCalls == null){</span>
+<span class="fc" id="L211">            methodCalls = new HashMap&lt;MethodInfo,Category&gt;();</span>
+          }
+<span class="fc" id="L213">          methodCalls.put(mi, cat);</span>
+<span class="fc" id="L214">        }</span>
+      }
+<span class="fc" id="L216">    }</span>
+<span class="fc" id="L217">  }</span>
+
+  protected boolean removeCG (VM vm, Category cat, ChoiceGenerator&lt;?&gt; cg){
+<span class="fc bfc" id="L220" title="All 2 branches covered.">    if (cat != null){</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">      if (cat.cgClass.isAssignableFrom(cg.getClass())){</span>
+<span class="fc" id="L222">        vm.getSystemState().removeNextChoiceGenerator();</span>
+<span class="fc" id="L223">        log.info(&quot;removed CG: &quot;, cg);</span>
+<span class="fc" id="L224">        return true;        </span>
+      }
+    }
+    
+<span class="fc" id="L228">    return false;</span>
+  }
+
+  //--- VMListener interface
+
+  // this is where we turn Categories into MethodInfos and Instructions to watch out for
+  @Override
+  public void classLoaded (VM vm, ClassInfo loadedClass){
+<span class="fc bfc" id="L236" title="All 2 branches covered.">    for (Category cat : categories){</span>
+<span class="fc" id="L237">      processClass(loadedClass, cat);</span>
+<span class="fc" id="L238">    }</span>
+<span class="fc" id="L239">  }</span>
+
+  // this is our main purpose in life
+  @Override
+  public void choiceGeneratorRegistered (VM vm, ChoiceGenerator&lt;?&gt; nextCG, ThreadInfo ti, Instruction executedInsn){
+<span class="fc" id="L244">    ChoiceGenerator&lt;?&gt; cg = vm.getNextChoiceGenerator();</span>
+<span class="fc" id="L245">    Instruction insn = cg.getInsn();</span>
+
+<span class="fc bfc" id="L247" title="All 2 branches covered.">    if (locations != null){</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">      if ( removeCG(vm, locations.get(insn), cg)){</span>
+<span class="fc" id="L249">        return;</span>
+      }
+    }
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">    if (insn instanceof JVMInvokeInstruction){</span>
+<span class="fc" id="L254">      MethodInfo invokedMi = ((JVMInvokeInstruction)insn).getInvokedMethod();</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">      if (methodCalls != null) {</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (removeCG(vm, methodCalls.get(invokedMi), cg)) {</span>
+<span class="fc" id="L257">          return;</span>
+        }
+      }
+    }
+
+<span class="fc bfc" id="L262" title="All 2 branches covered.">    if (methodBodies != null){</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">      if (removeCG(vm, methodBodies.get(insn.getMethodInfo()), cg)) {</span>
+<span class="fc" id="L264">        return;</span>
+      }
+    }
+<span class="fc" id="L267">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

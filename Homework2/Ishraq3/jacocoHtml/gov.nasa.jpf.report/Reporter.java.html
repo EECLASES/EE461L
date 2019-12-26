@@ -1,0 +1,477 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Reporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.report</a> &gt; <span class="el_source">Reporter.java</span></div><h1>Reporter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.report;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFListener;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.search.SearchListenerAdapter;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Path;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Properties;
+import java.util.logging.Logger;
+
+/**
+ * this is our default report generator, which is heavily configurable
+ * via our standard properties. Note this gets instantiated and
+ * registered automatically via JPF.addListeners(), so you don't
+ * have to add it explicitly
+ */
+
+public class Reporter extends SearchListenerAdapter {
+
+<span class="fc" id="L47">  public static Logger log = JPF.getLogger(&quot;report&quot;);</span>
+
+  protected Config conf;
+  protected JPF jpf;
+  protected Search search;
+  protected VM vm;
+
+  protected Date started, finished;
+  protected Statistics stat; // the object that collects statistics
+<span class="fc" id="L56">  protected List&lt;Publisher&gt; publishers = new ArrayList&lt;Publisher&gt;();</span>
+  
+  protected Thread probeTimer;
+  
+<span class="fc" id="L60">  public Reporter (Config conf, JPF jpf) {</span>
+<span class="fc" id="L61">    this.conf = conf;</span>
+<span class="fc" id="L62">    this.jpf = jpf;</span>
+<span class="fc" id="L63">    search = jpf.getSearch();</span>
+<span class="fc" id="L64">    vm = jpf.getVM();</span>
+<span class="fc" id="L65">    int probeInterval = conf.getInt(&quot;report.probe_interval&quot;);</span>
+<span class="pc bpc" id="L66" title="2 of 4 branches missed.">    boolean reportStats = conf.getBoolean(&quot;report.statistics&quot;, false) || (probeInterval &gt; 0);</span>
+
+<span class="fc" id="L68">    started = new Date();</span>
+
+<span class="fc" id="L70">    addConfiguredPublishers(conf);</span>
+
+<span class="fc bfc" id="L72" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">      if (reportStats || publisher.hasToReportStatistics()) {</span>
+<span class="fc" id="L74">        reportStats = true;</span>
+      }
+
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">      if (publisher instanceof JPFListener) {</span>
+<span class="nc" id="L78">        jpf.addListener((JPFListener)publisher);</span>
+      }
+<span class="fc" id="L80">    }</span>
+
+<span class="fc bfc" id="L82" title="All 2 branches covered.">    if (reportStats){</span>
+<span class="fc" id="L83">      getRegisteredStatistics();</span>
+    }
+    
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">    if (probeInterval &gt; 0){</span>
+<span class="nc" id="L87">      probeTimer = createProbeIntervalTimer(probeInterval);</span>
+    }
+<span class="fc" id="L89">  }</span>
+
+  protected Thread createProbeIntervalTimer (final int probeInterval){
+<span class="nc" id="L92">    Thread timer = new Thread( new Runnable(){</span>
+        @Override
+		public void run(){
+<span class="nc" id="L95">          log.info(&quot;probe timer running&quot;);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">          while (!search.isDone()){</span>
+            try {
+<span class="nc" id="L98">              Thread.sleep( probeInterval * 1000);</span>
+<span class="nc" id="L99">              search.probeSearch(); // this is only a request</span>
+<span class="nc" id="L100">            } catch (InterruptedException ix) {</span>
+              // nothing
+<span class="nc" id="L102">            }</span>
+          }
+<span class="nc" id="L104">          log.info(&quot;probe timer terminating&quot;);</span>
+<span class="nc" id="L105">        }</span>
+     }, &quot;probe-timer&quot;);
+<span class="nc" id="L107">    timer.setDaemon(true);</span>
+    
+    // we don't start before the Search is started
+    
+<span class="nc" id="L111">    return timer;</span>
+  }
+  
+  /**
+   * called after the JPF run is finished. Shouldn't be public, but is called by JPF
+   */
+  public void cleanUp(){
+    // nothing yet
+<span class="fc" id="L119">  }</span>
+  
+  public Statistics getRegisteredStatistics(){
+    
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">    if (stat == null){ // none yet, initialize</span>
+      // first, check if somebody registered one explicitly
+<span class="fc" id="L125">      stat = vm.getNextListenerOfType(Statistics.class, null);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">      if (stat == null){</span>
+<span class="fc" id="L127">        stat = conf.getInstance(&quot;report.statistics.class@stat&quot;, Statistics.class);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (stat == null) {</span>
+<span class="fc" id="L129">          stat = new Statistics();</span>
+        }
+<span class="fc" id="L131">        jpf.addListener(stat);</span>
+      }
+    }
+    
+<span class="fc" id="L135">    return stat;</span>
+  }
+  
+  
+  void addConfiguredPublishers (Config conf) {
+<span class="fc" id="L140">    String[] def = { &quot;console&quot; };</span>
+
+<span class="fc" id="L142">    Class&lt;?&gt;[] argTypes = { Config.class, Reporter.class };</span>
+<span class="fc" id="L143">    Object[] args = { conf, this };</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">    for (String id : conf.getStringArray(&quot;report.publisher&quot;, def)){</span>
+<span class="fc" id="L146">      Publisher p = conf.getInstance(&quot;report.&quot; + id + &quot;.class&quot;,</span>
+                                     Publisher.class, argTypes, args);
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">      if (p != null){</span>
+<span class="fc" id="L149">        publishers.add(p);</span>
+      } else {
+<span class="nc" id="L151">        log.warning(&quot;could not instantiate publisher class: &quot; + id);</span>
+      }
+    }
+<span class="fc" id="L154">  }</span>
+
+  public void addPublisher( Publisher newPublisher){
+<span class="nc" id="L157">    publishers.add(newPublisher);</span>
+<span class="nc" id="L158">  }</span>
+  
+  public List&lt;Publisher&gt; getPublishers() {
+<span class="nc" id="L161">    return publishers;</span>
+  }
+
+  public boolean hasToReportTrace() {
+<span class="fc bfc" id="L165" title="All 2 branches covered.">    for (Publisher p : publishers) {</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">      if (p.hasTopic(&quot;trace&quot;)) {</span>
+<span class="nc" id="L167">        return true;</span>
+      }
+<span class="fc" id="L169">    }</span>
+
+<span class="fc" id="L171">    return false;</span>
+  }
+
+  public boolean hasToReportOutput() {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    for (Publisher p : publishers) {</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">      if (p.hasTopic(&quot;output&quot;)) {</span>
+<span class="nc" id="L177">        return true;</span>
+      }
+<span class="fc" id="L179">    }</span>
+
+<span class="fc" id="L181">    return false;</span>
+  }
+
+
+  public &lt;T extends Publisher&gt; boolean addPublisherExtension (Class&lt;T&gt; publisherCls, PublisherExtension e) {
+<span class="fc" id="L186">    boolean added = false;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">    for (Publisher p : publishers) {</span>
+<span class="fc" id="L188">      Class&lt;?&gt; pCls = p.getClass();</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">      if (publisherCls.isAssignableFrom(pCls)) {</span>
+<span class="fc" id="L190">        p.addExtension(e);</span>
+<span class="fc" id="L191">        added = true;</span>
+      }
+<span class="fc" id="L193">    }</span>
+
+<span class="fc" id="L195">    return added;</span>
+  }
+
+  public &lt;T extends Publisher&gt; void setPublisherItems (Class&lt;T&gt; publisherCls,
+                                                        int category, String[] topics){
+<span class="nc bnc" id="L200" title="All 2 branches missed.">    for (Publisher p : publishers) {</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">      if (publisherCls.isInstance(p)) {</span>
+<span class="nc" id="L202">        p.setItems(category,topics);</span>
+<span class="nc" id="L203">        return;</span>
+      }
+<span class="nc" id="L205">    }</span>
+<span class="nc" id="L206">  }</span>
+
+  boolean contains (String key, String[] list) {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">    for (String s : list) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">      if (s.equalsIgnoreCase(key)){</span>
+<span class="nc" id="L211">        return true;</span>
+      }
+    }
+<span class="nc" id="L214">    return false;</span>
+  }
+
+
+  //--- the publishing phases
+  
+  protected void publishStart() {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="fc" id="L222">      publisher.openChannel();</span>
+<span class="fc" id="L223">      publisher.publishProlog();</span>
+<span class="fc" id="L224">      publisher.publishStart();</span>
+<span class="fc" id="L225">    }</span>
+<span class="fc" id="L226">  }</span>
+
+  protected void publishTransition() {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="fc" id="L230">      publisher.publishTransition();</span>
+<span class="fc" id="L231">    }</span>
+<span class="fc" id="L232">  }</span>
+
+  protected void publishPropertyViolation() {
+<span class="fc bfc" id="L235" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="fc" id="L236">      publisher.publishPropertyViolation();</span>
+<span class="fc" id="L237">    }</span>
+<span class="fc" id="L238">  }</span>
+
+  protected void publishConstraintHit() {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="fc" id="L242">      publisher.publishConstraintHit();</span>
+<span class="fc" id="L243">    }</span>
+<span class="fc" id="L244">  }</span>
+
+  protected void publishFinished() {
+<span class="fc bfc" id="L247" title="All 2 branches covered.">    for (Publisher publisher : publishers) {</span>
+<span class="fc" id="L248">      publisher.publishFinished();</span>
+<span class="fc" id="L249">      publisher.publishEpilog();</span>
+<span class="fc" id="L250">      publisher.closeChannel();</span>
+<span class="fc" id="L251">    }</span>
+<span class="fc" id="L252">  }</span>
+
+  protected void publishProbe(){
+<span class="nc bnc" id="L255" title="All 2 branches missed.">    for (Publisher publisher : publishers) {</span>
+<span class="nc" id="L256">      publisher.publishProbe();</span>
+<span class="nc" id="L257">    }    </span>
+<span class="nc" id="L258">  }</span>
+  
+  //--- the listener interface that drives report generation
+
+  @Override
+  public void searchStarted (Search search){
+<span class="fc" id="L264">    publishStart();</span>
+    
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">    if (probeTimer != null){</span>
+<span class="nc" id="L267">      probeTimer.start();</span>
+    }
+<span class="fc" id="L269">  }</span>
+
+  @Override
+  public void stateAdvanced (Search search) {
+<span class="fc" id="L273">    publishTransition();</span>
+<span class="fc" id="L274">  }</span>
+
+  @Override
+  public void searchConstraintHit(Search search) {
+<span class="fc" id="L278">    publishConstraintHit();</span>
+<span class="fc" id="L279">  }</span>
+
+  @Override
+  public void searchProbed (Search search){
+<span class="nc" id="L283">    publishProbe();</span>
+<span class="nc" id="L284">  }</span>
+
+  @Override
+  public void propertyViolated (Search search) {
+<span class="fc" id="L288">    publishPropertyViolation();</span>
+<span class="fc" id="L289">  }</span>
+
+  @Override
+  public void searchFinished (Search search){
+<span class="fc" id="L293">    finished = new Date();</span>
+
+<span class="fc" id="L295">    publishFinished();</span>
+    
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">    if (probeTimer != null){</span>
+      // we could interrupt, but it's a daemon anyways
+<span class="nc" id="L299">      probeTimer = null;</span>
+    }
+<span class="fc" id="L301">  }</span>
+
+
+  //--- various getters
+  
+  public Date getStartDate() {
+<span class="fc" id="L307">    return started;</span>
+  }
+
+  public Date getFinishedDate () {
+<span class="fc" id="L311">    return finished;</span>
+  }
+    
+  public VM getVM() {
+<span class="fc" id="L315">    return vm;</span>
+  }
+
+  public Search getSearch() {
+<span class="nc" id="L319">    return search;</span>
+  }
+
+  public List&lt;Error&gt; getErrors () {
+<span class="fc" id="L323">    return search.getErrors();</span>
+  }
+
+  public Error getCurrentError () {
+<span class="fc" id="L327">    return search.getCurrentError();</span>
+  }
+
+  public String getLastSearchConstraint () {
+<span class="fc" id="L331">    return search.getLastSearchConstraint();</span>
+  }
+
+  public String getCurrentErrorId () {
+<span class="fc" id="L335">    Error e = getCurrentError();</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">    if (e != null) {</span>
+<span class="fc" id="L337">      return &quot;#&quot; + e.getId();</span>
+    } else {
+<span class="fc" id="L339">      return &quot;&quot;;</span>
+    }
+  }
+
+  public int getNumberOfErrors() {
+<span class="nc" id="L344">    return search.getErrors().size();</span>
+  }
+
+  public Statistics getStatistics() {
+<span class="nc" id="L348">    return stat;</span>
+  }
+
+  public Statistics getStatisticsSnapshot () {
+<span class="nc" id="L352">    return stat.clone();</span>
+  }
+  
+  /**
+   * in ms
+   */
+  public long getElapsedTime () {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">    Date d = (finished != null) ? finished : new Date();</span>
+<span class="nc" id="L360">    long t = d.getTime() - started.getTime();</span>
+<span class="nc" id="L361">    return t;</span>
+  }
+
+  public Path getPath (){
+<span class="nc" id="L365">    return vm.getClonedPath();</span>
+  }
+
+  public String getJPFBanner () {
+<span class="fc" id="L369">    StringBuilder sb = new StringBuilder();</span>
+    
+<span class="fc" id="L371">    sb.append(&quot;JavaPathfinder core system v&quot;);</span>
+<span class="fc" id="L372">    sb.append(JPF.VERSION);</span>
+    
+<span class="fc" id="L374">    String rev = getRevision();</span>
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">    if (rev != null){</span>
+<span class="fc" id="L376">      sb.append(&quot; (rev &quot;);</span>
+<span class="fc" id="L377">      sb.append(rev);</span>
+<span class="fc" id="L378">      sb.append(')');</span>
+    }
+    
+<span class="fc" id="L381">    sb.append(&quot; - (C) 2005-2014 United States Government. All rights reserved.&quot;);</span>
+    
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">    if (conf.getBoolean(&quot;report.show_repository&quot;, false)) {</span>
+<span class="nc" id="L384">      String repInfo =  getRepositoryInfo();</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">      if (repInfo != null) {</span>
+<span class="nc" id="L386">        sb.append( repInfo);</span>
+      }
+    }
+    
+<span class="fc" id="L390">    return sb.toString();</span>
+  }
+
+
+  protected String getRevision() {
+    try {
+<span class="fc" id="L396">      InputStream is = JPF.class.getResourceAsStream(&quot;.version&quot;);</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">      if (is != null){</span>
+<span class="fc" id="L398">        int len = is.available();</span>
+<span class="fc" id="L399">        byte[] data = new byte[len];</span>
+<span class="fc" id="L400">        is.read(data);</span>
+<span class="fc" id="L401">        is.close();</span>
+<span class="fc" id="L402">        return new String(data).trim();</span>
+        
+      } else {
+<span class="nc" id="L405">        return null;</span>
+      }
+      
+<span class="nc" id="L408">    } catch (Throwable t){</span>
+<span class="nc" id="L409">      return null;</span>
+    }
+  }
+  
+  protected String getRepositoryInfo() {
+    try {
+<span class="nc" id="L415">      InputStream is = JPF.class.getResourceAsStream(&quot;build.properties&quot;);</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">      if (is != null){</span>
+<span class="nc" id="L417">        Properties revInfo = new Properties();</span>
+<span class="nc" id="L418">        revInfo.load(is);</span>
+
+<span class="nc" id="L420">        StringBuffer sb = new StringBuffer();</span>
+<span class="nc" id="L421">        String date = revInfo.getProperty(&quot;date&quot;);</span>
+<span class="nc" id="L422">        String author = revInfo.getProperty(&quot;author&quot;);</span>
+<span class="nc" id="L423">        String rev = revInfo.getProperty(&quot;rev&quot;);</span>
+<span class="nc" id="L424">        String machine = revInfo.getProperty(&quot;hostname&quot;);</span>
+<span class="nc" id="L425">        String loc = revInfo.getProperty(&quot;location&quot;);</span>
+<span class="nc" id="L426">        String upstream = revInfo.getProperty(&quot;upstream&quot;);</span>
+
+<span class="nc" id="L428">        return String.format(&quot;%s %s %s %s %s&quot;, date,author,rev,machine,loc);</span>
+      }
+<span class="nc" id="L430">    } catch (IOException iox) {</span>
+<span class="nc" id="L431">      return null;</span>
+<span class="nc" id="L432">    }</span>
+
+<span class="nc" id="L434">    return null;</span>
+  }
+
+  
+  public String getHostName () {
+    try {
+<span class="fc" id="L440">      InetAddress in = InetAddress.getLocalHost();</span>
+<span class="fc" id="L441">      String hostName = in.getHostName();</span>
+<span class="fc" id="L442">      return hostName;</span>
+<span class="nc" id="L443">    } catch (Throwable t) {</span>
+<span class="nc" id="L444">      return &quot;localhost&quot;;</span>
+    }
+  }
+
+  public String getUser() {
+<span class="fc" id="L449">    return System.getProperty(&quot;user.name&quot;);</span>
+  }
+
+  public String getSuT() {
+<span class="fc" id="L453">    return vm.getSUTDescription();</span>
+  }
+  
+  public String getJava (){
+<span class="fc" id="L457">    String vendor = System.getProperty(&quot;java.vendor&quot;);</span>
+<span class="fc" id="L458">    String version = System.getProperty(&quot;java.version&quot;);</span>
+<span class="fc" id="L459">    return vendor + &quot;/&quot; + version;</span>
+  }
+
+  public String getArch () {
+<span class="fc" id="L463">    String arch = System.getProperty(&quot;os.arch&quot;);</span>
+<span class="fc" id="L464">    Runtime rt = Runtime.getRuntime();</span>
+<span class="fc" id="L465">    String type = arch + &quot;/&quot; + rt.availableProcessors();</span>
+
+<span class="fc" id="L467">    return type;</span>
+  }
+
+  public String getOS () {
+<span class="fc" id="L471">    String name = System.getProperty(&quot;os.name&quot;);</span>
+<span class="fc" id="L472">    String version = System.getProperty(&quot;os.version&quot;);</span>
+<span class="fc" id="L473">    return name + &quot;/&quot; + version;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

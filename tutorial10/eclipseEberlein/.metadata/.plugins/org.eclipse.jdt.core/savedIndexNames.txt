@@ -1,0 +1,18 @@
+INDEX VERSION 1.131+/home/miguel/Documents/EE461L/tutorial10/eclipseEberlein/.metadata/.plugins/org.eclipse.jdt.core
+468361230.index
+3304991267.index
+2831262645.index
+288483284.index
+2050160870.index
+1499926217.index
+2005017129.index
+3297528810.index
+564179625.index
+649955850.index
+3681211624.index
+3424455323.index
+3221153583.index
+3314637384.index
+3037358795.index
+1273561918.index
+3683590060.index

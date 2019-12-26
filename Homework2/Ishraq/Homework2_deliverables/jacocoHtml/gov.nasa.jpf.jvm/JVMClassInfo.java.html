@@ -1,0 +1,1045 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMClassInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMClassInfo.java</span></div><h1>JVMClassInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.AbstractTypeAnnotationInfo;
+import gov.nasa.jpf.vm.AnnotationInfo;
+import gov.nasa.jpf.vm.BootstrapMethodInfo;
+import gov.nasa.jpf.vm.BytecodeAnnotationInfo;
+import gov.nasa.jpf.vm.BytecodeTypeParameterAnnotationInfo;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassInfoException;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ClassParseException;
+import gov.nasa.jpf.vm.DirectCallStackFrame;
+import gov.nasa.jpf.vm.ExceptionHandler;
+import gov.nasa.jpf.vm.ExceptionParameterAnnotationInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.FormalParameterAnnotationInfo;
+import gov.nasa.jpf.vm.GenericSignatureHolder;
+import gov.nasa.jpf.vm.InfoObject;
+import gov.nasa.jpf.vm.LocalVarInfo;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NativeMethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.SuperTypeAnnotationInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.ThrowsAnnotationInfo;
+import gov.nasa.jpf.vm.TypeAnnotationInfo;
+import gov.nasa.jpf.vm.TypeParameterAnnotationInfo;
+import gov.nasa.jpf.vm.TypeParameterBoundAnnotationInfo;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.VariableAnnotationInfo;
+
+/**
+ * a ClassInfo that was created from a Java classfile
+ */
+public class JVMClassInfo extends ClassInfo {
+
+  /**
+   * this is the inner class that does the actual ClassInfo initialization from ClassFile. It is an inner class so that
+   * (a) it can set ClassInfo fields, (b) it can extend ClassFileReaderAdapter, and (c) we don't clutter JVMClassInfo with
+   * fields that are only temporarily used during parsing
+   */
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">  class Initializer extends ClassFileReaderAdapter {</span>
+    protected ClassFile cf;
+    protected JVMCodeBuilder cb;
+
+<span class="fc" id="L72">    public Initializer (ClassFile cf, JVMCodeBuilder cb) throws ClassParseException {</span>
+<span class="fc" id="L73">      this.cf = cf;</span>
+<span class="fc" id="L74">      this.cb = cb;</span>
+      
+<span class="fc" id="L76">      cf.parse(this);</span>
+<span class="fc" id="L77">    }</span>
+
+    @Override
+    public void setClass (ClassFile cf, String clsName, String superClsName, int flags, int cpCount) throws ClassParseException {
+<span class="fc" id="L81">      JVMClassInfo.this.setClass(clsName, superClsName, flags, cpCount);</span>
+<span class="fc" id="L82">    }</span>
+
+    @Override
+    public void setClassAttribute (ClassFile cf, int attrIndex, String name, int attrLength) {
+<span class="fc bfc" id="L86" title="All 2 branches covered.">      if (name == ClassFile.SOURCE_FILE_ATTR) {</span>
+<span class="fc" id="L87">        cf.parseSourceFileAttr(this, null);</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">      } else if (name == ClassFile.SIGNATURE_ATTR) {</span>
+<span class="fc" id="L90">        cf.parseSignatureAttr(this, JVMClassInfo.this);</span>
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L93">        cf.parseAnnotationsAttr(this, JVMClassInfo.this);</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR) {</span>
+        //cf.parseAnnotationsAttr(this, ClassInfo.this);
+        
+<span class="fc bfc" id="L98" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L99">        cf.parseTypeAnnotationsAttr(this, JVMClassInfo.this);</span>
+        
+<span class="fc bfc" id="L101" title="All 2 branches covered.">      } else if (name == ClassFile.INNER_CLASSES_ATTR) {</span>
+<span class="fc" id="L102">        cf.parseInnerClassesAttr(this, JVMClassInfo.this);</span>
+
+<span class="fc bfc" id="L104" title="All 2 branches covered.">      } else if (name == ClassFile.ENCLOSING_METHOD_ATTR) {</span>
+<span class="fc" id="L105">        cf.parseEnclosingMethodAttr(this, JVMClassInfo.this);</span>
+        
+<span class="fc bfc" id="L107" title="All 2 branches covered.">      } else if (name == ClassFile.BOOTSTRAP_METHOD_ATTR) {</span>
+<span class="fc" id="L108">        cf.parseBootstrapMethodAttr(this, JVMClassInfo.this);</span>
+        
+      }
+<span class="fc" id="L111">    }</span>
+    
+    @Override
+    public void setBootstrapMethodCount (ClassFile cf, Object tag, int count) {
+<span class="fc" id="L115">      bootstrapMethods = new BootstrapMethodInfo[count];</span>
+<span class="fc" id="L116">    }</span>
+    
+    @Override
+    public void setBootstrapMethod (ClassFile cf, Object tag, int idx, int refKind, String cls, String mth, String descriptor, int[] cpArgs) {    
+   
+<span class="fc" id="L121">      int lambdaRefKind = cf.mhRefTypeAt(cpArgs[1]);</span>
+      
+<span class="fc" id="L123">      int mrefIdx = cf.mhMethodRefIndexAt(cpArgs[1]);</span>
+<span class="fc" id="L124">      String clsName = cf.methodClassNameAt(mrefIdx).replace('/', '.');</span>
+      ClassInfo eclosingLambdaCls;
+      
+<span class="fc bfc" id="L127" title="All 2 branches covered.">      if(!clsName.equals(JVMClassInfo.this.getName())) {</span>
+<span class="fc" id="L128">        eclosingLambdaCls = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+      } else {
+<span class="fc" id="L130">        eclosingLambdaCls = JVMClassInfo.this;</span>
+      }
+      
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">      assert (eclosingLambdaCls!=null);</span>
+      
+<span class="fc" id="L135">      String mthName = cf.methodNameAt(mrefIdx);</span>
+<span class="fc" id="L136">      String signature = cf.methodDescriptorAt(mrefIdx);</span>
+      
+<span class="fc" id="L138">      MethodInfo lambdaBody = eclosingLambdaCls.getMethod(mthName + signature, false);</span>
+      
+<span class="fc" id="L140">      String samDescriptor = cf.methodTypeDescriptorAt(cpArgs[2]);</span>
+            
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">      if(lambdaBody!=null) {</span>
+<span class="fc" id="L143">        bootstrapMethods[idx] = new BootstrapMethodInfo(lambdaRefKind, JVMClassInfo.this, lambdaBody, samDescriptor);</span>
+      }
+<span class="fc" id="L145">    }</span>
+    
+   //--- inner/enclosing classes 
+    @Override
+    public void setInnerClassCount (ClassFile cf, Object tag, int classCount) {
+<span class="fc" id="L150">      innerClassNames = new String[classCount];</span>
+<span class="fc" id="L151">    }</span>
+
+    @Override
+    public void setInnerClass (ClassFile cf, Object tag, int innerClsIndex,
+            String outerName, String innerName, String innerSimpleName, int accessFlags) {
+      // Ok, this is a total mess - some names are in dot notation, others use '/'
+      // and to make it even more confusing, some InnerClass attributes refer NOT
+      // to the currently parsed class, so we have to check if we are the outerName,
+      // but then 'outerName' can also be null instead of our own name.
+      // Oh, and there are also InnerClass attributes that have their own name as inner names
+      // (see java/lang/String$CaseInsensitiveComparator or ...System and java/lang/System$1 for instance)
+<span class="fc bfc" id="L162" title="All 2 branches covered.">      if (outerName != null) {</span>
+<span class="fc" id="L163">        outerName = Types.getClassNameFromTypeName(outerName);</span>
+      }
+
+<span class="fc" id="L166">      innerName = Types.getClassNameFromTypeName(innerName);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">      if (!innerName.equals(name)) {</span>
+<span class="fc" id="L168">        innerClassNames[innerClsIndex] = innerName;</span>
+
+      } else {
+        // this refers to ourself, and can be a force fight with setEnclosingMethod
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (outerName != null) { // only set if this is a direct member, otherwise taken from setEnclosingMethod</span>
+<span class="fc" id="L173">          setEnclosingClass(outerName);</span>
+        }
+      }
+<span class="fc" id="L176">    }</span>
+
+    @Override
+    public void setEnclosingMethod (ClassFile cf, Object tag, String enclosingClassName, String enclosingMethodName, String descriptor) {
+<span class="fc" id="L180">      setEnclosingClass(enclosingClassName);</span>
+
+<span class="fc bfc" id="L182" title="All 2 branches covered.">      if (enclosingMethodName != null) {</span>
+<span class="fc" id="L183">        JVMClassInfo.this.setEnclosingMethod(enclosingMethodName + descriptor);</span>
+      }
+<span class="fc" id="L185">    }</span>
+
+    @Override
+    public void setInnerClassesDone (ClassFile cf, Object tag) {
+      // we have to check if we allocated too many - see the mess above
+<span class="fc bfc" id="L190" title="All 2 branches covered.">      for (int i = 0; i &lt; innerClassNames.length; i++) {</span>
+<span class="fc" id="L191">        innerClassNames = Misc.stripNullElements(innerClassNames);</span>
+      }
+<span class="fc" id="L193">    }</span>
+
+    //--- source file
+    @Override
+    public void setSourceFile (ClassFile cf, Object tag, String fileName) {
+<span class="fc" id="L198">      JVMClassInfo.this.setSourceFile(fileName);</span>
+<span class="fc" id="L199">    }</span>
+    
+    //--- interfaces
+    @Override
+    public void setInterfaceCount (ClassFile cf, int ifcCount) {
+<span class="fc" id="L204">      interfaceNames = new String[ifcCount];</span>
+<span class="fc" id="L205">    }</span>
+
+    @Override
+    public void setInterface (ClassFile cf, int ifcIndex, String ifcName) {
+<span class="fc" id="L209">      interfaceNames[ifcIndex] = Types.getClassNameFromTypeName(ifcName);</span>
+<span class="fc" id="L210">    }</span>
+
+    //--- fields
+    // unfortunately they are stored together in the ClassFile, i.e. we 
+    // have to split them up once we are done
+    
+    protected FieldInfo[] fields;
+    protected FieldInfo curFi; // need to cache for attributes
+
+    @Override
+    public void setFieldCount (ClassFile cf, int fieldCount) {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">      if (fieldCount &gt; 0){</span>
+<span class="fc" id="L222">        fields = new FieldInfo[fieldCount];</span>
+      } else {
+<span class="fc" id="L224">        fields = null;</span>
+      }
+<span class="fc" id="L226">    }</span>
+
+    @Override
+    public void setField (ClassFile cf, int fieldIndex, int accessFlags, String name, String descriptor) {
+<span class="fc" id="L230">      FieldInfo fi = FieldInfo.create(name, descriptor, accessFlags);</span>
+<span class="fc" id="L231">      fields[fieldIndex] = fi;</span>
+<span class="fc" id="L232">      curFi = fi; // for attributes</span>
+<span class="fc" id="L233">    }</span>
+
+    @Override
+    public void setFieldAttribute (ClassFile cf, int fieldIndex, int attrIndex, String name, int attrLength) {
+<span class="fc bfc" id="L237" title="All 2 branches covered.">      if (name == ClassFile.SIGNATURE_ATTR) {</span>
+<span class="fc" id="L238">        cf.parseSignatureAttr(this, curFi);</span>
+
+<span class="fc bfc" id="L240" title="All 2 branches covered.">      } else if (name == ClassFile.CONST_VALUE_ATTR) {</span>
+<span class="fc" id="L241">        cf.parseConstValueAttr(this, curFi);</span>
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L244">        cf.parseAnnotationsAttr(this, curFi);</span>
+
+<span class="fc bfc" id="L246" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L247">        cf.parseTypeAnnotationsAttr(this, curFi);</span>
+        
+<span class="fc bfc" id="L249" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR) {</span>
+        //cf.parseAnnotationsAttr(this, curFi);
+      }
+<span class="fc" id="L252">    }</span>
+
+    @Override
+    public void setConstantValue (ClassFile cf, Object tag, Object constVal) {
+<span class="fc" id="L256">      curFi.setConstantValue(constVal);</span>
+<span class="fc" id="L257">    }</span>
+
+    @Override
+    public void setFieldsDone (ClassFile cf) {
+<span class="fc" id="L261">      setFields(fields);</span>
+<span class="fc" id="L262">    }</span>
+ 
+  //--- declaredMethods
+    protected MethodInfo curMi;
+
+    @Override
+    public void setMethodCount (ClassFile cf, int methodCount) {
+<span class="fc" id="L269">      methods = new LinkedHashMap&lt;String, MethodInfo&gt;();</span>
+<span class="fc" id="L270">    }</span>
+
+    @Override
+    public void setMethod (ClassFile cf, int methodIndex, int accessFlags, String name, String signature) {
+<span class="fc" id="L274">      MethodInfo mi = MethodInfo.create(name, signature, accessFlags);</span>
+<span class="fc" id="L275">      curMi = mi;</span>
+<span class="fc" id="L276">    }</span>
+    
+    @Override
+    public void setMethodDone (ClassFile cf, int methodIndex){
+<span class="fc" id="L280">      curMi.setLocalVarAnnotations();</span>
+
+<span class="fc" id="L282">      JVMClassInfo.this.setMethod(curMi);</span>
+<span class="fc" id="L283">    }</span>
+
+    @Override
+    public void setMethodAttribute (ClassFile cf, int methodIndex, int attrIndex, String name, int attrLength) {
+<span class="fc bfc" id="L287" title="All 2 branches covered.">      if (name == ClassFile.CODE_ATTR) {</span>
+<span class="fc" id="L288">        cf.parseCodeAttr(this, curMi);</span>
+
+<span class="fc bfc" id="L290" title="All 2 branches covered.">      } else if (name == ClassFile.SIGNATURE_ATTR) {</span>
+<span class="fc" id="L291">        cf.parseSignatureAttr(this, curMi);</span>
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">      } else if (name == ClassFile.EXCEPTIONS_ATTR) {</span>
+<span class="fc" id="L294">        cf.parseExceptionAttr(this, curMi);</span>
+
+<span class="fc bfc" id="L296" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L297">        cf.parseAnnotationsAttr(this, curMi);</span>
+
+<span class="fc bfc" id="L299" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_INVISIBLE_ANNOTATIONS_ATTR) {</span>
+        //cf.parseAnnotationsAttr(this, curMi);
+<span class="fc bfc" id="L301" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L302">        cf.parseParameterAnnotationsAttr(this, curMi);</span>
+
+<span class="fc bfc" id="L304" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS_ATTR) {</span>
+        //cf.parseParameterAnnotationsAttr(this, curMi);
+        
+<span class="fc bfc" id="L307" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR) {</span>
+<span class="fc" id="L308">        cf.parseTypeAnnotationsAttr(this, curMi);</span>
+      }      
+      
+<span class="fc" id="L311">    }</span>
+
+    //--- current methods throws list
+    protected String[] exceptions;
+
+    @Override
+    public void setExceptionCount (ClassFile cf, Object tag, int exceptionCount) {
+<span class="fc" id="L318">      exceptions = new String[exceptionCount];</span>
+<span class="fc" id="L319">    }</span>
+
+    @Override
+    public void setException (ClassFile cf, Object tag, int exceptionIndex, String exceptionType) {
+<span class="fc" id="L323">      exceptions[exceptionIndex] = Types.getClassNameFromTypeName(exceptionType);</span>
+<span class="fc" id="L324">    }</span>
+
+    @Override
+    public void setExceptionsDone (ClassFile cf, Object tag) {
+<span class="fc" id="L328">      curMi.setThrownExceptions(exceptions);</span>
+<span class="fc" id="L329">    }</span>
+
+    //--- current method exception handlers
+    protected ExceptionHandler[] handlers;
+
+    @Override
+    public void setExceptionHandlerTableCount (ClassFile cf, Object tag, int exceptionTableCount) {
+<span class="fc" id="L336">      handlers = new ExceptionHandler[exceptionTableCount];</span>
+<span class="fc" id="L337">    }</span>
+
+    @Override
+    public void setExceptionHandler (ClassFile cf, Object tag, int handlerIndex,
+            int startPc, int endPc, int handlerPc, String catchType) {
+<span class="fc" id="L342">      ExceptionHandler xh = new ExceptionHandler(catchType, startPc, endPc, handlerPc);</span>
+<span class="fc" id="L343">      handlers[handlerIndex] = xh;</span>
+<span class="fc" id="L344">    }</span>
+
+    @Override
+    public void setExceptionHandlerTableDone (ClassFile cf, Object tag) {
+<span class="fc" id="L348">      curMi.setExceptionHandlers(handlers);</span>
+<span class="fc" id="L349">    }</span>
+
+    //--- current method code  
+    @Override
+    public void setCode (ClassFile cf, Object tag, int maxStack, int maxLocals, int codeLength) {
+<span class="fc" id="L354">      curMi.setMaxLocals(maxLocals);</span>
+<span class="fc" id="L355">      curMi.setMaxStack(maxStack);</span>
+
+<span class="fc" id="L357">      cb.reset(cf, curMi);</span>
+
+<span class="fc" id="L359">      cf.parseBytecode(cb, tag, codeLength);</span>
+<span class="fc" id="L360">      cb.installCode();</span>
+<span class="fc" id="L361">    }</span>
+
+    @Override
+    public void setCodeAttribute (ClassFile cf, Object tag, int attrIndex, String name, int attrLength) {
+<span class="fc bfc" id="L365" title="All 2 branches covered.">      if (name == ClassFile.LINE_NUMBER_TABLE_ATTR) {</span>
+<span class="fc" id="L366">        cf.parseLineNumberTableAttr(this, tag);</span>
+
+<span class="fc bfc" id="L368" title="All 2 branches covered.">      } else if (name == ClassFile.LOCAL_VAR_TABLE_ATTR) {</span>
+<span class="fc" id="L369">        cf.parseLocalVarTableAttr(this, tag);</span>
+        
+<span class="fc bfc" id="L371" title="All 2 branches covered.">      } else if (name == ClassFile.RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR){</span>
+<span class="fc" id="L372">        cf.parseTypeAnnotationsAttr(this, tag);</span>
+      }
+<span class="fc" id="L374">    }</span>
+
+    //--- current method line numbers
+    protected int[] lines, startPcs;
+
+    @Override
+    public void setLineNumberTableCount (ClassFile cf, Object tag, int lineNumberCount) {
+<span class="fc" id="L381">      lines = new int[lineNumberCount];</span>
+<span class="fc" id="L382">      startPcs = new int[lineNumberCount];</span>
+<span class="fc" id="L383">    }</span>
+
+    @Override
+    public void setLineNumber (ClassFile cf, Object tag, int lineIndex, int lineNumber, int startPc) {
+<span class="fc" id="L387">      lines[lineIndex] = lineNumber;</span>
+<span class="fc" id="L388">      startPcs[lineIndex] = startPc;</span>
+<span class="fc" id="L389">    }</span>
+
+    @Override
+    public void setLineNumberTableDone (ClassFile cf, Object tag) {
+<span class="fc" id="L393">      curMi.setLineNumbers(lines, startPcs);</span>
+<span class="fc" id="L394">    }</span>
+    
+    //--- current method local variables
+    protected LocalVarInfo[] localVars;
+
+    @Override
+    public void setLocalVarTableCount (ClassFile cf, Object tag, int localVarCount) {
+<span class="fc" id="L401">      localVars = new LocalVarInfo[localVarCount];</span>
+<span class="fc" id="L402">    }</span>
+
+    @Override
+    public void setLocalVar (ClassFile cf, Object tag, int localVarIndex,
+            String varName, String descriptor, int scopeStartPc, int scopeEndPc, int slotIndex) {
+<span class="fc" id="L407">      LocalVarInfo lvi = new LocalVarInfo(varName, descriptor, &quot;&quot;, scopeStartPc, scopeEndPc, slotIndex);</span>
+<span class="fc" id="L408">      localVars[localVarIndex] = lvi;</span>
+<span class="fc" id="L409">    }</span>
+
+    @Override
+    public void setLocalVarTableDone (ClassFile cf, Object tag) {
+<span class="fc" id="L413">      curMi.setLocalVarTable(localVars);</span>
+<span class="fc" id="L414">    }</span>
+    
+    //--- annotations
+    protected AnnotationInfo[] annotations;
+    protected AnnotationInfo curAi;
+    protected LinkedList&lt;AnnotationInfo&gt; annotationStack;
+    protected LinkedList&lt;Object[]&gt; valuesStack;
+    protected AnnotationInfo[][] parameterAnnotations;
+    protected Object[] values;
+    // true if we need to filter null annotations
+<span class="fc" id="L424">    private boolean compactAnnotationArray = false;</span>
+
+    //--- declaration annotations
+    
+    @Override
+    public void setAnnotationCount (ClassFile cf, Object tag, int annotationCount) {
+<span class="fc" id="L430">      annotations = new AnnotationInfo[annotationCount];</span>
+<span class="fc" id="L431">    }</span>
+
+    @Override
+    public void setAnnotation (ClassFile cf, Object tag, int annotationIndex, String annotationType) {
+<span class="pc bpc" id="L435" title="1 of 2 branches missed.">      if (tag instanceof InfoObject) {</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">        if(annotationIndex == -1) {</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">          if(annotationStack == null) {</span>
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">            assert valuesStack == null;</span>
+<span class="fc" id="L439">            valuesStack = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L440">            annotationStack = new LinkedList&lt;&gt;();</span>
+          }
+<span class="fc" id="L442">          annotationStack.addFirst(curAi);</span>
+<span class="fc" id="L443">          valuesStack.addFirst(values);</span>
+        }
+        try { 
+<span class="fc" id="L446">          curAi = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">          if(annotationIndex != -1) {</span>
+<span class="fc" id="L448">            annotations[annotationIndex] = curAi;</span>
+          }
+<span class="fc" id="L450">        } catch(ClassInfoException cie) {</span>
+          // if we can't parse a field, we're sunk, throw and tank the reflective call
+<span class="pc bpc" id="L452" title="1 of 2 branches missed.">          if(annotationIndex == -1) {</span>
+<span class="nc" id="L453">            throw cie;</span>
+          }
+<span class="fc" id="L455">          compactAnnotationArray = true;</span>
+<span class="fc" id="L456">          annotations[annotationIndex] = null;</span>
+          // skip this annotation
+<span class="fc" id="L458">          throw new SkipAnnotation();</span>
+<span class="fc" id="L459">        }</span>
+      }
+<span class="fc" id="L461">    }</span>
+    
+    @Override
+    public void setAnnotationsDone (ClassFile cf, Object tag) {
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">      if (tag instanceof InfoObject) {</span>
+        AnnotationInfo[] toSet;
+<span class="fc bfc" id="L467" title="All 2 branches covered.">        if(compactAnnotationArray) {</span>
+<span class="fc" id="L468">          int nAnnot = 0;</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">          for(AnnotationInfo ai : annotations) {</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">            if(ai != null) {</span>
+<span class="fc" id="L471">              nAnnot++;</span>
+            }
+          }
+<span class="fc" id="L474">          toSet = new AnnotationInfo[nAnnot];</span>
+<span class="fc" id="L475">          int idx = 0;</span>
+<span class="fc bfc" id="L476" title="All 2 branches covered.">          for(AnnotationInfo ai : annotations) {</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">            if(ai != null) {</span>
+<span class="fc" id="L478">              toSet[idx++] = ai;</span>
+            }
+          }
+<span class="fc" id="L481">        } else {</span>
+<span class="fc" id="L482">          toSet = annotations;</span>
+        }
+<span class="fc" id="L484">        ((InfoObject) tag).addAnnotations(toSet);</span>
+      }
+<span class="fc" id="L486">      compactAnnotationArray = false;</span>
+<span class="fc" id="L487">    }</span>
+
+    @Override
+    public void setParameterCount (ClassFile cf, Object tag, int parameterCount) {
+<span class="fc" id="L491">      parameterAnnotations = new AnnotationInfo[parameterCount][];</span>
+<span class="fc" id="L492">    }</span>
+
+    @Override
+    public void setParameterAnnotationCount (ClassFile cf, Object tag, int paramIndex, int annotationCount) {
+<span class="fc" id="L496">      annotations = new AnnotationInfo[annotationCount];</span>
+<span class="fc" id="L497">      parameterAnnotations[paramIndex] = annotations;</span>
+<span class="fc" id="L498">    }</span>
+
+    @Override
+    public void setParameterAnnotation (ClassFile cf, Object tag, int annotationIndex, String annotationType) {
+      try {
+<span class="fc" id="L503">        curAi = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc" id="L504">        annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L505">      } catch(ClassInfoException cie) {</span>
+<span class="nc" id="L506">        compactAnnotationArray = true;</span>
+<span class="nc" id="L507">        annotations[annotationIndex] = null;</span>
+<span class="nc" id="L508">        throw new SkipAnnotation();</span>
+<span class="fc" id="L509">      }</span>
+<span class="fc" id="L510">    }</span>
+
+    @Override
+    public void setParametersDone (ClassFile cf, Object tag) {
+<span class="fc" id="L514">      curMi.setParameterAnnotations(parameterAnnotations);</span>
+<span class="fc" id="L515">    }</span>
+    
+    //--- Java 8 type annotations    
+    
+    @Override
+    public void setTypeAnnotationCount(ClassFile cf, Object tag, int annotationCount){
+<span class="fc" id="L521">      annotations = new AnnotationInfo[annotationCount];</span>
+<span class="fc" id="L522">    }</span>
+
+    @Override
+    public void setTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                           int typeIndex, short[] typePath, String annotationType){
+<span class="nc" id="L527">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L528">      curAi = new TypeParameterAnnotationInfo(base, targetType, typePath, typeIndex);</span>
+<span class="nc" id="L529">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L530">    }</span>
+    @Override
+    public void setSuperTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                       int superTypeIdx, short[] typePath, String annotationType){
+<span class="fc" id="L534">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc" id="L535">      curAi = new SuperTypeAnnotationInfo(base, targetType, typePath, superTypeIdx);</span>
+<span class="fc" id="L536">      annotations[annotationIndex] = curAi;</span>
+<span class="fc" id="L537">    }</span>
+    @Override
+    public void setTypeParameterBoundAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType,
+                                       int typeIndex, int boundIndex, short[] typePath, String annotationType){
+<span class="nc" id="L541">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L542">      curAi = new TypeParameterBoundAnnotationInfo(base, targetType, typePath, typeIndex, boundIndex);</span>
+<span class="nc" id="L543">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L544">    }</span>
+    @Override
+    public void setTypeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType,
+                                  short[] typePath, String annotationType){
+<span class="fc" id="L548">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc" id="L549">      curAi = new TypeAnnotationInfo(base, targetType, typePath);</span>
+<span class="fc" id="L550">      annotations[annotationIndex] = curAi;</span>
+<span class="fc" id="L551">    }</span>
+    @Override
+    public void setFormalParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                             int paramIndex, short[] typePath, String annotationType){
+<span class="fc" id="L555">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc" id="L556">      curAi = new FormalParameterAnnotationInfo(base, targetType, typePath, paramIndex);</span>
+<span class="fc" id="L557">      annotations[annotationIndex] = curAi;</span>
+<span class="fc" id="L558">    }</span>
+    @Override
+    public void setThrowsAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                    int throwsTypeIdx, short[] typePath, String annotationType){
+<span class="nc" id="L562">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L563">      curAi = new ThrowsAnnotationInfo(base, targetType, typePath, throwsTypeIdx);</span>
+<span class="nc" id="L564">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L565">    }</span>
+    @Override
+    public void setVariableAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                      long[] scopeEntries, short[] typePath, String annotationType){
+<span class="fc" id="L569">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="fc" id="L570">      VariableAnnotationInfo vai = new VariableAnnotationInfo(base, targetType, typePath, scopeEntries);</span>
+<span class="fc" id="L571">      curAi = vai;</span>
+<span class="fc" id="L572">      annotations[annotationIndex] = curAi;</span>
+<span class="fc" id="L573">    }</span>
+    @Override
+    public void setExceptionParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                                int exceptionIndex, short[] typePath, String annotationType){
+<span class="nc" id="L577">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L578">      curAi= new ExceptionParameterAnnotationInfo(base, targetType, typePath, exceptionIndex);</span>
+<span class="nc" id="L579">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L580">    }</span>
+    @Override
+    public void setBytecodeAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                      int offset, short[] typePath, String annotationType){
+<span class="nc" id="L584">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L585">      curAi = new BytecodeAnnotationInfo(base, targetType, typePath, offset);</span>
+<span class="nc" id="L586">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L587">    }</span>
+    @Override
+    public void setBytecodeTypeParameterAnnotation(ClassFile cf, Object tag, int annotationIndex, int targetType, 
+                                             int offset, int typeArgIdx, short[] typePath, String annotationType){
+<span class="nc" id="L591">      AnnotationInfo base = getResolvedAnnotationInfo(Types.getClassNameFromTypeName(annotationType));</span>
+<span class="nc" id="L592">      curAi = new BytecodeTypeParameterAnnotationInfo(base, targetType, typePath, offset, typeArgIdx);</span>
+<span class="nc" id="L593">      annotations[annotationIndex] = curAi;</span>
+<span class="nc" id="L594">    }</span>
+
+    @Override
+    public void setTypeAnnotationsDone(ClassFile cf, Object tag) {
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">      if (tag instanceof InfoObject) {</span>
+<span class="fc" id="L599">        int len = annotations.length;</span>
+<span class="fc" id="L600">        AbstractTypeAnnotationInfo[] tais = new AbstractTypeAnnotationInfo[annotations.length];</span>
+<span class="fc bfc" id="L601" title="All 2 branches covered.">        for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L602">          tais[i] = (AbstractTypeAnnotationInfo)annotations[i];</span>
+        }
+        
+        // we can get them in batches (e.g. VariableTypeAnnos from code attrs and ReturnTypeAnnos from method attrs
+<span class="fc" id="L606">        ((InfoObject) tag).addTypeAnnotations( tais);</span>
+      }
+<span class="fc" id="L608">    }</span>
+
+    //--- AnnotationInfo values entries
+    @Override
+    public void setAnnotationValueCount (ClassFile cf, Object tag, int annotationIndex, int nValuePairs) {
+      // if we have values, we need to clone the defined annotation so that we can overwrite entries
+<span class="fc" id="L614">      curAi = curAi.cloneForOverriddenValues();</span>
+<span class="fc bfc" id="L615" title="All 2 branches covered.">      if(annotationIndex != -1) {</span>
+<span class="fc" id="L616">        annotations[annotationIndex] = curAi;</span>
+      }
+<span class="fc" id="L618">    }</span>
+    
+    @Override
+    public void setPrimitiveAnnotationValue (ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+            String elementName, int arrayIndex, Object val) {
+<span class="fc bfc" id="L623" title="All 2 branches covered.">      if (arrayIndex &gt;= 0) {</span>
+<span class="fc" id="L624">        values[arrayIndex] = val;</span>
+      } else {
+<span class="fc" id="L626">        curAi.setClonedEntryValue(elementName, val);</span>
+      }
+<span class="fc" id="L628">    }</span>
+    
+    @Override
+    public void setAnnotationFieldValue(ClassFile cf, Object tag, int annotationIndex, int valueIndex, String elementName, int arrayIndex) {
+<span class="pc bpc" id="L632" title="2 of 4 branches missed.">      assert annotationStack.size() &gt; 0;</span>
+<span class="fc" id="L633">      AnnotationInfo ai = curAi;</span>
+<span class="fc" id="L634">      values = valuesStack.pop();</span>
+<span class="fc" id="L635">      curAi = annotationStack.pop();</span>
+<span class="fc bfc" id="L636" title="All 2 branches covered.">      if(arrayIndex &gt;= 0) {</span>
+<span class="fc" id="L637">        values[arrayIndex] = ai;</span>
+      } else {
+<span class="fc" id="L639">        curAi.setClonedEntryValue(elementName, ai);</span>
+      }
+<span class="fc" id="L641">    }</span>
+
+    @Override
+    public void setStringAnnotationValue (ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+            String elementName, int arrayIndex, String val) {
+<span class="fc bfc" id="L646" title="All 2 branches covered.">      if (arrayIndex &gt;= 0) {</span>
+<span class="fc" id="L647">        values[arrayIndex] = val;</span>
+      } else {
+<span class="fc" id="L649">        curAi.setClonedEntryValue(elementName, val);</span>
+      }
+<span class="fc" id="L651">    }</span>
+
+    @Override
+    public void setClassAnnotationValue (ClassFile cf, Object tag, int annotationIndex, int valueIndex, String elementName,
+            int arrayIndex, String typeName) {
+<span class="fc" id="L656">      Object val = AnnotationInfo.getClassValue(typeName);</span>
+<span class="fc bfc" id="L657" title="All 2 branches covered.">      if (arrayIndex &gt;= 0) {</span>
+<span class="fc" id="L658">        values[arrayIndex] = val;</span>
+      } else {
+<span class="fc" id="L660">        curAi.setClonedEntryValue(elementName, val);</span>
+      }
+<span class="fc" id="L662">    }</span>
+
+    @Override
+    public void setEnumAnnotationValue (ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+            String elementName, int arrayIndex, String enumType, String enumValue) {
+<span class="fc" id="L667">      Object val = AnnotationInfo.getEnumValue(enumType, enumValue);</span>
+<span class="fc bfc" id="L668" title="All 2 branches covered.">      if (arrayIndex &gt;= 0) {</span>
+<span class="fc" id="L669">        values[arrayIndex] = val;</span>
+      } else {
+<span class="fc" id="L671">        curAi.setClonedEntryValue(elementName, val);</span>
+      }
+<span class="fc" id="L673">    }</span>
+
+    @Override
+    public void setAnnotationValueElementCount (ClassFile cf, Object tag, int annotationIndex, int valueIndex,
+            String elementName, int elementCount) {
+<span class="fc" id="L678">      values = new Object[elementCount];</span>
+<span class="fc" id="L679">    }</span>
+
+    @Override
+    public void setAnnotationValueElementsDone (ClassFile cf, Object tag, int annotationIndex, int valueIndex, String elementName) {
+<span class="fc" id="L683">      curAi.setClonedEntryValue(elementName, values);</span>
+<span class="fc" id="L684">    }</span>
+
+    //--- common attrs
+    @Override
+    public void setSignature (ClassFile cf, Object tag, String signature) {
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">      if (tag instanceof GenericSignatureHolder) {</span>
+<span class="fc" id="L690">        ((GenericSignatureHolder) tag).setGenericSignature(signature);</span>
+      }
+<span class="fc" id="L692">    }</span>
+  }
+
+  // since nested class init locking can explode the state space, we make it optional and controllable
+  protected static boolean nestedInit;
+  protected static StringSetMatcher includeNestedInit;
+  protected static StringSetMatcher excludeNestedInit;
+
+  protected static boolean init (Config config){
+<span class="fc" id="L701">    nestedInit = config.getBoolean(&quot;jvm.nested_init&quot;, false);</span>
+<span class="fc bfc" id="L702" title="All 2 branches covered.">    if (nestedInit){</span>
+<span class="fc" id="L703">      includeNestedInit =  StringSetMatcher.getNonEmpty(config.getStringArray(&quot;jvm.nested_init.include&quot;));</span>
+<span class="fc" id="L704">      excludeNestedInit = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;jvm.nested_init.exclude&quot;));</span>
+    }
+
+<span class="fc" id="L707">    return true;</span>
+  }
+
+  JVMClassInfo (String name, ClassLoaderInfo cli, ClassFile cf, String srcUrl, JVMCodeBuilder cb) throws ClassParseException {
+<span class="fc" id="L711">    super( name, cli, srcUrl);</span>
+    
+<span class="fc" id="L713">    new Initializer( cf, cb); // we just need the ctor</span>
+    
+<span class="fc" id="L715">    resolveAndLink();</span>
+<span class="fc" id="L716">  }</span>
+  
+  
+  //--- for annotation classinfos
+  
+  // called on the annotation classinfo
+  @Override
+  protected ClassInfo createAnnotationProxy (String proxyName){
+<span class="fc" id="L724">    return new JVMClassInfo (this, proxyName, classLoader, null);</span>
+  }
+  
+  // concrete proxy ctor
+  protected JVMClassInfo (ClassInfo ciAnnotation, String proxyName, ClassLoaderInfo cli, String url) {
+<span class="fc" id="L729">    super( ciAnnotation, proxyName, cli, url);</span>
+<span class="fc" id="L730">  }</span>
+
+  /**
+   * This is called on the functional interface type. It creates a synthetic type which 
+   * implements the functional interface and contains a method capturing the behavior 
+   * of the lambda expression.
+   */
+  @Override
+  protected ClassInfo createFuncObjClassInfo (BootstrapMethodInfo bootstrapMethod, String name, String samUniqueName, String[] fieldTypesName) {
+<span class="fc" id="L739">    return new JVMClassInfo(this, bootstrapMethod, name, samUniqueName, fieldTypesName);</span>
+  }
+  
+  protected JVMClassInfo (ClassInfo funcInterface, BootstrapMethodInfo bootstrapMethod, String name, String samUniqueName, String[] fieldTypesName) {
+<span class="fc" id="L743">    super(funcInterface, bootstrapMethod, name, fieldTypesName);</span>
+    
+    // creating a method corresponding to the single abstract method of the functional interface
+<span class="fc" id="L746">    methods = new HashMap&lt;String, MethodInfo&gt;();</span>
+    
+<span class="fc" id="L748">    MethodInfo fiMethod = funcInterface.getInterfaceAbstractMethod();</span>
+<span class="fc" id="L749">    int modifiers = fiMethod.getModifiers() &amp; (~Modifier.ABSTRACT);</span>
+<span class="fc" id="L750">    int nLocals = fiMethod.getArgumentsSize();</span>
+<span class="fc" id="L751">    int nOperands = this.nInstanceFields + nLocals;</span>
+
+<span class="fc" id="L753">    MethodInfo mi = new MethodInfo(fiMethod.getName(), fiMethod.getSignature(), modifiers, nLocals, nOperands);</span>
+<span class="fc" id="L754">    mi.linkToClass(this);</span>
+    
+<span class="fc" id="L756">    methods.put(mi.getUniqueName(), mi);</span>
+    
+<span class="fc" id="L758">    setLambdaDirectCallCode(mi, bootstrapMethod);</span>
+    
+    try {
+<span class="fc" id="L761">      resolveAndLink();</span>
+<span class="nc" id="L762">    } catch (ClassParseException e) {</span>
+      // we do not even get here - this a synthetic class, and at this point
+      // the interfaces are already loaded.
+<span class="fc" id="L765">    }</span>
+<span class="fc" id="L766">  }</span>
+
+  /**
+   * perform initialization of this class and its not-yet-initialized superclasses (top down),
+   * which includes calling clinit() methods
+   *
+   * This is overridden here to model a questionable yet consequential behavior of hotspot, which
+   * is holding derived class locks when initializing base classes. The generic implementation in
+   * ClassInfo uses non-nested locks (i.e. A.clinit() only synchronizes on A.class) and hence cannot
+   * produce the same static init deadlocks as hotspot. In order to catch such defects we implement
+   * nested locking here.
+   *
+   * The main difference is that the generic implementation only pushes DCSFs for required clinits
+   * and otherwise doesn't lock anything. Here, we create one static init specific DCSF which wraps
+   * all clinits in nested monitorenter/exits. We create this even if there is no clinit so that we
+   * mimic hotspot locking.
+   *
+   * Note this scheme also enables us to get rid of the automatic clinit sync (they don't have
+   * a 0x20 sync modifier in classfiles)
+   *
+   * @return true if client needs to re-execute because we pushed DirectCallStackFrames
+   */
+  @Override
+  public boolean initializeClass(ThreadInfo ti) {
+<span class="fc bfc" id="L790" title="All 2 branches covered.">    if (needsInitialization(ti)) {</span>
+<span class="fc bfc" id="L791" title="All 4 branches covered.">      if (nestedInit &amp;&amp; StringSetMatcher.isMatch(name, includeNestedInit, excludeNestedInit)) {</span>
+<span class="fc" id="L792">        registerClass(ti); // this is recursively upwards</span>
+<span class="fc" id="L793">        int nOps = 2 * (getNumberOfSuperClasses() + 1); // this is just an upper bound for the number of operands we need</span>
+
+<span class="fc" id="L795">        MethodInfo miInitialize = new MethodInfo(&quot;[initializeClass]&quot;, &quot;()V&quot;, Modifier.STATIC, 0, nOps);</span>
+<span class="fc" id="L796">        JVMDirectCallStackFrame frame = new JVMDirectCallStackFrame(miInitialize, null);</span>
+<span class="fc" id="L797">        JVMCodeBuilder cb = getSystemCodeBuilder(null, miInitialize);</span>
+
+<span class="fc" id="L799">        addClassInit(ti, frame, cb); // this is recursively upwards until we hit a initialized superclass</span>
+<span class="fc" id="L800">        cb.directcallreturn();</span>
+<span class="fc" id="L801">        cb.installCode();</span>
+
+        // this is normally initialized in the ctor, but at that point we don't have the code yet
+<span class="fc" id="L804">        frame.setPC(miInitialize.getFirstInsn());</span>
+
+<span class="fc" id="L806">        ti.pushFrame(frame);</span>
+<span class="fc" id="L807">        return true; // client has to re-execute, we pushed a stackframe</span>
+
+
+      } else { // use generic initialization without nested locks (directly calling clinits)
+<span class="fc" id="L811">        return super.initializeClass(ti);</span>
+      }
+
+    } else {
+<span class="fc" id="L815">      return false; // nothing to do</span>
+    }
+  }
+
+  protected void addClassInit (ThreadInfo ti, JVMDirectCallStackFrame frame, JVMCodeBuilder cb){
+<span class="fc" id="L820">    int clsObjRef = getClassObjectRef();</span>
+
+<span class="fc" id="L822">    frame.pushRef(clsObjRef);</span>
+<span class="fc" id="L823">    cb.monitorenter();</span>
+
+<span class="pc bpc" id="L825" title="1 of 4 branches missed.">    if (superClass != null &amp;&amp; superClass.needsInitialization(ti)) {</span>
+<span class="fc" id="L826">      ((JVMClassInfo) superClass).addClassInit(ti, frame, cb);      // go recursive</span>
+    }
+
+<span class="fc bfc" id="L829" title="All 2 branches covered.">    if (getMethod(&quot;&lt;clinit&gt;()V&quot;, false) != null) { // do we have a clinit</span>
+<span class="fc" id="L830">      cb.invokeclinit(this);</span>
+    } else {
+<span class="fc" id="L832">      cb.finishclinit(this);</span>
+      // we can't just do call ci.setInitialized() since that has to be deferred
+    }
+
+<span class="fc" id="L836">    frame.pushRef(clsObjRef);</span>
+<span class="fc" id="L837">    cb.monitorexit();</span>
+<span class="fc" id="L838">  }</span>
+
+  //--- call processing
+  
+  protected JVMCodeBuilder getSystemCodeBuilder (ClassFile cf, MethodInfo mi){
+<span class="fc" id="L843">    JVMSystemClassLoaderInfo sysCl = (JVMSystemClassLoaderInfo) ClassLoaderInfo.getCurrentSystemClassLoader();</span>
+<span class="fc" id="L844">    JVMCodeBuilder cb = sysCl.getSystemCodeBuilder(cf, mi);</span>
+    
+<span class="fc" id="L846">    return cb;</span>
+  }
+  
+  /**
+   * to be called from super proxy ctor
+   * this needs to be in the VM specific ClassInfo because we need to create code
+   */
+  @Override
+  protected void setAnnotationValueGetterCode (MethodInfo pmi, FieldInfo fi){
+<span class="fc" id="L855">    JVMCodeBuilder cb = getSystemCodeBuilder(null, pmi);</span>
+
+<span class="fc" id="L857">    cb.aload(0);</span>
+<span class="fc" id="L858">    cb.getfield( pmi.getName(), name, pmi.getReturnType());</span>
+<span class="fc bfc" id="L859" title="All 2 branches covered.">    if (fi.isReference()) {</span>
+<span class="fc" id="L860">      cb.areturn();</span>
+    } else {
+<span class="fc bfc" id="L862" title="All 2 branches covered.">      if (fi.getStorageSize() == 1) {</span>
+<span class="fc" id="L863">        cb.ireturn();</span>
+      } else {
+<span class="fc" id="L865">        cb.lreturn();</span>
+      }
+    }
+
+<span class="fc" id="L869">    cb.installCode();</span>
+<span class="fc" id="L870">  }</span>
+  
+  @Override
+  protected void setDirectCallCode (MethodInfo miDirectCall, MethodInfo miCallee){
+<span class="fc" id="L874">    JVMCodeBuilder cb = getSystemCodeBuilder(null, miDirectCall);</span>
+    
+<span class="fc" id="L876">    String calleeName = miCallee.getName();</span>
+<span class="fc" id="L877">    String calleeSig = miCallee.getSignature();</span>
+
+<span class="fc bfc" id="L879" title="All 2 branches covered.">    if (miCallee.isStatic()){</span>
+<span class="fc bfc" id="L880" title="All 2 branches covered.">      if (miCallee.isClinit()) {</span>
+<span class="fc" id="L881">        cb.invokeclinit(this);</span>
+      } else {
+<span class="fc" id="L883">        cb.invokestatic( name, calleeName, calleeSig);</span>
+      }
+<span class="pc bpc" id="L885" title="1 of 4 branches missed.">    } else if (name.equals(&quot;&lt;init&gt;&quot;) || miCallee.isPrivate()){</span>
+<span class="fc" id="L886">      cb.invokespecial( name, calleeName, calleeSig);</span>
+    } else {
+<span class="fc" id="L888">      cb.invokevirtual( name, calleeName, calleeSig);</span>
+    }
+
+<span class="fc" id="L891">    cb.directcallreturn();</span>
+    
+<span class="fc" id="L893">    cb.installCode();</span>
+<span class="fc" id="L894">  }</span>
+  
+  @Override
+  protected void setNativeCallCode (NativeMethodInfo miNative){
+<span class="fc" id="L898">    JVMCodeBuilder cb = getSystemCodeBuilder(null, miNative);</span>
+    
+<span class="fc" id="L900">    cb.executenative(miNative);</span>
+<span class="fc" id="L901">    cb.nativereturn();</span>
+    
+<span class="fc" id="L903">    cb.installCode();</span>
+<span class="fc" id="L904">  }</span>
+  
+  @Override
+  protected void setRunStartCode (MethodInfo miStub, MethodInfo miRun){
+<span class="fc" id="L908">    JVMCodeBuilder cb = getSystemCodeBuilder(null, miStub);</span>
+    
+<span class="fc" id="L910">    cb.runStart( miStub);</span>
+<span class="fc" id="L911">    cb.invokevirtual( name, miRun.getName(), miRun.getSignature());</span>
+<span class="fc" id="L912">    cb.directcallreturn();</span>
+    
+<span class="fc" id="L914">    cb.installCode();    </span>
+<span class="fc" id="L915">  }</span>
+  
+  /**
+   * This method creates the body of the function object method that captures the 
+   * lambda behavior.
+   */
+  @Override
+  protected void setLambdaDirectCallCode (MethodInfo miDirectCall, BootstrapMethodInfo bootstrapMethod) {
+    
+<span class="fc" id="L924">    MethodInfo miCallee = bootstrapMethod.getLambdaBody();</span>
+<span class="fc" id="L925">    String samSignature = bootstrapMethod.getSamDescriptor();</span>
+<span class="fc" id="L926">    JVMCodeBuilder cb = getSystemCodeBuilder(null, miDirectCall);</span>
+    
+<span class="fc" id="L928">    String calleeName = miCallee.getName();</span>
+<span class="fc" id="L929">    String calleeSig = miCallee.getSignature();</span>
+    
+<span class="fc" id="L931">    ClassInfo callerCi = miDirectCall.getClassInfo();</span>
+    
+    // loading free variables, which are used in the body of the lambda 
+    // expression and captured by the lexical scope. These variables  
+    // are stored by the fields of the synthetic function object class
+<span class="fc" id="L936">    int n = callerCi.getNumberOfInstanceFields();</span>
+<span class="fc bfc" id="L937" title="All 2 branches covered.">    for(int i=0; i&lt;n; i++) {</span>
+<span class="fc" id="L938">      cb.aload(0);</span>
+<span class="fc" id="L939">      FieldInfo fi = callerCi.getInstanceField(i);</span>
+      
+<span class="fc" id="L941">      cb.getfield(fi.getName(), callerCi.getName(), Types.getTypeSignature(fi.getSignature(), false));</span>
+    }
+
+    // adding bytecode instructions to load input parameters of the lambda expression
+<span class="fc" id="L945">    n = miDirectCall.getArgumentsSize();</span>
+<span class="fc bfc" id="L946" title="All 2 branches covered.">    for(int i=1; i&lt;n; i++) {</span>
+<span class="fc" id="L947">      cb.aload(i);</span>
+    }
+    
+<span class="fc" id="L950">    String calleeClass = miCallee.getClassName(); </span>
+    
+    // adding the bytecode instruction to invoke lambda method
+<span class="pc bpc" id="L953" title="3 of 6 branches missed.">    switch (bootstrapMethod.getLambdaRefKind()) {</span>
+    case ClassFile.REF_INVOKESTATIC:
+<span class="fc" id="L955">      cb.invokestatic(calleeClass, calleeName, calleeSig);</span>
+<span class="fc" id="L956">      break;</span>
+    case ClassFile.REF_INVOKEINTERFACE:
+<span class="nc" id="L958">      cb.invokeinterface(calleeClass, calleeName, calleeSig);</span>
+<span class="nc" id="L959">      break;</span>
+    case ClassFile.REF_INVOKEVIRTUAL:
+<span class="nc" id="L961">      cb.invokevirtual(calleeClass, calleeName, calleeSig);</span>
+<span class="nc" id="L962">      break;</span>
+    case ClassFile.REF_NEW_INVOKESPECIAL:
+<span class="fc" id="L964">      cb.new_(calleeClass);</span>
+<span class="fc" id="L965">      cb.invokespecial(calleeClass, calleeName, calleeSig);</span>
+<span class="fc" id="L966">      break;</span>
+    case ClassFile.REF_INVOKESPECIAL:
+<span class="fc" id="L968">      cb.invokespecial(calleeClass, calleeName, calleeSig);</span>
+      break;
+    }
+    
+<span class="fc" id="L972">    String returnType = Types.getReturnTypeSignature(samSignature);</span>
+<span class="fc" id="L973">    int  len = returnType.length();</span>
+<span class="fc" id="L974">    char c = returnType.charAt(0);</span>
+
+    // adding a return statement for function object method
+<span class="fc bfc" id="L977" title="All 2 branches covered.">    if (len == 1) {</span>
+<span class="pc bpc" id="L978" title="4 of 6 branches missed.">      switch (c) {</span>
+      case 'B':
+      case 'I':
+      case 'C':
+      case 'Z':
+      case 'S':
+<span class="fc" id="L984">        cb.ireturn();</span>
+<span class="fc" id="L985">        break;</span>
+      case 'D':
+<span class="nc" id="L987">        cb.dreturn();</span>
+<span class="nc" id="L988">        break;</span>
+      case 'J':
+<span class="nc" id="L990">        cb.lreturn();</span>
+<span class="nc" id="L991">        break;</span>
+      case 'F':
+<span class="nc" id="L993">        cb.freturn();</span>
+<span class="nc" id="L994">        break;</span>
+      case 'V':
+<span class="fc" id="L996">        cb.return_();</span>
+<span class="fc" id="L997">        break;</span>
+      }
+    } else {
+<span class="fc" id="L1000">      cb.areturn();</span>
+    }
+    
+<span class="fc" id="L1003">    cb.installCode();</span>
+<span class="fc" id="L1004">  }</span>
+  
+  // create a stack frame that has properly initialized arguments
+  @Override
+  public StackFrame createStackFrame (ThreadInfo ti, MethodInfo callee){
+    
+<span class="fc bfc" id="L1010" title="All 2 branches covered.">    if (callee.isMJI()){</span>
+<span class="fc" id="L1011">      NativeMethodInfo nativeCallee = (NativeMethodInfo) callee;</span>
+<span class="fc" id="L1012">      JVMNativeStackFrame calleeFrame = new JVMNativeStackFrame( nativeCallee);</span>
+<span class="fc" id="L1013">      calleeFrame.setArguments( ti);</span>
+<span class="fc" id="L1014">      return calleeFrame; </span>
+      
+    } else {
+<span class="fc" id="L1017">      JVMStackFrame calleeFrame = new JVMStackFrame( callee);</span>
+<span class="fc" id="L1018">      calleeFrame.setCallArguments( ti);</span>
+<span class="fc" id="L1019">      return calleeFrame;      </span>
+    }
+  }
+  
+  @Override
+  public DirectCallStackFrame createDirectCallStackFrame (ThreadInfo ti, MethodInfo miCallee, int nLocals){
+<span class="fc" id="L1025">    int nOperands = miCallee.getNumberOfCallerStackSlots();</span>
+    
+<span class="fc" id="L1027">    MethodInfo miDirect = new MethodInfo(miCallee, nLocals, nOperands);</span>
+<span class="fc" id="L1028">    setDirectCallCode( miDirect, miCallee);</span>
+    
+<span class="fc" id="L1030">    return new JVMDirectCallStackFrame( miDirect, miCallee);</span>
+  }
+  
+  /**
+   * while this is a normal DirectCallStackFrame, it has different code which has to be created here 
+   */
+  @Override
+  public DirectCallStackFrame createRunStartStackFrame (ThreadInfo ti, MethodInfo miRun){
+<span class="fc" id="L1038">    MethodInfo miDirect = new MethodInfo( miRun, 0, 1);</span>
+<span class="fc" id="L1039">    setRunStartCode( miDirect, miRun);</span>
+    
+<span class="fc" id="L1041">    return new JVMDirectCallStackFrame( miDirect, miRun);</span>
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

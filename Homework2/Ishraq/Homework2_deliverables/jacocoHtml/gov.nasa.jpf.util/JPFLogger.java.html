@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPFLogger.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">JPFLogger.java</span></div><h1>JPFLogger.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.ResourceBundle;
+import java.util.logging.Filter;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+
+/**
+ * this is a decorator for java.util.logging.JPFLogger
+ *
+ * We use this to avoid explicit Logger.isLoggable() checks in the code.
+ * The goal is to avoid time &amp; memory overhead if logging is not enabled.
+ *
+ * We provide a fat interface to avoid Object[] creation for ellipsis method
+ * or auto boxing for Object arguments
+ *
+ */
+public class JPFLogger extends Logger {
+
+  protected Logger logger;
+
+  public JPFLogger (Logger logger) {
+<span class="fc" id="L43">    super(logger.getName(), logger.getResourceBundleName());</span>
+
+<span class="fc" id="L45">    this.logger = logger;</span>
+<span class="fc" id="L46">  }</span>
+
+  @Override
+  public ResourceBundle getResourceBundle() {
+<span class="nc" id="L50">    return logger.getResourceBundle();</span>
+  }
+
+  @Override
+  public String getResourceBundleName() {
+<span class="nc" id="L55">    return logger.getResourceBundleName();</span>
+  }
+
+  @Override
+  public void setFilter(Filter newFilter) throws SecurityException {
+<span class="nc" id="L60">    logger.setFilter(newFilter);</span>
+<span class="nc" id="L61">  }</span>
+  
+  @Override
+  public Filter getFilter() {
+<span class="nc" id="L65">    return logger.getFilter();</span>
+  }
+   
+  @Override
+  public void log(LogRecord record) {
+<span class="nc" id="L70">    logger.log(record);</span>
+<span class="nc" id="L71">  }</span>
+  
+  @Override
+  public void log(Level level, String msg) {
+<span class="nc" id="L75">    logger.log(level, msg);</span>
+<span class="nc" id="L76">  }</span>
+  
+  @Override
+  public void log(Level level, String msg, Object param1) {
+<span class="fc" id="L80">    logger.log(level, msg, param1);</span>
+<span class="fc" id="L81">  }</span>
+  
+  @Override
+  public void log(Level level, String msg, Object params[]) {
+<span class="nc" id="L85">    logger.log(level, msg, params);</span>
+<span class="nc" id="L86">  }</span>
+  
+  @Override
+  public void log(Level level, String msg, Throwable thrown) {
+<span class="nc" id="L90">    logger.log(level, msg, thrown);</span>
+<span class="nc" id="L91">  }</span>
+  
+  @Override
+  public void logp(Level level, String sourceClass, String sourceMethod, String msg) {
+<span class="nc" id="L95">    logger.logp(level, sourceClass, sourceMethod, msg);</span>
+<span class="nc" id="L96">  }</span>
+  
+  @Override
+  public void logp(Level level, String sourceClass, String sourceMethod, String msg, Object param1) {
+<span class="nc" id="L100">    logger.logp(level, sourceClass, sourceMethod, msg, param1);</span>
+<span class="nc" id="L101">  }</span>
+  
+  @Override
+  public void logp(Level level, String sourceClass, String sourceMethod, String msg, Object params[]) {
+<span class="nc" id="L105">    logger.logp(level, sourceClass, sourceMethod, msg, params);</span>
+<span class="nc" id="L106">  }</span>
+  
+  @Override
+  public void logp(Level level, String sourceClass, String sourceMethod, String msg, Throwable thrown) {
+<span class="nc" id="L110">    logger.logp(level, sourceClass, sourceMethod, msg, thrown);</span>
+<span class="nc" id="L111">  }</span>
+  
+  @Override
+@Deprecated
+  public void logrb(Level level, String sourceClass, String sourceMethod, String bundleName, String msg) {
+<span class="nc" id="L116">    logger.logrb(level, sourceClass, sourceMethod, bundleName, msg);</span>
+<span class="nc" id="L117">  }</span>
+  
+  @Override
+@Deprecated
+  public void logrb(Level level, String sourceClass, String sourceMethod, String bundleName, String msg, Object param1) {
+<span class="nc" id="L122">    logger.logrb(level, sourceClass, sourceMethod, bundleName, msg, param1);</span>
+<span class="nc" id="L123">  }</span>
+  
+  @Override
+@Deprecated
+  public void logrb(Level level, String sourceClass, String sourceMethod, String bundleName, String msg, Object params[]) {
+<span class="nc" id="L128">    logger.logrb(level, sourceClass, sourceMethod, bundleName, msg, params);</span>
+<span class="nc" id="L129">  }</span>
+  
+  @Override
+@Deprecated
+  public void logrb(Level level, String sourceClass, String sourceMethod, String bundleName, String msg, Throwable thrown) {
+<span class="nc" id="L134">    logger.logrb(level, sourceClass, sourceMethod, bundleName, msg, thrown);</span>
+<span class="nc" id="L135">  }</span>
+  
+  @Override
+  public void entering(String sourceClass, String sourceMethod) {
+<span class="nc" id="L139">    logger.entering(sourceClass, sourceMethod);</span>
+<span class="nc" id="L140">  }</span>
+
+  @Override
+  public void entering(String sourceClass, String sourceMethod, Object param1) {
+<span class="nc" id="L144">    logger.entering(sourceClass, sourceMethod, param1);</span>
+<span class="nc" id="L145">  }</span>
+  
+  @Override
+  public void entering(String sourceClass, String sourceMethod, Object params[]) {
+<span class="nc" id="L149">    logger.entering(sourceClass, sourceMethod, params);</span>
+<span class="nc" id="L150">  }</span>
+  
+  @Override
+  public void exiting(String sourceClass, String sourceMethod) {
+<span class="nc" id="L154">    logger.exiting(sourceClass, sourceMethod);</span>
+<span class="nc" id="L155">  }</span>
+  
+  @Override
+  public void exiting(String sourceClass, String sourceMethod, Object result) {
+<span class="nc" id="L159">    logger.exiting(sourceClass, sourceMethod, result);</span>
+<span class="nc" id="L160">  }</span>
+  
+  @Override
+  public void throwing(String sourceClass, String sourceMethod, Throwable thrown) {
+<span class="nc" id="L164">    logger.throwing(sourceClass, sourceMethod, thrown);</span>
+<span class="nc" id="L165">  }</span>
+  
+  @Override
+  public void severe(String msg) {
+<span class="fc" id="L169">    logger.severe(msg);</span>
+<span class="fc" id="L170">  }</span>
+  
+  @Override
+  public void warning(String msg) {
+<span class="fc" id="L174">    logger.warning(msg);</span>
+<span class="fc" id="L175">  }</span>
+  
+  @Override
+  public void info(String msg) {
+<span class="fc" id="L179">    logger.info(msg);</span>
+<span class="fc" id="L180">  }</span>
+  
+  @Override
+  public void config(String msg) {
+<span class="nc" id="L184">    logger.config(msg);</span>
+<span class="nc" id="L185">  }</span>
+  
+  @Override
+  public void fine(String msg) {
+<span class="nc" id="L189">    logger.fine(msg);</span>
+<span class="nc" id="L190">  }</span>
+  
+  @Override
+  public void finer(String msg) {
+<span class="nc" id="L194">    logger.finer(msg);</span>
+<span class="nc" id="L195">  }</span>
+  
+  @Override
+  public void finest(String msg) {
+<span class="nc" id="L199">    logger.finest(msg);</span>
+<span class="nc" id="L200">  }</span>
+  
+  @Override
+  public void setLevel(Level newLevel) throws SecurityException {
+<span class="nc" id="L204">    logger.setLevel(newLevel);</span>
+<span class="nc" id="L205">  }</span>
+  
+  @Override
+  public Level getLevel() {
+<span class="nc" id="L209">    return logger.getLevel();</span>
+  }
+  
+  @Override
+  public boolean isLoggable(Level level) {
+<span class="fc" id="L214">    return logger.isLoggable(level);</span>
+  }
+  
+  public boolean isInfoLogged(){
+<span class="fc" id="L218">    return isLoggable(Level.INFO);</span>
+  }
+  
+  public boolean isFineLogged(){
+<span class="nc" id="L222">    return isLoggable(Level.FINE);</span>
+  }  
+
+  public boolean isFinerLogged(){
+<span class="nc" id="L226">    return isLoggable(Level.FINER);</span>
+  }
+  
+  @Override
+  public String getName() {
+<span class="nc" id="L231">    return logger.getName();</span>
+  }
+  
+  @Override
+  public void addHandler(Handler handler) throws SecurityException {
+<span class="nc" id="L236">    logger.addHandler(handler);</span>
+<span class="nc" id="L237">  }</span>
+  
+  @Override
+  public void removeHandler(Handler handler) throws SecurityException {
+<span class="nc" id="L241">    logger.removeHandler(handler);</span>
+<span class="nc" id="L242">  }</span>
+  
+  @Override
+  public Handler[] getHandlers() {
+<span class="nc" id="L246">    return logger.getHandlers();</span>
+  }
+  
+  @Override
+  public void setUseParentHandlers(boolean useParentHandlers) {
+<span class="nc" id="L251">    logger.setUseParentHandlers(useParentHandlers);</span>
+<span class="nc" id="L252">  }</span>
+  
+  @Override
+  public boolean getUseParentHandlers() {
+<span class="nc" id="L256">    return logger.getUseParentHandlers();</span>
+  }
+  
+  @Override
+  public Logger getParent() {
+<span class="nc" id="L261">    return logger.getParent();</span>
+  }
+  
+  @Override
+  public void setParent(Logger parent) {
+<span class="nc" id="L266">    logger.setParent(parent);</span>
+<span class="nc" id="L267">  }</span>
+  
+  private void log (Level level, Object... args) {
+<span class="nc" id="L270">    StringBuilder sb = new StringBuilder(256);</span>
+<span class="nc" id="L271">    int length = args.length;</span>
+<span class="nc bnc" id="L272" title="All 2 branches missed.">    for (int i = 0; i &lt; length; i++) {</span>
+<span class="nc" id="L273">      sb.append(args[i]);</span>
+    }
+<span class="nc" id="L275">    logger.log(level, sb.toString());</span>
+<span class="nc" id="L276">  }</span>
+
+  //--- the SEVERE
+  public void severe (Object s1, Object s2) {
+<span class="nc bnc" id="L280" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L281">      logger.log(Level.SEVERE, s1.toString() + s2.toString());</span>
+    }
+<span class="nc" id="L283">  }</span>
+  // this is here to avoid auto boxing
+  public void severe (Object s1, int s2){
+<span class="nc bnc" id="L286" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L287">         logger.log(Level.SEVERE, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L289">  }</span>
+  public void severe (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L291" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L292">      logger.log(Level.SEVERE, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L294">  }</span>
+  public void severe (Object s1, Object s2, Object s3, Object s4){
+<span class="nc bnc" id="L296" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L297">      logger.log(Level.SEVERE, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="nc" id="L299">  }</span>
+  public void severe (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L301" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L302">      logger.log(Level.SEVERE, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L304">  }</span>
+  public void severe (Object... args){
+<span class="nc bnc" id="L306" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L307">      log(Level.SEVERE, args);</span>
+    }
+<span class="nc" id="L309">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void fsevere (String format, Object... args){
+<span class="nc bnc" id="L312" title="All 2 branches missed.">    if (isLoggable(Level.SEVERE)) {</span>
+<span class="nc" id="L313">      logger.log(Level.SEVERE, String.format(format, args));</span>
+    }
+<span class="nc" id="L315">  }</span>
+
+  //--- the WARNING
+  public void warning (Object s1, Object s2) {
+<span class="pc bpc" id="L319" title="1 of 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="fc" id="L320">      logger.log(Level.WARNING, s1.toString() + s2.toString());</span>
+    }
+<span class="fc" id="L322">  }</span>
+  // this is here to avoid auto boxing
+  public void warning (Object s1, int s2){
+<span class="nc bnc" id="L325" title="All 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="nc" id="L326">         logger.log(Level.WARNING, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L328">  }</span>
+  public void warning (Object s1, Object s2, Object s3){
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="fc" id="L331">      logger.log(Level.WARNING, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="fc" id="L333">  }</span>
+  public void warning (Object s1, Object s2, Object s3, Object s4){
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="fc" id="L336">      logger.log(Level.WARNING, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="fc" id="L338">  }</span>
+  public void warning (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L340" title="All 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="nc" id="L341">      logger.log(Level.WARNING, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L343">  }</span>
+  public void warning (Object... args){
+<span class="nc bnc" id="L345" title="All 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="nc" id="L346">      log(Level.WARNING, args);</span>
+    }
+<span class="nc" id="L348">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void fwarning (String format, Object... args){
+<span class="nc bnc" id="L351" title="All 2 branches missed.">    if (isLoggable(Level.WARNING)) {</span>
+<span class="nc" id="L352">      logger.log(Level.WARNING, String.format(format, args));</span>
+    }
+<span class="nc" id="L354">  }</span>
+
+  //--- the INFO
+  public void info (Object s1, Object s2){
+<span class="fc bfc" id="L358" title="All 2 branches covered.">    if (isLoggable(Level.INFO)) {</span>
+<span class="fc" id="L359">      logger.log(Level.INFO, s1.toString() + s2.toString());</span>
+    }
+<span class="fc" id="L361">  }</span>
+  public void info (Object s1, int s2){
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">    if (isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L364">      logger.log(Level.INFO, s1.toString() + s2);</span>
+    }
+<span class="fc" id="L366">  }</span>
+  public void info (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L368" title="All 2 branches missed.">    if (isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L369">      logger.log(Level.INFO, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L371">  }</span>
+  public void info (Object s1, Object s2, Object s3, Object s4){
+<span class="fc bfc" id="L373" title="All 2 branches covered.">    if (isLoggable(Level.INFO)) {</span>
+<span class="fc" id="L374">      logger.log(Level.INFO, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="fc" id="L376">  }</span>
+  public void info (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    if (isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L379">      logger.log(Level.INFO, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L381">  }</span>
+  public void info (Object... args){
+<span class="nc bnc" id="L383" title="All 2 branches missed.">    if (isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L384">      log(Level.INFO, args);</span>
+    }
+<span class="nc" id="L386">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void finfo (String format, Object... args){
+<span class="nc bnc" id="L389" title="All 2 branches missed.">    if (isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L390">      logger.log(Level.INFO, String.format(format, args));</span>
+    }
+<span class="nc" id="L392">  }</span>
+
+  //--- the CONFIG
+  public void config (Object s1, Object s2){
+<span class="nc bnc" id="L396" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L397">      logger.log(Level.CONFIG, s1.toString() + s2.toString());</span>
+    }
+<span class="nc" id="L399">  }</span>
+  public void config (Object s1, int s2){
+<span class="nc bnc" id="L401" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L402">      logger.log(Level.CONFIG, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L404">  }</span>
+  public void config (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L406" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L407">      logger.log(Level.CONFIG, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L409">  }</span>
+  public void config (Object s1, Object s2, Object s3, Object s4){
+<span class="nc bnc" id="L411" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L412">      logger.log(Level.CONFIG, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="nc" id="L414">  }</span>
+  public void config (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L416" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L417">      logger.log(Level.CONFIG, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L419">  }</span>
+  public void config (Object... args){
+<span class="nc bnc" id="L421" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L422">      log(Level.CONFIG, args);</span>
+    }
+<span class="nc" id="L424">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void fconfig (String format, String... args){
+<span class="nc bnc" id="L427" title="All 2 branches missed.">    if (isLoggable(Level.CONFIG)) {</span>
+<span class="nc" id="L428">      logger.log(Level.CONFIG, String.format(format, (Object)args));</span>
+    }
+<span class="nc" id="L430">  }</span>
+
+  //--- the FINE
+  public void fine (Object s1, Object s2){
+<span class="nc bnc" id="L434" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L435">      logger.log(Level.FINE, s1.toString() + s2.toString());</span>
+    }
+<span class="nc" id="L437">  }</span>
+  public void fine (Object s1, int s2){
+<span class="nc bnc" id="L439" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L440">      logger.log(Level.FINE, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L442">  }</span>
+  public void fine (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L444" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L445">      logger.log(Level.FINE, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L447">  }</span>
+  public void fine (Object s1, Object s2, Object s3, Object s4){
+<span class="pc bpc" id="L449" title="1 of 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L450">      logger.log(Level.FINE, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="fc" id="L452">  }</span>
+  public void fine (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L454" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L455">      logger.log(Level.FINE, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L457">  }</span>
+  public void fine (Object... args){
+<span class="nc bnc" id="L459" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L460">      log(Level.FINE, args);</span>
+    }
+<span class="nc" id="L462">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void ffine (String format, Object... args){
+<span class="nc bnc" id="L465" title="All 2 branches missed.">    if (isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L466">      logger.log(Level.FINE, String.format(format, args));</span>
+    }
+<span class="nc" id="L468">  }</span>
+
+  //--- the FINER
+  public void finer (Object s1, Object s2){
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L473">      logger.log(Level.FINER, s1.toString() + s2.toString());</span>
+    }
+<span class="fc" id="L475">  }</span>
+  public void finer (Object s1, int s2){
+<span class="nc bnc" id="L477" title="All 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L478">      logger.log(Level.FINER, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L480">  }</span>
+  public void finer (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L482" title="All 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L483">      logger.log(Level.FINER, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L485">  }</span>
+  public void finer (Object s1, Object s2, Object s3, Object s4){
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L488">      logger.log(Level.FINER, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="fc" id="L490">  }</span>
+  public void finer (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L492" title="All 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L493">      logger.log(Level.FINER, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L495">  }</span>
+  public void finer (Object... args){
+<span class="nc bnc" id="L497" title="All 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L498">      log(Level.FINER, args);</span>
+    }
+<span class="nc" id="L500">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void ffiner (String format, Object... args){
+<span class="nc bnc" id="L503" title="All 2 branches missed.">    if (isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L504">      logger.log(Level.FINER, String.format(format, args));</span>
+    }
+<span class="nc" id="L506">  }</span>
+
+  //--- the FINEST
+  public void finest (Object s1, Object s2){
+<span class="nc bnc" id="L510" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L511">      logger.log(Level.FINEST, s1.toString() + s2.toString());</span>
+    }
+<span class="nc" id="L513">  }</span>
+  public void finest (Object s1, int s2){
+<span class="nc bnc" id="L515" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L516">      logger.log(Level.FINEST, s1.toString() + s2);</span>
+    }
+<span class="nc" id="L518">  }</span>
+  public void finest (Object s1, Object s2, Object s3){
+<span class="nc bnc" id="L520" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L521">      logger.log(Level.FINEST, s1.toString() + s2.toString() + s3.toString());</span>
+    }
+<span class="nc" id="L523">  }</span>
+  public void finest (Object s1, Object s2, Object s3, Object s4){
+<span class="nc bnc" id="L525" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L526">      logger.log(Level.FINEST, s1.toString() + s2.toString() + s3.toString() + s4.toString());</span>
+    }
+<span class="nc" id="L528">  }</span>
+  public void finest (Object s1, int s2, Object s3, int s4){
+<span class="nc bnc" id="L530" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L531">      logger.log(Level.FINEST, s1.toString() + s2 + s3.toString() + s4);</span>
+    }
+<span class="nc" id="L533">  }</span>
+  public void finest (Object... args){
+<span class="nc bnc" id="L535" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L536">      log(Level.FINEST, args);</span>
+    }
+<span class="nc" id="L538">  }</span>
+  // note this still wraps args into a String array - overhead
+  public void ffinest (String format, Object... args){
+<span class="nc bnc" id="L541" title="All 2 branches missed.">    if (isLoggable(Level.FINEST)) {</span>
+<span class="nc" id="L542">      logger.log(Level.FINEST, String.format(format, args));</span>
+    }
+<span class="nc" id="L544">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

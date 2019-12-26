@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">FileUtils.java</span></div><h1>FileUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.io.*;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * utility class to find all files matching (possibly hierarchical)
+ * wildcard path specs
+ *
+ * we support single '*' wildcards as in filename matching, plus &quot;**&quot; patterns
+ * that match all (recursive) subdirectories
+ */
+// example:  List&lt;File&gt; list = findMatches(&quot;/U*/p*/tmp/**/*.java&quot;);
+
+<span class="nc" id="L35">public class FileUtils {</span>
+
+  public static boolean containsWildcards (String pattern) {
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">    return (pattern.indexOf('*') &gt;= 0);</span>
+  }
+
+  //--- processing wildcard path specs
+
+  public static String[] expandWildcards (String[] pathNames){
+<span class="fc" id="L44">    ArrayList&lt;String&gt; list = null;</span>
+
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">    if (pathNames == null){</span>
+<span class="nc" id="L47">      return new String[0];</span>
+    }
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    for (int i=0; i&lt;pathNames.length; i++){</span>
+<span class="fc" id="L51">      String e = pathNames[i];</span>
+
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">      if (containsWildcards(e)){</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if (list == null){</span>
+<span class="nc" id="L55">          list= new ArrayList&lt;String&gt;(pathNames.length + 20);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">          for (int j=0; j&lt;i; j++){</span>
+<span class="nc" id="L57">            list.add(pathNames[j]);</span>
+          }
+        }
+
+<span class="nc bnc" id="L61" title="All 2 branches missed.">        for (File f : findMatches(e)){</span>
+<span class="nc" id="L62">          list.add(f.getAbsolutePath());</span>
+<span class="nc" id="L63">        }</span>
+
+      } else {
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (list != null){</span>
+<span class="nc" id="L67">          list.add(e);</span>
+        }
+      }
+    }
+
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">    if (list != null){</span>
+<span class="nc" id="L73">      return list.toArray(new String[list.size()]);</span>
+    } else {
+<span class="fc" id="L75">      return pathNames;</span>
+    }
+  }
+
+
+  private static List&lt;File&gt; splitPath (String pattern) {
+<span class="nc" id="L81">    ArrayList&lt;File&gt; list = new ArrayList&lt;File&gt;();</span>
+
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    for (File f = new File(pattern); f != null; f = f.getParentFile()) {</span>
+<span class="nc" id="L84">      list.add(f);</span>
+    }
+
+<span class="nc" id="L87">    Collections.reverse(list);</span>
+<span class="nc" id="L88">    return list;</span>
+  }
+
+  private static void addSubdirs (List&lt;File&gt; list, File dir){
+<span class="nc bnc" id="L92" title="All 2 branches missed.">    for (File f : dir.listFiles()) {</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">      if (f.isDirectory()){</span>
+<span class="nc" id="L94">        list.add(f);</span>
+<span class="nc" id="L95">        addSubdirs(list, f);</span>
+      }
+    }
+<span class="nc" id="L98">  }</span>
+
+  private static List&lt;File&gt; findMatches (File dir, String pattern) {
+<span class="nc" id="L101">    ArrayList&lt;File&gt; list = new ArrayList&lt;File&gt;();</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (dir.isDirectory()) {</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (&quot;**&quot;.equals(pattern)) { // recursively add all subdirectories</span>
+<span class="nc" id="L105">        addSubdirs(list, dir);</span>
+
+      } else {
+<span class="nc" id="L108">        StringMatcher sm = new StringMatcher(pattern);</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        for (File f : dir.listFiles()) {</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">          if (sm.matches(f.getName())) {</span>
+<span class="nc" id="L111">            list.add(f);</span>
+          }
+        }
+      }
+    }
+
+<span class="nc" id="L117">    return list;</span>
+  }
+
+  public static List&lt;File&gt; findMatches (String pattern) {
+<span class="nc" id="L121">    List&lt;File&gt; pathComponents = splitPath(pattern);</span>
+<span class="nc" id="L122">    List&lt;File&gt; matches = null;</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    for (File f : pathComponents) {</span>
+<span class="nc" id="L125">      String fname = f.getName();</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      if (matches == null) { // first one</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (fname.isEmpty()) { // filesystem root</span>
+<span class="nc" id="L128">          matches = new ArrayList&lt;File&gt;();</span>
+<span class="nc" id="L129">          matches.add(f);</span>
+        } else {
+<span class="nc" id="L131">          matches = findMatches(new File(System.getProperty(&quot;user.dir&quot;)), fname);</span>
+        }
+
+      } else {
+<span class="nc" id="L135">        List&lt;File&gt; newMatches = new ArrayList&lt;File&gt;();</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        for (File d : matches) {</span>
+<span class="nc" id="L137">          newMatches.addAll(findMatches(d, fname));</span>
+<span class="nc" id="L138">        }</span>
+<span class="nc" id="L139">        matches = newMatches;</span>
+      }
+
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (matches.isEmpty()) {</span>
+<span class="nc" id="L143">        return matches;</span>
+      }
+<span class="nc" id="L145">    }</span>
+<span class="nc" id="L146">    return matches;</span>
+  }
+
+
+  //--- URL conversion
+
+  public static URL getURL (String spec){
+    try {
+      // check if there is a protocol specification
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">      if (spec.indexOf(&quot;://&quot;) &gt;= 0) {</span>
+<span class="nc" id="L156">        return new URL(spec);</span>
+
+      } else {
+<span class="fc" id="L159">        File f = new File(spec).getCanonicalFile();</span>
+<span class="fc" id="L160">        return f.toURI().toURL();</span>
+      }
+<span class="nc" id="L162">    } catch (Throwable x) {</span>
+<span class="nc" id="L163">      throw new RuntimeException(&quot;illegal pathname: &quot; + spec);</span>
+    }
+  }
+
+  public static URL[] getURLs (String[] paths){
+<span class="nc" id="L168">    ArrayList&lt;URL&gt; urls = new ArrayList&lt;URL&gt;();</span>
+
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    for (String p : paths) {</span>
+<span class="nc" id="L171">      urls.add( getURL(p));</span>
+    }
+
+<span class="nc" id="L174">    return urls.toArray(new URL[urls.size()]);</span>
+  }
+
+  public static URL[] getURLs (List&lt;String&gt; paths){
+<span class="fc" id="L178">    ArrayList&lt;URL&gt; urls = new ArrayList&lt;URL&gt;();</span>
+
+<span class="fc bfc" id="L180" title="All 2 branches covered.">    for (String p : paths) {</span>
+<span class="fc" id="L181">      urls.add( getURL(p));</span>
+<span class="fc" id="L182">    }</span>
+
+<span class="fc" id="L184">    return urls.toArray(new URL[urls.size()]);</span>
+  }
+
+
+  //--- platform specific path conversion
+
+  /**
+   * turn a mixed path list into a valid Unix path set without drive letters,
+   * and with '/' and ':' separators. Also remove multiple consecutive separators
+   * this assumes the path String to be already expanded
+   */
+  public static String asCanonicalUnixPath (String p) {
+<span class="fc" id="L196">    boolean changed = false;</span>
+
+<span class="fc" id="L198">    int n = p.length();</span>
+<span class="fc" id="L199">    char[] buf = new char[n];</span>
+<span class="fc" id="L200">    p.getChars(0, n, buf, 0);</span>
+
+<span class="fc bfc" id="L202" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="fc" id="L203">      char c = buf[i];</span>
+<span class="pc bpc" id="L204" title="1 of 4 branches missed.">      if (c == '/' || c == '\\') {</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">        if (c == '\\'){</span>
+<span class="nc" id="L206">          buf[i] = '/'; changed = true;</span>
+        }
+
+        // remove multiple occurrences of dir separators
+<span class="fc" id="L210">        int i1 = i+1;</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        if (i1 &lt; n){</span>
+<span class="pc bpc" id="L212" title="3 of 6 branches missed.">          for (c = buf[i1]; i1 &lt; n &amp;&amp; (c == '/' || c == '\\'); c = buf[i1]) {</span>
+<span class="nc" id="L213">            System.arraycopy(buf, i + 2, buf, i1, n - (i + 2));</span>
+<span class="nc" id="L214">            n--;</span>
+<span class="nc" id="L215">            changed = true;</span>
+          }
+        }
+
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">      } else if (c == ':') {</span>
+        // strip drive letters - maybe this is trying to be too smart,
+        // since we only do this for a &quot;...:X:\...&quot; but not a
+        // &quot;...:X:/...&quot;, which could be a valid unix path list
+
+        // is this part of a drive letter spec?
+<span class="nc" id="L225">        int i1 = i+1;</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (i1&lt;n) {</span>
+<span class="nc bnc" id="L227" title="All 2 branches missed.">          if (buf[i1] == '\\') {</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            if (i&gt;0) {</span>
+<span class="nc bnc" id="L229" title="All 4 branches missed.">              if (i == 1 || (buf[i-2] == ':')){  // strip the drive letter</span>
+<span class="nc" id="L230">                System.arraycopy(buf, i1, buf, i-1, n - (i1));</span>
+<span class="nc" id="L231">                n-=2;</span>
+<span class="nc" id="L232">                changed = true;</span>
+              }
+            }
+          }
+        }
+
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">      } else if (c == ';'){</span>
+<span class="nc" id="L239">        buf[i] = ':'; changed = true;</span>
+
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">      } else if (c == ',') {</span>
+<span class="nc" id="L242">        buf[i] = ':'; changed = true;</span>
+      }
+
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">      if (buf[i] == ':') {  // remove multiple occurrences of path separators</span>
+<span class="nc" id="L246">        int i1 = i+1;</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">        if (i1&lt;n) {</span>
+<span class="nc bnc" id="L248" title="All 6 branches missed.">          for (c = buf[i1] ;(c == ':' || c == ';' || c == ','); c = buf[i1]){</span>
+<span class="nc" id="L249">            System.arraycopy(buf, i+2, buf, i1, n - (i+2));</span>
+<span class="nc" id="L250">            n--;</span>
+<span class="nc" id="L251">            changed = true;</span>
+          }
+        }
+      }
+    }
+
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">    if (changed) {</span>
+<span class="nc" id="L258">      p = new String(buf, 0, n);</span>
+    }
+
+<span class="fc" id="L261">    return p;</span>
+  }
+
+  /**
+   * turn a mixed path list into a valid Windows path set with drive letters,
+   * and '\' and ';' separators. Also remove multiple consecutive separators
+   * this assumes the path String to be already expanded
+   */
+  public static String asCanonicalWindowsPath (String p) {
+<span class="nc" id="L270">    boolean changed = false;</span>
+
+<span class="nc" id="L272">    int n = p.length();</span>
+<span class="nc" id="L273">    char[] buf = new char[n];</span>
+<span class="nc" id="L274">    p.getChars(0, n, buf, 0);</span>
+
+<span class="nc bnc" id="L276" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="nc" id="L277">      char c = buf[i];</span>
+<span class="nc bnc" id="L278" title="All 4 branches missed.">      if (c == '/' || c == '\\') {</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (c == '/'){</span>
+<span class="nc" id="L280">          buf[i] = '\\'; changed = true;</span>
+        }
+
+        // remove multiple occurrences of dir separators
+<span class="nc" id="L284">        int i1 = i+1;</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">        if (i1 &lt; n) {</span>
+<span class="nc bnc" id="L286" title="All 6 branches missed.">          for (c = buf[i1]; i1 &lt; n &amp;&amp; (c == '/' || c == '\\'); c = buf[i1]) {</span>
+<span class="nc" id="L287">            System.arraycopy(buf, i + 2, buf, i1, n - (i + 2));</span>
+<span class="nc" id="L288">            n--;</span>
+<span class="nc" id="L289">            changed = true;</span>
+          }
+        }
+
+<span class="nc bnc" id="L293" title="All 2 branches missed.">      } else if (c == ':') {</span>
+        // is this part of a drive letter spec?
+<span class="nc" id="L295">        int i1 = i+1;</span>
+<span class="nc bnc" id="L296" title="All 6 branches missed.">        if (i1&lt;n &amp;&amp; (buf[i1] == '\\' || buf[i1] == '/')) {</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">          if (i&gt;0) {</span>
+<span class="nc bnc" id="L298" title="All 4 branches missed.">            if (i == 1 || (buf[i-2] == ';')){</span>
+<span class="nc" id="L299">              continue;</span>
+            }
+          }
+        }
+<span class="nc" id="L303">        buf[i] = ';'; changed = true;</span>
+
+<span class="nc bnc" id="L305" title="All 2 branches missed.">      } else if (c == ',') {</span>
+<span class="nc" id="L306">        buf[i] = ';'; changed = true;</span>
+      }
+
+<span class="nc bnc" id="L309" title="All 2 branches missed.">      if (buf[i] == ';') { // remove multiple occurrences of path separators</span>
+<span class="nc" id="L310">        int i1 = i+1;</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (i1&lt;n) {</span>
+<span class="nc bnc" id="L312" title="All 6 branches missed.">          for (c = buf[i1] ;(c == ':' || c == ';' || c == ','); c = buf[i1]){</span>
+<span class="nc" id="L313">            System.arraycopy(buf, i+2, buf, i1, n - (i+2));</span>
+<span class="nc" id="L314">            n--;</span>
+<span class="nc" id="L315">            changed = true;</span>
+          }
+        }
+      }
+    }
+
+<span class="nc bnc" id="L321" title="All 2 branches missed.">    if (changed) {</span>
+<span class="nc" id="L322">      p = new String(buf, 0, n);</span>
+    }
+
+<span class="nc" id="L325">    return p;</span>
+  }
+
+
+  public static String asPlatformPath (String p) {
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">    if (File.separatorChar == '/') { // Unix'ish file system</span>
+<span class="fc" id="L331">      p = asCanonicalUnixPath(p);</span>
+    } else { // Windows'ish file system
+<span class="nc" id="L333">      p = asCanonicalWindowsPath(p);</span>
+    }
+
+<span class="fc" id="L336">    return p;</span>
+  }
+
+  public static void printFile (PrintWriter pw, File file){
+    try {
+<span class="nc" id="L341">      FileReader fr = new FileReader(file);</span>
+<span class="nc" id="L342">      BufferedReader r = new BufferedReader(fr);</span>
+
+      String line;
+<span class="nc bnc" id="L345" title="All 2 branches missed.">      while ((line = r.readLine()) != null){</span>
+<span class="nc" id="L346">        pw.println(line);</span>
+      }
+
+<span class="nc" id="L349">      r.close();</span>
+
+<span class="nc" id="L351">    } catch (IOException iox){</span>
+<span class="nc" id="L352">      pw.println(&quot;!! error printing file: &quot; + file.getPath());</span>
+<span class="nc" id="L353">    }</span>
+<span class="nc" id="L354">  }</span>
+
+  public static boolean removeRecursively(File file) {
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">    if (file.exists()) {</span>
+<span class="fc" id="L358">      File[] childs = file.listFiles();</span>
+
+<span class="fc bfc" id="L360" title="All 2 branches covered.">      for (File child : childs) {</span>
+<span class="pc bpc" id="L361" title="1 of 2 branches missed.">        if (child.isDirectory()){</span>
+<span class="fc" id="L362">          removeRecursively(child);</span>
+        } else {
+<span class="nc" id="L364">          child.delete();</span>
+        }
+      }
+
+<span class="fc" id="L368">      return file.delete();</span>
+    }
+
+<span class="nc" id="L371">    return false;</span>
+  }
+
+  public static byte[] getContents( File file) throws IOException {
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">    if (file.isFile()){</span>
+<span class="fc" id="L376">      long length = file.length();</span>
+<span class="fc" id="L377">      byte[] data = new byte[(int)length];</span>
+
+<span class="fc" id="L379">      FileInputStream is = new FileInputStream(file);</span>
+      try {
+<span class="fc" id="L381">        getContents(is, data);</span>
+
+<span class="nc" id="L383">      } catch (IOException iox){</span>
+<span class="nc" id="L384">        return null;</span>
+
+      } finally {
+<span class="fc" id="L387">        is.close();</span>
+      }
+
+<span class="fc" id="L390">      return data;</span>
+    }
+
+<span class="nc" id="L393">    return null;</span>
+  }
+
+  public static void getContents(InputStream is, byte[] buf) throws IOException {
+<span class="fc" id="L397">    int nRead = 0;</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">    while (nRead &lt; buf.length) {</span>
+<span class="fc" id="L399">      int n = is.read(buf, nRead, buf.length - nRead);</span>
+<span class="pc bpc" id="L400" title="1 of 2 branches missed.">      if (n &lt; 0) {</span>
+<span class="nc" id="L401">        throw new IOException(&quot;premature end of inputstream: &quot; + buf.length + '/' + nRead);</span>
+      }
+<span class="fc" id="L403">      nRead += n;</span>
+<span class="fc" id="L404">    }</span>
+<span class="fc" id="L405">  }</span>
+
+  public static String getContentsAsString( File file) throws IOException {
+<span class="nc" id="L408">    byte[] data = getContents(file);</span>
+<span class="nc" id="L409">    return new String(data);</span>
+  }
+  
+  public static void setContents(File file, byte[] data) throws IOException {
+<span class="nc" id="L413">    FileOutputStream os = new FileOutputStream(file);</span>
+<span class="nc" id="L414">    os.write(data);</span>
+<span class="nc" id="L415">    os.close();</span>
+<span class="nc" id="L416">  }</span>
+
+  public static void setContents(File file, String data) throws IOException {
+<span class="nc" id="L419">    FileWriter fw = new FileWriter(file);</span>
+<span class="nc" id="L420">    fw.append(data);</span>
+<span class="nc" id="L421">    fw.close();</span>
+<span class="nc" id="L422">  }</span>
+    
+  public static String asCanonicalUserPathName (String path){
+<span class="nc" id="L425">    String userHome = System.getProperty(&quot;user.home&quot;);</span>
+<span class="nc" id="L426">    int len = userHome.length();</span>
+<span class="nc bnc" id="L427" title="All 4 branches missed.">    if (path.startsWith(userHome) &amp;&amp; path.charAt(len) == '/') {</span>
+<span class="nc" id="L428">      return &quot;${user.home}&quot; + path.substring(len).replace('\\', '/');</span>
+    } else {
+<span class="nc" id="L430">      return path.replace('\\', '/');</span>
+    }
+  }
+  
+  public static String asUnixPathName (File file){
+<span class="nc" id="L435">    String userHome = System.getProperty(&quot;user.home&quot;) + File.separatorChar;</span>
+<span class="nc" id="L436">    int uhLen = userHome.length();</span>
+
+<span class="nc" id="L438">    String pn = file.getAbsolutePath();</span>
+<span class="nc bnc" id="L439" title="All 2 branches missed.">    if (pn.startsWith(userHome)) {</span>
+<span class="nc" id="L440">      pn = &quot;~/&quot; + pn.substring(uhLen).replace('\\', '/');</span>
+    } else {
+<span class="nc" id="L442">      pn = pn.replace('\\', '/');</span>
+    }
+<span class="nc" id="L444">    return pn;</span>
+  }
+
+  public static String unixToUserPathName (String unixPathName){
+<span class="nc bnc" id="L448" title="All 2 branches missed.">    if (unixPathName.startsWith(&quot;~/&quot;)){</span>
+<span class="nc" id="L449">      return &quot;${user.home}&quot; + unixPathName.substring(1);</span>
+    } else {
+<span class="nc" id="L451">      String userHome = System.getProperty(&quot;user.home&quot;);</span>
+<span class="nc" id="L452">      int len = userHome.length();</span>
+<span class="nc bnc" id="L453" title="All 4 branches missed.">      if (unixPathName.startsWith(userHome) &amp;&amp; unixPathName.charAt(len) == '/'){</span>
+<span class="nc" id="L454">        return &quot;${user.home}&quot; + unixPathName.substring(len);</span>
+      } else {
+<span class="nc" id="L456">        return unixPathName;</span>
+      }
+    }
+  }
+  
+  public static boolean ensureDirs (File file){
+<span class="nc" id="L462">    File dir = file.getParentFile();</span>
+<span class="nc bnc" id="L463" title="All 2 branches missed.">    if (!dir.isDirectory()){</span>
+<span class="nc" id="L464">      return dir.mkdirs();</span>
+    } else {
+<span class="nc" id="L466">      return true;</span>
+    }
+  }
+  
+  public static String getRelativeUnixPath (File baseDir, File refFile) throws IOException {
+<span class="nc" id="L471">		String bpn = baseDir.getCanonicalPath().replace('\\', '/');</span>
+<span class="nc" id="L472">		String rpn = refFile.getCanonicalPath().replace('\\', '/');</span>
+
+<span class="nc" id="L474">		int len = Math.min(bpn.length(), rpn.length());</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">		for (int i = 0, n = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L476">			char c = bpn.charAt(i);</span>
+<span class="nc bnc" id="L477" title="All 2 branches missed.">			if (c == '/') {</span>
+<span class="nc" id="L478">				n = i + 1;</span>
+<span class="nc bnc" id="L479" title="All 2 branches missed.">			} else if (c != rpn.charAt(i)) {</span>
+<span class="nc" id="L480">				bpn = bpn.substring(n);</span>
+<span class="nc" id="L481">				rpn = rpn.substring(n);</span>
+<span class="nc" id="L482">				break;</span>
+			}
+		}
+
+<span class="nc" id="L486">		len = bpn.length();</span>
+<span class="nc" id="L487">		String up = &quot;&quot;;</span>
+<span class="nc bnc" id="L488" title="All 2 branches missed.">		for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc bnc" id="L489" title="All 2 branches missed.">			if (bpn.charAt(i) == '/') {</span>
+<span class="nc" id="L490">				up += &quot;../&quot;;</span>
+			}
+		}
+
+<span class="nc" id="L494">		String relPath = up + rpn;</span>
+<span class="nc" id="L495">		return relPath;</span>
+  }
+  
+  public static boolean copyFile (File src, File toDir) throws IOException {
+<span class="nc bnc" id="L499" title="All 2 branches missed.">    if (src.isFile()) {</span>
+<span class="nc" id="L500">      File tgt = new File(toDir, src.getName());</span>
+<span class="nc bnc" id="L501" title="All 2 branches missed.">      if (tgt.createNewFile()) {</span>
+<span class="nc" id="L502">        byte[] data = getContents(src);</span>
+<span class="nc" id="L503">        setContents(tgt, data);</span>
+<span class="nc" id="L504">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L508">    return false;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

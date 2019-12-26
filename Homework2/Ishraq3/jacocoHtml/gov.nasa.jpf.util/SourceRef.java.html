@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SourceRef.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SourceRef.java</span></div><h1>SourceRef.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+/**
+ * a source reference abstraction wrapping file and line information
+ */
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">public class SourceRef {</span>
+  public String fileName;
+  public int    line;
+
+<span class="nc" id="L27">  public SourceRef (String f, int l) {</span>
+<span class="nc bnc" id="L28" title="All 2 branches missed.">    if (f == null) {</span>
+<span class="nc" id="L29">      fileName = &quot;?&quot;;</span>
+    } else {
+<span class="nc" id="L31">      fileName = f;</span>
+    }
+    
+<span class="nc" id="L34">    line = l;</span>
+<span class="nc" id="L35">  }</span>
+
+<span class="fc" id="L37">  public SourceRef (String spec){</span>
+<span class="fc" id="L38">    int idx = spec.indexOf(':');</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">    if (idx &gt; 0){</span>
+<span class="fc" id="L40">      fileName = spec.substring(0, idx);</span>
+<span class="fc" id="L41">      line = Integer.parseInt(spec.substring(idx+1));</span>
+    } else {
+<span class="nc" id="L43">      fileName = spec;</span>
+<span class="nc" id="L44">      line = 0;</span>
+    }
+<span class="fc" id="L46">  }</span>
+
+  public String getLocationString() {
+<span class="nc" id="L49">    return (fileName + ':' + line);</span>
+  }
+  
+  public String getLineString () {
+<span class="nc" id="L53">    Source source = Source.getSource(fileName);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">    if (source != null) {</span>
+<span class="nc" id="L55">      return source.getLine(line);</span>
+    } else {
+<span class="nc" id="L57">      return null;</span>
+    }
+  }
+
+  @Override
+  public boolean equals (Object o) {
+<span class="nc bnc" id="L63" title="All 2 branches missed.">    if (o == null) {</span>
+<span class="nc" id="L64">      return false;</span>
+    }
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (!(o instanceof SourceRef)) {</span>
+<span class="nc" id="L68">      return false;</span>
+    }
+
+<span class="nc" id="L71">    SourceRef that = (SourceRef) o;</span>
+
+<span class="nc bnc" id="L73" title="All 2 branches missed.">    if (this.fileName == null) {</span>
+<span class="nc" id="L74">      return false;</span>
+    }
+
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    if (this.line == -1) {</span>
+<span class="nc" id="L78">      return false;</span>
+    }
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    if (!this.fileName.equals(that.fileName)) {</span>
+<span class="nc" id="L82">      return false;</span>
+    }
+
+<span class="nc bnc" id="L85" title="All 2 branches missed.">    if (this.line != that.line) {</span>
+<span class="nc" id="L86">      return false;</span>
+    }
+
+<span class="nc" id="L89">    return true;</span>
+  }
+
+  public boolean equals (String f, int l) {
+<span class="nc bnc" id="L93" title="All 2 branches missed.">    if (fileName == null) {</span>
+<span class="nc" id="L94">      return false;</span>
+    }
+
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (line == -1) {</span>
+<span class="nc" id="L98">      return false;</span>
+    }
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (!fileName.equals(f)) {</span>
+<span class="nc" id="L102">      return false;</span>
+    }
+
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (line != l) {</span>
+<span class="nc" id="L106">      return false;</span>
+    }
+
+<span class="nc" id="L109">    return true;</span>
+  }
+
+  public boolean equals (String filePos){
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">    if (filePos.startsWith(fileName)){</span>
+<span class="fc" id="L114">      int len = fileName.length();</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">      if (filePos.charAt(len) == ':'){</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (Integer.parseInt(filePos.substring(len+1)) == line){</span>
+<span class="fc" id="L117">          return true;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L122">    return false;</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    assert false : &quot;hashCode not designed&quot;;</span>
+<span class="nc" id="L128">    return 42; // any arbitrary constant will do</span>
+    // thanks, FindBugs!
+  }
+
+  public String getFileName () {
+<span class="nc" id="L133">    return fileName;</span>
+  }
+
+  public void set (SourceRef sr) {
+<span class="nc" id="L137">    fileName = sr.fileName;</span>
+<span class="nc" id="L138">    line = sr.line;</span>
+<span class="nc" id="L139">  }</span>
+
+  @Override
+  public String toString () {
+<span class="nc" id="L143">    return (fileName + ':' + line);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

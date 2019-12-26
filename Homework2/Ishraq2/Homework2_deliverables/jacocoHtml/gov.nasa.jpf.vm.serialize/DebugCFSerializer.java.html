@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DebugCFSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.serialize</a> &gt; <span class="el_source">DebugCFSerializer.java</span></div><h1>DebugCFSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.serialize;
+
+import java.io.OutputStream;
+
+import gov.nasa.jpf.util.FinalBitSet;
+import gov.nasa.jpf.vm.DebugStateSerializer;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.JPFOutputStream;
+import gov.nasa.jpf.vm.NativeStateHolder;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.StaticElementInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * a CFSerializer that stores the serialized program state in a 
+ * readable/diffable format.
+ * 
+ * Automatically used by Debug..StateSet if the configured vm.storage.class is .vm.DebugJenkinsStateSet 
+ */
+public class DebugCFSerializer extends CFSerializer implements DebugStateSerializer {
+
+  JPFOutputStream os;
+  
+  // this is for debugging purposes only
+<span class="nc" id="L43">  public DebugCFSerializer() {</span>
+<span class="nc" id="L44">    os = new JPFOutputStream(System.out);</span>
+<span class="nc" id="L45">  }</span>
+  
+  @Override
+  public void setOutputStream (OutputStream s){
+<span class="nc" id="L49">    os = new JPFOutputStream(s);</span>
+<span class="nc" id="L50">  }</span>
+  
+  @Override
+  protected int[] computeStoringData() {    
+<span class="nc" id="L54">    os.printCommentLine(&quot;------------------------ serialized state&quot;);</span>
+<span class="nc" id="L55">    return super.computeStoringData();</span>
+  }
+  
+  @Override
+  protected void processReferenceQueue(){
+<span class="nc" id="L60">    os.println();</span>
+<span class="nc" id="L61">    os.printCommentLine(&quot;--- heap&quot;);</span>
+<span class="nc" id="L62">    os.println();</span>
+<span class="nc" id="L63">    super.processReferenceQueue();</span>
+<span class="nc" id="L64">  }</span>
+  
+  @Override
+  public void process (ElementInfo ei) {
+<span class="nc" id="L68">    super.process( ei);</span>
+    
+<span class="nc bnc" id="L70" title="All 2 branches missed.">    FinalBitSet filtered = !ei.isArray() ? getInstanceFilterMask(ei.getClassInfo()) : null;</span>
+<span class="nc" id="L71">    os.print(ei, filtered);</span>
+<span class="nc" id="L72">    os.println();</span>
+<span class="nc" id="L73">  }</span>
+  
+  @Override
+  protected void serializeClassLoaders(){
+<span class="nc" id="L77">    os.println();</span>
+<span class="nc" id="L78">    os.printCommentLine(&quot;--- classes&quot;);</span>
+<span class="nc" id="L79">    os.println();</span>
+<span class="nc" id="L80">    super.serializeClassLoaders();</span>
+<span class="nc" id="L81">  }</span>
+  
+  @Override
+  protected void serializeClass (StaticElementInfo sei){
+<span class="nc" id="L85">    super.serializeClass(sei);</span>
+    
+<span class="nc" id="L87">    FinalBitSet filtered = getStaticFilterMask(sei.getClassInfo());</span>
+<span class="nc" id="L88">    os.print(sei, filtered);</span>
+<span class="nc" id="L89">    os.println();    </span>
+<span class="nc" id="L90">  }</span>
+  
+  @Override
+  protected void serializeStackFrames(){
+<span class="nc" id="L94">    os.println();</span>
+<span class="nc" id="L95">    os.printCommentLine(&quot;--- threads&quot;);</span>
+<span class="nc" id="L96">    os.println();</span>
+<span class="nc" id="L97">    super.serializeStackFrames();</span>
+<span class="nc" id="L98">  }</span>
+  
+  @Override
+  protected void serializeStackFrames(ThreadInfo ti){
+<span class="nc" id="L102">    os.println();</span>
+<span class="nc" id="L103">    os.print(ti);</span>
+<span class="nc" id="L104">    os.println();</span>
+<span class="nc" id="L105">    super.serializeStackFrames(ti);</span>
+<span class="nc" id="L106">  }</span>
+  
+  @Override
+  protected void serializeFrame(StackFrame frame){
+<span class="nc" id="L110">    os.print(frame);</span>
+<span class="nc" id="L111">    os.println();</span>
+<span class="nc" id="L112">    super.serializeFrame(frame);</span>
+<span class="nc" id="L113">  }</span>
+  
+  @Override
+  protected void serializeNativeStateHolders(){
+<span class="nc" id="L117">    os.println();</span>
+<span class="nc" id="L118">    os.printCommentLine(&quot;--- native state holders&quot;);</span>
+<span class="nc" id="L119">    os.println();</span>
+<span class="nc" id="L120">    super.serializeNativeStateHolders();</span>
+<span class="nc" id="L121">  }</span>
+  
+  @Override
+  protected void serializeNativeStateHolder (NativeStateHolder nsh){
+<span class="nc" id="L125">    os.print(nsh);</span>
+<span class="nc" id="L126">    os.println();</span>
+<span class="nc" id="L127">    super.serializeNativeStateHolder(nsh);</span>
+<span class="nc" id="L128">  }</span>
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

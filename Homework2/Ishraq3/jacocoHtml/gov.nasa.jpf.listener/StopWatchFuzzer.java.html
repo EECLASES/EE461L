@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StopWatchFuzzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">StopWatchFuzzer.java</span></div><h1>StopWatchFuzzer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.LCMP;
+import gov.nasa.jpf.jvm.bytecode.LSUB;
+import gov.nasa.jpf.jvm.bytecode.NATIVERETURN;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.choice.IntChoiceFromSet;
+
+
+/**
+ * a listener that is used to explore all paths from a time-value comparison.
+ * 
+ * This works by creating a CG on LCMP instructions that involve 
+ * System.currentTimeMillis() obtained values, which are attribute tagged
+ * upon return from the native method, propagated on LSUB (duration computation),
+ * and finally used for LCMP interception if the tag attributes are present
+ * 
+ *   long t1 = System.currentTimeMillis();
+ *   doSomeComputation();
+ *   long t2 = System.currentTimeMillis();
+ *   if (t2 - t1 &lt;= MAX_DURATION){
+ *     // all fine branch
+ *   } else {
+ *     // catastrophic failure branch
+ *   }
+ * 
+ * which boils down to a bytecode pattern like
+ * 
+ *   invokestatic #2; // System.currentTimeMillis()   &lt;&lt;&lt; tag result with TimeVal attr
+ *   ..
+ *   lsub  &lt;&lt;&lt; propagate if any of the operands has a TimeVal attr
+ *   ..
+ *   lcmp &lt;&lt;&lt; register CG and skip if any of the operands has TimeVal attr
+ * 
+ */
+<span class="fc" id="L59">public class StopWatchFuzzer extends ListenerAdapter {</span>
+  
+  MethodInfo miCurrentTimeMillis;
+  
+<span class="fc" id="L63">  static class TimeVal {</span>
+    // attribute for values obtained from System.currentTimeMillis()
+  }
+<span class="fc" id="L66">  static TimeVal timeValAttr = new TimeVal(); // we don't need separate instances</span>
+  
+<span class="fc" id="L68">  static String CG_ID = &quot;LCMP_fuzzer&quot;;</span>
+
+  @Override
+  public void classLoaded(VM vm, ClassInfo ci){
+<span class="fc bfc" id="L72" title="All 2 branches covered.">    if (miCurrentTimeMillis == null){</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">      if (ci.getName().equals(&quot;java.lang.System&quot;)) {</span>
+<span class="fc" id="L74">        miCurrentTimeMillis = ci.getMethod(&quot;currentTimeMillis()J&quot;, false); // its got to be there</span>
+      }
+    }
+<span class="fc" id="L77">  }</span>
+  
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn){
+
+<span class="fc bfc" id="L82" title="All 2 branches covered.">    if (executedInsn instanceof NATIVERETURN){</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">      if (executedInsn.isCompleted(ti)){</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (((NATIVERETURN)executedInsn).getMethodInfo() == miCurrentTimeMillis){</span>
+          // the two top operand slots hold the 'long' time value
+<span class="fc" id="L86">          StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L87">          frame.addLongOperandAttr( timeValAttr);</span>
+        }
+      }
+    }
+<span class="fc" id="L91">  }</span>
+  
+  @Override
+  public void executeInstruction(VM vm, ThreadInfo ti, Instruction insnToExecute){
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">    if (insnToExecute instanceof LSUB){  // propagate TimeVal attrs</span>
+<span class="fc" id="L97">      StackFrame frame = ti.getTopFrame();</span>
+      // check if any of the operands have TimeVal attributes
+      // attributes are stored on the first slot of a long val
+<span class="pc bpc" id="L100" title="3 of 4 branches missed.">      if (frame.hasOperandAttr(1, TimeVal.class) || frame.hasOperandAttr(3, TimeVal.class)){      </span>
+        // enter insn (this pops the 4 top operand slots and pushes the long result
+<span class="fc" id="L102">        ti.skipInstruction(insnToExecute.execute(ti));</span>
+      
+        // propagate TimeVal attr, now we need a modifiable frame
+<span class="fc" id="L105">        frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L106">        frame.addLongOperandAttr(timeValAttr);</span>
+      }
+       
+<span class="fc bfc" id="L109" title="All 2 branches covered.">    } else if (insnToExecute instanceof LCMP){ // create and set CG if operand has TimeVal attr</span>
+      
+<span class="fc bfc" id="L111" title="All 2 branches covered.">      if (!ti.isFirstStepInsn()){ // this is the first time we see this insn</span>
+<span class="fc" id="L112">        StackFrame frame = ti.getTopFrame();</span>
+        
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">        if (frame.hasOperandAttr(1, TimeVal.class) || frame.hasOperandAttr(3, TimeVal.class)){</span>
+<span class="fc" id="L115">          IntChoiceFromSet cg = new IntChoiceFromSet( CG_ID, -1, 0, 1);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">          if (vm.setNextChoiceGenerator(cg)){</span>
+<span class="fc" id="L117">            ti.skipInstruction(insnToExecute); // reexecute after breaking the transition</span>
+          }
+        }
+        
+<span class="fc" id="L121">      } else { // it is the beginning of a transition, push the choice and proceed</span>
+<span class="fc" id="L122">        IntChoiceFromSet cg = vm.getCurrentChoiceGenerator(CG_ID, IntChoiceFromSet.class);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (cg != null){</span>
+<span class="fc" id="L124">          int choice = cg.getNextChoice();</span>
+<span class="fc" id="L125">          StackFrame frame = ti.getModifiableTopFrame();</span>
+          
+          // pop the operands 
+<span class="fc" id="L128">          frame.popLong();</span>
+<span class="fc" id="L129">          frame.popLong();</span>
+          
+<span class="fc" id="L131">          frame.push(choice);</span>
+          
+<span class="fc" id="L133">          ti.skipInstruction(insnToExecute.getNext());</span>
+        }
+      }
+    }
+<span class="fc" id="L137">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,863 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassLoaderInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ClassLoaderInfo.java</span></div><h1>ClassLoaderInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.SystemAttribute;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.SparseIntVector;
+import gov.nasa.jpf.util.StringSetMatcher;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ *  
+ * Represents the classloader construct in VM which is responsible for loading
+ * classes.
+ */
+public class ClassLoaderInfo 
+     implements Iterable&lt;ClassInfo&gt;, Comparable&lt;ClassLoaderInfo&gt;, Cloneable, Restorable&lt;ClassLoaderInfo&gt; {
+
+<span class="fc" id="L47">  static JPFLogger log = JPF.getLogger(&quot;class&quot;);</span>
+
+  
+  // the model class field name where we store our id 
+  protected static final String ID_FIELD = &quot;nativeId&quot;;
+
+  protected static Config config;
+
+  // this is where we keep the global list of classloader ids
+  protected static SparseIntVector globalCLids;
+  
+  /**
+   * Map from class file URLs to first ClassInfo that was read from it. This search
+   * global map is used to make sure we only read class files once
+   */
+  protected static Map&lt;String,ClassInfo&gt; loadedClasses;
+  
+  /**
+   * map from annotation class file URLs to AnnotationInfos, which have a separate JPF internal
+   * representation. Again, using a global map ensures we only read the related class files once
+   */
+  protected static Map&lt;String,AnnotationInfo&gt; loadedAnnotations;
+  
+  // Map that keeps the classes defined (directly loaded) by this loader and the
+  // ones that are resolved from these defined classes
+  protected Map&lt;String,ClassInfo&gt; resolvedClasses;
+
+  // annotations directly loaded by this classloader
+  protected Map&lt;String,AnnotationInfo&gt; resolvedAnnotations;
+  
+  // Represents the locations where this classloader can load classes form - has to be populated subclasses 
+  protected ClassPath cp;
+
+  // The type of the corresponding class loader object
+  protected ClassInfo classInfo;
+
+  // The area containing static fields and  classes
+  protected Statics statics;
+
+<span class="fc" id="L86">  protected boolean roundTripRequired = false;</span>
+
+  // Search global id, which is the basis for canonical order of classloaders
+  protected int id;
+
+  // The java.lang.ClassLoader object reference
+  protected int objRef;
+
+  protected ClassLoaderInfo parent;
+
+  
+  static class ClMemento implements Memento&lt;ClassLoaderInfo&gt; {
+    // note that we don't have to store the invariants (gid, parent, isSystemClassLoader)
+    ClassLoaderInfo cl;
+    Memento&lt;Statics&gt; staticsMemento;
+    Memento&lt;ClassPath&gt; cpMemento;
+    Map&lt;String, Boolean&gt; classAssertionStatus;
+    Map&lt;String, Boolean&gt; packageAssertionStatus;
+    boolean defaultAssertionStatus;
+    boolean isDefaultSet;
+
+<span class="fc" id="L107">    ClMemento (ClassLoaderInfo cl){</span>
+<span class="fc" id="L108">      this.cl = cl;</span>
+<span class="fc" id="L109">      staticsMemento = cl.statics.getMemento();</span>
+<span class="fc" id="L110">      cpMemento = cl.cp.getMemento();</span>
+<span class="fc" id="L111">      classAssertionStatus = new HashMap&lt;String, Boolean&gt;(cl.classAssertionStatus);</span>
+<span class="fc" id="L112">      packageAssertionStatus = new HashMap&lt;String, Boolean&gt;(cl.packageAssertionStatus);</span>
+<span class="fc" id="L113">      defaultAssertionStatus = cl.defaultAssertionStatus;</span>
+<span class="fc" id="L114">      isDefaultSet = cl.isDefaultSet;</span>
+<span class="fc" id="L115">    }</span>
+
+    @Override
+	public ClassLoaderInfo restore(ClassLoaderInfo ignored) {
+<span class="fc" id="L119">      staticsMemento.restore(cl.statics);</span>
+<span class="fc" id="L120">      cpMemento.restore(null);</span>
+<span class="fc" id="L121">      cl.classAssertionStatus = this.classAssertionStatus;</span>
+<span class="fc" id="L122">      cl.packageAssertionStatus = this.packageAssertionStatus;</span>
+<span class="fc" id="L123">      cl.defaultAssertionStatus = this.defaultAssertionStatus;</span>
+<span class="fc" id="L124">      cl.isDefaultSet = this.isDefaultSet;</span>
+<span class="fc" id="L125">      return cl;</span>
+    }
+  }
+
+  /**
+   * This is invoked by VM.initSubsystems()
+   */
+  static void init (Config config) {
+<span class="fc" id="L133">    ClassLoaderInfo.config = config;</span>
+
+<span class="fc" id="L135">    globalCLids = new SparseIntVector();</span>
+<span class="fc" id="L136">    loadedClasses = new HashMap&lt;String,ClassInfo&gt;(); // not sure we actually want this for multiple runs (unless we check file stamps)</span>
+<span class="fc" id="L137">    loadedAnnotations = new HashMap&lt;String,AnnotationInfo&gt;();</span>
+    
+<span class="fc" id="L139">    enabledAssertionPatterns = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;vm.enable_assertions&quot;));</span>
+<span class="fc" id="L140">    disabledAssertionPatterns = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;vm.disable_assertions&quot;));</span>
+<span class="fc" id="L141">  }</span>
+    
+  public static int getNumberOfLoadedClasses (){
+<span class="nc" id="L144">    return loadedClasses.size();</span>
+  }
+  
+  public static ClassInfo getCurrentResolvedClassInfo (String clsName){
+<span class="fc" id="L148">    ClassLoaderInfo cl = getCurrentClassLoader();</span>
+<span class="fc" id="L149">    return cl.getResolvedClassInfo(clsName);</span>
+  }
+
+  public static ClassInfo getSystemResolvedClassInfo (String clsName){
+<span class="fc" id="L153">    ClassLoaderInfo cl = getCurrentSystemClassLoader();</span>
+<span class="fc" id="L154">    return cl.getResolvedClassInfo(clsName);</span>
+  }
+   
+  /**
+   * for use from SystemClassLoaderInfo ctor, which doesn't have a ClassLoader object
+   * yet and has to set cp and id itself
+   */
+<span class="fc" id="L161">  protected ClassLoaderInfo (VM vm){</span>
+<span class="fc" id="L162">    resolvedClasses = new HashMap&lt;String,ClassInfo&gt;();</span>
+<span class="fc" id="L163">    resolvedAnnotations = new HashMap&lt;String,AnnotationInfo&gt;();</span>
+    
+<span class="fc" id="L165">    this.statics = createStatics(vm);</span>
+
+<span class="fc" id="L167">    cp = new ClassPath();</span>
+    
+    // registration has to happen from SystemClassLoaderInfo ctor since we are
+    // only partially initialized at this point
+<span class="fc" id="L171">  }</span>
+  
+  /**
+   * for all other classloaders, which require an already instantiated ClassLoader object 
+   */
+<span class="fc" id="L176">  protected ClassLoaderInfo (VM vm, int objRef, ClassPath cp, ClassLoaderInfo parent) {</span>
+<span class="fc" id="L177">    resolvedClasses = new HashMap&lt;String,ClassInfo&gt;();</span>
+<span class="fc" id="L178">    resolvedAnnotations = new HashMap&lt;String,AnnotationInfo&gt;();</span>
+
+<span class="fc" id="L180">    this.parent = parent;</span>
+<span class="fc" id="L181">    this.objRef = objRef;</span>
+<span class="fc" id="L182">    this.cp = cp;</span>
+<span class="fc" id="L183">    this.statics = createStatics(vm);</span>
+
+<span class="fc" id="L185">    this.id = computeId(objRef);</span>
+<span class="fc" id="L186">    ElementInfo ei = vm.getModifiableElementInfo(objRef);</span>
+
+<span class="fc" id="L188">    ei.setIntField(ID_FIELD, id);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">    if (parent != null) {</span>
+<span class="fc" id="L190">      ei.setReferenceField(&quot;parent&quot;, parent.objRef);</span>
+    }
+<span class="fc" id="L192">    classInfo = ei.getClassInfo();</span>
+<span class="fc" id="L193">    roundTripRequired = isRoundTripRequired();</span>
+
+<span class="fc" id="L195">    vm.registerClassLoader(this);</span>
+<span class="fc" id="L196">  }</span>
+  
+  @Override
+  public Memento&lt;ClassLoaderInfo&gt; getMemento (MementoFactory factory) {
+<span class="nc" id="L200">    return factory.getMemento(this);</span>
+  }
+
+  public Memento&lt;ClassLoaderInfo&gt; getMemento(){
+<span class="fc" id="L204">    return new ClMemento(this);</span>
+  }
+
+  protected Statics createStatics (VM vm){
+<span class="fc" id="L208">    Class&lt;?&gt;[] argTypes = { Config.class, KernelState.class };</span>
+<span class="fc" id="L209">    Object[] args = { config, vm.getKernelState() };</span>
+    
+<span class="fc" id="L211">    return config.getEssentialInstance(&quot;vm.statics.class&quot;, Statics.class, argTypes, args);</span>
+  }
+  
+  /**
+   * this is our internal, search global id that is used for the
+   * canonical root set
+   */
+  public int getId() {
+<span class="fc" id="L219">    return id;</span>
+  }
+
+  /**
+   * Returns the type of the corresponding class loader object
+   */
+  public ClassInfo getClassInfo () {
+<span class="nc" id="L226">    return classInfo;</span>
+  }
+
+  /**
+   * Returns the object reference.
+   */
+  public int getClassLoaderObjectRef () {
+<span class="fc" id="L233">    return objRef;</span>
+  }
+
+  protected int computeId (int objRef) {
+<span class="fc" id="L237">    int id = globalCLids.get(objRef);</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">    if (id == 0) {</span>
+<span class="fc" id="L239">      id = globalCLids.size() + 1; // the first systemClassLoader is not in globalCLids and always has id '0'</span>
+<span class="fc" id="L240">      globalCLids.set(objRef, id);</span>
+    }
+<span class="fc" id="L242">    return id;</span>
+  }
+
+  /**
+   * For optimizing the class loading mechanism, if the class loader class and the 
+   * classes of the whole parents hierarchy are descendant of URLClassLoader and 
+   * do not override the ClassLoader.loadClass() &amp; URLClassLoader.findClass, resolving 
+   * the class is done natively within JPF
+   */
+  protected boolean isRoundTripRequired() {
+<span class="fc bfc" id="L252" title="All 6 branches covered.">    return (parent!=null? parent.roundTripRequired: true)  || !hasOriginalLoadingImp();</span>
+  }
+
+  private boolean hasOriginalLoadingImp() {
+<span class="fc" id="L256">    String signature = &quot;(Ljava/lang/String;)Ljava/lang/Class;&quot;;</span>
+<span class="fc" id="L257">    MethodInfo loadClass = classInfo.getMethod(&quot;loadClass&quot; + signature, true);</span>
+<span class="fc" id="L258">    MethodInfo findClass = classInfo.getMethod(&quot;findClass&quot; + signature, true);</span>
+  
+<span class="fc bfc" id="L260" title="All 2 branches covered.">    return (loadClass.getClassName().equals(&quot;java.lang.ClassLoader&quot;) &amp;&amp;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        findClass.getClassName().equals(&quot;java.net.URLClassLoader&quot;));</span>
+  }
+
+  public boolean isSystemClassLoader() {
+<span class="fc" id="L265">    return false;</span>
+  }
+  
+  public static ClassLoaderInfo getCurrentClassLoader() {
+<span class="fc" id="L269">    return getCurrentClassLoader( ThreadInfo.getCurrentThread());</span>
+  }
+
+  public static ClassLoaderInfo getCurrentClassLoader (ThreadInfo ti) {
+<span class="fc bfc" id="L273" title="All 2 branches covered.">    for (StackFrame frame = ti.getTopFrame(); frame != null; frame = frame.getPrevious()){</span>
+<span class="fc" id="L274">      MethodInfo miFrame = frame.getMethodInfo();</span>
+<span class="fc" id="L275">      ClassInfo ciFrame =  miFrame.getClassInfo();</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">      if (ciFrame != null){</span>
+<span class="fc" id="L277">        return ciFrame.getClassLoaderInfo();</span>
+      }
+    }
+
+<span class="fc" id="L281">    return ti.getSystemClassLoaderInfo();</span>
+  }
+  
+  public static SystemClassLoaderInfo getCurrentSystemClassLoader() {
+<span class="fc" id="L285">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">    if (ti != null){</span>
+<span class="fc" id="L287">      return ti.getSystemClassLoaderInfo();</span>
+    } else {
+      // this is kind of a hack - we just use the latest SystemClassLoaderInfo instance
+      // this might happen if the SystemClassLoader preloads classes before we have a main thread
+<span class="nc" id="L291">      return SystemClassLoaderInfo.lastInstance;</span>
+    }
+  }
+
+  public SystemClassLoaderInfo getSystemClassLoader() {
+<span class="fc" id="L296">    return getCurrentSystemClassLoader();</span>
+  }
+  
+  protected ClassInfo loadSystemClass (String clsName){
+<span class="nc" id="L300">    return getCurrentSystemClassLoader().loadSystemClass(clsName);</span>
+  }
+
+  protected ClassInfo createClassInfo (String typeName, ClassFileMatch match, ClassLoaderInfo definingLoader) throws ClassParseException {
+<span class="nc" id="L304">    return getCurrentSystemClassLoader().createClassInfo( typeName, match, definingLoader);</span>
+  }
+  
+  protected ClassInfo createClassInfo (String typeName, String url, byte[] data, ClassLoaderInfo definingLoader) throws ClassParseException {
+<span class="nc" id="L308">    return getCurrentSystemClassLoader().createClassInfo( typeName, url, data, definingLoader);</span>
+  }
+
+  protected void setAttributes (ClassInfo ci){
+<span class="fc" id="L312">    getCurrentSystemClassLoader().setAttributes(ci);</span>
+<span class="fc" id="L313">  }</span>
+  
+  
+  /**
+   * obtain ClassInfo object for given class name
+   *
+   * if the requested class or any of its superclasses and interfaces
+   * is not found this method will throw a ClassInfoException. Loading
+   * of respective superclasses and interfaces happens recursively from here.
+   *
+   * Returned ClassInfo objects are not registered yet, i.e. still have to
+   * be added to the ClassLoaderInfo's statics, and don't have associated java.lang.Class
+   * objects until registerClass(ti) is called.
+   *
+   * Before any field or method access, the class also has to be initialized,
+   * which can include overlayed execution of &amp;lt;clinit&amp;gt; declaredMethods, which is done
+   * by calling initializeClass(ti,insn)
+   *
+   * this is for loading classes from the file system 
+   */
+  public ClassInfo getResolvedClassInfo (String className) throws ClassInfoException {
+<span class="fc" id="L334">    String typeName = Types.getClassNameFromTypeName( className);</span>
+    
+<span class="fc" id="L336">    ClassInfo ci = resolvedClasses.get( typeName);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">    if (ci == null) {</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">      if (ClassInfo.isBuiltinClass( typeName)){</span>
+<span class="fc" id="L339">        ci = loadSystemClass( typeName);</span>
+
+      } else {
+<span class="fc" id="L342">        ClassFileMatch match = getMatch( typeName);</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        if (match != null){</span>
+<span class="fc" id="L344">          String url = match.getClassURL();</span>
+<span class="fc" id="L345">          ci = loadedClasses.get( url); // have we loaded the class from this source before</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">          if (ci != null){</span>
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">            if (ci.getClassLoaderInfo() != this){ // might have been loaded by another classloader</span>
+<span class="fc" id="L348">              ci = ci.cloneFor(this);</span>
+            }
+          } else {
+            try {
+<span class="fc" id="L352">              log.info(&quot;loading class &quot;, typeName, &quot; from &quot;,  url);</span>
+<span class="fc" id="L353">              ci = match.createClassInfo(this);</span>
+              
+<span class="nc" id="L355">            } catch (ClassParseException cpx){</span>
+<span class="nc" id="L356">              throw new ClassInfoException( &quot;error parsing class&quot;, this, &quot;java.lang.NoClassDefFoundError&quot;, typeName, cpx);</span>
+<span class="fc" id="L357">            }</span>
+            
+<span class="fc" id="L359">            loadedClasses.put( url, ci);</span>
+          }
+          
+<span class="fc" id="L362">        } else { // no match found</span>
+<span class="fc" id="L363">          throw new ClassInfoException(&quot;class not found: &quot; + typeName, this, &quot;java.lang.ClassNotFoundException&quot;, typeName);</span>
+        }
+      }
+      
+<span class="fc" id="L367">      setAttributes(ci);</span>
+<span class="fc" id="L368">      resolvedClasses.put(typeName, ci);</span>
+    }
+    
+<span class="fc" id="L371">    return ci;</span>
+  }
+  
+  /**
+   * this is for user defined ClassLoaders that explicitly provide the class file data
+   */
+  public ClassInfo getResolvedClassInfo (String className, byte[] data, int offset, int length) throws ClassInfoException {
+<span class="fc" id="L378">    String typeName = Types.getClassNameFromTypeName( className);</span>
+<span class="fc" id="L379">    ClassInfo ci = resolvedClasses.get( typeName);    </span>
+    
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">    if (ci == null) {        </span>
+      try {
+        // it can't be a builtin class since we have classfile contents
+<span class="fc" id="L384">        String url = typeName; // three isn't really a URL for it, just choose somehting</span>
+<span class="fc" id="L385">        SystemClassLoaderInfo sysCl = getCurrentSystemClassLoader();</span>
+<span class="fc" id="L386">        ci = sysCl.createClassInfo(typeName, url, data, this);</span>
+
+        // no use to store it in loadedClasses since the data might be dynamically generated
+
+<span class="nc" id="L390">      } catch (ClassParseException cpx) {</span>
+<span class="nc" id="L391">        throw new ClassInfoException(&quot;error parsing class&quot;, this, &quot;java.lang.NoClassDefFoundError&quot;, typeName, cpx);</span>
+<span class="fc" id="L392">      }</span>
+
+<span class="fc" id="L394">      setAttributes(ci);</span>
+<span class="fc" id="L395">      resolvedClasses.put( typeName, ci);</span>
+    }
+    
+<span class="fc" id="L398">    return ci;</span>
+  }
+    
+  public AnnotationInfo getResolvedAnnotationInfo (String typeName) throws ClassInfoException {
+<span class="fc" id="L402">    AnnotationInfo ai = resolvedAnnotations.get(typeName);</span>
+    
+<span class="fc bfc" id="L404" title="All 2 branches covered.">    if (ai == null){</span>
+<span class="fc" id="L405">      ClassFileMatch match = getMatch( typeName);</span>
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">      if (match != null){</span>
+<span class="fc" id="L407">        String url = match.getClassURL();</span>
+<span class="fc" id="L408">        ai = loadedAnnotations.get(url); // have we loaded the class from this source before</span>
+<span class="pc bpc" id="L409" title="1 of 2 branches missed.">        if (ai != null) {</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">          if (ai.getClassLoaderInfo() != this) { // might have been loaded by another classloader</span>
+<span class="nc" id="L411">            ai = ai.cloneFor(this);</span>
+          }
+          
+        } else {
+          try {
+<span class="fc" id="L416">            ai = match.createAnnotationInfo(this);</span>
+            
+<span class="nc" id="L418">          } catch (ClassParseException cpx) {</span>
+<span class="nc" id="L419">            throw new ClassInfoException(&quot;error parsing class&quot;, this, &quot;java.lang.NoClassDefFoundError&quot;, typeName, cpx);</span>
+<span class="fc" id="L420">          }</span>
+            
+<span class="fc" id="L422">          loadedAnnotations.put( url, ai);</span>
+        } 
+        
+<span class="fc" id="L425">      } else { // no match found</span>
+<span class="nc" id="L426">        throw new ClassInfoException(&quot;class not found: &quot; + typeName, this, &quot;java.lang.ClassNotFoundException&quot;, typeName);</span>
+      }
+      
+<span class="fc" id="L429">      resolvedAnnotations.put( typeName, ai);</span>
+    }
+    
+<span class="fc" id="L432">    return ai;</span>
+  }
+  
+  public ClassInfo getResolvedAnnotationProxy (ClassInfo ciAnnotation){
+<span class="fc" id="L436">    String typeName = ciAnnotation.getName() + &quot;$Proxy&quot;;</span>
+    
+<span class="fc" id="L438">    ClassInfo ci = resolvedClasses.get( typeName);</span>
+<span class="fc bfc" id="L439" title="All 2 branches covered.">    if (ci == null) {</span>
+<span class="fc" id="L440">      ci = ciAnnotation.createAnnotationProxy(typeName);      </span>
+<span class="fc" id="L441">      resolvedClasses.put( typeName, ci);</span>
+    }
+
+<span class="fc" id="L444">    return ci;</span>
+  }
+
+  /**
+   * This method returns a type which implements the given functional interface 
+   * and contains a method that captures the behavior of the lambda expression.
+   */
+  public ClassInfo getResolvedFuncObjType (int bsIdx, ClassInfo fiClassInfo, String samUniqueName, BootstrapMethodInfo bmi, String[] freeVariableTypeNames) {
+<span class="fc" id="L452">    String typeName = bmi.enclosingClass.getName() + &quot;$$Lambda$&quot; + bsIdx;</span>
+    
+<span class="fc" id="L454">    ClassInfo funcObjType = resolvedClasses.get( typeName);</span>
+    
+<span class="fc bfc" id="L456" title="All 2 branches covered.">    if (funcObjType == null) {</span>
+<span class="fc" id="L457">      funcObjType = fiClassInfo.createFuncObjClassInfo(bmi, typeName, samUniqueName, freeVariableTypeNames);</span>
+<span class="fc" id="L458">      resolvedClasses.put( typeName, funcObjType);</span>
+    }
+    
+<span class="fc" id="L461">    return funcObjType;</span>
+  }
+  
+  protected ClassInfo getAlreadyResolvedClassInfo(String cname) {
+<span class="fc" id="L465">    return resolvedClasses.get(cname);</span>
+  }
+
+  protected void addResolvedClass(ClassInfo ci) {
+<span class="fc" id="L469">    resolvedClasses.put(ci.getName(), ci);</span>
+<span class="fc" id="L470">  }</span>
+
+  protected boolean hasResolved(String cname) {
+<span class="nc bnc" id="L473" title="All 2 branches missed.">    return (resolvedClasses.get(cname)!=null);</span>
+  }
+
+  /**
+   * this one is for clients that need to synchronously get an initialized classinfo.
+   * NOTE: we don't handle clinits here. If there is one, this will throw
+   * an exception. NO STATIC BLOCKS / FIELDS ALLOWED
+   */
+  public ClassInfo getInitializedClassInfo (String clsName, ThreadInfo ti){
+<span class="fc" id="L482">    ClassInfo ci = getResolvedClassInfo(clsName);</span>
+<span class="fc" id="L483">    ci.initializeClassAtomic(ti);</span>
+<span class="fc" id="L484">    return ci;</span>
+  }
+
+  /**
+   * obtain ClassInfo from context that does not care about resolution, i.e.
+   * does not check for NoClassInfoExceptions
+   *
+   * @param className fully qualified classname to get a ClassInfo for
+   * @return null if class was not found
+   */
+  public ClassInfo tryGetResolvedClassInfo (String className){
+    try {
+<span class="nc" id="L496">      return getResolvedClassInfo(className);</span>
+<span class="nc" id="L497">    } catch (ClassInfoException cx){</span>
+<span class="nc" id="L498">      return null;</span>
+    }
+  }
+
+  public ClassInfo getClassInfo (int id) {
+<span class="fc" id="L503">    ElementInfo ei = statics.get(id);</span>
+<span class="pc bpc" id="L504" title="1 of 2 branches missed.">    if (ei != null) {</span>
+<span class="fc" id="L505">      return ei.getClassInfo();</span>
+    } else {
+<span class="nc" id="L507">      return null;</span>
+    }
+  }
+
+  // it acquires the resolvedClassInfo by executing the class loader loadClass() method
+  public ClassInfo loadClass(String cname) {
+<span class="fc" id="L513">    ClassInfo ci = null;</span>
+<span class="fc bfc" id="L514" title="All 2 branches covered.">    if(roundTripRequired) {</span>
+      // loadClass bytecode needs to be executed by the JPF vm
+<span class="fc" id="L516">      ci = loadClassOnJPF(cname);</span>
+    } else {
+      // This class loader and the whole parent hierarchy use the standard class loading
+      // mechanism, therefore the class is loaded natively
+<span class="fc" id="L520">      ci = loadClassOnJVM(cname);</span>
+    }
+
+<span class="fc" id="L523">    return ci;</span>
+  }
+
+  protected ClassInfo loadClassOnJVM(String cname) {
+<span class="fc" id="L527">    String className = Types.getClassNameFromTypeName(cname);</span>
+    // Check if the given class is already resolved by this loader
+<span class="fc" id="L529">    ClassInfo ci = getAlreadyResolvedClassInfo(className);</span>
+
+<span class="fc bfc" id="L531" title="All 2 branches covered.">    if (ci == null) {</span>
+      try {
+<span class="fc bfc" id="L533" title="All 2 branches covered.">        if(parent != null) {</span>
+<span class="fc" id="L534">          ci = parent.loadClassOnJVM(cname);</span>
+        } else {
+<span class="fc" id="L536">          ClassLoaderInfo systemClassLoader = getCurrentSystemClassLoader();</span>
+<span class="fc" id="L537">          ci = systemClassLoader.getResolvedClassInfo(cname);</span>
+        }
+<span class="fc" id="L539">      } catch(ClassInfoException cie) {</span>
+<span class="pc bpc" id="L540" title="1 of 2 branches missed.">        if(cie.getExceptionClass().equals(&quot;java.lang.ClassNotFoundException&quot;)) {</span>
+<span class="fc" id="L541">          ci = getResolvedClassInfo(cname);</span>
+        } else {
+<span class="nc" id="L543">          throw cie;</span>
+        }
+<span class="fc" id="L545">      }</span>
+    }
+
+<span class="fc" id="L548">    return ci;</span>
+  }
+
+  // we need a system attribute to 
+  class LoadClassRequest implements SystemAttribute {
+    String typeName;
+    
+<span class="fc" id="L555">    LoadClassRequest (String typeName){</span>
+<span class="fc" id="L556">      this.typeName = typeName;</span>
+<span class="fc" id="L557">    }</span>
+    
+    boolean isRequestFor( String typeName){
+<span class="fc" id="L560">      return this.typeName.equals( typeName);</span>
+    }
+  }
+  
+  protected ClassInfo loadClassOnJPF (String typeName) {
+<span class="fc" id="L565">    String className = Types.getClassNameFromTypeName(typeName);</span>
+    // Check if the given class is already resolved by this loader
+<span class="fc" id="L567">    ClassInfo ci = getAlreadyResolvedClassInfo(className);</span>
+
+<span class="fc bfc" id="L569" title="All 2 branches covered.">    if(ci != null) { // class already resolved</span>
+<span class="fc" id="L570">      return ci;</span>
+      
+    } else {   // class is not yet resolved, do a roundtrip for the respective loadClass() method
+<span class="fc" id="L573">      ThreadInfo ti = VM.getVM().getCurrentThread();  </span>
+<span class="fc" id="L574">      StackFrame frame = ti.getReturnedDirectCall();</span>
+      
+<span class="fc bfc" id="L576" title="All 2 branches covered.">      if (frame != null){ // there was a roundtrip, but make sure it wasn't a recursive one</span>
+<span class="fc" id="L577">        LoadClassRequest a = frame.getFrameAttr(LoadClassRequest.class);</span>
+<span class="pc bpc" id="L578" title="1 of 4 branches missed.">        if (a != null &amp;&amp; a.isRequestFor(typeName)){ // the roundtrip is completed</span>
+<span class="fc" id="L579">          int clsObjRef = frame.pop();</span>
+
+<span class="pc bpc" id="L581" title="1 of 2 branches missed.">          if (clsObjRef == MJIEnv.NULL) {</span>
+<span class="nc" id="L582">            throw new ClassInfoException(&quot;class not found: &quot; + typeName, this, &quot;java.lang.NoClassDefFoundError&quot;, typeName);</span>
+          } else {
+<span class="fc" id="L584">            return ti.getEnv().getReferredClassInfo(clsObjRef);</span>
+          }          
+        }
+      }
+      
+      // initiate the roundtrip &amp; bail out
+<span class="fc" id="L590">      pushloadClassFrame(typeName);</span>
+<span class="fc" id="L591">      throw new LoadOnJPFRequired(typeName);</span>
+    }
+  }
+
+  protected void pushloadClassFrame (String typeName) {
+<span class="fc" id="L596">    ThreadInfo ti = VM.getVM().getCurrentThread();</span>
+
+    // obtain the class of this ClassLoader
+<span class="fc" id="L599">    ClassInfo clClass = VM.getVM().getClassInfo(objRef);</span>
+
+    // retrieve the loadClass() method of this ClassLoader class
+<span class="fc" id="L602">    MethodInfo miLoadClass = clClass.getMethod(&quot;loadClass(Ljava/lang/String;)Ljava/lang/Class;&quot;, true);</span>
+
+    // create a frame representing loadClass() &amp; push it to the stack of the  current thread 
+<span class="fc" id="L605">    DirectCallStackFrame frame = miLoadClass.createDirectCallStackFrame( ti, 0);</span>
+
+<span class="fc" id="L607">    String clsName = typeName.replace('/', '.');</span>
+<span class="fc" id="L608">    int sRef = ti.getEnv().newString( clsName);</span>
+<span class="fc" id="L609">    int argOffset = frame.setReferenceArgument( 0, objRef, null);</span>
+<span class="fc" id="L610">    frame.setReferenceArgument( argOffset, sRef, null);</span>
+
+<span class="fc" id="L612">    frame.setFrameAttr( new LoadClassRequest(typeName));</span>
+    
+<span class="fc" id="L614">    ti.pushFrame(frame);</span>
+<span class="fc" id="L615">  }</span>
+
+  protected ClassInfo getDefinedClassInfo(String typeName){
+<span class="fc" id="L618">    ClassInfo ci = resolvedClasses.get(typeName);</span>
+<span class="pc bpc" id="L619" title="1 of 4 branches missed.">    if(ci != null &amp;&amp; ci.classLoader == this) {</span>
+<span class="fc" id="L620">      return ci;</span>
+    } else {
+<span class="fc" id="L622">      return null;</span>
+    }
+  }
+  
+  public ElementInfo getElementInfo (String typeName) {
+<span class="nc" id="L627">    ClassInfo ci = resolvedClasses.get(typeName);</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L629">      ClassLoaderInfo cli = ci.classLoader;</span>
+<span class="nc" id="L630">      Statics st = cli.statics;</span>
+<span class="nc" id="L631">      return st.get(ci.getId());</span>
+      
+    } else {
+<span class="nc" id="L634">      return null; // not resolved</span>
+    }
+  }
+
+  public ElementInfo getModifiableElementInfo (String typeName) {
+<span class="nc" id="L639">    ClassInfo ci = resolvedClasses.get(typeName);</span>
+<span class="nc bnc" id="L640" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L641">      ClassLoaderInfo cli = ci.classLoader;</span>
+<span class="nc" id="L642">      Statics st = cli.statics;</span>
+<span class="nc" id="L643">      return st.getModifiable(ci.getId());</span>
+      
+    } else {
+<span class="nc" id="L646">      return null; // not resolved</span>
+    }
+  }
+
+  protected ClassFileMatch getMatch(String typeName) {
+<span class="pc bpc" id="L651" title="1 of 2 branches missed.">    if(ClassInfo.isBuiltinClass(typeName)) {</span>
+<span class="nc" id="L652">      return null;</span>
+    }
+
+    ClassFileMatch match;
+    try {
+<span class="fc" id="L657">      match = cp.findMatch(typeName); </span>
+<span class="nc" id="L658">    } catch (ClassParseException cfx){</span>
+<span class="nc" id="L659">      throw new JPFException(&quot;error reading class &quot; + typeName, cfx);</span>
+<span class="fc" id="L660">    }</span>
+
+<span class="fc" id="L662">    return match;</span>
+  }
+
+  /**
+   * Finds the first Resource in the classpath which has the specified name. 
+   * Returns null if no Resource is found.
+   */
+  public String findResource (String resourceName){
+<span class="fc bfc" id="L670" title="All 2 branches covered.">    for (String cpe : getClassPathElements()) {</span>
+<span class="fc" id="L671">      String URL = getResourceURL(cpe, resourceName);</span>
+<span class="fc bfc" id="L672" title="All 2 branches covered.">      if(URL != null) {</span>
+<span class="fc" id="L673">        return URL;</span>
+      }
+    }
+<span class="fc" id="L676">    return null;</span>
+  }
+
+  /**
+   * Finds all resources in the classpath with the given name. Returns an 
+   * enumeration of the URL objects.
+   */
+  public String[] findResources (String resourceName){
+<span class="fc" id="L684">    ArrayList&lt;String&gt; resources = new ArrayList(0);</span>
+<span class="fc bfc" id="L685" title="All 2 branches covered.">    for (String cpe : getClassPathElements()) {</span>
+<span class="fc" id="L686">      String URL = getResourceURL(cpe, resourceName);</span>
+<span class="fc bfc" id="L687" title="All 2 branches covered.">      if(URL != null) {</span>
+<span class="fc bfc" id="L688" title="All 2 branches covered.">        if(!resources.contains(URL)) {</span>
+<span class="fc" id="L689">          resources.add(URL);</span>
+        }
+      }
+    }
+<span class="fc" id="L693">    return resources.toArray(new String[resources.size()]);</span>
+  }
+  
+  protected String getResourceURL(String path, String resource) {
+<span class="fc bfc" id="L697" title="All 2 branches covered.">    if(resource != null) {</span>
+      try {
+<span class="fc bfc" id="L699" title="All 2 branches covered.">        if (path.endsWith(&quot;.jar&quot;)){</span>
+<span class="fc" id="L700">          JarFile jar = new JarFile(path);</span>
+<span class="fc" id="L701">          JarEntry e = jar.getJarEntry(resource);</span>
+<span class="fc bfc" id="L702" title="All 2 branches covered.">          if (e != null){</span>
+<span class="fc" id="L703">            File f = new File(path);</span>
+<span class="fc" id="L704">            return &quot;jar:&quot; + f.toURI().toURL().toString() + &quot;!/&quot; + resource;</span>
+          }
+<span class="fc" id="L706">        } else {</span>
+<span class="fc" id="L707">          File f = new File(path, resource);</span>
+<span class="fc bfc" id="L708" title="All 2 branches covered.">          if (f.exists()){</span>
+<span class="fc" id="L709">            return f.toURI().toURL().toString();</span>
+          }
+        }
+<span class="nc" id="L712">      } catch (MalformedURLException mfx){</span>
+<span class="nc" id="L713">        return null;</span>
+<span class="nc" id="L714">      } catch (IOException iox){</span>
+<span class="nc" id="L715">        return null;</span>
+<span class="fc" id="L716">      }</span>
+    }
+
+<span class="fc" id="L719">    return null;</span>
+  }
+
+  public Statics getStatics() {
+<span class="fc" id="L723">    return statics;</span>
+  }
+
+  public ClassPath getClassPath() {
+<span class="fc" id="L727">    return cp;</span>
+  }
+
+  public String[] getClassPathElements() {
+<span class="fc" id="L731">    return cp.getPathNames();</span>
+  }
+
+  protected ClassFileContainer createClassFileContainer (String path){
+<span class="fc" id="L735">    return getCurrentSystemClassLoader().createClassFileContainer(path);</span>
+  }
+  
+  public void addClassPathElement (String path){
+<span class="fc" id="L739">    ClassFileContainer cfc = createClassFileContainer(path);</span>
+    
+<span class="fc bfc" id="L741" title="All 2 branches covered.">    if (cfc != null){</span>
+<span class="fc" id="L742">      cp.addClassFileContainer(cfc);</span>
+    } else {
+<span class="fc" id="L744">      log.warning(&quot;unknown classpath element: &quot;, path);</span>
+    }
+<span class="fc" id="L746">  }</span>
+  
+  /**
+   * Comparison for sorting based on index.
+   */
+  @Override
+  public int compareTo (ClassLoaderInfo that) {
+<span class="nc" id="L753">    return this.id - that.id;</span>
+  }
+
+  /**
+   * Returns an iterator over the classes that are defined (directly loaded) by this classloader. 
+   */
+  @Override
+  public Iterator&lt;ClassInfo&gt; iterator () {
+<span class="nc" id="L761">    return resolvedClasses.values().iterator();</span>
+  }
+
+  /**
+   * For now, this always returns true, and it used while the classloader is being
+   * serialized. That is going to be changed if we ever consider unloading the
+   * classes. For now, it is just added in analogy to ThreadInfo
+   */
+  public boolean isAlive () {
+<span class="fc" id="L770">    return true;</span>
+  }
+
+  public Map&lt;String, ClassLoaderInfo&gt; getPackages() {
+<span class="fc" id="L774">    Map&lt;String, ClassLoaderInfo&gt; pkgs = new HashMap&lt;String, ClassLoaderInfo&gt;();</span>
+<span class="fc bfc" id="L775" title="All 2 branches covered.">    for(String cname: resolvedClasses.keySet()) {</span>
+<span class="pc bpc" id="L776" title="1 of 4 branches missed.">      if(!ClassInfo.isBuiltinClass(cname) &amp;&amp; cname.indexOf('.')!=-1) {</span>
+<span class="fc" id="L777">        pkgs.put(cname.substring(0, cname.lastIndexOf('.')), this);</span>
+      }
+<span class="fc" id="L779">    }</span>
+
+<span class="fc" id="L781">    Map&lt;String, ClassLoaderInfo&gt; parentPkgs = null;</span>
+<span class="fc bfc" id="L782" title="All 2 branches covered.">    if(parent!=null) {</span>
+<span class="fc" id="L783">      parentPkgs = parent.getPackages();</span>
+    }
+
+<span class="fc bfc" id="L786" title="All 2 branches covered.">    if (parentPkgs != null) {</span>
+<span class="fc bfc" id="L787" title="All 2 branches covered.">      for (String pName: parentPkgs.keySet()) {</span>
+<span class="fc bfc" id="L788" title="All 2 branches covered.">        if (pkgs.get(pName) == null) {</span>
+<span class="fc" id="L789">          pkgs.put(pName, parentPkgs.get(pName));</span>
+        }
+<span class="fc" id="L791">      }</span>
+    }
+<span class="fc" id="L793">    return pkgs;</span>
+  }
+
+  //-------- assertion management --------
+  
+  // set in the jpf.properties file
+  static StringSetMatcher enabledAssertionPatterns;
+  static StringSetMatcher disabledAssertionPatterns;
+
+<span class="fc" id="L802">  protected Map&lt;String, Boolean&gt; classAssertionStatus = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L803">  protected Map&lt;String, Boolean&gt; packageAssertionStatus = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L804">  protected boolean defaultAssertionStatus = false;</span>
+<span class="fc" id="L805">  protected boolean isDefaultSet = false;</span>
+
+  protected boolean desiredAssertionStatus(String cname) {
+    // class level assertion can override all their assertion settings
+<span class="fc" id="L809">    Boolean result = classAssertionStatus.get(cname);</span>
+<span class="fc bfc" id="L810" title="All 2 branches covered.">    if (result != null) {</span>
+<span class="fc" id="L811">      return result.booleanValue();</span>
+    }
+
+    // package level assertion can override the default assertion settings
+<span class="fc" id="L815">    int dotIndex = cname.lastIndexOf(&quot;.&quot;);</span>
+<span class="fc bfc" id="L816" title="All 2 branches covered.">    if (dotIndex &lt; 0) { // check for default package</span>
+<span class="fc" id="L817">      result = packageAssertionStatus.get(null);</span>
+<span class="pc bpc" id="L818" title="1 of 2 branches missed.">      if (result != null) {</span>
+<span class="nc" id="L819">        return result.booleanValue();</span>
+      }
+    }
+
+<span class="fc bfc" id="L823" title="All 2 branches covered.">    if(dotIndex &gt; 0) {</span>
+<span class="fc" id="L824">      String pkgName = cname;</span>
+<span class="fc bfc" id="L825" title="All 2 branches covered.">      while(dotIndex &gt; 0) { // check for the class package and its upper level packages </span>
+<span class="fc" id="L826">        pkgName = pkgName.substring(0, dotIndex);</span>
+<span class="fc" id="L827">        result = packageAssertionStatus.get(pkgName);</span>
+<span class="fc bfc" id="L828" title="All 2 branches covered.">        if (result != null) {</span>
+<span class="fc" id="L829">          return result.booleanValue();</span>
+        }
+<span class="fc" id="L831">        dotIndex = pkgName.lastIndexOf(&quot;.&quot;, dotIndex-1);</span>
+      }
+    }
+
+    // class loader default, if it has been set, can override the settings
+    // specified by VM arguments
+<span class="fc bfc" id="L837" title="All 2 branches covered.">    if(isDefaultSet) {</span>
+<span class="fc" id="L838">      return defaultAssertionStatus;</span>
+    } else {
+<span class="fc" id="L840">      return StringSetMatcher.isMatch(cname, enabledAssertionPatterns, disabledAssertionPatterns);</span>
+    }
+  }
+
+  public void setDefaultAssertionStatus(boolean enabled) {
+<span class="fc" id="L845">    isDefaultSet = true;</span>
+<span class="fc" id="L846">    defaultAssertionStatus = enabled;</span>
+<span class="fc" id="L847">  }</span>
+
+  public void setClassAssertionStatus(String cname, boolean enabled) {
+<span class="fc" id="L850">    classAssertionStatus.put(cname, enabled);</span>
+<span class="fc" id="L851">  }</span>
+
+  public void setPackageAssertionStatus(String pname, boolean enabled) {
+<span class="fc" id="L854">    packageAssertionStatus.put(pname, enabled);</span>
+<span class="fc" id="L855">  }</span>
+
+  public void clearAssertionStatus() {
+<span class="fc" id="L858">    classAssertionStatus = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L859">    packageAssertionStatus = new HashMap&lt;String, Boolean&gt;();</span>
+<span class="fc" id="L860">    defaultAssertionStatus = false;</span>
+<span class="fc" id="L861">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

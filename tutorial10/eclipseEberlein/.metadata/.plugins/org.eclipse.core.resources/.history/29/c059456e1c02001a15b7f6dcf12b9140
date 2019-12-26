@@ -1,0 +1,22 @@
+package observer3;
+
+import javax.swing.*;
+import java.awt.*;
+
+public class OriginalColorPanel extends ColorPanel {
+    
+
+	public OriginalColorPanel(Color initialColor) {
+		super(initialColor);
+		// TODO Auto-generated constructor stub
+	}
+
+	@Override
+    public void Update(float newHue, float newSaturation, float newBrightness) {
+        Color newColor = Color.getHSBColor(newHue, newSaturation, newBrightness);
+
+    	super.setColor(newColor);
+    }
+
+	
+}

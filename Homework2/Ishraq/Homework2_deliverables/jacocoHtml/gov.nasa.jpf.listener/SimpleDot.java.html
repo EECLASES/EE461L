@@ -1,0 +1,508 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SimpleDot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">SimpleDot.java</span></div><h1>SimpleDot.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFConfigException;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.Property;
+import gov.nasa.jpf.jvm.bytecode.EXECUTENATIVE;
+import gov.nasa.jpf.jvm.bytecode.JVMFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.INVOKESTATIC;
+import gov.nasa.jpf.jvm.bytecode.JVMInstanceFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.InstanceInvocation;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.LockInstruction;
+import gov.nasa.jpf.jvm.bytecode.PUTFIELD;
+import gov.nasa.jpf.jvm.bytecode.PUTSTATIC;
+import gov.nasa.jpf.jvm.bytecode.JVMStaticFieldInstruction;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.FileUtils;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.ExceptionInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NoUncaughtExceptionsProperty;
+import gov.nasa.jpf.vm.NotDeadlockedProperty;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.HashSet;
+
+/**
+ * an alternative  Graphviz dot-file generator for simple,educational state graphs
+ * except of creating funny wallpapers, it doesn't help much in real life if the
+ * state count gets &gt; 50, but for the small ones it's actually quite readable.
+ * Good for papers.
+ *
+ * normal states are labeled with their numeric ids, end states are double circled.
+ * start, end and error states are color filled
+ *
+ * edges have two labels: the choice value at the beginning and the CG cause
+ * at the end. Only the first incoming edge into a state shows the CG cause
+ *
+ * we only render one backtrack edge per from-state
+ *
+ * &lt;2do&gt; GraphViz doesn't seem to handle color or fontname for head/tail labels correctly
+ */
+public class SimpleDot extends ListenerAdapter {
+
+  static final String GRAPH_ATTRS = &quot;pad=0.5&quot;;
+  static final String GENERIC_NODE_ATTRS = &quot;shape=circle,style=filled,fillcolor=white&quot;;
+  static final String GENERIC_EDGE_ATTRS = &quot;fontsize=10,fontname=Helvetica,fontcolor=blue,color=cadetblue,style=\&quot;setlinewidth(0.5)\&quot;,arrowhead=empty,arrowsize=0.5&quot;;
+  static final String START_NODE_ATTRS = &quot;fillcolor=green&quot;;
+  static final String END_NODE_ATTRS = &quot;shape=doublecircle,fillcolor=cyan&quot;;
+  static final String ERROR_NODE_ATTRS = &quot;color=red,fillcolor=lightcoral&quot;;
+  static final String BACKTRACK_EDGE_ATTRS = &quot;arrowhead=onormal,color=gray52,style=\&quot;dotted\&quot;&quot;;
+  static final String RESTORED_EDGE_ATTRS = &quot;arrowhead=onormal,color=red,style=\&quot;dotted\&quot;&quot;;
+  static final String NEW_EDGE_ATTRS = &quot;arrowhead=normal&quot;;
+  static final String VISITED_EDGE_ATTRS = &quot;arrowhead=vee&quot;;
+
+
+  //--- configurable Graphviz attributes
+  protected String graphAttrs;
+  protected String genericNodeAttrs;
+  protected String genericEdgeAttrs;
+  protected String startNodeAttrs;
+  protected String endNodeAttrs;
+  protected String errorNodeAttrs;
+  protected String newEdgeAttrs;
+  protected String visitedEdgeAttrs;
+  protected String backtrackEdgeAttrs;
+  protected String restoreEdgeAttrs;
+
+  protected boolean showTarget;
+  protected boolean printFile;
+
+  protected VM vm;
+  protected String app;
+  protected File file;
+  protected PrintWriter pw;
+
+<span class="nc" id="L108">  protected int lastId = -1;    // where we come from</span>
+  protected String lastErrorId;
+  protected ElementInfo lastEi;
+  protected ThreadInfo lastTi;  // the last started thread
+
+  // helper because GraphViz cannot eliminate duplicate edges
+  HashSet&lt;Long&gt; seenEdges;
+
+<span class="nc" id="L116">  public SimpleDot( Config config, JPF jpf){</span>
+
+<span class="nc" id="L118">    graphAttrs = config.getString(&quot;dot.graph_attr&quot;, GRAPH_ATTRS);</span>
+<span class="nc" id="L119">    genericNodeAttrs = config.getString(&quot;dot.node_attr&quot;, GENERIC_NODE_ATTRS);</span>
+<span class="nc" id="L120">    genericEdgeAttrs = config.getString(&quot;dot.edge_attr&quot;, GENERIC_EDGE_ATTRS);</span>
+<span class="nc" id="L121">    newEdgeAttrs = config.getString(&quot;dot.new_edge_attr&quot;, NEW_EDGE_ATTRS);</span>
+<span class="nc" id="L122">    visitedEdgeAttrs = config.getString(&quot;dot.visited_edge_attr&quot;, VISITED_EDGE_ATTRS);</span>
+<span class="nc" id="L123">    startNodeAttrs = config.getString(&quot;dot.start_node_attr&quot;, START_NODE_ATTRS);</span>
+<span class="nc" id="L124">    endNodeAttrs = config.getString(&quot;dot.end_node_attr&quot;, END_NODE_ATTRS);</span>
+<span class="nc" id="L125">    errorNodeAttrs = config.getString(&quot;dot.error_node_attr&quot;, ERROR_NODE_ATTRS);</span>
+<span class="nc" id="L126">    backtrackEdgeAttrs = config.getString(&quot;dot.bt_edge_attr&quot;, BACKTRACK_EDGE_ATTRS);</span>
+<span class="nc" id="L127">    restoreEdgeAttrs = config.getString(&quot;dot.restore_edge_attr&quot;, RESTORED_EDGE_ATTRS);</span>
+
+<span class="nc" id="L129">    printFile = config.getBoolean(&quot;dot.print_file&quot;, false);</span>
+<span class="nc" id="L130">    showTarget = config.getBoolean(&quot;dot.show_target&quot;, false);</span>
+
+    // app and filename are not known until the search is started
+    
+<span class="nc" id="L134">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="nc" id="L135">  }</span>
+
+  void initialize (VM vm){
+<span class="nc" id="L138">    Config config = vm.getConfig();</span>
+    
+<span class="nc" id="L140">    app = vm.getSUTName();</span>
+<span class="nc" id="L141">    app = app.replace(&quot;+&quot;, &quot;__&quot;);</span>
+<span class="nc" id="L142">    app = app.replace('.', '_');</span>
+
+<span class="nc" id="L144">    String fname = config.getString(&quot;dot.file&quot;);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">    if (fname == null){</span>
+<span class="nc" id="L146">      fname = app + &quot;.dot&quot;;</span>
+    }
+
+    try {
+<span class="nc" id="L150">      file = new File(fname);</span>
+<span class="nc" id="L151">      FileWriter fw = new FileWriter(file);</span>
+<span class="nc" id="L152">      pw = new PrintWriter(fw);</span>
+<span class="nc" id="L153">    } catch (IOException iox){</span>
+<span class="nc" id="L154">      throw new JPFConfigException(&quot;unable to open SimpleDot output file: &quot; + fname);</span>
+<span class="nc" id="L155">    }</span>
+    
+<span class="nc" id="L157">    seenEdges = new HashSet&lt;Long&gt;();</span>
+<span class="nc" id="L158">  }</span>
+  
+  //--- the listener interface
+
+  @Override
+  public void searchStarted(Search search){
+<span class="nc" id="L164">    vm = search.getVM();</span>
+    
+<span class="nc" id="L166">    initialize(vm);</span>
+    
+<span class="nc" id="L168">    printHeader();</span>
+<span class="nc" id="L169">    printStartState(&quot;S&quot;);</span>
+<span class="nc" id="L170">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search){
+<span class="nc" id="L174">    int id = search.getStateId();</span>
+<span class="nc" id="L175">    long edgeId = ((long)lastId &lt;&lt; 32) | id;</span>
+
+<span class="nc bnc" id="L177" title="All 4 branches missed.">    if (id &lt;0 || seenEdges.contains(edgeId)){</span>
+<span class="nc" id="L178">      return; // skip the root state and property violations (reported separately)</span>
+    }
+
+
+<span class="nc bnc" id="L182" title="All 2 branches missed.">    if (search.isErrorState()) {</span>
+<span class="nc" id="L183">      String eid = &quot;e&quot; + search.getNumberOfErrors();</span>
+<span class="nc" id="L184">      printTransition(getStateId(lastId), eid, getLastChoice(), getError(search));</span>
+<span class="nc" id="L185">      printErrorState(eid);</span>
+<span class="nc" id="L186">      lastErrorId = eid;</span>
+
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    } else if (search.isNewState()) {</span>
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">      if (search.isEndState()) {</span>
+<span class="nc" id="L191">        printTransition(getStateId(lastId), getStateId(id), getLastChoice(), &quot;return&quot;);</span>
+<span class="nc" id="L192">        printEndState(getStateId(id));</span>
+      } else {
+<span class="nc" id="L194">        printTransition(getStateId(lastId), getStateId(id), getLastChoice(), getNextCG());</span>
+      }
+
+    } else { // already visited state
+<span class="nc" id="L198">      printTransition(getStateId(lastId), getStateId(id), getLastChoice(), null);</span>
+    }
+
+<span class="nc" id="L201">    seenEdges.add(edgeId);</span>
+<span class="nc" id="L202">    lastId = id;</span>
+<span class="nc" id="L203">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search){
+<span class="nc" id="L207">    int id = search.getStateId();</span>
+<span class="nc" id="L208">    long edgeId = ((long)lastId &lt;&lt; 32) | id;</span>
+
+<span class="nc bnc" id="L210" title="All 2 branches missed.">    if (!seenEdges.contains(edgeId)) {</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">      if(lastErrorId!=null) {</span>
+<span class="nc" id="L212">        printBacktrack(lastErrorId, getStateId(id));</span>
+<span class="nc" id="L213">        lastErrorId = null;</span>
+      } else {
+<span class="nc" id="L215">        printBacktrack(getStateId(lastId), getStateId(id));</span>
+      }
+<span class="nc" id="L217">      seenEdges.add(edgeId);</span>
+    }
+<span class="nc" id="L219">    lastId = id;</span>
+<span class="nc" id="L220">  }</span>
+  
+  @Override
+  public void stateRestored(Search search) {
+<span class="nc" id="L224">    int id = search.getStateId();</span>
+<span class="nc" id="L225">    long edgeId = ((long)lastId &lt;&lt; 32) | id;</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">    if (!seenEdges.contains(edgeId)) {</span>
+<span class="nc" id="L228">      printRestored(getStateId(lastId), getStateId(id));</span>
+<span class="nc" id="L229">      seenEdges.add(edgeId);</span>
+    }
+<span class="nc" id="L231">    lastId = id;</span>
+<span class="nc" id="L232">  }</span>
+
+  @Override
+  public void searchFinished (Search search){
+<span class="nc" id="L236">    pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L237">    pw.close();</span>
+<span class="nc" id="L238">  }</span>
+
+  @Override
+  public void threadStarted (VM vm, ThreadInfo ti){
+<span class="nc" id="L242">    lastTi = ti;</span>
+<span class="nc" id="L243">  }</span>
+
+  @Override
+  public void objectWait (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="nc" id="L247">    lastEi = ei;</span>
+<span class="nc" id="L248">    lastTi = ti;</span>
+<span class="nc" id="L249">  }</span>
+
+  @Override
+  public void publishFinished (Publisher publisher) {
+<span class="nc" id="L253">    PrintWriter ppw = publisher.getOut();</span>
+<span class="nc" id="L254">    publisher.publishTopicStart(&quot;SimpleDot&quot;);</span>
+
+<span class="nc" id="L256">    ppw.println(&quot;dot file generated: &quot; + file.getPath());</span>
+
+<span class="nc bnc" id="L258" title="All 2 branches missed.">    if (printFile){</span>
+<span class="nc" id="L259">      ppw.println();</span>
+<span class="nc" id="L260">      FileUtils.printFile(ppw,file);</span>
+    }
+<span class="nc" id="L262">  }</span>
+
+
+  //--- data collection
+
+  protected String getStateId (int id){
+<span class="nc bnc" id="L268" title="All 2 branches missed.">    return id &lt; 0 ? &quot;S&quot; : Integer.toString(id);</span>
+  }
+
+  protected String getLastChoice() {
+<span class="nc" id="L272">    ChoiceGenerator&lt;?&gt; cg = vm.getChoiceGenerator();</span>
+<span class="nc" id="L273">    Object choice = cg.getNextChoice();</span>
+
+<span class="nc bnc" id="L275" title="All 2 branches missed.">    if (choice instanceof ThreadInfo){</span>
+<span class="nc" id="L276">      int idx = ((ThreadInfo)choice).getId();</span>
+<span class="nc" id="L277">      return &quot;T&quot;+idx;</span>
+    } else {
+<span class="nc" id="L279">      return choice.toString(); // we probably want more here</span>
+    }
+  }
+
+  // this is the only method that's more tricky - we have to find a balance
+  // between being conscious enough to not clutter the graph, and expressive
+  // enough to understand it.
+  // &lt;2do&gt; this doesn't deal well with custom or data CGs yet
+  protected String getNextCG(){
+<span class="nc" id="L288">    ChoiceGenerator&lt;?&gt; cg = vm.getNextChoiceGenerator(); // that's the next one</span>
+<span class="nc" id="L289">    Instruction insn = cg.getInsn();</span>
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">    if (insn instanceof EXECUTENATIVE) {</span>
+<span class="nc" id="L292">      return getNativeExecCG((EXECUTENATIVE)insn);</span>
+
+<span class="nc bnc" id="L294" title="All 2 branches missed.">    } else if (insn instanceof JVMFieldInstruction) { // shared object field access</span>
+<span class="nc" id="L295">      return getFieldAccessCG((JVMFieldInstruction)insn);</span>
+
+<span class="nc bnc" id="L297" title="All 2 branches missed.">    } else if (insn instanceof LockInstruction){ // monitor_enter</span>
+<span class="nc" id="L298">      return getLockCG((LockInstruction)insn);</span>
+
+<span class="nc bnc" id="L300" title="All 2 branches missed.">    } else if (insn instanceof JVMInvokeInstruction){ // sync method invoke</span>
+<span class="nc" id="L301">      return getInvokeCG((JVMInvokeInstruction)insn);</span>
+    }
+
+<span class="nc" id="L304">    return insn.getMnemonic(); // our generic fallback</span>
+  }
+
+  protected String getNativeExecCG (EXECUTENATIVE insn){
+<span class="nc" id="L308">    MethodInfo mi = insn.getExecutedMethod();</span>
+<span class="nc" id="L309">    String s = mi.getName();</span>
+
+<span class="nc bnc" id="L311" title="All 2 branches missed.">    if (s.equals(&quot;start&quot;)) {</span>
+<span class="nc" id="L312">      s = &quot;T&quot; + lastTi.getId() + &quot;.start&quot;;</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    } else if (s.equals(&quot;wait&quot;)) {</span>
+<span class="nc" id="L314">      s = &quot;T&quot; + lastTi.getId() + &quot;.wait&quot;;</span>
+    }
+
+<span class="nc" id="L317">    return s;</span>
+  }
+
+  protected String getFieldAccessCG (JVMFieldInstruction insn){
+    String s;
+
+<span class="nc bnc" id="L323" title="All 2 branches missed.">    if (insn instanceof JVMInstanceFieldInstruction) {</span>
+
+<span class="nc bnc" id="L325" title="All 2 branches missed.">      if (insn instanceof PUTFIELD) {</span>
+<span class="nc" id="L326">        s = &quot;put&quot;;</span>
+      } else /* if (insn instanceof GETFIELD) */ {
+<span class="nc" id="L328">        s = &quot;get&quot;;</span>
+      }
+
+<span class="nc bnc" id="L331" title="All 2 branches missed.">      if (showTarget){</span>
+<span class="nc" id="L332">        int ref = ((JVMInstanceFieldInstruction) insn).getLastThis();</span>
+<span class="nc" id="L333">        s = getInstanceRef(ref) + '.' + s;</span>
+<span class="nc" id="L334">      }</span>
+
+    } else /* if (insn instanceof StaticFieldInstruction) */ {
+<span class="nc bnc" id="L337" title="All 2 branches missed.">      if (insn instanceof PUTSTATIC) {</span>
+<span class="nc" id="L338">        s = &quot;put&quot;;</span>
+      } else /* if (insn instanceof GETSTATIC) */ {
+<span class="nc" id="L340">        s = &quot;get&quot;;</span>
+      }
+
+<span class="nc bnc" id="L343" title="All 2 branches missed.">      if (showTarget){</span>
+<span class="nc" id="L344">        String clsName = ((JVMStaticFieldInstruction) insn).getLastClassName();</span>
+<span class="nc" id="L345">        s = Misc.stripToLastDot(clsName) + '.' + s;</span>
+      }
+    }
+
+<span class="nc" id="L349">    String varId = insn.getFieldName();</span>
+<span class="nc" id="L350">    s = s + ' ' + varId;</span>
+
+<span class="nc" id="L352">    return s;</span>
+  }
+
+  protected String getLockCG(LockInstruction insn){
+<span class="nc" id="L356">    String s = &quot;sync&quot;;</span>
+
+<span class="nc bnc" id="L358" title="All 2 branches missed.">    if (showTarget){</span>
+<span class="nc" id="L359">      int ref = insn.getLastLockRef();</span>
+<span class="nc" id="L360">      s = getInstanceRef(ref) + '.' + s;</span>
+    }
+
+<span class="nc" id="L363">    return s;</span>
+  }
+
+  protected String getInvokeCG (JVMInvokeInstruction insn){
+<span class="nc" id="L367">    MethodInfo mi = insn.getInvokedMethod();</span>
+<span class="nc" id="L368">    String s = mi.getName() + &quot;()&quot;;</span>
+
+<span class="nc bnc" id="L370" title="All 2 branches missed.">    if (showTarget){</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">      if (insn instanceof InstanceInvocation) {</span>
+<span class="nc" id="L372">        int ref = ((InstanceInvocation) insn).getLastObjRef();</span>
+<span class="nc" id="L373">        s = getInstanceRef(ref) + '.' + s;</span>
+
+<span class="nc bnc" id="L375" title="All 2 branches missed.">      } else if (insn instanceof INVOKESTATIC) {</span>
+<span class="nc" id="L376">        String clsName = ((INVOKESTATIC) insn).getInvokedClassName();</span>
+<span class="nc" id="L377">        s = Misc.stripToLastDot(clsName) + '.' + s;</span>
+      }
+    }
+
+<span class="nc" id="L381">    return s;</span>
+  }
+
+  protected String getError (Search search){
+    String e;
+<span class="nc" id="L386">    Error error = search.getLastError();</span>
+<span class="nc" id="L387">    Property prop = error.getProperty();</span>
+
+<span class="nc bnc" id="L389" title="All 2 branches missed.">    if (prop instanceof NoUncaughtExceptionsProperty){</span>
+<span class="nc" id="L390">      ExceptionInfo xi = ((NoUncaughtExceptionsProperty)prop).getUncaughtExceptionInfo();</span>
+<span class="nc" id="L391">      return Misc.stripToLastDot(xi.getExceptionClassname());</span>
+
+<span class="nc bnc" id="L393" title="All 2 branches missed.">    } else if (prop instanceof NotDeadlockedProperty){</span>
+<span class="nc" id="L394">      return &quot;deadlock&quot;;</span>
+    }
+
+    // fallback
+<span class="nc" id="L398">    return Misc.stripToLastDot(prop.getClass().getName());</span>
+  }
+
+  protected static String getInstanceRef (int ref){
+<span class="nc" id="L402">    return &quot;@&quot; + Integer.toHexString(ref).toUpperCase();</span>
+  }
+
+  protected static String getClassObjectRef (int ref){
+<span class="nc" id="L406">    return &quot;#&quot; + Integer.toHexString(ref).toUpperCase();</span>
+  }
+
+  //--- dot file stuff
+
+  protected void printHeader(){
+<span class="nc" id="L412">    pw.print(&quot;digraph &quot;);</span>
+<span class="nc" id="L413">    pw.print(app);</span>
+<span class="nc" id="L414">    pw.println(&quot; {&quot;);</span>
+
+<span class="nc" id="L416">    pw.print(&quot;node [&quot;);</span>
+<span class="nc" id="L417">    pw.print(genericNodeAttrs);</span>
+<span class="nc" id="L418">    pw.println(']');</span>
+
+<span class="nc" id="L420">    pw.print(&quot;edge [&quot;);</span>
+<span class="nc" id="L421">    pw.print(genericEdgeAttrs);</span>
+<span class="nc" id="L422">    pw.println(']');</span>
+
+<span class="nc" id="L424">    pw.println(graphAttrs);</span>
+
+<span class="nc" id="L426">    pw.println();</span>
+<span class="nc" id="L427">    pw.print(&quot;label=\&quot;&quot;);</span>
+<span class="nc" id="L428">    pw.print(app);</span>
+<span class="nc" id="L429">    pw.print(&quot;\&quot;&quot;);</span>
+<span class="nc" id="L430">    pw.println();</span>
+<span class="nc" id="L431">  }</span>
+
+  protected void printTransition(String fromState, String toState, String choiceVal, String cgCause){
+<span class="nc" id="L434">    pw.println();</span>
+<span class="nc" id="L435">    pw.print(fromState);</span>
+<span class="nc" id="L436">    pw.print(&quot; -&gt; &quot;);</span>
+<span class="nc" id="L437">    pw.print( toState);</span>
+<span class="nc" id="L438">    pw.print(&quot; [label=\&quot;&quot;);</span>
+<span class="nc" id="L439">    pw.print(choiceVal);</span>
+<span class="nc" id="L440">    pw.print('&quot;');</span>
+<span class="nc bnc" id="L441" title="All 2 branches missed.">    if (cgCause != null){</span>
+<span class="nc" id="L442">      pw.print(NEW_EDGE_ATTRS);</span>
+<span class="nc" id="L443">      pw.print(&quot;,headlabel=\&quot;&quot;);</span>
+<span class="nc" id="L444">      pw.print(cgCause);</span>
+<span class="nc" id="L445">      pw.print('&quot;');</span>
+    } else {
+<span class="nc" id="L447">      pw.print(VISITED_EDGE_ATTRS);</span>
+    }
+<span class="nc" id="L449">    pw.println(']');</span>
+<span class="nc" id="L450">  }</span>
+
+  protected void printBacktrack (String fromState, String toState){
+<span class="nc" id="L453">    pw.println();</span>
+<span class="nc" id="L454">    pw.print(fromState);</span>
+<span class="nc" id="L455">    pw.print(&quot; -&gt; &quot;);</span>
+<span class="nc" id="L456">    pw.print( toState);</span>
+
+<span class="nc" id="L458">    pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L459">    pw.print(backtrackEdgeAttrs);</span>
+<span class="nc" id="L460">    pw.print(']');</span>
+
+<span class="nc" id="L462">    pw.println(&quot;  // backtrack&quot;);</span>
+<span class="nc" id="L463">  }</span>
+
+  protected void printRestored (String fromState, String toState){
+<span class="nc" id="L466">    pw.println();</span>
+<span class="nc" id="L467">    pw.print(fromState);</span>
+<span class="nc" id="L468">    pw.print(&quot; -&gt; &quot;);</span>
+<span class="nc" id="L469">    pw.print( toState);</span>
+
+<span class="nc" id="L471">    pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L472">    pw.print(restoreEdgeAttrs);</span>
+<span class="nc" id="L473">    pw.print(']');</span>
+
+<span class="nc" id="L475">    pw.println(&quot;  // restored&quot;);</span>
+<span class="nc" id="L476">  }</span>
+  
+  protected void printStartState(String stateId){
+<span class="nc" id="L479">    pw.print(stateId);</span>
+
+<span class="nc" id="L481">    pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L482">    pw.print(startNodeAttrs);</span>
+<span class="nc" id="L483">    pw.print(']');</span>
+
+<span class="nc" id="L485">    pw.println(&quot;  // start state&quot;);</span>
+<span class="nc" id="L486">  }</span>
+
+  protected void printEndState(String stateId){
+<span class="nc" id="L489">    pw.print(stateId);</span>
+
+<span class="nc" id="L491">    pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L492">    pw.print(endNodeAttrs);</span>
+<span class="nc" id="L493">    pw.print(']');</span>
+
+<span class="nc" id="L495">    pw.println(&quot;  // end state&quot;);</span>
+<span class="nc" id="L496">  }</span>
+
+  protected void printErrorState(String error){
+<span class="nc" id="L499">    pw.print(error);</span>
+
+<span class="nc" id="L501">    pw.print(&quot; [&quot;);</span>
+<span class="nc" id="L502">    pw.print(errorNodeAttrs);</span>
+<span class="nc" id="L503">    pw.print(']');</span>
+
+<span class="nc" id="L505">    pw.println(&quot;  // error state&quot;);</span>
+<span class="nc" id="L506">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INVOKEDYNAMIC.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">INVOKEDYNAMIC.java</span></div><h1>INVOKEDYNAMIC.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.BootstrapMethodInfo;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FunctionObjectFactory;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.LoadOnJPFRequired;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ * Invoke dynamic method. It allows dynamic linkage between a call site and a method implementation.
+ *
+ * ..., [arg1, [arg2 ...]]  =&gt; ...
+ */
+public class INVOKEDYNAMIC extends Instruction {
+  
+  // index of a bootstrap method (index to the array bootstrapMethods[] declared in ClassInfo
+  // containing this bytecode instruction)
+  int bootstrapMethodIndex;
+  
+  // Free variables are those that are not defined within the lamabda body and 
+  // are captured from the lexical scope. Note that for instance lambda methods 
+  // the first captured variable always represents &quot;this&quot;
+  String[] freeVariableTypeNames;
+  byte[] freeVariableTypes;
+  
+  String functionalInterfaceName;
+  
+  String samMethodName;
+  
+<span class="pc" id="L55">  int funcObjRef = MJIEnv.NULL;</span>
+  
+<span class="pc" id="L57">  ElementInfo lastFuncObj = null;</span>
+  
+<span class="nc" id="L59">  public INVOKEDYNAMIC () {}</span>
+
+<span class="fc" id="L61">  protected INVOKEDYNAMIC (int bmIndex, String methodName, String descriptor){</span>
+<span class="fc" id="L62">    bootstrapMethodIndex = bmIndex;</span>
+<span class="fc" id="L63">    samMethodName = methodName;</span>
+<span class="fc" id="L64">    freeVariableTypeNames = Types.getArgumentTypeNames(descriptor);</span>
+<span class="fc" id="L65">    freeVariableTypes = Types.getArgumentTypes(descriptor);</span>
+<span class="fc" id="L66">    functionalInterfaceName = Types.getReturnTypeSignature(descriptor);</span>
+<span class="fc" id="L67">  }</span>
+
+  @Override
+  public int getByteCode () {
+<span class="fc" id="L71">    return 0xBA;</span>
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L76">    String args = &quot;&quot;;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    for(String type: freeVariableTypeNames) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">      if(args.length()&gt;0) {</span>
+<span class="nc" id="L79">        type += ','+ type;</span>
+      }
+<span class="nc" id="L81">      args += type;</span>
+    }
+<span class="nc" id="L83">    return &quot;invokedynamic &quot; + bootstrapMethodIndex + &quot; &quot; + </span>
+    samMethodName + '(' + args +&quot;):&quot; + functionalInterfaceName;
+  }
+
+  /**
+   * For now, INVOKEDYNAMIC works only in the context of lambda expressions.
+   * Executing this returns an object that implements the functional interface 
+   * and contains a method which captures the behavior of the lambda expression.
+   */
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L94">    StackFrame frame = ti.getModifiableTopFrame();</span>
+    
+<span class="fc" id="L96">    ElementInfo ei = ti.getHeap().get(funcObjRef);</span>
+    
+<span class="pc bpc" id="L98" title="1 of 6 branches missed.">    if(ei==null || ei!=lastFuncObj || freeVariableTypes.length&gt;0) {</span>
+      ClassInfo fiClassInfo;
+
+      // First, resolve the functional interface
+      try {
+<span class="fc" id="L103">        fiClassInfo = ti.resolveReferencedClass(functionalInterfaceName);</span>
+<span class="nc" id="L104">      } catch(LoadOnJPFRequired lre) {</span>
+<span class="nc" id="L105">        return ti.getPC();</span>
+<span class="fc" id="L106">      }</span>
+
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">      if (fiClassInfo.initializeClass(ti)) {</span>
+<span class="nc" id="L109">        return ti.getPC();</span>
+      }
+      
+<span class="fc" id="L112">      ClassInfo enclosingClass = this.getMethodInfo().getClassInfo();</span>
+      
+<span class="fc" id="L114">      BootstrapMethodInfo bmi = enclosingClass.getBootstrapMethodInfo(bootstrapMethodIndex);</span>
+      
+<span class="fc" id="L116">      VM vm = VM.getVM();</span>
+<span class="fc" id="L117">      FunctionObjectFactory funcObjFactory = vm.getFunctionObjectFacotry();</span>
+      
+<span class="fc" id="L119">      Object[] freeVariableValues = frame.getArgumentsValues(ti, freeVariableTypes);</span>
+      
+<span class="fc" id="L121">      funcObjRef = funcObjFactory.getFunctionObject(bootstrapMethodIndex, ti, fiClassInfo, samMethodName, bmi, freeVariableTypeNames, freeVariableValues);</span>
+<span class="fc" id="L122">      lastFuncObj = ti.getHeap().get(funcObjRef);</span>
+    }
+    
+<span class="fc" id="L125">    frame.pop(freeVariableTypes.length);</span>
+<span class="fc" id="L126">    frame.pushRef(funcObjRef);</span>
+    
+<span class="fc" id="L128">    return getNext(ti);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CheckEvent.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.event</a> &gt; <span class="el_source">CheckEvent.java</span></div><h1>CheckEvent.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.event;
+
+import gov.nasa.jpf.vm.MJIEnv;
+
+/**
+ * a pseudo event that encapsulates a (possibly composed) check
+ * 
+ * This event type uses 'alt' for disjunction and 'next' for conjunction if
+ * they point to CheckEvents
+ */
+public abstract class CheckEvent extends SystemEvent {
+  
+  protected CheckEvent (String name, Object... arguments){
+<span class="nc" id="L32">    super(name, arguments);</span>
+<span class="nc" id="L33">  }</span>
+
+  /**
+   * this is the single check condition for this event
+   */
+  public abstract boolean evaluate(MJIEnv env, int objRef);
+
+  /**
+   * conjunctions and disjunctions of this check event
+   */
+  public boolean check (MJIEnv env, int objRef){
+<span class="nc bnc" id="L44" title="All 2 branches missed.">    if (!evaluate(env, objRef)){</span>
+<span class="nc bnc" id="L45" title="All 4 branches missed.">      if (alt != null &amp;&amp; alt instanceof CheckEvent){</span>
+<span class="nc" id="L46">        return ((CheckEvent)alt).check(env, objRef);</span>
+      } else {
+<span class="nc" id="L48">        return false;</span>
+      }
+      
+    } else {
+<span class="nc bnc" id="L52" title="All 4 branches missed.">      if (next != null &amp;&amp; next instanceof CheckEvent){</span>
+<span class="nc" id="L53">        return ((CheckEvent)next).check(env, objRef);</span>
+      } else {
+<span class="nc" id="L55">        return true;</span>
+      }
+    }
+  }
+
+  /**
+   * generic check evaluation that throws assertions if failed
+   */
+  @Override
+  public void process (MJIEnv env, int objRef){
+<span class="nc bnc" id="L65" title="All 2 branches missed.">    if (!check(env, objRef)){</span>
+<span class="nc" id="L66">      env.throwAssertion(&quot;check event failed: &quot; + this);</span>
+    }
+<span class="nc" id="L68">  }</span>
+
+  public CheckEvent or (CheckEvent orCheck){
+<span class="nc" id="L71">    addAlternative(orCheck);</span>
+    
+<span class="nc" id="L73">    return this;</span>
+  }
+  
+  public CheckEvent and (CheckEvent andCheck){
+<span class="nc" id="L77">    addNext( andCheck);</span>
+    
+<span class="nc" id="L79">    return this;</span>
+  }
+  
+  public String getExpression(){
+<span class="nc bnc" id="L83" title="All 4 branches missed.">    if (alt == null &amp;&amp; !(next instanceof CheckEvent)){</span>
+<span class="nc" id="L84">      return toString();</span>
+      
+    } else {
+<span class="nc" id="L87">      StringBuilder sb = new StringBuilder();</span>
+      
+<span class="nc" id="L89">      sb.append('(');</span>
+<span class="nc" id="L90">      sb.append(name);</span>
+      
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      for (Event e = alt; e != null; e = e.alt){</span>
+<span class="nc" id="L93">        sb.append( &quot; || &quot;);</span>
+<span class="nc" id="L94">        sb.append(e.name);</span>
+      }
+      
+<span class="nc bnc" id="L97" title="All 2 branches missed.">      for (Event e = next; e instanceof CheckEvent; e = e.next){</span>
+<span class="nc" id="L98">        sb.append( &quot; &amp;&amp; &quot;);</span>
+<span class="nc" id="L99">        sb.append(e.name);        </span>
+      }
+      
+<span class="nc" id="L102">      sb.append(')');</span>
+      
+<span class="nc" id="L104">      return sb.toString();</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

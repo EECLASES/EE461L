@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Trace.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">Trace.java</span></div><h1>Trace.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+
+/**
+ * a generic, listener- created trace over property specific operations
+ * 
+ * we could register this as a listener itself, but since it usually is used from
+ * a listener, we might as well just delegate from there
+ */
+<span class="nc bnc" id="L35" title="All 2 branches missed.">public class Trace&lt;T&gt; extends ListenerAdapter implements Iterable&lt;T&gt; {</span>
+
+  TraceElement&lt;T&gt; lastElement;
+  TraceElement&lt;T&gt; lastTransition;
+
+  // for HeuristicSearches. Ok, that's braindead but at least no need for cloning
+  HashMap&lt;Integer,TraceElement&lt;T&gt;&gt; storedTransition;
+
+
+  // iterator that traverses the trace LIFO, i.e. starting from the last T
+  class TraceIterator implements Iterator&lt;T&gt; {
+
+    TraceElement&lt;T&gt; cur;
+    
+<span class="nc" id="L49">    TraceIterator () {</span>
+<span class="nc" id="L50">      cur = lastElement;</span>
+<span class="nc" id="L51">    }</span>
+    
+    @Override
+	public boolean hasNext () {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">      return (cur != null);</span>
+    }
+
+    @Override
+	public T next () {
+<span class="nc bnc" id="L60" title="All 2 branches missed.">      if (cur != null){</span>
+<span class="nc" id="L61">        T op = cur.op;</span>
+<span class="nc" id="L62">        cur = cur.prevElement;</span>
+<span class="nc" id="L63">        return op;</span>
+      } else {
+<span class="nc" id="L65">        return null;</span>
+      }
+    }
+
+    @Override
+	public void remove () {
+<span class="nc" id="L71">      throw new UnsupportedOperationException(&quot;TraceElement removal not supported&quot;);</span>
+    } 
+  }
+  
+  @Override
+  public Iterator&lt;T&gt; iterator() {
+<span class="nc" id="L77">    return new TraceIterator();</span>
+  }
+  
+  public void addOp (T o){
+<span class="nc" id="L81">    TraceElement&lt;T&gt; op = new TraceElement&lt;T&gt;(o);</span>
+    
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    if (lastElement == null){</span>
+<span class="nc" id="L84">      lastElement = op;</span>
+    } else {
+<span class="nc bnc" id="L86" title="All 4 branches missed.">      assert lastElement.stateId == 0;</span>
+      
+<span class="nc" id="L88">      op.prevElement = lastElement;</span>
+<span class="nc" id="L89">      lastElement = op;</span>
+    }
+<span class="nc" id="L91">  }</span>
+
+  public void removeLastOp() {
+<span class="nc bnc" id="L94" title="All 2 branches missed.">    if (lastElement != null){</span>
+<span class="nc" id="L95">      lastElement = lastElement.prevElement;</span>
+    }
+<span class="nc" id="L97">  }</span>
+
+  public T getLastOp() {
+<span class="nc bnc" id="L100" title="All 2 branches missed.">    if (lastElement != null) {</span>
+<span class="nc" id="L101">      return lastElement.getOp();</span>
+    }
+    
+<span class="nc" id="L104">    return null;</span>
+  }
+
+  public int size() {
+<span class="nc" id="L108">    int n=0;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    for (TraceElement&lt;T&gt; te = lastElement; te != null; te = te.prevElement) {</span>
+<span class="nc" id="L110">      n++;</span>
+    }
+    
+<span class="nc" id="L113">    return n;</span>
+  }
+  
+  public List&lt;T&gt; getOps () {
+    // this is a rather braindead way around the limitation that we can't explicitly
+    // create an T[] array object
+    
+<span class="nc" id="L120">    ArrayList&lt;T&gt; list = new ArrayList&lt;T&gt;();</span>
+    
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    for (TraceElement&lt;T&gt; te = lastElement; te != null; te = te.prevElement) {</span>
+<span class="nc" id="L123">      list.add(te.getOp());</span>
+    }
+    
+    // reverse
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    for (int i=0, j=list.size()-1; i&lt;j; i++, j--) {</span>
+<span class="nc" id="L128">      T tmp = list.get(j);</span>
+<span class="nc" id="L129">      list.set(j, list.get(i));</span>
+<span class="nc" id="L130">      list.set(i, tmp);</span>
+    }
+    
+<span class="nc" id="L133">    return list;</span>
+  }
+
+  @Override
+  public void stateAdvanced (Search search) {
+<span class="nc bnc" id="L138" title="All 4 branches missed.">    if (search.isNewState() &amp;&amp; (lastElement != null)) {</span>
+<span class="nc" id="L139">      int stateId = search.getStateId();</span>
+      
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      for (TraceElement&lt;T&gt; op=lastElement; op != null; op=op.prevElement) {</span>
+<span class="nc bnc" id="L142" title="All 4 branches missed.">        assert op.stateId == 0;</span>
+        
+<span class="nc" id="L144">        op.stateId = stateId;</span>
+      }
+      
+<span class="nc" id="L147">      lastElement.prevTransition = lastTransition;</span>
+<span class="nc" id="L148">      lastTransition = lastElement;</span>
+    }
+    
+<span class="nc" id="L151">    lastElement = null;</span>
+<span class="nc" id="L152">  }</span>
+
+  @Override
+  public void stateBacktracked (Search search){
+<span class="nc" id="L156">    int stateId = search.getStateId();</span>
+<span class="nc bnc" id="L157" title="All 4 branches missed.">    while ((lastTransition != null) &amp;&amp; (lastTransition.stateId &gt; stateId)){</span>
+<span class="nc" id="L158">      lastTransition = lastTransition.prevTransition;</span>
+    }
+<span class="nc" id="L160">    lastElement = null;</span>
+<span class="nc" id="L161">  }</span>
+
+  @Override
+  public void stateStored (Search search) {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    if (storedTransition == null){</span>
+<span class="nc" id="L166">      storedTransition = new HashMap&lt;Integer,TraceElement&lt;T&gt;&gt;();</span>
+    }
+    
+    // always called after stateAdvanced
+<span class="nc" id="L170">    storedTransition.put(search.getStateId(), lastTransition);</span>
+<span class="nc" id="L171">  }</span>
+
+  @Override
+  public void stateRestored (Search search) {
+<span class="nc" id="L175">    int stateId = search.getStateId();</span>
+<span class="nc" id="L176">    TraceElement&lt;T&gt; op = storedTransition.get(stateId);</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">    if (op != null) {</span>
+<span class="nc" id="L178">      lastTransition = op;</span>
+<span class="nc" id="L179">      storedTransition.remove(stateId);  // not strictly required, but we don't come back</span>
+    }
+<span class="nc" id="L181">  }</span>
+
+  @Override
+  public Trace clone() {
+<span class="nc" id="L185">    TraceElement&lt;T&gt; e0 = null, eLast = null;</span>
+    
+<span class="nc bnc" id="L187" title="All 2 branches missed.">    for (TraceElement&lt;T&gt; e = lastElement; e != null; e = e.prevElement){</span>
+<span class="nc" id="L188">      TraceElement&lt;T&gt; ec = e.clone();</span>
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">      if (eLast != null){</span>
+<span class="nc" id="L191">        eLast.prevElement = ec;</span>
+<span class="nc" id="L192">        eLast = ec;</span>
+      } else {
+<span class="nc" id="L194">        e0 = eLast = ec;</span>
+      }
+    }
+    
+<span class="nc" id="L198">    Trace&lt;T&gt; t = new Trace&lt;T&gt;();</span>
+<span class="nc" id="L199">    t.lastElement = e0;</span>
+    
+<span class="nc" id="L201">    return t;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

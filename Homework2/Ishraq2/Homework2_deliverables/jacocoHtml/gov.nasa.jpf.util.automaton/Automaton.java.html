@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Automaton.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.automaton</a> &gt; <span class="el_source">Automaton.java</span></div><h1>Automaton.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util.automaton;
+
+import java.io.PrintStream;
+
+
+/**
+ * generic class for modeling automatons
+ * 
+ * Since this is used in so many extensions from both model and native code,
+ * it seems appropriate to add a basis implementation to util.
+ * 
+ * To make it more amenable to modeling (e.g. for native peer implementation),
+ * we avoid using standard Java containers at the expense of efficiency for
+ * large numbers of states and transitions 
+ */
+public class Automaton &lt;S extends State&gt; {
+    
+  static final int STATE_INC = 16;
+  static final int INPUT_INC = 16;
+  
+  protected String label;
+  
+  protected int nStates;
+  protected State[] states;
+  
+  protected int nInputs;
+  protected String[] alphabet;
+  
+  protected int current;
+  
+  
+<span class="nc" id="L49">  public Automaton (String label, int numberOfStates, int numberOfInputs){</span>
+<span class="nc" id="L50">    this.label = label;</span>
+<span class="nc" id="L51">    states = new State[numberOfStates];</span>
+<span class="nc" id="L52">    alphabet = new String[numberOfInputs];    </span>
+<span class="nc" id="L53">  }</span>
+  
+  public Automaton (String label, int numberOfStates){
+<span class="nc" id="L56">    this( label, numberOfStates, INPUT_INC);</span>
+<span class="nc" id="L57">  }</span>
+
+  public Automaton(String label){
+<span class="nc" id="L60">    this(label, STATE_INC, INPUT_INC);</span>
+<span class="nc" id="L61">  }</span>
+  
+  public void addState (State newState){
+<span class="nc bnc" id="L64" title="All 2 branches missed.">    if (nStates == states.length){</span>
+<span class="nc" id="L65">      State[] a = new State[nStates + STATE_INC];</span>
+<span class="nc" id="L66">      System.arraycopy(states, 0, a, 0, nStates);</span>
+<span class="nc" id="L67">      states = a;</span>
+    }
+    
+<span class="nc" id="L70">    states[nStates] = newState;</span>
+<span class="nc" id="L71">    newState.setId(nStates);</span>
+<span class="nc" id="L72">    nStates++;</span>
+<span class="nc" id="L73">  }</span>
+
+  public void addStates (State ... newStates){
+<span class="nc" id="L76">    int n = nStates + newStates.length;</span>
+<span class="nc bnc" id="L77" title="All 2 branches missed.">    if (n &gt;= states.length){</span>
+<span class="nc" id="L78">      State[] a = new State[n];</span>
+<span class="nc" id="L79">      System.arraycopy(states, 0, a, 0, nStates);</span>
+<span class="nc" id="L80">      states = a;      </span>
+    }
+    
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    for (int i=0; i&lt;newStates.length; i++){</span>
+<span class="nc" id="L84">      State s = newStates[i];</span>
+<span class="nc" id="L85">      states[nStates] = s;</span>
+<span class="nc" id="L86">      s.setId(nStates);</span>
+<span class="nc" id="L87">      nStates++;</span>
+    }
+<span class="nc" id="L89">  }</span>
+  
+  public String getLabel(){
+<span class="nc" id="L92">    return label;</span>
+  }
+  
+  public int getNumberOfStates(){
+<span class="nc" id="L96">    return nStates;</span>
+  }
+  
+  public S getCurrentState(){
+<span class="nc" id="L100">    return (S)states[current];</span>
+  }
+  
+  public String[] computeAlphabet(){
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    for (int i = 0; i &lt; nStates; i++) {</span>
+<span class="nc" id="L105">      State s = states[i];</span>
+<span class="nc" id="L106">      int nTrans = s.getNumberOfTransitions();</span>
+
+      nextTransition:
+<span class="nc bnc" id="L109" title="All 2 branches missed.">      for (int j = 0; j &lt; nTrans; j++) {</span>
+<span class="nc" id="L110">        Transition t = s.getTransition(j);</span>
+<span class="nc" id="L111">        String label = t.getLabel();</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        for (int k = 0; k &lt; nInputs; k++) {</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">          if (alphabet[k].equals(label)) {</span>
+<span class="nc" id="L115">            break nextTransition;</span>
+          }
+        }
+
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (nInputs == alphabet.length) {</span>
+<span class="nc" id="L120">          String[] a = new String[nInputs + INPUT_INC];</span>
+<span class="nc" id="L121">          System.arraycopy(alphabet, 0, a, 0, nInputs);</span>
+<span class="nc" id="L122">          alphabet = a;</span>
+        }
+
+<span class="nc" id="L125">        alphabet[nInputs] = label;</span>
+<span class="nc" id="L126">        nInputs++;</span>
+      }
+    }
+    
+<span class="nc" id="L130">    return alphabet;</span>
+  }
+  
+  public String[] getAlphabet(){
+<span class="nc bnc" id="L134" title="All 2 branches missed.">    if (nInputs == 0){</span>
+<span class="nc" id="L135">      return computeAlphabet();</span>
+    } else {
+<span class="nc" id="L137">      return alphabet;</span>
+    }
+  }
+  
+  public void printOn (PrintStream ps){
+<span class="nc" id="L142">    ps.printf(&quot;Automaton '%s'\n&quot;, label);</span>
+    
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    for (int i=0; i&lt;nStates; i++){</span>
+<span class="nc" id="L145">      states[i].printOn(ps);</span>
+    }
+<span class="nc" id="L147">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

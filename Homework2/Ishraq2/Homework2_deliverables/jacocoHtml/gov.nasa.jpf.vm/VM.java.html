@@ -1,0 +1,2054 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VM.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">VM.java</span></div><h1>VM.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFConfigException;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.JPFListenerException;
+import gov.nasa.jpf.jvm.ClassFile;
+import gov.nasa.jpf.vm.FinalizerThreadInfo;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.IntTable;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.Predicate;
+
+import java.io.PrintWriter;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
+
+/**
+ * This class represents the virtual machine. The virtual machine is able to
+ * move backward and forward one transition at a time.
+ */
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">public abstract class VM {</span>
+
+  /**
+   * this is a debugging aid to control compilation of expensive consistency checks
+   * (we don't control these with class-wise assertion enabling since we do use
+   * unconditional assertions for mandatory consistency checks)
+   */
+  public static final boolean CHECK_CONSISTENCY = false;
+  
+<span class="fc" id="L55">  protected static final String[] EMPTY_ARGS = new String[0];</span>
+  
+<span class="fc" id="L57">  protected static JPFLogger log = JPF.getLogger(&quot;vm&quot;);</span>
+
+  /**
+   * our execution context
+   */
+  protected JPF jpf;
+
+  /**
+   * The number of errors saved so far.
+   * Used to generate the name of the error trail file.
+   */
+  protected static int error_id;
+
+  /**
+   * &lt;2do&gt; - this is a hack to be removed once there are no static references
+   * anymore
+   */
+  protected static VM vm;
+
+  static {
+<span class="fc" id="L77">    initStaticFields();</span>
+<span class="fc" id="L78">  }</span>
+
+  protected SystemState ss;
+  
+<span class="fc" id="L82">  protected FunctionObjectFactory funcObjFactory = new FunctionObjectFactory();</span>
+
+  // &lt;2do&gt; - if you are confused about the various pieces of state and its
+  // storage/backtrack structures, I'm with you. It's mainly an attempt to
+  // separate non-policy VM state (objects), policy VM state (Scheduler)
+  // and general JPF execution state, with special support for stack oriented
+  // state restoration (backtracking).
+  // this needs to be cleaned up and the principle reinstated
+
+
+  protected Path path;  /** execution path to current state */
+  protected StringBuilder out;  /** buffer to store output along path execution */
+
+  /**
+   * various caches for VMListener state acquisition. NOTE - these are only
+   * valid during notification
+   *
+   * &lt;2do&gt; get rid of the 'lasts' in favor of queries on the insn, the executing
+   * thread, and the VM. This is superfluous work to for every notification
+   * (even if there are no listeners using it) that can easily lead to inconsistencies
+   */
+  protected Transition      lastTrailInfo;
+
+  protected boolean isTraceReplay; // can be set by listeners to indicate this is a replay
+
+  /** the repository we use to find out if we already have seen a state */
+  protected StateSet stateSet;
+
+  /** this was the last stateId - note this is also used for stateless model checking */
+  protected int newStateId;
+
+  /** the structure responsible for storing and restoring backtrack info */
+  protected Backtracker backtracker;
+
+  /** optional serializer/restorer to support backtracker */
+  protected StateRestorer&lt;?&gt; restorer;
+
+  /** optional serializer to support stateSet */
+  protected StateSerializer serializer;
+
+  /** potential execution listeners. We keep them in a simple array to avoid
+   creating objects on each notification */
+<span class="fc" id="L124">  protected VMListener[] listeners = new VMListener[0];</span>
+
+  /** did we get a new transition */
+  protected boolean transitionOccurred;
+
+  /** how we model execution time */
+  protected TimeModel timeModel;
+  
+  /** ThreadChoiceGenerator management related to data races and shared objects */
+  protected Scheduler scheduler;
+  
+  
+  protected Config config; // that's for the options we use only once
+
+  // VM options we use frequently
+  protected boolean runGc;
+  protected boolean treeOutput;
+  protected boolean pathOutput;
+  protected boolean indentOutput;
+  protected boolean processFinalizers;
+  
+  // &lt;2do&gt; there are probably many places where this should be used
+  protected boolean isBigEndian;
+
+  protected boolean initialized;
+
+  //thread filters
+  protected Predicate&lt;ThreadInfo&gt; userliveNonDaemonPredicate;
+  protected Predicate&lt;ThreadInfo&gt; timedoutRunnablePredicate;
+  protected Predicate&lt;ThreadInfo&gt; alivePredicate;
+  protected Predicate&lt;ThreadInfo&gt; userTimedoutRunnablePredicate;
+
+  // a list of actions to be run post GC. This is a bit redundant to VMListener,
+  // but in addition to avoid the per-instruction execution overhead of a VMListener
+  // we want a (internal) mechanism that is on-demand only, i.e. processed
+  // actions are removed from the list
+<span class="fc" id="L160">  protected ArrayList&lt;Runnable&gt; postGcActions = new ArrayList&lt;Runnable&gt;();</span>
+  
+  /**
+   * be prepared this might throw JPFConfigExceptions
+   */
+<span class="fc" id="L165">  public VM (JPF jpf, Config conf) {</span>
+<span class="fc" id="L166">    this.jpf = jpf; // so that we know who instantiated us</span>
+
+    // &lt;2do&gt; that's really a bad hack and should be removed once we
+    // have cleaned up the reference chains
+<span class="fc" id="L170">    vm = this;</span>
+
+<span class="fc" id="L172">    config = conf;</span>
+
+<span class="fc" id="L174">    runGc = config.getBoolean(&quot;vm.gc&quot;, true);</span>
+
+<span class="fc" id="L176">    treeOutput = config.getBoolean(&quot;vm.tree_output&quot;, true);</span>
+    // we have to defer setting pathOutput until we have a reporter registered
+<span class="fc" id="L178">    indentOutput = config.getBoolean(&quot;vm.indent_output&quot;,false);</span>
+
+<span class="fc" id="L180">    processFinalizers = config.getBoolean(&quot;vm.process_finalizers&quot;, false);</span>
+    
+<span class="fc" id="L182">    isBigEndian = getPlatformEndianness(config);</span>
+<span class="fc" id="L183">    initialized = false;</span>
+    
+<span class="fc" id="L185">    initTimeModel(config);</span>
+
+<span class="fc" id="L187">    initSubsystems(config);</span>
+<span class="fc" id="L188">    initFields(config);</span>
+    
+    // set predicates used to query from threadlist
+<span class="fc" id="L191">    userliveNonDaemonPredicate = new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="fc bfc" id="L194" title="All 6 branches covered.">        return (!ti.isDaemon() &amp;&amp; !ti.isTerminated() &amp;&amp; !ti.isSystemThread());</span>
+      }
+    };
+
+<span class="fc" id="L198">    timedoutRunnablePredicate = new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="fc" id="L201">        return (ti.isTimeoutRunnable());</span>
+      }
+    };
+    
+<span class="fc" id="L205">    userTimedoutRunnablePredicate = new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="fc bfc" id="L208" title="All 4 branches covered.">        return (ti.isTimeoutRunnable() &amp;&amp; !ti.isSystemThread());</span>
+      }
+    };
+    
+<span class="fc" id="L212">    alivePredicate = new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="nc" id="L215">        return (ti.isAlive());</span>
+      }
+    };
+<span class="fc" id="L218">  }</span>
+
+  /**
+   * just here for unit test mockups, don't use as implicit base ctor in
+   * VM derived classes
+   */
+<span class="fc" id="L224">  protected VM (){}</span>
+
+  public JPF getJPF() {
+<span class="fc" id="L227">    return jpf;</span>
+  }
+
+  public void initFields (Config config) {
+<span class="fc" id="L231">    path = new Path(&quot;fix-this!&quot;);</span>
+<span class="fc" id="L232">    out = null;</span>
+
+<span class="fc" id="L234">    ss = new SystemState(config, this);</span>
+
+<span class="fc" id="L236">    stateSet = config.getInstance(&quot;vm.storage.class&quot;, StateSet.class);</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">    if (stateSet != null) stateSet.attach(this);</span>
+<span class="fc" id="L238">    backtracker = config.getEssentialInstance(&quot;vm.backtracker.class&quot;, Backtracker.class);</span>
+<span class="fc" id="L239">    backtracker.attach(this);</span>
+
+<span class="fc" id="L241">    scheduler = config.getEssentialInstance(&quot;vm.scheduler.class&quot;, Scheduler.class);</span>
+    
+<span class="fc" id="L243">    newStateId = -1;</span>
+<span class="fc" id="L244">  }</span>
+
+  protected void initSubsystems (Config config) {
+<span class="fc" id="L247">    ClassLoaderInfo.init(config);</span>
+<span class="fc" id="L248">    ClassInfo.init(config);</span>
+<span class="fc" id="L249">    ThreadInfo.init(config);</span>
+<span class="fc" id="L250">    ElementInfo.init(config);</span>
+<span class="fc" id="L251">    MethodInfo.init(config);</span>
+<span class="fc" id="L252">    NativePeer.init(config);</span>
+<span class="fc" id="L253">    ChoiceGeneratorBase.init(config);</span>
+    
+    // peer classes get initialized upon NativePeer creation
+<span class="fc" id="L256">  }</span>
+
+  protected void initTimeModel (Config config){
+<span class="fc" id="L259">    Class&lt;?&gt;[] argTypes = { VM.class, Config.class };</span>
+<span class="fc" id="L260">    Object[] args = { this, config };</span>
+<span class="fc" id="L261">    timeModel = config.getEssentialInstance(&quot;vm.time.class&quot;, TimeModel.class, argTypes, args);</span>
+<span class="fc" id="L262">  }</span>
+  
+  /**
+   * called after the JPF run is finished. Shouldn't be public, but is called by JPF
+   */
+  public void cleanUp(){
+    // nothing yet
+<span class="fc" id="L269">  }</span>
+  
+  protected boolean getPlatformEndianness (Config config){
+<span class="fc" id="L272">    String endianness = config.getString(&quot;vm.endian&quot;);</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">    if (endianness == null) {</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">      return ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN;</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">    } else if (endianness.equalsIgnoreCase(&quot;big&quot;)) {</span>
+<span class="nc" id="L276">      return true;</span>
+<span class="nc bnc" id="L277" title="All 2 branches missed.">    } else if (endianness.equalsIgnoreCase(&quot;little&quot;)) {</span>
+<span class="nc" id="L278">      return false;</span>
+    } else {
+<span class="nc" id="L280">      config.exception(&quot;illegal vm.endian value: &quot; + endianness);</span>
+<span class="nc" id="L281">      return false; // doesn't matter</span>
+    }
+  }
+  
+  public boolean isBigEndianPlatform(){
+<span class="nc" id="L286">    return isBigEndian;</span>
+  }
+
+  public boolean finalizersEnabled() {
+<span class="fc" id="L290">    return processFinalizers;</span>
+  }
+  
+  public boolean isInitialized() {
+<span class="nc" id="L294">    return initialized;</span>
+  }
+  
+  public boolean isSingleProcess() {
+<span class="nc" id="L298">    return true;</span>
+  }
+
+  /**
+   * do we see our model classes? Some of them cannot be used from the standard CLASSPATH, because they
+   * are tightly coupled with the JPF core (e.g. java.lang.Class, java.lang.Thread,
+   * java.lang.StackTraceElement etc.)
+   * Our strategy here is kind of lame - we just look into java.lang.Class if we find the 'uniqueId' field
+   * (that's a true '42')
+   */
+  static boolean checkSystemClassCompatibility (SystemClassLoaderInfo systemLoader) {
+<span class="fc" id="L309">    ClassInfo ci = systemLoader.getClassClassInfo();</span>
+<span class="fc" id="L310">    return ci.checkIfValidClassClassInfo();</span>
+  }
+
+  static boolean isValidClassName (String clsName) {
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">    if ( !clsName.matches(&quot;[a-zA-Z_$][a-zA-Z_$0-9.]*&quot;)) {</span>
+<span class="nc" id="L315">      return false;</span>
+    }
+
+    // well, those two could be part of valid class names, but
+    // in all likeliness somebody specified a filename instead of
+    // a classname
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">    if (clsName.endsWith(&quot;.java&quot;)) {</span>
+<span class="nc" id="L322">      return false;</span>
+    }
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">    if (clsName.endsWith(&quot;.class&quot;)) {</span>
+<span class="nc" id="L325">      return false;</span>
+    }
+
+<span class="fc" id="L328">    return true;</span>
+  }
+
+  //--- ThreadInfo factory methods
+  protected ThreadInfo createMainThreadInfo (int id, ApplicationContext appCtx){
+<span class="fc" id="L333">    ThreadInfo tiMain = new ThreadInfo( this, id, appCtx);</span>
+<span class="fc" id="L334">    ThreadInfo.currentThread = tiMain; // we still need this for listeners that process startup class loading events</span>
+<span class="fc" id="L335">    registerThread(tiMain);</span>
+    
+<span class="fc" id="L337">    return tiMain;</span>
+  }
+  
+  protected ThreadInfo createThreadInfo (int objRef, int groupRef, int runnableRef, int nameRef){
+<span class="fc" id="L341">    ThreadInfo tiCurrent = ThreadInfo.getCurrentThread();</span>
+<span class="fc" id="L342">    ThreadInfo tiNew = new ThreadInfo( this, objRef, groupRef, runnableRef, nameRef, tiCurrent);</span>
+
+    // note that we have to register here so that subsequent native peer calls can use the objRef
+    // to lookup the ThreadInfo. This is a bit premature since the thread is not runnable yet,
+    // but chances are it will be started soon, so we don't waste another data structure to do the mapping
+<span class="fc" id="L347">    registerThread( tiNew);</span>
+    
+<span class="fc" id="L349">    return tiNew;</span>
+  }
+
+  // created if the option &quot;vm.process_finalizers&quot; is set to true
+  protected ThreadInfo createFinalizerThreadInfo (int id, ApplicationContext appCtx){
+<span class="fc" id="L354">    FinalizerThreadInfo finalizerTi = new FinalizerThreadInfo( this, appCtx, id);</span>
+<span class="fc" id="L355">    registerThread(finalizerTi);</span>
+    
+<span class="fc" id="L357">    return finalizerTi;</span>
+  }
+  
+  /**
+   * the minimal set of system classes we need for initialization
+   */
+  protected List&lt;String&gt; getStartupSystemClassNames() {
+<span class="fc" id="L364">    ArrayList&lt;String&gt; startupClasses = new ArrayList&lt;String&gt;(64);</span>
+
+    // bare essentials
+<span class="fc" id="L367">    startupClasses.add(&quot;java.lang.Object&quot;);</span>
+<span class="fc" id="L368">    startupClasses.add(&quot;java.lang.Class&quot;);</span>
+<span class="fc" id="L369">    startupClasses.add(&quot;java.lang.ClassLoader&quot;);</span>
+
+    // the builtin types (and their arrays)
+<span class="fc" id="L372">    startupClasses.add(&quot;boolean&quot;);</span>
+<span class="fc" id="L373">    startupClasses.add(&quot;[Z&quot;);</span>
+<span class="fc" id="L374">    startupClasses.add(&quot;byte&quot;);</span>
+<span class="fc" id="L375">    startupClasses.add(&quot;[B&quot;);</span>
+<span class="fc" id="L376">    startupClasses.add(&quot;char&quot;);</span>
+<span class="fc" id="L377">    startupClasses.add(&quot;[C&quot;);</span>
+<span class="fc" id="L378">    startupClasses.add(&quot;short&quot;);</span>
+<span class="fc" id="L379">    startupClasses.add(&quot;[S&quot;);</span>
+<span class="fc" id="L380">    startupClasses.add(&quot;int&quot;);</span>
+<span class="fc" id="L381">    startupClasses.add(&quot;[I&quot;);</span>
+<span class="fc" id="L382">    startupClasses.add(&quot;long&quot;);</span>
+<span class="fc" id="L383">    startupClasses.add(&quot;[J&quot;);</span>
+<span class="fc" id="L384">    startupClasses.add(&quot;float&quot;);</span>
+<span class="fc" id="L385">    startupClasses.add(&quot;[F&quot;);</span>
+<span class="fc" id="L386">    startupClasses.add(&quot;double&quot;);</span>
+<span class="fc" id="L387">    startupClasses.add(&quot;[D&quot;);</span>
+<span class="fc" id="L388">    startupClasses.add(&quot;void&quot;);</span>
+
+    // the box types
+<span class="fc" id="L391">    startupClasses.add(&quot;java.lang.Boolean&quot;);</span>
+<span class="fc" id="L392">    startupClasses.add(&quot;java.lang.Character&quot;);</span>
+<span class="fc" id="L393">    startupClasses.add(&quot;java.lang.Short&quot;);</span>
+<span class="fc" id="L394">    startupClasses.add(&quot;java.lang.Integer&quot;);</span>
+<span class="fc" id="L395">    startupClasses.add(&quot;java.lang.Long&quot;);</span>
+<span class="fc" id="L396">    startupClasses.add(&quot;java.lang.Float&quot;);</span>
+<span class="fc" id="L397">    startupClasses.add(&quot;java.lang.Double&quot;);</span>
+<span class="fc" id="L398">    startupClasses.add(&quot;java.lang.Byte&quot;);</span>
+
+    // the cache for box types
+<span class="fc" id="L401">    startupClasses.add(&quot;gov.nasa.jpf.BoxObjectCaches&quot;);</span>
+
+    // standard system classes
+<span class="fc" id="L404">    startupClasses.add(&quot;java.lang.String&quot;);</span>
+<span class="fc" id="L405">    startupClasses.add(&quot;java.lang.Thread&quot;);</span>
+<span class="fc" id="L406">    startupClasses.add(&quot;java.lang.ThreadGroup&quot;);</span>
+<span class="fc" id="L407">    startupClasses.add(&quot;java.lang.Thread$State&quot;);</span>
+<span class="fc" id="L408">    startupClasses.add(&quot;java.lang.Thread$Permit&quot;);</span>
+<span class="fc" id="L409">    startupClasses.add(&quot;java.io.PrintStream&quot;);</span>
+<span class="fc" id="L410">    startupClasses.add(&quot;java.io.InputStream&quot;);</span>
+<span class="fc" id="L411">    startupClasses.add(&quot;java.lang.System&quot;);</span>
+<span class="fc" id="L412">    startupClasses.add(&quot;java.lang.ref.Reference&quot;);</span>
+<span class="fc" id="L413">    startupClasses.add(&quot;java.lang.ref.WeakReference&quot;);</span>
+<span class="fc" id="L414">    startupClasses.add(&quot;java.lang.Enum&quot;);</span>
+<span class="fc" id="L415">    startupClasses.add(&quot;gov.nasa.jpf.FinalizerThread&quot;);</span>
+
+    // we could be more fancy and use wildcard patterns and the current classpath
+    // to specify extra classes, but this could be VERY expensive. Projected use
+    // is mostly to avoid static init of single classes during the search
+<span class="fc" id="L420">    String[] extraStartupClasses = config.getStringArray(&quot;vm.extra_startup_classes&quot;);</span>
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">    if (extraStartupClasses != null) {      </span>
+<span class="nc bnc" id="L422" title="All 2 branches missed.">      for (String extraCls : extraStartupClasses) {</span>
+<span class="nc" id="L423">        startupClasses.add(extraCls);</span>
+      }
+    }
+
+    // the main class has to be handled separately since it might be VM specific
+
+<span class="fc" id="L429">    return startupClasses;</span>
+  }
+
+  /**
+   * return a list of ClassInfos for essential system types
+   * 
+   * If system classes are not found, or are not valid JPF model classes, we throw
+   * a JPFConfigException and exit
+   * 
+   * returned ClassInfos are not yet registered in Statics and don't have class objects
+   */
+  protected List&lt;ClassInfo&gt; getStartupSystemClassInfos (SystemClassLoaderInfo sysCl, ThreadInfo tiMain){
+<span class="fc" id="L441">    LinkedList&lt;ClassInfo&gt; list = new LinkedList&lt;ClassInfo&gt;();</span>
+    
+    try {
+<span class="fc bfc" id="L444" title="All 2 branches covered.">      for (String clsName : getStartupSystemClassNames()) {</span>
+<span class="fc" id="L445">        ClassInfo ci = sysCl.getResolvedClassInfo(clsName);</span>
+<span class="fc" id="L446">        ci.registerStartupClass( tiMain, list); // takes care of superclasses and interfaces</span>
+<span class="fc" id="L447">      }</span>
+<span class="nc" id="L448">    } catch (ClassInfoException e){</span>
+<span class="nc" id="L449">      e.printStackTrace();</span>
+<span class="nc" id="L450">      throw new JPFConfigException(&quot;cannot load system class &quot; + e.getFailedClass());</span>
+<span class="fc" id="L451">    } </span>
+    
+<span class="fc" id="L453">    return list;</span>
+  }
+  
+  /**
+   * this adds the application main class and its supers to the list of startup classes 
+   */
+  protected ClassInfo getMainClassInfo (SystemClassLoaderInfo sysCl, String mainClassName, ThreadInfo tiMain, List&lt;ClassInfo&gt; list){
+    try {
+<span class="fc" id="L461">      ClassInfo ciMain = sysCl.getResolvedClassInfo(mainClassName);</span>
+<span class="fc" id="L462">      ciMain.registerStartupClass(tiMain, list); // this might add a couple more</span>
+      
+<span class="fc" id="L464">      return ciMain;</span>
+      
+<span class="nc" id="L466">    } catch (ClassInfoException e){</span>
+<span class="nc" id="L467">      throw new JPFConfigException(&quot;cannot load application class &quot; + e.getFailedClass());</span>
+    }
+  }
+  
+  /*
+   * these are called when creating ApplicationContexts and can be overridden by concrete VM types 
+   */
+  protected SystemClassLoaderInfo createSystemClassLoaderInfo (int appId) {
+<span class="fc" id="L475">    Class&lt;?&gt;[] argTypes = { VM.class, int.class };</span>
+   
+<span class="fc" id="L477">    Object[] args = { this, Integer.valueOf(appId)};</span>
+<span class="fc" id="L478">    SystemClassLoaderInfo sysCli = config.getEssentialInstance(&quot;vm.classloader.class&quot;, SystemClassLoaderInfo.class, argTypes, args);</span>
+<span class="fc" id="L479">    return sysCli;</span>
+  }
+  
+  protected void createSystemClassLoaderObject (SystemClassLoaderInfo sysCl, ThreadInfo tiMain) {
+<span class="fc" id="L483">    Heap heap = getHeap();</span>
+
+    // create ClassLoader object for the ClassLoader type defined by this SystemClassLoaderInfo
+    // NOTE - this requires the SystemClassLoaderInfo cache to be initialized
+<span class="fc" id="L487">    ClassInfo ciCl = sysCl.getClassLoaderClassInfo();</span>
+<span class="fc" id="L488">    ElementInfo ei = heap.newObject( ciCl, tiMain);</span>
+    //ei.setReferenceField(&quot;parent&quot;, MJIEnv.NULL);
+<span class="fc" id="L490">    heap.registerPinDown(ei.getObjectRef());</span>
+
+<span class="fc" id="L492">    sysCl.setClassLoaderObject(ei);</span>
+<span class="fc" id="L493">  }  </span>
+  
+  protected void pushMainEntryArgs (MethodInfo miMain, String[] args, ThreadInfo tiMain, DirectCallStackFrame frame){
+<span class="fc" id="L496">    String sig = miMain.getSignature();</span>
+<span class="fc" id="L497">    Heap heap = getHeap();</span>
+    
+<span class="pc bpc" id="L499" title="1 of 2 branches missed.">    if (sig.contains(&quot;([Ljava/lang/String;)&quot;)){</span>
+<span class="fc" id="L500">      ElementInfo eiArgs = heap.newArray(&quot;Ljava/lang/String;&quot;, args.length, tiMain);</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">      for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="fc" id="L502">        ElementInfo eiArg = heap.newString(args[i], tiMain);</span>
+<span class="fc" id="L503">        eiArgs.setReferenceElement(i, eiArg.getObjectRef());</span>
+      }
+<span class="fc" id="L505">      frame.setReferenceArgument( 0, eiArgs.getObjectRef(), null);</span>
+
+<span class="pc bnc" id="L507" title="All 2 branches missed.">    } else if (sig.contains(&quot;(Ljava/lang/String;)&quot;)){</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">      if (args.length &gt; 1){</span>
+<span class="nc" id="L509">        ElementInfo eiArg = heap.newString(args[0], tiMain);</span>
+<span class="nc" id="L510">        frame.setReferenceArgument( 0, eiArg.getObjectRef(), null);</span>
+<span class="nc" id="L511">      } else {</span>
+<span class="nc" id="L512">        frame.setReferenceArgument( 0, MJIEnv.NULL, null);</span>
+      }
+      
+<span class="nc bnc" id="L515" title="All 2 branches missed.">    } else if (!sig.contains(&quot;()&quot;)){</span>
+<span class="nc" id="L516">      throw new JPFException(&quot;unsupported main entry signature: &quot; + miMain.getFullName());</span>
+    }
+<span class="fc" id="L518">  }</span>
+  
+  protected void pushMainEntry (MethodInfo miMain, String[] args, ThreadInfo tiMain) {
+<span class="fc" id="L521">    DirectCallStackFrame frame = miMain.createDirectCallStackFrame(tiMain, 0);</span>
+<span class="fc" id="L522">    pushMainEntryArgs( miMain, args, tiMain, frame);    </span>
+<span class="fc" id="L523">    tiMain.pushFrame(frame);</span>
+<span class="fc" id="L524">  }</span>
+
+  protected MethodInfo getMainEntryMethodInfo (String mthName, ClassInfo ciMain) {
+<span class="fc" id="L527">    MethodInfo miMain = ciMain.getMethod(mthName, true);</span>
+
+    //--- do some sanity checks if this is a valid entry method
+<span class="pc bpc" id="L530" title="2 of 4 branches missed.">    if (miMain == null || !miMain.isStatic()) {</span>
+<span class="nc" id="L531">      throw new JPFConfigException(&quot;no static entry method: &quot; + ciMain.getName() + '.' + mthName);</span>
+    }
+    
+<span class="fc" id="L534">    return miMain;</span>
+  }
+  
+  protected void pushClinits (List&lt;ClassInfo&gt; startupClasses, ThreadInfo tiMain) {
+<span class="fc bfc" id="L538" title="All 2 branches covered.">    for (ClassInfo ci : startupClasses){</span>
+<span class="fc" id="L539">      MethodInfo mi = ci.getMethod(&quot;&lt;clinit&gt;()V&quot;, false);</span>
+<span class="fc bfc" id="L540" title="All 2 branches covered.">      if (mi != null) {</span>
+<span class="fc" id="L541">        DirectCallStackFrame frame = mi.createDirectCallStackFrame(tiMain, 0);</span>
+<span class="fc" id="L542">        tiMain.pushFrame(frame);</span>
+<span class="fc" id="L543">      } else {</span>
+<span class="fc" id="L544">        ci.setInitialized();</span>
+      }      
+<span class="fc" id="L546">    }</span>
+<span class="fc" id="L547">  }</span>
+  
+  /**
+   * this is the main initialization point that sets up startup objects threads and callstacks.
+   * If this returns false VM initialization cannot proceed and JPF will terminate
+   */
+  public abstract boolean initialize ();
+  
+  /**
+   * create and initialize the main thread for the given ApplicationContext.
+   * This is called from VM.initialize() implementations, the caller has to handle exceptions that should be reported
+   * differently (JPFConfigException, ClassInfoException)
+   */
+  protected ThreadInfo initializeMainThread (ApplicationContext appCtx, int tid){
+<span class="fc" id="L561">    SystemClassLoaderInfo sysCl = appCtx.sysCl;</span>
+    
+<span class="fc" id="L563">    ThreadInfo tiMain = createMainThreadInfo(tid, appCtx);</span>
+<span class="fc" id="L564">    List&lt;ClassInfo&gt; startupClasses = getStartupSystemClassInfos(sysCl, tiMain);</span>
+<span class="fc" id="L565">    ClassInfo ciMain = getMainClassInfo(sysCl, appCtx.mainClassName, tiMain, startupClasses);</span>
+
+<span class="pc bpc" id="L567" title="1 of 2 branches missed.">    if (!checkSystemClassCompatibility( sysCl)){</span>
+<span class="nc" id="L568">      throw new JPFConfigException(&quot;non-JPF system classes, check classpath&quot;);</span>
+    }
+    
+    // create essential objects (we can't call ctors yet)
+<span class="fc" id="L572">    createSystemClassLoaderObject(sysCl, tiMain);</span>
+<span class="fc bfc" id="L573" title="All 2 branches covered.">    for (ClassInfo ci : startupClasses) {</span>
+<span class="fc" id="L574">      ci.createAndLinkStartupClassObject(tiMain);</span>
+<span class="fc" id="L575">    }</span>
+<span class="fc" id="L576">    tiMain.createMainThreadObject(sysCl);</span>
+<span class="fc" id="L577">    registerThread(tiMain);</span>
+    
+    // note that StackFrames have to be pushed in reverse order
+<span class="fc" id="L580">    MethodInfo miMain = getMainEntryMethodInfo(appCtx.mainEntry, ciMain);</span>
+<span class="fc" id="L581">    appCtx.setEntryMethod(miMain);</span>
+<span class="fc" id="L582">    pushMainEntry(miMain, appCtx.args, tiMain);</span>
+<span class="fc" id="L583">    Collections.reverse(startupClasses);</span>
+<span class="fc" id="L584">    pushClinits(startupClasses, tiMain);</span>
+
+<span class="fc" id="L586">    registerThreadListCleanup(sysCl.getThreadClassInfo());</span>
+
+<span class="fc" id="L588">    return tiMain;</span>
+  }
+  
+  protected void initializeFinalizerThread (ApplicationContext appCtx, int tid) {
+<span class="fc bfc" id="L592" title="All 2 branches covered.">    if(processFinalizers) {</span>
+<span class="fc" id="L593">      ApplicationContext app = getCurrentApplicationContext();</span>
+<span class="fc" id="L594">      FinalizerThreadInfo finalizerTi = app.getFinalizerThread();</span>
+    
+<span class="fc" id="L596">      finalizerTi = (FinalizerThreadInfo) createFinalizerThreadInfo(tid, app);</span>
+<span class="fc" id="L597">      finalizerTi.createFinalizerThreadObject(app.getSystemClassLoader());</span>
+    
+<span class="fc" id="L599">      appCtx.setFinalizerThread(finalizerTi);</span>
+    }
+<span class="fc" id="L601">  }</span>
+  
+  protected void registerThreadListCleanup (ClassInfo ciThread){
+<span class="pc bpc" id="L604" title="2 of 4 branches missed.">    assert ciThread != null : &quot;java.lang.Thread not loaded yet&quot;;</span>
+    
+<span class="fc" id="L606">    ciThread.addReleaseAction( new ReleaseAction(){</span>
+      @Override
+	public void release (ElementInfo ei) {
+<span class="fc" id="L609">        ThreadList tl = getThreadList();</span>
+<span class="fc" id="L610">        int objRef = ei.getObjectRef();</span>
+<span class="fc" id="L611">        ThreadInfo ti = tl.getThreadInfoForObjRef(objRef);</span>
+<span class="fc bfc" id="L612" title="All 2 branches covered.">        if (tl.remove(ti)){        </span>
+<span class="fc" id="L613">          vm.getKernelState().changed();    </span>
+        }
+<span class="fc" id="L615">      }</span>
+    });
+<span class="fc" id="L617">  }</span>
+  
+
+  /**
+   * override this if the concrete VM needs a special root CG
+   */
+  protected void setRootCG(){
+<span class="fc" id="L624">    scheduler.setRootCG();</span>
+<span class="fc" id="L625">  }</span>
+  
+  protected void initSystemState (ThreadInfo mainThread){
+<span class="fc" id="L628">    ss.setStartThread(mainThread);</span>
+
+<span class="fc" id="L630">    ss.recordSteps(hasToRecordSteps());</span>
+
+<span class="fc bfc" id="L632" title="All 2 branches covered.">    if (!pathOutput) { // don't override if explicitly requested</span>
+<span class="fc" id="L633">      pathOutput = hasToRecordPathOutput();</span>
+    }
+
+<span class="fc" id="L636">    setRootCG(); // this has to be guaranteed to register a CG</span>
+<span class="pc bpc" id="L637" title="1 of 2 branches missed.">    if (!hasNextChoiceGenerator()){</span>
+<span class="nc" id="L638">      throw new JPFException(&quot;scheduler failed to set ROOT choice generator: &quot; + scheduler);</span>
+    }
+    
+<span class="fc" id="L641">    transitionOccurred = true;</span>
+<span class="fc" id="L642">  }</span>
+  
+  public void addPostGcAction (Runnable r){
+<span class="nc" id="L645">    postGcActions.add(r);</span>
+<span class="nc" id="L646">  }</span>
+  
+  /**
+   * to be called from the Heap after GC is completed (i.e. only live objects remain)
+   */
+  public void processPostGcActions(){
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">    if (!postGcActions.isEmpty()){</span>
+<span class="nc bnc" id="L653" title="All 2 branches missed.">      for (Runnable r : postGcActions){</span>
+<span class="nc" id="L654">        r.run();</span>
+<span class="nc" id="L655">      }</span>
+      
+<span class="nc" id="L657">      postGcActions.clear();</span>
+    }
+<span class="fc" id="L659">  }</span>
+  
+  public void addListener (VMListener newListener) {
+<span class="fc" id="L662">    log.info(&quot;VMListener added: &quot;, newListener);</span>
+<span class="fc" id="L663">    listeners = Misc.appendElement(listeners, newListener);</span>
+<span class="fc" id="L664">  }</span>
+
+  public boolean hasListenerOfType (Class&lt;?&gt; listenerCls) {
+<span class="nc" id="L667">    return Misc.hasElementOfType(listeners, listenerCls);</span>
+  }
+
+  public &lt;T&gt; T getNextListenerOfType(Class&lt;T&gt; type, T prev){
+<span class="fc" id="L671">    return Misc.getNextElementOfType(listeners, type, prev);</span>
+  }
+  
+  public void removeListener (VMListener removeListener) {
+<span class="nc" id="L675">    listeners = Misc.removeElement(listeners, removeListener);</span>
+<span class="nc" id="L676">  }</span>
+
+  public void setTraceReplay (boolean isReplay) {
+<span class="fc" id="L679">    isTraceReplay = isReplay;</span>
+<span class="fc" id="L680">  }</span>
+
+  public boolean isTraceReplay() {
+<span class="fc" id="L683">    return isTraceReplay;</span>
+  }
+
+  public boolean hasToRecordSteps() {
+    // we have to record if there either is a reporter that has
+    // a 'trace' topic, or there is an explicit request
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">    return jpf.getReporter().hasToReportTrace()</span>
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">             || config.getBoolean(&quot;vm.store_steps&quot;);</span>
+  }
+
+  public void recordSteps( boolean cond) {
+    // &lt;2do&gt; not ideal - it might be already too late when this is called
+
+<span class="nc bnc" id="L696" title="All 2 branches missed.">    config.setProperty(&quot;vm.store_steps&quot;, cond ? &quot;true&quot; : &quot;false&quot;);</span>
+
+<span class="nc bnc" id="L698" title="All 2 branches missed.">    if (ss != null){</span>
+<span class="nc" id="L699">      ss.recordSteps(cond);</span>
+    }
+<span class="nc" id="L701">  }</span>
+
+  public boolean hasToRecordPathOutput() {
+<span class="fc bfc" id="L704" title="All 2 branches covered.">    if (config.getBoolean(&quot;vm.path_output&quot;)){ // explicitly requested</span>
+<span class="fc" id="L705">      return true;</span>
+    } else {
+<span class="fc" id="L707">      return jpf.getReporter().hasToReportOutput(); // implicilty required</span>
+    }
+  }
+  
+  //--- VM listener notifications
+  
+  /*
+   * while some of these can be called from various places, the calls that happen from within Instruction.execute() should
+   * happen right before return since listeners might do things such as ThreadInfo.createAndThrowException(..), i.e. cause
+   * side effects that would violate consistency requirements of successive operations (e.g. by assuming we are still executing
+   * in the same StackFrame - after throwing an exception)
+   */
+  
+  protected void notifyVMInitialized () {
+    try {
+<span class="fc bfc" id="L722" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L723">        listeners[i].vmInitialized(this);</span>
+      }
+<span class="nc" id="L725">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L726">      throw x;</span>
+<span class="nc" id="L727">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L728">      throw x;</span>
+<span class="nc" id="L729">    } catch (Throwable t) {</span>
+<span class="nc" id="L730">      throw new JPFListenerException(&quot;exception during vmInitialized() notification&quot;, t);</span>
+<span class="fc" id="L731">    }    </span>
+<span class="fc" id="L732">  }</span>
+  
+  protected void notifyChoiceGeneratorRegistered (ChoiceGenerator&lt;?&gt;cg, ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L736" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L737">        listeners[i].choiceGeneratorRegistered(this, cg, ti, ti.getPC());</span>
+      }
+<span class="nc" id="L739">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L740">      throw x;</span>
+<span class="nc" id="L741">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L742">      throw x;</span>
+<span class="nc" id="L743">    } catch (Throwable t) {</span>
+<span class="nc" id="L744">      throw new JPFListenerException(&quot;exception during choiceGeneratorRegistered() notification&quot;, t);</span>
+<span class="fc" id="L745">    }</span>
+<span class="fc" id="L746">  }</span>
+
+  protected void notifyChoiceGeneratorSet (ChoiceGenerator&lt;?&gt;cg) {
+    try {
+<span class="fc bfc" id="L750" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L751">        listeners[i].choiceGeneratorSet(this, cg);</span>
+      }
+<span class="nc" id="L753">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L754">      throw x;</span>
+<span class="nc" id="L755">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L756">      throw x;</span>
+<span class="nc" id="L757">    } catch (Throwable t) {</span>
+<span class="nc" id="L758">      throw new JPFListenerException(&quot;exception during choiceGeneratorSet() notification&quot;, t);</span>
+<span class="fc" id="L759">    }</span>
+<span class="fc" id="L760">  }</span>
+
+  protected void notifyChoiceGeneratorAdvanced (ChoiceGenerator&lt;?&gt;cg) {
+    try {
+<span class="fc bfc" id="L764" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L765">        listeners[i].choiceGeneratorAdvanced(this, cg);</span>
+      }
+<span class="nc" id="L767">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L768">      throw x;</span>
+<span class="nc" id="L769">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L770">      throw x;</span>
+<span class="nc" id="L771">    } catch (Throwable t) {</span>
+<span class="nc" id="L772">      throw new JPFListenerException(&quot;exception during choiceGeneratorAdvanced() notification&quot;, t);</span>
+<span class="fc" id="L773">    }</span>
+<span class="fc" id="L774">  }</span>
+
+  protected void notifyChoiceGeneratorProcessed (ChoiceGenerator&lt;?&gt;cg) {
+    try {
+<span class="fc bfc" id="L778" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L779">        listeners[i].choiceGeneratorProcessed(this, cg);</span>
+      }
+<span class="nc" id="L781">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L782">      throw x;</span>
+<span class="nc" id="L783">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L784">      throw x;</span>
+<span class="nc" id="L785">    } catch (Throwable t) {</span>
+<span class="nc" id="L786">      throw new JPFListenerException(&quot;exception during choiceGeneratorProcessed() notification&quot;, t);</span>
+<span class="fc" id="L787">    }</span>
+<span class="fc" id="L788">  }</span>
+
+  protected void notifyExecuteInstruction (ThreadInfo ti, Instruction insn) {
+    try {
+<span class="fc bfc" id="L792" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L793">        listeners[i].executeInstruction(this, ti, insn);</span>
+      }
+<span class="nc" id="L795">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L796">      throw x;</span>
+<span class="nc" id="L797">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L798">      throw x;</span>
+<span class="nc" id="L799">    } catch (Throwable t) {</span>
+<span class="nc" id="L800">      throw new JPFListenerException(&quot;exception during executeInstruction() notification&quot;, t);</span>
+<span class="fc" id="L801">    }</span>
+<span class="fc" id="L802">  }</span>
+
+  protected void notifyInstructionExecuted (ThreadInfo ti, Instruction insn, Instruction nextInsn) {
+    try {
+      //listener.instructionExecuted(this);
+<span class="fc bfc" id="L807" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L808">        listeners[i].instructionExecuted(this, ti, nextInsn, insn);</span>
+      }
+<span class="nc" id="L810">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L811">      throw x;</span>
+<span class="nc" id="L812">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L813">      throw x;</span>
+<span class="nc" id="L814">    } catch (Throwable t) {</span>
+<span class="nc" id="L815">      throw new JPFListenerException(&quot;exception during instructionExecuted() notification&quot;, t);</span>
+<span class="fc" id="L816">    }</span>
+<span class="fc" id="L817">  }</span>
+
+  protected void notifyThreadStarted (ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L821" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L822">        listeners[i].threadStarted(this, ti);</span>
+      }
+<span class="nc" id="L824">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L825">      throw x;</span>
+<span class="nc" id="L826">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L827">      throw x;</span>
+<span class="nc" id="L828">    } catch (Throwable t) {</span>
+<span class="nc" id="L829">      throw new JPFListenerException(&quot;exception during threadStarted() notification&quot;, t);</span>
+<span class="fc" id="L830">    }</span>
+<span class="fc" id="L831">  }</span>
+
+  // NOTE: the supplied ThreadInfo does NOT have to be the running thread, as this
+  // notification can occur as a result of a lock operation in the current thread
+  protected void notifyThreadBlocked (ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L837" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L838">        listeners[i].threadBlocked(this, ti, ti.getLockObject());</span>
+      }
+<span class="nc" id="L840">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L841">      throw x;</span>
+<span class="nc" id="L842">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L843">      throw x;</span>
+<span class="nc" id="L844">    } catch (Throwable t) {</span>
+<span class="nc" id="L845">      throw new JPFListenerException(&quot;exception during threadBlocked() notification&quot;, t);</span>
+<span class="fc" id="L846">    }</span>
+<span class="fc" id="L847">  }</span>
+
+  protected void notifyThreadWaiting (ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L851" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L852">        listeners[i].threadWaiting(this, ti);</span>
+      }
+<span class="nc" id="L854">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L855">      throw x;</span>
+<span class="nc" id="L856">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L857">      throw x;</span>
+<span class="nc" id="L858">    } catch (Throwable t) {</span>
+<span class="nc" id="L859">      throw new JPFListenerException(&quot;exception during threadWaiting() notification&quot;, t);</span>
+<span class="fc" id="L860">    }</span>
+<span class="fc" id="L861">  }</span>
+
+  protected void notifyThreadNotified (ThreadInfo ti) {
+    try {
+<span class="pc bpc" id="L865" title="1 of 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L866">        listeners[i].threadNotified(this, ti);</span>
+      }
+<span class="nc" id="L868">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L869">      throw x;</span>
+<span class="nc" id="L870">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L871">      throw x;</span>
+<span class="nc" id="L872">    } catch (Throwable t) {</span>
+<span class="nc" id="L873">      throw new JPFListenerException(&quot;exception during threadNotified() notification&quot;, t);</span>
+<span class="fc" id="L874">    }</span>
+<span class="fc" id="L875">  }</span>
+
+  protected void notifyThreadInterrupted (ThreadInfo ti) {
+    try {
+<span class="pc bpc" id="L879" title="1 of 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L880">        listeners[i].threadInterrupted(this, ti);</span>
+      }
+<span class="nc" id="L882">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L883">      throw x;</span>
+<span class="nc" id="L884">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L885">      throw x;</span>
+<span class="nc" id="L886">    } catch (Throwable t) {</span>
+<span class="nc" id="L887">      throw new JPFListenerException(&quot;exception during threadInterrupted() notification&quot;, t);</span>
+<span class="fc" id="L888">    }</span>
+<span class="fc" id="L889">  }</span>
+
+  protected void notifyThreadTerminated (ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L893" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L894">        listeners[i].threadTerminated(this, ti);</span>
+      }
+<span class="nc" id="L896">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L897">      throw x;</span>
+<span class="nc" id="L898">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L899">      throw x;</span>
+<span class="nc" id="L900">    } catch (Throwable t) {</span>
+<span class="nc" id="L901">      throw new JPFListenerException(&quot;exception during threadTerminated() notification&quot;, t);</span>
+<span class="fc" id="L902">    }</span>
+<span class="fc" id="L903">  }</span>
+
+  protected void notifyThreadScheduled (ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L907" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L908">        listeners[i].threadScheduled(this, ti);</span>
+      }
+<span class="nc" id="L910">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L911">      throw x;</span>
+<span class="nc" id="L912">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L913">      throw x;</span>
+<span class="nc" id="L914">    } catch (Throwable t) {</span>
+<span class="nc" id="L915">      throw new JPFListenerException(&quot;exception during threadScheduled() notification&quot;, t);</span>
+<span class="fc" id="L916">    }</span>
+<span class="fc" id="L917">  }</span>
+  
+  protected void notifyLoadClass (ClassFile cf){
+    try {
+<span class="nc bnc" id="L921" title="All 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L922">        listeners[i].loadClass(this, cf);</span>
+      }
+<span class="nc" id="L924">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L925">      throw x;</span>
+<span class="nc" id="L926">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L927">      throw x;</span>
+<span class="nc" id="L928">    } catch (Throwable t) {</span>
+<span class="nc" id="L929">      throw new JPFListenerException(&quot;exception during classLoaded() notification&quot;, t);</span>
+<span class="nc" id="L930">    }    </span>
+<span class="nc" id="L931">  }</span>
+
+  protected void notifyClassLoaded(ClassInfo ci) {
+    try {
+<span class="fc bfc" id="L935" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L936">        listeners[i].classLoaded(this, ci);</span>
+      }
+<span class="nc" id="L938">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L939">      throw x;</span>
+<span class="nc" id="L940">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L941">      throw x;</span>
+<span class="nc" id="L942">    } catch (Throwable t) {</span>
+<span class="nc" id="L943">      throw new JPFListenerException(&quot;exception during classLoaded() notification&quot;, t);</span>
+<span class="fc" id="L944">    }</span>
+<span class="fc" id="L945">  }</span>
+
+  protected void notifyObjectCreated(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L949" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L950">        listeners[i].objectCreated(this, ti, ei);</span>
+      }
+<span class="nc" id="L952">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L953">      throw x;</span>
+<span class="nc" id="L954">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L955">      throw x;</span>
+<span class="nc" id="L956">    } catch (Throwable t) {</span>
+<span class="nc" id="L957">      throw new JPFListenerException(&quot;exception during objectCreated() notification&quot;, t);</span>
+<span class="fc" id="L958">    }</span>
+<span class="fc" id="L959">  }</span>
+
+  protected void notifyObjectReleased(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L963" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L964">        listeners[i].objectReleased(this, ti, ei);</span>
+      }
+<span class="nc" id="L966">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L967">      throw x;</span>
+<span class="nc" id="L968">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L969">      throw x;</span>
+<span class="nc" id="L970">    } catch (Throwable t) {</span>
+<span class="nc" id="L971">      throw new JPFListenerException(&quot;exception during objectReleased() notification&quot;, t);</span>
+<span class="fc" id="L972">    }</span>
+<span class="fc" id="L973">  }</span>
+
+  protected void notifyObjectLocked(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L977" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L978">        listeners[i].objectLocked(this, ti, ei);</span>
+      }
+<span class="nc" id="L980">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L981">      throw x;</span>
+<span class="nc" id="L982">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L983">      throw x;</span>
+<span class="nc" id="L984">    } catch (Throwable t) {</span>
+<span class="nc" id="L985">      throw new JPFListenerException(&quot;exception during objectLocked() notification&quot;, t);</span>
+<span class="fc" id="L986">    }</span>
+<span class="fc" id="L987">  }</span>
+
+  protected void notifyObjectUnlocked(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L991" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L992">        listeners[i].objectUnlocked(this, ti, ei);</span>
+      }
+<span class="nc" id="L994">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L995">      throw x;</span>
+<span class="nc" id="L996">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L997">      throw x;</span>
+<span class="nc" id="L998">    } catch (Throwable t) {</span>
+<span class="nc" id="L999">      throw new JPFListenerException(&quot;exception during objectUnlocked() notification&quot;, t);</span>
+<span class="fc" id="L1000">    }</span>
+<span class="fc" id="L1001">  }</span>
+
+  protected void notifyObjectWait(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1006">        listeners[i].objectWait(this, ti, ei);</span>
+      }
+<span class="nc" id="L1008">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1009">      throw x;</span>
+<span class="nc" id="L1010">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1011">      throw x;</span>
+<span class="nc" id="L1012">    } catch (Throwable t) {</span>
+<span class="nc" id="L1013">      throw new JPFListenerException(&quot;exception during objectWait() notification&quot;, t);</span>
+<span class="fc" id="L1014">    }</span>
+<span class="fc" id="L1015">  }</span>
+
+   protected void notifyObjectExposed(ThreadInfo ti, ElementInfo eiShared, ElementInfo eiExposed) {
+    try {
+<span class="fc bfc" id="L1019" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1020">        listeners[i].objectExposed(this, ti, eiShared, eiExposed);</span>
+      }
+<span class="nc" id="L1022">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1023">      throw x;</span>
+<span class="nc" id="L1024">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1025">      throw x;</span>
+<span class="nc" id="L1026">    } catch (Throwable t) {</span>
+<span class="nc" id="L1027">      throw new JPFListenerException(&quot;exception during objectExposed() notification&quot;, t);</span>
+<span class="fc" id="L1028">    }</span>
+<span class="fc" id="L1029">  }</span>
+
+   protected void notifyObjectShared(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L1033" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1034">        listeners[i].objectShared(this, ti, ei);</span>
+      }
+<span class="nc" id="L1036">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1037">      throw x;</span>
+<span class="nc" id="L1038">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1039">      throw x;</span>
+<span class="nc" id="L1040">    } catch (Throwable t) {</span>
+<span class="nc" id="L1041">      throw new JPFListenerException(&quot;exception during objectShared() notification&quot;, t);</span>
+<span class="fc" id="L1042">    }</span>
+<span class="fc" id="L1043">  }</span>
+  
+  protected void notifyObjectNotifies(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L1047" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1048">        listeners[i].objectNotify(this, ti, ei);</span>
+      }
+<span class="nc" id="L1050">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1051">      throw x;</span>
+<span class="nc" id="L1052">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1053">      throw x;</span>
+<span class="nc" id="L1054">    } catch (Throwable t) {</span>
+<span class="nc" id="L1055">      throw new JPFListenerException(&quot;exception during objectNotifies() notification&quot;, t);</span>
+<span class="fc" id="L1056">    }</span>
+<span class="fc" id="L1057">  }</span>
+
+  protected void notifyObjectNotifiesAll(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L1061" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1062">        listeners[i].objectNotifyAll(this, ti, ei);</span>
+      }
+<span class="nc" id="L1064">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1065">      throw x;</span>
+<span class="nc" id="L1066">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1067">      throw x;</span>
+<span class="nc" id="L1068">    } catch (Throwable t) {</span>
+<span class="nc" id="L1069">      throw new JPFListenerException(&quot;exception during objectNotifiesAll() notification&quot;, t);</span>
+<span class="fc" id="L1070">    }</span>
+<span class="fc" id="L1071">  }</span>
+
+  protected void notifyGCBegin() {
+    try {
+<span class="fc bfc" id="L1075" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1076">        listeners[i].gcBegin(this);</span>
+      }
+<span class="nc" id="L1078">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1079">      throw x;</span>
+<span class="nc" id="L1080">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1081">      throw x;</span>
+<span class="nc" id="L1082">    } catch (Throwable t) {</span>
+<span class="nc" id="L1083">      throw new JPFListenerException(&quot;exception during gcBegin() notification&quot;, t);</span>
+<span class="fc" id="L1084">    }</span>
+<span class="fc" id="L1085">  }</span>
+
+  protected void notifyGCEnd() {
+    try {
+<span class="fc bfc" id="L1089" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1090">        listeners[i].gcEnd(this);</span>
+      }
+<span class="nc" id="L1092">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1093">      throw x;</span>
+<span class="nc" id="L1094">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1095">      throw x;</span>
+<span class="nc" id="L1096">    } catch (Throwable t) {</span>
+<span class="nc" id="L1097">      throw new JPFListenerException(&quot;exception during gcEnd() notification&quot;, t);</span>
+<span class="fc" id="L1098">    }</span>
+<span class="fc" id="L1099">  }</span>
+
+  protected void notifyExceptionThrown(ThreadInfo ti, ElementInfo ei) {
+    try {
+<span class="fc bfc" id="L1103" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1104">        listeners[i].exceptionThrown(this, ti, ei);</span>
+      }
+<span class="nc" id="L1106">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1107">      throw x;</span>
+<span class="nc" id="L1108">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1109">      throw x;</span>
+<span class="nc" id="L1110">    } catch (Throwable t) {</span>
+<span class="nc" id="L1111">      throw new JPFListenerException(&quot;exception during exceptionThrown() notification&quot;, t);</span>
+<span class="fc" id="L1112">    }</span>
+<span class="fc" id="L1113">  }</span>
+
+  protected void notifyExceptionBailout(ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L1117" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1118">        listeners[i].exceptionBailout(this, ti);</span>
+      }
+<span class="nc" id="L1120">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1121">      throw x;</span>
+<span class="nc" id="L1122">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1123">      throw x;</span>
+<span class="nc" id="L1124">    } catch (Throwable t) {</span>
+<span class="nc" id="L1125">      throw new JPFListenerException(&quot;exception during exceptionBailout() notification&quot;, t);</span>
+<span class="fc" id="L1126">    }</span>
+<span class="fc" id="L1127">  }</span>
+
+  protected void notifyExceptionHandled(ThreadInfo ti) {
+    try {
+<span class="fc bfc" id="L1131" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1132">        listeners[i].exceptionHandled(this, ti);</span>
+      }
+<span class="nc" id="L1134">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1135">      throw x;</span>
+<span class="nc" id="L1136">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1137">      throw x;</span>
+<span class="nc" id="L1138">    } catch (Throwable t) {</span>
+<span class="nc" id="L1139">      throw new JPFListenerException(&quot;exception during exceptionHandled() notification&quot;, t);</span>
+<span class="fc" id="L1140">    }</span>
+<span class="fc" id="L1141">  }</span>
+
+  protected void notifyMethodEntered(ThreadInfo ti, MethodInfo mi) {
+    try {
+<span class="fc bfc" id="L1145" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1146">        listeners[i].methodEntered(this, ti, mi);</span>
+      }
+<span class="nc" id="L1148">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1149">      throw x;</span>
+<span class="nc" id="L1150">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1151">      throw x;</span>
+<span class="nc" id="L1152">    } catch (Throwable t) {</span>
+<span class="nc" id="L1153">      throw new JPFListenerException(&quot;exception during methodEntered() notification&quot;, t);</span>
+<span class="fc" id="L1154">    }</span>
+<span class="fc" id="L1155">  }</span>
+
+  protected void notifyMethodExited(ThreadInfo ti, MethodInfo mi) {
+    try {
+<span class="fc bfc" id="L1159" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L1160">        listeners[i].methodExited(this, ti, mi);</span>
+      }
+<span class="nc" id="L1162">    } catch (UncaughtException x) {</span>
+<span class="nc" id="L1163">      throw x;</span>
+<span class="nc" id="L1164">    } catch (JPF.ExitException x) {</span>
+<span class="nc" id="L1165">      throw x;</span>
+<span class="nc" id="L1166">    } catch (Throwable t) {</span>
+<span class="nc" id="L1167">      throw new JPFListenerException(&quot;exception during methodExited() notification&quot;, t);</span>
+<span class="fc" id="L1168">    }</span>
+<span class="fc" id="L1169">  }</span>
+
+  // VMListener acquisition
+  public String getThreadName () {
+<span class="nc" id="L1173">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+
+<span class="nc" id="L1175">    return ti.getName();</span>
+  }
+
+  // VMListener acquisition
+  public Instruction getInstruction () {
+<span class="nc" id="L1180">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+<span class="nc" id="L1181">    return ti.getPC();</span>
+  }
+
+  /**
+   * note this is gone after backtracking or starting the next exception
+   */
+  public ExceptionInfo getPendingException () {
+<span class="fc" id="L1188">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+
+<span class="pc bpc" id="L1190" title="1 of 2 branches missed.">    if (ti != null){</span>
+<span class="fc" id="L1191">      return ti.getPendingException();</span>
+    } else {
+<span class="nc" id="L1193">      return null;</span>
+    }
+  }
+
+  public Step getLastStep () {
+<span class="nc" id="L1198">    Transition trail = ss.getTrail();</span>
+<span class="nc bnc" id="L1199" title="All 2 branches missed.">    if (trail != null) {</span>
+<span class="nc" id="L1200">      return trail.getLastStep();</span>
+    }
+
+<span class="nc" id="L1203">    return null;</span>
+  }
+
+  public Transition getLastTransition () {
+<span class="nc bnc" id="L1207" title="All 2 branches missed.">    if (path.size() == 0) {</span>
+<span class="nc" id="L1208">      return null;</span>
+    }
+<span class="nc" id="L1210">    return path.get(path.size() - 1);</span>
+  }
+
+  public ClassInfo getClassInfo (int objref) {
+<span class="pc bpc" id="L1214" title="1 of 2 branches missed.">    if (objref != MJIEnv.NULL) {</span>
+<span class="fc" id="L1215">      return getElementInfo(objref).getClassInfo();</span>
+    } else {
+<span class="nc" id="L1217">      return null;</span>
+    }
+  }
+
+  /**
+   * NOTE: only use this locally, since the path is getting modified by the VM
+   *
+   * The path only contains all states when queried from a stateAdvanced() notification.
+   * If this is called from an instructionExecuted() (or other VMListener), and you need
+   * the ongoing transition in it, you have to call updatePath() first
+   */
+  public Path getPath () {
+<span class="fc" id="L1229">    return path;</span>
+  }
+
+  /**
+   * this is the ongoing transition. Note that it is not yet stored in the path
+   * if this is called from a VMListener notification
+   */
+  public Transition getCurrentTransition() {
+<span class="nc" id="L1237">    return ss.getTrail();</span>
+  }
+
+  /**
+   * use that one if you have to store the path for subsequent use
+   *
+   * NOTE: without a prior call to updatePath(), this does NOT contain the
+   * ongoing transition. See getPath() for usage from a VMListener
+   */
+  public Path getClonedPath () {
+<span class="fc" id="L1247">    return path.clone();</span>
+  }
+
+  public int getPathLength () {
+<span class="fc" id="L1251">    return path.size();</span>
+  }
+
+  public ThreadList getThreadList () {
+<span class="fc" id="L1255">    return getKernelState().getThreadList();</span>
+  }
+  
+  public ClassLoaderList getClassLoaderList() {
+<span class="fc" id="L1259">    return getKernelState().getClassLoaderList();</span>
+  }
+
+  
+  /**
+   * Bundles up the state of the system for export
+   */
+  public RestorableVMState getRestorableState () {
+<span class="fc" id="L1267">    return new RestorableVMState(this);</span>
+  }
+
+  /**
+   * Gets the system state.
+   */
+  public SystemState getSystemState () {
+<span class="fc" id="L1274">    return ss;</span>
+  }
+
+  public KernelState getKernelState () {
+<span class="fc" id="L1278">    return ss.getKernelState();</span>
+  }
+
+  public void kernelStateChanged(){
+<span class="fc" id="L1282">    ss.getKernelState().changed();</span>
+<span class="fc" id="L1283">  }</span>
+  
+  public Config getConfig() {
+<span class="fc" id="L1286">    return config;</span>
+  }
+
+  public Backtracker getBacktracker() {
+<span class="fc" id="L1290">    return backtracker;</span>
+  }
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public &lt;T&gt; StateRestorer&lt;T&gt; getRestorer() {
+<span class="pc bpc" id="L1295" title="1 of 2 branches missed.">    if (restorer == null) {</span>
+<span class="pc bpc" id="L1296" title="1 of 2 branches missed.">      if (serializer instanceof StateRestorer) {</span>
+<span class="nc" id="L1297">        restorer = (StateRestorer&lt;?&gt;) serializer;</span>
+<span class="pc bpc" id="L1298" title="1 of 2 branches missed.">      } else if (stateSet instanceof StateRestorer) {</span>
+<span class="nc" id="L1299">        restorer = (StateRestorer&lt;?&gt;) stateSet;</span>
+      } else {
+        // config read only if serializer is not also a restorer
+<span class="fc" id="L1302">        restorer = config.getInstance(&quot;vm.restorer.class&quot;, StateRestorer.class);</span>
+      }
+<span class="fc" id="L1304">      restorer.attach(this);</span>
+    }
+
+<span class="fc" id="L1307">    return (StateRestorer&lt;T&gt;) restorer;</span>
+  }
+
+  public StateSerializer getSerializer() {
+<span class="fc bfc" id="L1311" title="All 2 branches covered.">    if (serializer == null) {</span>
+<span class="fc" id="L1312">      serializer = config.getEssentialInstance(&quot;vm.serializer.class&quot;,</span>
+                                      StateSerializer.class);
+<span class="fc" id="L1314">      serializer.attach(this);</span>
+    }
+<span class="fc" id="L1316">    return serializer;</span>
+  }
+
+  public void setSerializer (StateSerializer newSerializer){
+<span class="nc" id="L1320">    serializer = newSerializer;</span>
+<span class="nc" id="L1321">    serializer.attach(this);</span>
+<span class="nc" id="L1322">  }</span>
+  
+  /**
+   * Returns the stateSet if states are being matched.
+   */
+  public StateSet getStateSet() {
+<span class="nc" id="L1328">    return stateSet;</span>
+  }
+
+  public Scheduler getScheduler(){
+<span class="fc" id="L1332">    return scheduler;</span>
+  }
+  
+  public FunctionObjectFactory getFunctionObjectFacotry() {
+<span class="fc" id="L1336">    return funcObjFactory;</span>
+  }
+  
+  /**
+   * return the last registered SystemState's ChoiceGenerator object
+   * NOTE: there might be more than one ChoiceGenerator associated with the
+   * current transition (ChoiceGenerators can be cascaded)
+   */
+  public ChoiceGenerator&lt;?&gt; getChoiceGenerator () {
+<span class="nc" id="L1345">    return ss.getChoiceGenerator();</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt; getNextChoiceGenerator() {
+<span class="fc" id="L1349">    return ss.getNextChoiceGenerator();</span>
+  }
+  
+  public boolean hasNextChoiceGenerator(){
+<span class="fc bfc" id="L1353" title="All 2 branches covered.">    return (ss.getNextChoiceGenerator() != null);</span>
+  }
+
+  public boolean setNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg){
+<span class="fc" id="L1357">    return ss.setNextChoiceGenerator(cg);</span>
+  }
+  
+  public void setMandatoryNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg, String failMsg){
+<span class="nc" id="L1361">    ss.setMandatoryNextChoiceGenerator(cg, failMsg);</span>
+<span class="nc" id="L1362">  }</span>
+  
+  /**
+   * return the latest registered ChoiceGenerator used in this transition
+   * that matches the provided 'id' and is of 'cgType'.
+   * 
+   * This should be the main getter for clients that are cascade aware
+   */
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getCurrentChoiceGenerator (String id, Class&lt;T&gt; cgType) {
+<span class="fc" id="L1371">    return ss.getCurrentChoiceGenerator(id,cgType);</span>
+  }
+
+  /**
+   * returns all ChoiceGenerators in current path
+   */
+  public ChoiceGenerator&lt;?&gt;[] getChoiceGenerators() {
+<span class="nc" id="L1378">    return ss.getChoiceGenerators();</span>
+  }
+
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T[] getChoiceGeneratorsOfType (Class&lt;T&gt; cgType) {
+<span class="nc" id="L1382">    return ss.getChoiceGeneratorsOfType(cgType);</span>
+  }
+
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getLastChoiceGeneratorOfType (Class&lt;T&gt; cgType){
+<span class="fc" id="L1386">    return ss.getLastChoiceGeneratorOfType(cgType);</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt; getLastChoiceGeneratorInThread (ThreadInfo ti){
+<span class="nc" id="L1390">    return ss.getLastChoiceGeneratorInThread(ti);</span>
+  }
+  
+  public void print (String s) {
+<span class="pc bpc" id="L1394" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1395">      System.out.print(s);</span>
+    }
+
+<span class="pc bpc" id="L1398" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1399">      appendOutput(s);</span>
+    }
+<span class="fc" id="L1401">  }</span>
+
+  public void println (String s) {
+<span class="fc bfc" id="L1404" title="All 2 branches covered.">    if (treeOutput) {</span>
+<span class="pc bpc" id="L1405" title="1 of 2 branches missed.">      if (indentOutput){</span>
+<span class="nc" id="L1406">        StringBuilder indent = new StringBuilder();</span>
+        int i;
+<span class="nc bnc" id="L1408" title="All 2 branches missed.">        for (i = 0;i&lt;=path.size();i++) {</span>
+<span class="nc" id="L1409">          indent.append('|').append(i);</span>
+        }
+<span class="nc" id="L1411">        indent.append(&quot;|&quot;).append(s);</span>
+<span class="nc" id="L1412">        System.out.println(indent);</span>
+<span class="nc" id="L1413">      }</span>
+      else {
+<span class="fc" id="L1415">        System.out.println(s);</span>
+      }
+    }
+
+<span class="fc bfc" id="L1419" title="All 2 branches covered.">    if (pathOutput) {</span>
+<span class="fc" id="L1420">      appendOutput(s);</span>
+<span class="fc" id="L1421">      appendOutput('\n');</span>
+    }
+<span class="fc" id="L1423">  }</span>
+
+  public void print (boolean b) {
+<span class="pc bpc" id="L1426" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1427">      System.out.print(b);</span>
+    }
+
+<span class="pc bpc" id="L1430" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1431">      appendOutput(Boolean.toString(b));</span>
+    }
+<span class="fc" id="L1433">  }</span>
+
+  public void print (char c) {
+<span class="pc bpc" id="L1436" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1437">      System.out.print(c);</span>
+    }
+
+<span class="pc bpc" id="L1440" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1441">      appendOutput(c);</span>
+    }
+<span class="fc" id="L1443">  }</span>
+
+  public void print (int i) {
+<span class="pc bpc" id="L1446" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1447">      System.out.print(i);</span>
+    }
+
+<span class="pc bpc" id="L1450" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1451">      appendOutput(Integer.toString(i));</span>
+    }
+<span class="fc" id="L1453">  }</span>
+
+  public void print (long l) {
+<span class="nc bnc" id="L1456" title="All 2 branches missed.">    if (treeOutput) {</span>
+<span class="nc" id="L1457">      System.out.print(l);</span>
+    }
+
+<span class="nc bnc" id="L1460" title="All 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1461">      appendOutput(Long.toString(l));</span>
+    }
+<span class="nc" id="L1463">  }</span>
+
+  public void print (double d) {
+<span class="pc bpc" id="L1466" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1467">      System.out.print(d);</span>
+    }
+
+<span class="pc bpc" id="L1470" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1471">      appendOutput(Double.toString(d));</span>
+    }
+<span class="fc" id="L1473">  }</span>
+
+  public void print (float f) {
+<span class="nc bnc" id="L1476" title="All 2 branches missed.">    if (treeOutput) {</span>
+<span class="nc" id="L1477">      System.out.print(f);</span>
+    }
+
+<span class="nc bnc" id="L1480" title="All 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1481">      appendOutput(Float.toString(f));</span>
+    }
+<span class="nc" id="L1483">  }</span>
+
+  public void println () {
+<span class="pc bpc" id="L1486" title="1 of 2 branches missed.">    if (treeOutput) {</span>
+<span class="fc" id="L1487">      System.out.println();</span>
+    }
+
+<span class="pc bpc" id="L1490" title="1 of 2 branches missed.">    if (pathOutput) {</span>
+<span class="nc" id="L1491">      appendOutput('\n');</span>
+    }
+<span class="fc" id="L1493">  }</span>
+
+
+  void appendOutput (String s) {
+<span class="fc bfc" id="L1497" title="All 2 branches covered.">    if (out == null) {</span>
+<span class="fc" id="L1498">      out = new StringBuilder();</span>
+    }
+<span class="fc" id="L1500">    out.append(s);</span>
+<span class="fc" id="L1501">  }</span>
+
+  void appendOutput (char c) {
+<span class="pc bpc" id="L1504" title="1 of 2 branches missed.">    if (out == null) {</span>
+<span class="nc" id="L1505">      out = new StringBuilder();</span>
+    }
+<span class="fc" id="L1507">    out.append(c);</span>
+<span class="fc" id="L1508">  }</span>
+
+  /**
+   * get the pending output (not yet stored in the path)
+   */
+  public String getPendingOutput() {
+<span class="pc bpc" id="L1514" title="2 of 4 branches missed.">    if (out != null &amp;&amp; out.length() &gt; 0){</span>
+<span class="fc" id="L1515">      return out.toString();</span>
+    } else {
+<span class="nc" id="L1517">      return null;</span>
+    }
+  }
+  
+  /**
+   * this is here so that we can intercept it in subclassed VMs
+   */
+  public Instruction handleException (ThreadInfo ti, int xObjRef){
+<span class="fc" id="L1525">    ti = null;        // Get rid of IDE warning</span>
+<span class="fc" id="L1526">    xObjRef = 0;</span>
+<span class="fc" id="L1527">    return null;</span>
+  }
+
+  public void storeTrace (String fileName, String comment, boolean verbose) {
+<span class="fc" id="L1531">    ChoicePoint.storeTrace(fileName, getSUTName(), comment,</span>
+<span class="fc" id="L1532">                           ss.getChoiceGenerators(), verbose);</span>
+<span class="fc" id="L1533">  }</span>
+
+  public void storePathOutput () {
+<span class="fc" id="L1536">    pathOutput = true;</span>
+<span class="fc" id="L1537">  }</span>
+
+  private void printCG (ChoiceGenerator&lt;?&gt; cg, int n){
+<span class="nc" id="L1540">    ChoiceGenerator cgPrev = cg.getPreviousChoiceGenerator();</span>
+<span class="nc bnc" id="L1541" title="All 2 branches missed.">    if (cgPrev != null){</span>
+<span class="nc" id="L1542">      printCG( cgPrev, --n);</span>
+    }
+    
+<span class="nc" id="L1545">    System.out.printf(&quot;[%d] &quot;, n);</span>
+<span class="nc" id="L1546">    System.out.println(cg);</span>
+<span class="nc" id="L1547">  } </span>
+  
+  // for debugging purposes
+  public void printChoiceGeneratorStack(){
+<span class="nc" id="L1551">    ChoiceGenerator&lt;?&gt; cg = getChoiceGenerator();</span>
+<span class="nc bnc" id="L1552" title="All 2 branches missed.">    if (cg != null){</span>
+<span class="nc" id="L1553">      int n = cg.getNumberOfParents();</span>
+<span class="nc" id="L1554">      printCG(cg, n);</span>
+    }
+<span class="nc" id="L1556">  }</span>
+  
+  public ThreadInfo[] getLiveThreads () {
+<span class="fc" id="L1559">    return getThreadList().getThreads();</span>
+  }
+  
+  /**
+   * print call stacks of all live threads
+   * this is also used for debugging purposes, so we can't move it to the Reporter system
+   * (it's also using a bit too many internals for that)
+   */
+  public void printLiveThreadStatus (PrintWriter pw) {
+<span class="fc" id="L1568">    int nThreads = ss.getThreadCount();</span>
+<span class="fc" id="L1569">    ThreadInfo[] threads = getThreadList().getThreads();</span>
+<span class="fc" id="L1570">    int n=0;</span>
+
+<span class="fc bfc" id="L1572" title="All 2 branches covered.">    for (int i = 0; i &lt; nThreads; i++) {</span>
+<span class="fc" id="L1573">      ThreadInfo ti = threads[i];</span>
+
+<span class="fc bfc" id="L1575" title="All 2 branches covered.">      if (ti.getStackDepth() &gt; 0){</span>
+<span class="fc" id="L1576">        n++;</span>
+        //pw.print(&quot;Thread: &quot;);
+        //pw.print(tiMain.getName());
+<span class="fc" id="L1579">        pw.println(ti.getStateDescription());</span>
+
+<span class="fc" id="L1581">        List&lt;ElementInfo&gt; locks = ti.getLockedObjects();</span>
+<span class="fc bfc" id="L1582" title="All 2 branches covered.">        if (!locks.isEmpty()) {</span>
+<span class="fc" id="L1583">          pw.print(&quot;  owned locks:&quot;);</span>
+<span class="fc" id="L1584">          boolean first = true;</span>
+<span class="fc bfc" id="L1585" title="All 2 branches covered.">          for (ElementInfo e : locks) {</span>
+<span class="pc bpc" id="L1586" title="1 of 2 branches missed.">            if (first) {</span>
+<span class="fc" id="L1587">              first = false;</span>
+            } else {
+<span class="nc" id="L1589">              pw.print(&quot;,&quot;);</span>
+            }
+<span class="fc" id="L1591">            pw.print(e);</span>
+<span class="fc" id="L1592">          }</span>
+<span class="fc" id="L1593">          pw.println();</span>
+        }
+
+<span class="fc" id="L1596">        ElementInfo ei = ti.getLockObject();</span>
+<span class="fc bfc" id="L1597" title="All 2 branches covered.">        if (ei != null) {</span>
+<span class="fc bfc" id="L1598" title="All 2 branches covered.">          if (ti.getState() == ThreadInfo.State.WAITING) {</span>
+<span class="fc" id="L1599">            pw.print( &quot;  waiting on: &quot;);</span>
+          } else {
+<span class="fc" id="L1601">            pw.print( &quot;  blocked on: &quot;);</span>
+          }
+<span class="fc" id="L1603">          pw.println(ei);</span>
+        }
+
+<span class="fc" id="L1606">        pw.println(&quot;  call stack:&quot;);</span>
+<span class="fc bfc" id="L1607" title="All 2 branches covered.">        for (StackFrame frame : ti){</span>
+<span class="fc bfc" id="L1608" title="All 2 branches covered.">          if (!frame.isDirectCallFrame()) {</span>
+<span class="fc" id="L1609">            pw.print(&quot;\tat &quot;);</span>
+<span class="fc" id="L1610">            pw.println(frame.getStackTraceInfo());</span>
+          }
+<span class="fc" id="L1612">        }</span>
+
+<span class="fc" id="L1614">        pw.println();</span>
+      }
+    }
+
+<span class="pc bpc" id="L1618" title="1 of 2 branches missed.">    if (n==0) {</span>
+<span class="nc" id="L1619">      pw.println(&quot;no live threads&quot;);</span>
+    }
+<span class="fc" id="L1621">  }</span>
+
+  // just a debugging aid
+  public void dumpThreadStates () {
+<span class="nc" id="L1625">    java.io.PrintWriter pw = new java.io.PrintWriter(System.out, true);</span>
+<span class="nc" id="L1626">    printLiveThreadStatus(pw);</span>
+<span class="nc" id="L1627">    pw.flush();</span>
+<span class="nc" id="L1628">  }</span>
+
+  /**
+   * Moves one step backward. This method and forward() are the main methods
+   * used by the search object.
+   * Note this is called with the state that caused the backtrack still being on
+   * the stack, so we have to remove that one first (i.e. popping two states
+   * and restoring the second one)
+   */
+  public boolean backtrack () {
+<span class="fc" id="L1638">    transitionOccurred = false;</span>
+
+<span class="fc" id="L1640">    boolean success = backtracker.backtrack();</span>
+<span class="fc bfc" id="L1641" title="All 2 branches covered.">    if (success) {</span>
+      if (CHECK_CONSISTENCY) checkConsistency(false);
+      
+      // restore the path
+<span class="fc" id="L1645">      path.removeLast();</span>
+<span class="fc" id="L1646">      lastTrailInfo = path.getLast();</span>
+
+<span class="fc" id="L1648">      return true;</span>
+      
+    } else {
+<span class="fc" id="L1651">      return false;</span>
+    }
+  }
+
+  /**
+   * store the current SystemState's Trail in our path, after updating it
+   * with whatever annotations the VM wants to add.
+   * This is supposed to be called after each transition we want to keep
+   */
+  public void updatePath () {
+<span class="fc" id="L1661">    Transition t = ss.getTrail();</span>
+<span class="fc" id="L1662">    Transition tLast = path.getLast();</span>
+
+    // NOTE: don't add the transition twice, this is public and might get called
+    // from listeners, so the transition object might get changed
+
+<span class="pc bpc" id="L1667" title="1 of 2 branches missed.">    if (tLast != t) {</span>
+      // &lt;2do&gt; we should probably store the output directly in the TrailInfo,
+      // but this might not be our only annotation in the future
+
+      // did we have output during the last transition? If yes, add it
+<span class="fc bfc" id="L1672" title="All 4 branches covered.">      if ((out != null) &amp;&amp; (out.length() &gt; 0)) {</span>
+<span class="fc" id="L1673">        t.setOutput( out.toString());</span>
+<span class="fc" id="L1674">        out.setLength(0);</span>
+      }
+
+<span class="fc" id="L1677">      path.add(t);</span>
+    }
+<span class="fc" id="L1679">  }</span>
+
+  /**
+   * advance the program state
+   *
+   * forward() and backtrack() are the two primary interfaces towards the Search
+   * driver. note that the caller still has to check if there is a next state,
+   * and if the executed instruction sequence led into a new or already visited state
+   *
+   * @return 'true' if there was an un-executed sequence out of the current state,
+   * 'false' if it was completely explored
+   *
+   */
+  public boolean forward () {
+
+    // the reason we split up CG initialization and transition execution
+    // is that program state storage is not required if the CG initialization
+    // does not produce a new choice since we have to backtrack in that case
+    // anyways. This can be caused by complete enumeration of CGs and/or by
+    // CG listener intervention (i.e. not just after backtracking). For a large
+    // number of matched or end states and ignored transitions this can be a
+    // huge saving.
+    // The downside is that CG notifications are NOT allowed anymore to change the
+    // KernelState (modify fields or thread states) since those changes would
+    // happen before storing the KernelState, and hence would make backtracking
+    // inconsistent. This is advisable anyways since all program state changes
+    // should take place during transitions, but the real snag is that this
+    // cannot be easily enforced.
+
+    // actually, it hasn't occurred yet, but will
+<span class="fc" id="L1709">    transitionOccurred = ss.initializeNextTransition(this);</span>
+    
+<span class="fc bfc" id="L1711" title="All 2 branches covered.">    if (transitionOccurred){</span>
+      if (CHECK_CONSISTENCY) {
+        checkConsistency(true); // don't push an inconsistent state
+      }
+
+<span class="fc" id="L1716">      backtracker.pushKernelState();</span>
+
+      // cache this before we enter (and increment) the next insn(s)
+<span class="fc" id="L1719">      lastTrailInfo = path.getLast();</span>
+
+      try {
+<span class="fc" id="L1722">        ss.executeNextTransition(vm);</span>
+
+<span class="fc" id="L1724">      } catch (UncaughtException e) {</span>
+        // we don't pass this up since it means there were insns executed and we are
+        // in a consistent state
+<span class="fc" id="L1727">      } // every other exception goes upwards</span>
+
+<span class="fc" id="L1729">      backtracker.pushSystemState();</span>
+<span class="fc" id="L1730">      updatePath();</span>
+
+<span class="fc bfc" id="L1732" title="All 2 branches covered.">      if (!isIgnoredState()) {</span>
+        // if this is ignored we are going to backtrack anyways
+        // matching states out of ignored transitions is also not a good idea
+        // because this transition is usually incomplete
+
+<span class="pc bpc" id="L1737" title="1 of 4 branches missed.">        if (runGc &amp;&amp; !hasPendingException()) {</span>
+<span class="fc bfc" id="L1738" title="All 2 branches covered.">          if(ss.gcIfNeeded()) {</span>
+<span class="fc" id="L1739">            processFinalizers();</span>
+          }
+        }
+
+<span class="fc bfc" id="L1743" title="All 2 branches covered.">        if (stateSet != null) {</span>
+<span class="fc" id="L1744">          newStateId = stateSet.size();</span>
+<span class="fc" id="L1745">          int id = stateSet.addCurrent();</span>
+<span class="fc" id="L1746">          ss.setId(id);</span>
+
+<span class="fc" id="L1748">        } else { // this is 'state-less' model checking, i.e. we don't match states</span>
+<span class="fc" id="L1749">          ss.setId(++newStateId); // but we still should have states numbered in case listeners use the id</span>
+        }
+      }
+      
+<span class="fc" id="L1753">      return true;</span>
+
+    } else {
+
+<span class="fc" id="L1757">      return false;  // no transition occurred</span>
+    }
+  }
+
+  /**
+   * Prints the current stack trace. Just for debugging purposes
+   */
+  public void printCurrentStackTrace () {
+<span class="nc" id="L1765">    ThreadInfo th = ThreadInfo.getCurrentThread();</span>
+
+<span class="nc bnc" id="L1767" title="All 2 branches missed.">    if (th != null) {</span>
+<span class="nc" id="L1768">      th.printStackTrace();</span>
+    }
+<span class="nc" id="L1770">  }</span>
+
+
+  public void restoreState (RestorableVMState state) {
+<span class="pc bpc" id="L1774" title="1 of 2 branches missed.">    if (state.path == null) {</span>
+<span class="nc" id="L1775">      throw new JPFException(&quot;tried to restore partial VMState: &quot; + state);</span>
+    }
+<span class="fc" id="L1777">    backtracker.restoreState(state.getBkState());</span>
+<span class="fc" id="L1778">    path = state.path.clone();</span>
+<span class="fc" id="L1779">  }</span>
+
+  public void activateGC () {
+<span class="fc" id="L1782">    ss.activateGC();</span>
+<span class="fc" id="L1783">  }</span>
+
+
+  //--- various state attribute getters and setters (mostly forwarding to SystemState)
+
+  public void retainStateAttributes (boolean isRetained){
+<span class="nc" id="L1789">    ss.retainAttributes(isRetained);</span>
+<span class="nc" id="L1790">  }</span>
+
+  public void forceState () {
+<span class="nc" id="L1793">    ss.setForced(true);</span>
+<span class="nc" id="L1794">  }</span>
+
+  /**
+   * override the state matching - ignore this state, no matter if we changed
+   * the heap or stacks.
+   * use this with care, since it prunes whole search subtrees
+   */
+  public void ignoreState (boolean cond) {
+<span class="fc" id="L1802">    ss.setIgnored(cond);</span>
+<span class="fc" id="L1803">  }</span>
+
+  public void ignoreState(){
+<span class="fc" id="L1806">    ignoreState(true);</span>
+<span class="fc" id="L1807">  }</span>
+
+  /**
+   * imperatively break the transition to enable state matching
+   */
+  public void breakTransition (String reason) {
+<span class="fc" id="L1813">    ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+<span class="fc" id="L1814">    ti.breakTransition(reason);</span>
+<span class="fc" id="L1815">  }</span>
+
+  public boolean transitionOccurred(){
+<span class="nc" id="L1818">    return transitionOccurred;</span>
+  }
+
+  /**
+   * answers if the current state already has been visited. This is mainly
+   * used by the searches (to control backtracking), but could also be useful
+   * for observers to build up search graphs (based on the state ids)
+   *
+   * this returns true if no state has been produced yet, and false if
+   * no transition occurred after a forward call
+   */
+  public boolean isNewState() {
+
+<span class="fc bfc" id="L1831" title="All 2 branches covered.">    if (!transitionOccurred){</span>
+<span class="fc" id="L1832">      return false;</span>
+    }
+
+<span class="fc bfc" id="L1835" title="All 2 branches covered.">    if (stateSet != null) {</span>
+<span class="pc bpc" id="L1836" title="1 of 2 branches missed.">      if (ss.isForced()){</span>
+<span class="nc" id="L1837">        return true;</span>
+<span class="fc bfc" id="L1838" title="All 2 branches covered.">      } else if (ss.isIgnored()){</span>
+<span class="fc" id="L1839">        return false;</span>
+      } else {
+<span class="fc bfc" id="L1841" title="All 2 branches covered.">        return (newStateId == ss.getId());</span>
+      }
+
+    } else { // stateless model checking - each transition leads to a new state
+<span class="fc" id="L1845">      return true;</span>
+    }
+  }
+
+  /**
+   * We made this to be overriden by Single/MultiprcessesVM implementations,
+   * since for MultiprcessesVM one can decide when to terminate (after the
+   * the termination of all processes or only one process).
+   * todo - that needs to be specified through the properties file
+   */
+  public abstract boolean isEndState ();
+
+  public boolean isVisitedState(){
+<span class="nc bnc" id="L1858" title="All 2 branches missed.">    return !isNewState();</span>
+  }
+
+  public boolean isIgnoredState(){
+<span class="fc" id="L1862">    return ss.isIgnored();</span>
+  }
+
+  public boolean isInterestingState () {
+<span class="fc" id="L1866">    return ss.isInteresting();</span>
+  }
+
+  public boolean isBoringState () {
+<span class="fc" id="L1870">    return ss.isBoring();</span>
+  }
+
+  public boolean hasPendingException () {
+<span class="fc bfc" id="L1874" title="All 2 branches covered.">    return (getPendingException() != null);</span>
+  }
+
+  public abstract boolean isDeadlocked ();
+  
+  public Exception getException () {
+<span class="nc" id="L1880">    return ss.getUncaughtException();</span>
+  }
+
+
+
+  /**
+   * get the numeric id for the current state
+   * Note: this can be called several times (by the search and observers) for
+   * every forward()/backtrack(), so we want to cache things a bit
+   */
+  public int getStateId() {
+<span class="fc" id="L1891">    return ss.getId();</span>
+  }
+
+  public int getStateCount() {
+<span class="fc" id="L1895">    return newStateId;</span>
+  }
+
+
+  /**
+   * &lt;2do&gt; this is a band aid to bundle all these legacy reference chains
+   * from JPFs past. The goal is to replace them with proper accessors (normally
+   * through ThreadInfo, MJIEnv or VM, which all act as facades) wherever possible,
+   * and use VM.getVM() where there is no access to such a facade. Once this
+   * has been completed, we can start refactoring the users of VM.getVM() to
+   * get access to a suitable facade. 
+   */
+  public static VM getVM () {
+<span class="fc" id="L1908">    return vm;</span>
+  }
+
+  /**
+   * not ideal to have this here since it is kind of a backlink, but it's not
+   * any better if listeners have to dig this out from JPF
+   * Note - this isn't set during initialization, since the VM object is created first
+   */
+  public Search getSearch() {
+<span class="fc" id="L1917">    return jpf.getSearch();</span>
+  }
+  
+  /**
+   * pushClinit all our static fields. Called from &lt;clinit&gt; and reset
+   */
+  static void initStaticFields () {
+<span class="fc" id="L1924">    error_id = 0;</span>
+<span class="fc" id="L1925">  }</span>
+
+  /**
+   *  given an object reference, it returns the ApplicationContext of the process to which
+   *  this object belongs
+   */
+  public abstract ApplicationContext getCurrentApplicationContext();
+  public abstract ApplicationContext getApplicationContext(int objRef);
+  public abstract ApplicationContext[] getApplicationContexts();
+  public abstract String getSUTName();
+  public abstract String getSUTDescription();
+
+  public abstract int getNumberOfApplications();
+  
+  public Heap getHeap() {
+<span class="fc" id="L1940">    return ss.getHeap();</span>
+  }
+
+  public ElementInfo getElementInfo(int objref){
+<span class="fc" id="L1944">    return ss.getHeap().get(objref);</span>
+  }
+
+  public ElementInfo getModifiableElementInfo(int objref){
+<span class="fc" id="L1948">    return ss.getHeap().getModifiable(objref);</span>
+  }
+
+  
+  public ThreadInfo getCurrentThread () {
+<span class="fc" id="L1953">    return ThreadInfo.currentThread;</span>
+  }
+  
+  public void registerClassLoader(ClassLoaderInfo cl) {
+<span class="fc" id="L1957">    this.getKernelState().addClassLoader(cl);</span>
+<span class="fc" id="L1958">  }</span>
+
+  public int registerThread (ThreadInfo ti){
+<span class="fc" id="L1961">    getKernelState().changed();</span>
+<span class="fc" id="L1962">    return getThreadList().add(ti);    </span>
+  }
+
+  /**
+   * Returns the ClassLoader with the given globalId
+   */
+  protected ClassLoaderInfo getClassLoader(int gid) {
+<span class="fc" id="L1969">    return ss.ks.getClassLoader(gid);</span>
+  }
+
+  /**
+   * &lt;2do&gt; this is where we will hook in a better time model
+   */
+  public long currentTimeMillis () {
+<span class="fc" id="L1976">    return timeModel.currentTimeMillis();</span>
+  }
+
+  /**
+   * &lt;2do&gt; this is where we will hook in a better time model
+   */
+  public long nanoTime() {
+<span class="nc" id="L1983">    return timeModel.nanoTime();</span>
+  }
+
+  public void resetNextCG() {
+<span class="nc bnc" id="L1987" title="All 2 branches missed.">    if (ss.nextCg != null) {</span>
+<span class="nc" id="L1988">      ss.nextCg.reset();</span>
+    }
+<span class="nc" id="L1990">  }</span>
+  
+  /**
+   * only for debugging, this is expensive
+   *
+   * If this is a store (forward) this is called before the state is stored.
+   *
+   * If this is a restore (visited forward or backtrack), this is called after
+   * the state got restored
+   */
+  public void checkConsistency(boolean isStateStore) {
+<span class="nc" id="L2001">    getThreadList().checkConsistency( isStateStore);</span>
+<span class="nc" id="L2002">    getHeap().checkConsistency( isStateStore);</span>
+<span class="nc" id="L2003">  }</span>
+  
+  public abstract void terminateProcess (ThreadInfo ti);
+  
+  // this is invoked by the heap (see GenericHeap.newInternString()) upon creating
+  // the very first intern string
+  public abstract Map&lt;Integer,IntTable&lt;String&gt;&gt; getInitialInternStringsMap();
+  
+  // ---------- Predicates used to query threads from ThreadList ---------- //
+  
+  public abstract Predicate&lt;ThreadInfo&gt; getRunnablePredicate();
+  
+  public abstract Predicate&lt;ThreadInfo&gt; getDaemonRunnablePredicate();
+  
+  public abstract Predicate&lt;ThreadInfo&gt; getAppTimedoutRunnablePredicate();
+  
+  public Predicate&lt;ThreadInfo&gt; getUserTimedoutRunnablePredicate () {
+<span class="fc" id="L2020">    return userTimedoutRunnablePredicate;</span>
+  }
+  
+  public Predicate&lt;ThreadInfo&gt; getUserLiveNonDaemonPredicate() {
+<span class="fc" id="L2024">    return userliveNonDaemonPredicate;</span>
+  }
+  
+  public Predicate&lt;ThreadInfo&gt; getTimedoutRunnablePredicate () {
+<span class="fc" id="L2028">    return timedoutRunnablePredicate;</span>
+  }
+  
+  public Predicate&lt;ThreadInfo&gt; getAlivePredicate () {
+<span class="nc" id="L2032">    return alivePredicate;</span>
+  }
+  
+  
+  // ---------- Methods for handling finalizers ---------- //
+    
+  public FinalizerThreadInfo getFinalizerThread() {
+<span class="fc" id="L2039">    return getCurrentApplicationContext().getFinalizerThread();</span>
+  }
+  
+  abstract void updateFinalizerQueues();
+  
+  public void processFinalizers() {
+<span class="fc bfc" id="L2045" title="All 2 branches covered.">    if(processFinalizers) {</span>
+<span class="fc" id="L2046">      updateFinalizerQueues();</span>
+<span class="fc" id="L2047">      ChoiceGenerator&lt;?&gt; cg = getNextChoiceGenerator();</span>
+<span class="pc bpc" id="L2048" title="2 of 6 branches missed.">      if(cg==null || (cg.isSchedulingPoint() &amp;&amp; !cg.isCascaded())) {</span>
+<span class="fc" id="L2049">        getFinalizerThread().scheduleFinalizer();</span>
+      }
+    }
+<span class="fc" id="L2052">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

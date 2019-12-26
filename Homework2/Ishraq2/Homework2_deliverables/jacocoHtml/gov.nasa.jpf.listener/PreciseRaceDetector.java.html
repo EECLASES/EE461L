@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreciseRaceDetector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">PreciseRaceDetector.java</span></div><h1>PreciseRaceDetector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.vm.bytecode.ArrayElementInstruction;
+import gov.nasa.jpf.vm.bytecode.FieldInstruction;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.bytecode.ReadOrWriteInstruction;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.choice.ThreadChoiceFromSet;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
+/**
+ * This is a Race Detection Algorithm that is precise in its calculation of races, i.e. no false warnings.
+ * It exploits the fact that every thread choice selection point could be due to a possible race. It just runs
+ * through all the thread choices and checks whether there are more than one thread trying to read &amp; write to the
+ * same field of an object.
+ *
+ * Current limitation is that it is only sound, i.e. will not miss a race, if the sync-detection is switched off
+ * during model checking. This is due to the fact that the sync-detection guesses that an acess is lock-protected
+ * when it in reality might not be.
+ *
+ * The listener also checks races for array elements, but in order to do so you have to set
+ * &quot;cg.threads.break_arrays=true&quot; (note that it is false by default because this can cause serious state
+ * explosion)
+ *
+ * This algorithm came out of a discussion with Franck van Breugel and Sergey Kulikov from the University of York.
+ * All credits for it goes to Franck and Sergey, all the bugs are mine.
+ *
+ * NOTE - the PreciseRaceDetector is machine type agnostic
+ *
+ * Author: Willem Visser
+ *
+ */
+
+public class PreciseRaceDetector extends PropertyListenerAdapter {
+
+<span class="fc" id="L65">  static class Race {</span>
+    Race prev;   // linked list
+
+    ThreadInfo ti1, ti2;
+    ReadOrWriteInstruction insn1, insn2;
+    ElementInfo ei;
+    boolean isRead1, isRead2;
+
+    boolean isRace() {
+<span class="pc bpc" id="L74" title="3 of 8 branches missed.">      return insn2 != null &amp;&amp; ti1 != null &amp;&amp; ti2 != null &amp;&amp; ( ! ti1.equals(ti2) );</span>
+    }
+
+    void printOn(PrintWriter pw){
+<span class="fc" id="L78">      pw.print(&quot;  &quot;);</span>
+<span class="fc" id="L79">      pw.print( ti1.getName());</span>
+<span class="fc" id="L80">      pw.print(&quot; at &quot;);</span>
+<span class="fc" id="L81">      pw.println(insn1.getSourceLocation());</span>
+<span class="fc" id="L82">      String line = insn1.getSourceLine();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">      if (line != null){</span>
+<span class="nc" id="L84">        pw.print(&quot;\t\t\&quot;&quot; + line.trim());</span>
+      }
+<span class="fc" id="L86">      pw.print(&quot;\&quot;  &quot;);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">      pw.print( insn1.isRead() ? &quot;READ:  &quot; : &quot;WRITE: &quot;);</span>
+<span class="fc" id="L88">      pw.println(insn1);</span>
+
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">      if (insn2 != null){</span>
+<span class="fc" id="L91">        pw.print(&quot;  &quot;);</span>
+<span class="fc" id="L92">        pw.print(ti2.getName());</span>
+<span class="fc" id="L93">        pw.print(&quot; at &quot;);</span>
+<span class="fc" id="L94">        pw.println(insn2.getSourceLocation());</span>
+<span class="fc" id="L95">        line = insn2.getSourceLine();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (line != null){</span>
+<span class="nc" id="L97">          pw.print(&quot;\t\t\&quot;&quot; + line.trim());</span>
+        }
+<span class="fc" id="L99">        pw.print(&quot;\&quot;  &quot;);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        pw.print( insn2.isRead() ? &quot;READ:  &quot; : &quot;WRITE: &quot;);</span>
+<span class="fc" id="L101">        pw.println(insn2);</span>
+      }
+<span class="fc" id="L103">    }</span>
+  }
+
+<span class="fc" id="L106">  static class FieldRace extends Race {</span>
+    FieldInfo   fi;
+
+    static Race check (Race prev, ThreadInfo ti,  ReadOrWriteInstruction insn, ElementInfo ei, FieldInfo fi){
+<span class="fc bfc" id="L110" title="All 2 branches covered.">      for (Race r = prev; r != null; r = r.prev){</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (r instanceof FieldRace){</span>
+<span class="fc" id="L112">          FieldRace fr = (FieldRace)r;</span>
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">          if (fr.ei == ei &amp;&amp; fr.fi == fi){</span>
+            
+<span class="pc bpc" id="L115" title="3 of 4 branches missed.">            if (!((FieldInstruction)fr.insn1).isRead() || !((FieldInstruction)insn).isRead()){</span>
+<span class="fc" id="L116">              fr.ti2 = ti;</span>
+<span class="fc" id="L117">              fr.insn2 = insn;</span>
+<span class="fc" id="L118">              return fr;</span>
+            }
+          }
+        }
+      }
+
+<span class="fc" id="L124">      FieldRace fr = new FieldRace();</span>
+<span class="fc" id="L125">      fr.ei = ei;</span>
+<span class="fc" id="L126">      fr.ti1 = ti;</span>
+<span class="fc" id="L127">      fr.insn1 = insn;</span>
+<span class="fc" id="L128">      fr.fi = fi;</span>
+<span class="fc" id="L129">      fr.prev = prev;</span>
+<span class="fc" id="L130">      return fr;</span>
+    }
+
+    @Override
+	void printOn(PrintWriter pw){
+<span class="fc" id="L135">      pw.print(&quot;race for field &quot;);</span>
+<span class="fc" id="L136">      pw.print(ei);</span>
+<span class="fc" id="L137">      pw.print('.');</span>
+<span class="fc" id="L138">      pw.println(fi.getName());</span>
+
+<span class="fc" id="L140">      super.printOn(pw);</span>
+<span class="fc" id="L141">    }</span>
+  }
+
+<span class="fc" id="L144">  static class ArrayElementRace extends Race {</span>
+    int idx;
+
+    static Race check (Race prev, ThreadInfo ti, ReadOrWriteInstruction insn, ElementInfo ei, int idx){
+<span class="fc bfc" id="L148" title="All 2 branches covered.">      for (Race r = prev; r != null; r = r.prev){</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (r instanceof ArrayElementRace){</span>
+<span class="fc" id="L150">          ArrayElementRace ar = (ArrayElementRace)r;</span>
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">          if (ar.ei == ei &amp;&amp; ar.idx == idx){</span>
+<span class="pc bpc" id="L152" title="3 of 4 branches missed.">            if (!((ArrayElementInstruction)ar.insn1).isRead() || !((ArrayElementInstruction)insn).isRead()){</span>
+<span class="fc" id="L153">              ar.ti2 = ti;</span>
+<span class="fc" id="L154">              ar.insn2 = insn;</span>
+<span class="fc" id="L155">              return ar;</span>
+            }
+          }
+        }
+      }
+
+<span class="fc" id="L161">      ArrayElementRace ar = new ArrayElementRace();</span>
+<span class="fc" id="L162">      ar.ei = ei;</span>
+<span class="fc" id="L163">      ar.ti1 = ti;</span>
+<span class="fc" id="L164">      ar.insn1 = insn;</span>
+<span class="fc" id="L165">      ar.idx = idx;</span>
+<span class="fc" id="L166">      ar.prev = prev;</span>
+<span class="fc" id="L167">      return ar;</span>
+    }
+
+    @Override
+	void printOn(PrintWriter pw){
+<span class="fc" id="L172">      pw.print(&quot;race for array element &quot;);</span>
+<span class="fc" id="L173">      pw.print(ei);</span>
+<span class="fc" id="L174">      pw.print('[');</span>
+<span class="fc" id="L175">      pw.print(idx);</span>
+<span class="fc" id="L176">      pw.println(']');</span>
+
+<span class="fc" id="L178">      super.printOn(pw);</span>
+<span class="fc" id="L179">    }</span>
+  }
+
+  // this is where we store if we detect one
+  protected Race race;
+
+
+  // our matchers to determine which code we have to check
+<span class="fc" id="L187">  protected StringSetMatcher includes = null; //  means all</span>
+<span class="fc" id="L188">  protected StringSetMatcher excludes = null; //  means none</span>
+
+
+<span class="fc" id="L191">  public PreciseRaceDetector (Config conf) {</span>
+<span class="fc" id="L192">    includes = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;race.include&quot;));</span>
+<span class="fc" id="L193">    excludes = StringSetMatcher.getNonEmpty(conf.getStringArray(&quot;race.exclude&quot;));</span>
+<span class="fc" id="L194">  }</span>
+  
+  @Override
+  public boolean check(Search search, VM vm) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">    return (race == null);</span>
+  }
+
+  @Override
+  public void reset() {
+<span class="nc" id="L203">    race = null;</span>
+<span class="nc" id="L204">  }</span>
+
+
+  @Override
+  public String getErrorMessage () {
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">    if (race != null){</span>
+<span class="fc" id="L210">      StringWriter sw = new StringWriter();</span>
+<span class="fc" id="L211">      PrintWriter pw = new PrintWriter(sw);</span>
+<span class="fc" id="L212">      race.printOn(pw);</span>
+<span class="fc" id="L213">      pw.flush();</span>
+<span class="fc" id="L214">      return sw.toString();</span>
+      
+    } else {
+<span class="nc" id="L217">      return null;</span>
+    }
+  }
+
+  protected boolean checkRace (ThreadInfo[] threads){
+<span class="fc" id="L222">    Race candidate = null;</span>
+
+<span class="fc bfc" id="L224" title="All 2 branches covered.">    for (int i = 0; i &lt; threads.length; i++) {</span>
+<span class="fc" id="L225">      ThreadInfo ti = threads[i];</span>
+<span class="fc" id="L226">      Instruction insn = ti.getPC();</span>
+<span class="fc" id="L227">      MethodInfo mi = insn.getMethodInfo();</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">      if (StringSetMatcher.isMatch(mi.getBaseName(), includes, excludes)) {</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (insn instanceof FieldInstruction) {</span>
+<span class="fc" id="L231">          FieldInstruction finsn = (FieldInstruction) insn;</span>
+<span class="fc" id="L232">          FieldInfo fi = finsn.getFieldInfo();</span>
+<span class="fc" id="L233">          ElementInfo ei = finsn.peekElementInfo(ti);</span>
+
+<span class="fc" id="L235">          candidate = FieldRace.check(candidate, ti, finsn, ei, fi);</span>
+
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        } else if (insn instanceof ArrayElementInstruction) {</span>
+<span class="fc" id="L238">          ArrayElementInstruction ainsn = (ArrayElementInstruction) insn;</span>
+<span class="fc" id="L239">          ElementInfo ei = ainsn.peekArrayElementInfo(ti);</span>
+
+          // these insns have been through their top half since they created CGs, but they haven't
+          // removed the operands from the stack
+<span class="fc" id="L243">          int idx = ainsn.peekIndex(ti);</span>
+
+<span class="fc" id="L245">          candidate = ArrayElementRace.check(candidate, ti, ainsn, ei, idx);</span>
+        }
+      }
+
+<span class="fc bfc" id="L249" title="All 4 branches covered.">      if (candidate != null &amp;&amp; candidate.isRace()){</span>
+<span class="fc" id="L250">        race = candidate;</span>
+<span class="fc" id="L251">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L255">    return false;</span>
+  }
+
+
+  //----------- our VMListener interface
+
+  // All we rely on here is that the scheduler breaks transitions at all
+  // insns that could be races. We then just have to look at all currently
+  // executed insns and don't rely on any past-exec info, PROVIDED that we only
+  // use execution parameters (index or reference values) that are retrieved
+  // from the operand stack, and not cached in the insn from a previous exec
+  // (all the insns we look at are pre-exec, i.e. don't have their caches
+  // updated yet)
+  @Override
+  public void choiceGeneratorSet(VM vm, ChoiceGenerator&lt;?&gt; newCG) {
+
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">    if (newCG instanceof ThreadChoiceFromSet) {</span>
+<span class="fc" id="L272">      ThreadInfo[] threads = ((ThreadChoiceFromSet)newCG).getAllThreadChoices();</span>
+<span class="fc" id="L273">      checkRace(threads);</span>
+    }
+<span class="fc" id="L275">  }</span>
+
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insnToExecute) {
+<span class="fc bfc" id="L279" title="All 2 branches covered.">    if (race != null) {</span>
+      // we're done, report as quickly as possible
+      //ti.skipInstruction();
+<span class="fc" id="L282">      ti.breakTransition(&quot;dataRace&quot;);</span>
+    }
+<span class="fc" id="L284">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

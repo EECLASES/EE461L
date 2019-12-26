@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Publisher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.report</a> &gt; <span class="el_source">Publisher.java</span></div><h1>Publisher.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.report;
+
+import gov.nasa.jpf.Config;
+
+import java.io.PrintWriter;
+import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+/**
+ * abstract base for all format specific publishers. Note that this interface
+ * also has to work for non-stream based reporting, i.e. within Eclipse
+ * (we don't want to re-parse from text reports there)
+ */
+public abstract class Publisher {
+
+  // output phases
+  public static final int START = 1;
+  public static final int TRANSITION = 2;
+  public static final int PROBE = 3;
+  public static final int CONSTRAINT = 4;
+  public static final int PROPERTY_VIOLATION = 5;
+  public static final int FINISHED = 6;
+
+  protected Config conf;
+  protected Reporter reporter; // our master
+
+<span class="fc" id="L46">  protected String[] startItems = {};</span>
+<span class="fc" id="L47">  protected String[] transitionItems = {};</span>
+<span class="fc" id="L48">  protected String[] propertyViolationItems = {};</span>
+<span class="fc" id="L49">  protected String[] constraintItems = {};</span>
+<span class="fc" id="L50">  protected String[] finishedItems = {};</span>
+<span class="fc" id="L51">  protected String[] probeItems = {};</span>
+
+<span class="fc" id="L53">  DateFormat dtgFormatter = DateFormat.getDateTimeInstance(DateFormat.SHORT,</span>
+      DateFormat.SHORT);
+
+  ArrayList&lt;PublisherExtension&gt; extensions;
+
+  /**
+   * to be initialized in openChannel
+   * NOTE - not all publishers need to have one
+   */
+  protected PrintWriter out;
+
+  public PrintWriter getOut () {
+<span class="fc" id="L65">    return out;</span>
+  }
+
+<span class="fc" id="L68">  protected Publisher (Config conf, Reporter reporter){</span>
+<span class="fc" id="L69">    this.conf = conf;</span>
+<span class="fc" id="L70">    this.reporter = reporter;</span>
+
+<span class="fc" id="L72">    setTopicItems();</span>
+<span class="fc" id="L73">  }</span>
+
+  public void setItems (int category, String[] newTopics){
+<span class="nc bnc" id="L76" title="All 7 branches missed.">    switch (category){</span>
+    case START:
+<span class="nc" id="L78">      startItems = newTopics; break;</span>
+    case PROBE:
+<span class="nc" id="L80">      probeItems = newTopics; break;</span>
+    case TRANSITION:
+<span class="nc" id="L82">      transitionItems = newTopics; break;</span>
+    case CONSTRAINT:
+<span class="nc" id="L84">      constraintItems = newTopics; break;</span>
+    case PROPERTY_VIOLATION:
+<span class="nc" id="L86">      propertyViolationItems = newTopics; break;</span>
+    case FINISHED:
+<span class="nc" id="L88">      finishedItems = newTopics; break;</span>
+    default:
+<span class="nc" id="L90">      Reporter.log.warning(&quot;unknown publisher topic: &quot; + category);</span>
+    }
+<span class="nc" id="L92">  }</span>
+
+  public abstract String getName();
+
+  protected void setTopicItems () {
+<span class="fc" id="L97">    setTopicItems(getName());</span>
+<span class="fc" id="L98">  }</span>
+  
+  protected void setTopicItems (String name) {
+<span class="fc" id="L101">    String prefix = &quot;report.&quot; + name;</span>
+<span class="fc" id="L102">    startItems = conf.getStringArray(prefix + &quot;.start&quot;, startItems);</span>
+<span class="fc" id="L103">    transitionItems = conf.getStringArray(prefix + &quot;.transition&quot;, transitionItems);</span>
+<span class="fc" id="L104">    probeItems = conf.getStringArray(prefix + &quot;.probe&quot;, transitionItems);</span>
+<span class="fc" id="L105">    propertyViolationItems = conf.getStringArray(prefix + &quot;.property_violation&quot;, propertyViolationItems);</span>
+<span class="fc" id="L106">    constraintItems = conf.getStringArray(prefix + &quot;.constraint&quot;, constraintItems);</span>
+<span class="fc" id="L107">    finishedItems = conf.getStringArray(prefix + &quot;.finished&quot;, finishedItems);    </span>
+<span class="fc" id="L108">  }</span>
+  
+  public void addExtension (PublisherExtension ext) {
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">    if (extensions == null) {</span>
+<span class="fc" id="L112">      extensions = new ArrayList&lt;PublisherExtension&gt;();</span>
+    }
+<span class="fc" id="L114">    extensions.add(ext);</span>
+<span class="fc" id="L115">  }</span>
+
+  // &lt;2do&gt; should not be a list we can add to
+<span class="fc" id="L118">  private static final List&lt;PublisherExtension&gt; EMPTY_LIST = new ArrayList&lt;PublisherExtension&gt;(0);</span>
+  
+  public List&lt;PublisherExtension&gt; getExtensions(){
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    if (extensions != null){</span>
+<span class="nc" id="L122">      return extensions;</span>
+    } else {
+<span class="nc" id="L124">      return EMPTY_LIST; // make life easier for callers</span>
+    }
+  }
+  
+  public String getLastErrorId() {
+<span class="fc" id="L129">    return reporter.getCurrentErrorId();</span>
+  }
+
+  public boolean hasTopic (String topic) {
+<span class="fc bfc" id="L133" title="All 2 branches covered.">    for (String s : startItems) {</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">      if (s.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L135">        return true;</span>
+      }
+    }
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">    for (String s : transitionItems) {</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      if (s.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L140">        return true;</span>
+      }
+    }
+<span class="fc bfc" id="L143" title="All 2 branches covered.">    for (String s : constraintItems) {</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">      if (s.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L145">        return true;</span>
+      }
+    }
+<span class="fc bfc" id="L148" title="All 2 branches covered.">    for (String s : propertyViolationItems) {</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">      if (s.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L150">        return true;</span>
+      }
+    }
+<span class="fc bfc" id="L153" title="All 2 branches covered.">    for (String s : finishedItems) {</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">      if (s.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L155">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L159">    return false;</span>
+  }
+
+  public String formatDTG (Date date) {
+<span class="fc" id="L163">    return dtgFormatter.format(date);</span>
+  }
+
+  /**
+  static public String _formatHMS (long t) {
+    t /= 1000; // convert to sec
+
+    long s = t % 60;
+    long h = t / 3600;
+    long m = (t % 3600) / 60;
+
+    StringBuilder sb = new StringBuilder();
+    sb.append(h);
+    sb.append(':');
+    if (m &lt; 10){
+      sb.append('0');
+    }
+    sb.append(m);
+    sb.append(':');
+    if (s &lt; 10){
+      sb.append('0');
+    }
+    sb.append(s);
+
+    return sb.toString();
+  }
+  **/
+
+<span class="fc" id="L191">  static char[] tBuf = { '0', '0', ':', '0', '0', ':', '0', '0' };</span>
+  
+  static synchronized public String formatHMS (long t) {
+<span class="nc" id="L194">    int h = (int) (t / 3600000);</span>
+<span class="nc" id="L195">    int m = (int) ((t / 60000) % 60);</span>
+<span class="nc" id="L196">    int s = (int) ((t / 1000) % 60);</span>
+    
+<span class="nc" id="L198">    tBuf[0] = (char) ('0' + (h / 10));</span>
+<span class="nc" id="L199">    tBuf[1] = (char) ('0' + (h % 10));</span>
+    
+<span class="nc" id="L201">    tBuf[3] = (char) ('0' + (m / 10));</span>
+<span class="nc" id="L202">    tBuf[4] = (char) ('0' + (m % 10));</span>
+    
+<span class="nc" id="L204">    tBuf[6] = (char) ('0' + (s / 10));</span>
+<span class="nc" id="L205">    tBuf[7] = (char) ('0' + (s % 10));</span>
+    
+<span class="nc" id="L207">    return new String(tBuf);</span>
+  }
+  
+  public String getReportFileName (String key) {
+<span class="nc" id="L211">    String fname = conf.getString(key);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">    if (fname == null){</span>
+<span class="nc" id="L213">      fname = conf.getString(&quot;report.file&quot;);</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">      if (fname == null) {</span>
+<span class="nc" id="L215">        fname = &quot;report&quot;;</span>
+      }
+    }
+
+<span class="nc" id="L219">    return fname;</span>
+  }
+
+  public void publishTopicStart (String topic) {
+    // to be done by subclasses
+<span class="nc" id="L224">  }</span>
+
+  public void publishTopicEnd (String topic) {
+    // to be done by subclasses
+<span class="nc" id="L228">  }</span>
+
+  public boolean hasToReportStatistics() {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">    for (String s : finishedItems) {</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">      if (&quot;statistics&quot;.equalsIgnoreCase(s)){</span>
+<span class="fc" id="L233">        return true;</span>
+      }
+    }
+<span class="fc" id="L236">    return false;</span>
+  }
+
+  //--- open/close streams etc
+<span class="nc" id="L240">  protected void openChannel(){}</span>
+<span class="nc" id="L241">  protected void closeChannel(){}</span>
+
+  //--- if you have different preferences about when to report things, override those
+  public void publishStart() {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">    for (String item : startItems) {</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">      if (&quot;jpf&quot;.equalsIgnoreCase(item)){</span>
+<span class="fc" id="L247">        publishJPF();</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">      } else if (&quot;platform&quot;.equalsIgnoreCase(item)){</span>
+<span class="fc" id="L249">        publishPlatform();</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">      } else if (&quot;user&quot;.equalsIgnoreCase(item)) {</span>
+<span class="fc" id="L251">	publishUser();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">      } else if (&quot;dtg&quot;.equalsIgnoreCase(item)) {</span>
+<span class="fc" id="L253">        publishDTG();</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">      } else if (&quot;config&quot;.equalsIgnoreCase(item)){</span>
+<span class="nc" id="L255">        publishJPFConfig();</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">      } else if (&quot;sut&quot;.equalsIgnoreCase(item)){</span>
+<span class="fc" id="L257">        publishSuT();</span>
+      }
+    }
+
+<span class="fc bfc" id="L261" title="All 2 branches covered.">    if (extensions != null) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">      for (PublisherExtension e : extensions) {</span>
+<span class="fc" id="L263">        e.publishStart(this);</span>
+<span class="fc" id="L264">      }</span>
+    }
+<span class="fc" id="L266">  }</span>
+
+  public void publishTransition() {
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">    for (String topic : transitionItems) {</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">      if (&quot;statistics&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L271">        publishStatistics();</span>
+      }
+    }
+    
+<span class="fc bfc" id="L275" title="All 2 branches covered.">    if (extensions != null) {</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">      for (PublisherExtension e : extensions) {</span>
+<span class="fc" id="L277">        e.publishTransition(this);</span>
+<span class="fc" id="L278">      }</span>
+    }
+<span class="fc" id="L280">  }</span>
+
+  public void publishConstraintHit() {
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    for (String item : constraintItems) {</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">      if (&quot;constraint&quot;.equalsIgnoreCase(item)) {</span>
+<span class="fc" id="L285">        publishConstraint();</span>
+<span class="pc bpc" id="L286" title="1 of 2 branches missed.">      } else if (&quot;trace&quot;.equalsIgnoreCase(item)){</span>
+<span class="nc" id="L287">        publishTrace();</span>
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">      } else if (&quot;snapshot&quot;.equalsIgnoreCase(item)){</span>
+<span class="fc" id="L289">        publishSnapshot();</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">      } else if (&quot;output&quot;.equalsIgnoreCase(item)){</span>
+<span class="nc" id="L291">        publishOutput();</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">      } else if (&quot;statistics&quot;.equalsIgnoreCase(item)){</span>
+<span class="nc" id="L293">        publishStatistics(); // not sure if that is good for anything</span>
+      }
+    }
+
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">    if (extensions != null) {</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">      for (PublisherExtension e : extensions) {</span>
+<span class="nc" id="L299">        e.publishConstraintHit(this);</span>
+<span class="nc" id="L300">      }</span>
+    }
+<span class="fc" id="L302">  }</span>
+  
+  public void publishProbe(){
+<span class="nc bnc" id="L305" title="All 2 branches missed.">    for (String topic : probeItems) {</span>
+<span class="nc bnc" id="L306" title="All 2 branches missed.">      if (&quot;statistics&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L307">        publishStatistics();</span>
+      }
+    }    
+    
+<span class="nc bnc" id="L311" title="All 2 branches missed.">    if (extensions != null) {</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">      for (PublisherExtension e : extensions) {</span>
+<span class="nc" id="L313">        e.publishProbe(this);</span>
+<span class="nc" id="L314">      }</span>
+    }
+<span class="nc" id="L316">  }</span>
+
+  public void publishPropertyViolation() {
+
+<span class="fc bfc" id="L320" title="All 2 branches covered.">    for (String topic : propertyViolationItems) {</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">      if (&quot;error&quot;.equalsIgnoreCase(topic)) {</span>
+<span class="fc" id="L322">        publishError();</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">      } else if (&quot;trace&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L324">        publishTrace();</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">      } else if (&quot;snapshot&quot;.equalsIgnoreCase(topic)){</span>
+<span class="fc" id="L326">        publishSnapshot();</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">      } else if (&quot;output&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L328">        publishOutput();</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">      } else if (&quot;statistics&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L330">        publishStatistics(); // not sure if that is good for anything</span>
+      }
+    }
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">    if (extensions != null) {</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">      for (PublisherExtension e : extensions) {</span>
+<span class="fc" id="L336">        e.publishPropertyViolation(this);</span>
+<span class="fc" id="L337">      }</span>
+    }
+
+<span class="fc" id="L340">  }</span>
+
+  public void publishFinished() {
+<span class="fc bfc" id="L343" title="All 2 branches covered.">    if (extensions != null) {</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">      for (PublisherExtension e : extensions) {</span>
+<span class="fc" id="L345">        e.publishFinished(this);</span>
+<span class="fc" id="L346">      }</span>
+    }
+
+<span class="fc bfc" id="L349" title="All 2 branches covered.">    for (String topic : finishedItems) {</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">      if (&quot;result&quot;.equalsIgnoreCase(topic)){</span>
+<span class="fc" id="L351">        publishResult();</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">      } else if (&quot;statistics&quot;.equalsIgnoreCase(topic)){</span>
+<span class="nc" id="L353">        publishStatistics();</span>
+      }
+    }
+<span class="fc" id="L356">  }</span>
+
+<span class="fc" id="L358">  protected void publishProlog() {} // XML headers etc</span>
+<span class="fc" id="L359">  protected void publishEpilog() {} // likewise at the end</span>
+
+  //--- our standard topics (only placeholders here)
+<span class="nc" id="L362">  protected void publishJPF() {}</span>
+<span class="nc" id="L363">  protected void publishJPFConfig() {}</span>
+<span class="nc" id="L364">  protected void publishPlatform() {}</span>
+<span class="nc" id="L365">  protected void publishUser() {}</span>
+<span class="nc" id="L366">  protected void publishDTG() {}</span>
+<span class="nc" id="L367">  protected void publishJava() {}</span>
+<span class="nc" id="L368">  protected void publishSuT() {}</span>
+<span class="nc" id="L369">  protected void publishResult() {}</span>
+<span class="nc" id="L370">  protected void publishError() {}</span>
+<span class="nc" id="L371">  protected void publishConstraint() {}</span>
+<span class="nc" id="L372">  protected void publishTrace() {}</span>
+<span class="nc" id="L373">  protected void publishOutput() {}</span>
+<span class="nc" id="L374">  protected void publishSnapshot() {}</span>
+<span class="nc" id="L375">  protected void publishStatistics() {}</span>
+
+  //--- internal helpers
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

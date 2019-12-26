@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HeapTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">HeapTracker.java</span></div><h1>HeapTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.DynamicObjectArray;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.SourceRef;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Heap;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Stack;
+
+/**
+ * HeapTracker - property-listener class to check heap utilization along all
+ * execution paths (e.g. to verify heap bounds)
+ */
+public class HeapTracker extends PropertyListenerAdapter {
+
+<span class="nc" id="L50">  static class PathStat implements Cloneable {</span>
+<span class="nc" id="L51">    int nNew = 0;</span>
+<span class="nc" id="L52">    int nReleased = 0;</span>
+<span class="nc" id="L53">    int heapSize = 0;  // in bytes</span>
+
+    @Override
+	public Object clone() {
+      try {
+<span class="nc" id="L58">        return super.clone();</span>
+<span class="nc" id="L59">      } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L60">        return null;</span>
+      }
+    }
+  }
+
+  static class TypeStat {
+    String typeName;
+    int nAlloc;
+    int nReleased;
+
+<span class="nc" id="L70">    TypeStat (String typeName){</span>
+<span class="nc" id="L71">      this.typeName = typeName;</span>
+<span class="nc" id="L72">    }</span>
+  }
+
+<span class="nc" id="L75">  PathStat stat = new PathStat();</span>
+<span class="nc" id="L76">  Stack&lt;PathStat&gt; pathStats = new Stack&lt;PathStat&gt;();</span>
+
+<span class="nc" id="L78">  DynamicObjectArray&lt;SourceRef&gt; loc = new DynamicObjectArray&lt;SourceRef&gt;();</span>
+
+<span class="nc" id="L80">  HashMap&lt;String,TypeStat&gt; typeStat = new HashMap&lt;String,TypeStat&gt;();</span>
+
+  int maxState;
+  int nForward;
+  int nBacktrack;
+
+  int nElemTotal;
+  int nGcTotal;
+  int nSharedTotal;
+  int nImmutableTotal;
+
+<span class="nc" id="L91">  int nElemMax = Integer.MIN_VALUE;</span>
+<span class="nc" id="L92">  int nElemMin = Integer.MAX_VALUE;</span>
+  int nElemAv;
+
+<span class="nc" id="L95">  int pElemSharedMax = Integer.MIN_VALUE;</span>
+<span class="nc" id="L96">  int pElemSharedMin = Integer.MAX_VALUE;</span>
+  int pElemSharedAv;
+
+<span class="nc" id="L99">  int pElemImmutableMax = Integer.MIN_VALUE;</span>
+<span class="nc" id="L100">  int pElemImmutableMin = Integer.MAX_VALUE;</span>
+  int pElemImmutableAv;
+
+  int nReleased;
+  int nReleasedTotal;
+  int nReleasedAv;
+<span class="nc" id="L106">  int nReleasedMax = Integer.MIN_VALUE;</span>
+<span class="nc" id="L107">  int nReleasedMin = Integer.MAX_VALUE;</span>
+
+<span class="nc" id="L109">  int maxPathHeap = Integer.MIN_VALUE;</span>
+<span class="nc" id="L110">  int maxPathNew = Integer.MIN_VALUE;</span>
+<span class="nc" id="L111">  int maxPathReleased = Integer.MIN_VALUE;</span>
+<span class="nc" id="L112">  int maxPathAlive = Integer.MIN_VALUE;</span>
+
+<span class="nc" id="L114">  int initHeap = 0;</span>
+<span class="nc" id="L115">  int initNew = 0;</span>
+<span class="nc" id="L116">  int initReleased = 0;</span>
+<span class="nc" id="L117">  int initAlive = 0;</span>
+
+
+  boolean showTypeStats;
+  int maxTypesShown;
+
+  // used as a property check
+  int maxHeapSizeLimit;
+  int maxLiveLimit;
+<span class="nc" id="L126">  boolean throwOutOfMemory = false;</span>
+
+  StringSetMatcher includes, excludes;
+
+  void updateMaxPathValues() {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">      if (stat.heapSize &gt; maxPathHeap) {</span>
+<span class="nc" id="L132">        maxPathHeap = stat.heapSize;</span>
+      }
+
+<span class="nc bnc" id="L135" title="All 2 branches missed.">      if (stat.nNew &gt; maxPathNew) {</span>
+<span class="nc" id="L136">        maxPathNew = stat.nNew;</span>
+      }
+
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      if (stat.nReleased &gt; maxPathReleased) {</span>
+<span class="nc" id="L140">        maxPathReleased = stat.nReleased;</span>
+      }
+
+<span class="nc" id="L143">      int nAlive = stat.nNew - stat.nReleased;</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      if (nAlive &gt; maxPathAlive) {</span>
+<span class="nc" id="L145">        maxPathAlive = nAlive;</span>
+      }
+<span class="nc" id="L147">  }</span>
+
+  void allocTypeStats (ElementInfo ei) {
+<span class="nc" id="L150">    String typeName = ei.getClassInfo().getName();</span>
+<span class="nc" id="L151">    TypeStat ts = typeStat.get(typeName);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">    if (ts == null) {</span>
+<span class="nc" id="L153">      ts = new TypeStat(typeName);</span>
+<span class="nc" id="L154">      typeStat.put(typeName, ts);</span>
+    }
+<span class="nc" id="L156">    ts.nAlloc++;</span>
+<span class="nc" id="L157">  }</span>
+
+  void releaseTypeStats (ElementInfo ei) {
+<span class="nc" id="L160">    String typeName = ei.getClassInfo().getName();</span>
+<span class="nc" id="L161">    TypeStat ts = typeStat.get(typeName);</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    if (ts != null) {</span>
+<span class="nc" id="L163">      ts.nReleased++;</span>
+    }
+<span class="nc" id="L165">  }</span>
+
+
+<span class="nc" id="L168">  public HeapTracker (Config config, JPF jpf) {</span>
+<span class="nc" id="L169">    maxHeapSizeLimit = config.getInt(&quot;heap.size_limit&quot;, -1);</span>
+<span class="nc" id="L170">    maxLiveLimit = config.getInt(&quot;heap.live_limit&quot;, -1);</span>
+<span class="nc" id="L171">    throwOutOfMemory = config.getBoolean(&quot;heap.throw_exception&quot;);</span>
+<span class="nc" id="L172">    showTypeStats = config.getBoolean(&quot;heap.show_types&quot;);</span>
+<span class="nc" id="L173">    maxTypesShown = config.getInt(&quot;heap.max_types&quot;, 20);</span>
+
+<span class="nc" id="L175">    includes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;heap.include&quot;));</span>
+<span class="nc" id="L176">    excludes = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;heap.exclude&quot;));</span>
+
+<span class="nc" id="L178">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="nc" id="L179">  }</span>
+
+  /******************************************* abstract Property *****/
+
+  /**
+   * return 'false' if property is violated
+   */
+  @Override
+  public boolean check (Search search, VM vm) {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    if (throwOutOfMemory) {</span>
+      // in this case we don't want to stop the program, but see if it
+      // behaves gracefully - don't report a property violation
+<span class="nc" id="L191">      return true;</span>
+    } else {
+<span class="nc bnc" id="L193" title="All 4 branches missed.">      if ((maxHeapSizeLimit &gt;= 0) &amp;&amp; (stat.heapSize &gt; maxHeapSizeLimit)) {</span>
+<span class="nc" id="L194">        return false;</span>
+      }
+<span class="nc bnc" id="L196" title="All 4 branches missed.">      if ((maxLiveLimit &gt;=0) &amp;&amp; ((stat.nNew - stat.nReleased) &gt; maxLiveLimit)) {</span>
+<span class="nc" id="L197">        return false;</span>
+      }
+
+<span class="nc" id="L200">      return true;</span>
+    }
+  }
+
+  @Override
+  public String getErrorMessage () {
+<span class="nc" id="L206">    return &quot;heap limit exceeded: &quot; + stat.heapSize + &quot; &gt; &quot; + maxHeapSizeLimit;</span>
+  }
+
+  /******************************************* SearchListener interface *****/
+  @Override
+  public void searchStarted(Search search) {
+<span class="nc" id="L212">    super.searchStarted(search);</span>
+
+<span class="nc" id="L214">    updateMaxPathValues();</span>
+<span class="nc" id="L215">    pathStats.push(stat);</span>
+
+<span class="nc" id="L217">    initHeap = stat.heapSize;</span>
+<span class="nc" id="L218">    initNew = stat.nNew;</span>
+<span class="nc" id="L219">    initReleased = stat.nReleased;</span>
+<span class="nc" id="L220">    initAlive = initNew - initReleased;</span>
+
+<span class="nc" id="L222">    stat = (PathStat)stat.clone();</span>
+<span class="nc" id="L223">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+
+<span class="nc bnc" id="L228" title="All 2 branches missed.">    if (search.isNewState()) {</span>
+<span class="nc" id="L229">      int id = search.getStateId();</span>
+
+<span class="nc bnc" id="L231" title="All 2 branches missed.">      if (id &gt; maxState) maxState = id;</span>
+
+<span class="nc" id="L233">      updateMaxPathValues();</span>
+<span class="nc" id="L234">      pathStats.push(stat);</span>
+<span class="nc" id="L235">      stat = (PathStat)stat.clone();</span>
+
+<span class="nc" id="L237">      nForward++;</span>
+    }
+<span class="nc" id="L239">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+<span class="nc" id="L243">    nBacktrack++;</span>
+
+<span class="nc bnc" id="L245" title="All 2 branches missed.">    if (!pathStats.isEmpty()){</span>
+<span class="nc" id="L246">      stat = pathStats.pop();</span>
+    }
+<span class="nc" id="L248">  }</span>
+
+  /******************************************* PublisherExtension interface ****/
+  @Override
+  public void publishFinished (Publisher publisher) {
+<span class="nc" id="L253">    PrintWriter pw = publisher.getOut();</span>
+<span class="nc" id="L254">    publisher.publishTopicStart(&quot;heap statistics&quot;);</span>
+
+<span class="nc" id="L256">    pw.println(&quot;heap statistics:&quot;);</span>
+<span class="nc" id="L257">    pw.println(&quot;  states:         &quot; + maxState);</span>
+<span class="nc" id="L258">    pw.println(&quot;  forwards:       &quot; + nForward);</span>
+<span class="nc" id="L259">    pw.println(&quot;  backtrack:      &quot; + nBacktrack);</span>
+<span class="nc" id="L260">    pw.println();</span>
+<span class="nc" id="L261">    pw.println(&quot;  gc cycles:      &quot; + nGcTotal);</span>
+<span class="nc" id="L262">    pw.println();</span>
+<span class="nc" id="L263">    pw.println(&quot;  max Objects:    &quot; + nElemMax);</span>
+<span class="nc" id="L264">    pw.println(&quot;  min Objects:    &quot; + nElemMin);</span>
+<span class="nc" id="L265">    pw.println(&quot;  avg Objects:    &quot; + nElemAv);</span>
+<span class="nc" id="L266">    pw.println();</span>
+<span class="nc" id="L267">    pw.println(&quot;  max% shared:    &quot; + pElemSharedMax);</span>
+<span class="nc" id="L268">    pw.println(&quot;  min% shared:    &quot; + pElemSharedMin);</span>
+<span class="nc" id="L269">    pw.println(&quot;  avg% shared:    &quot; + pElemSharedAv);</span>
+<span class="nc" id="L270">    pw.println();</span>
+<span class="nc" id="L271">    pw.println(&quot;  max% immutable: &quot; + pElemImmutableMax);</span>
+<span class="nc" id="L272">    pw.println(&quot;  min% immutable: &quot; + pElemImmutableMin);</span>
+<span class="nc" id="L273">    pw.println(&quot;  avg% immutable: &quot; + pElemImmutableAv);</span>
+<span class="nc" id="L274">    pw.println();</span>
+<span class="nc" id="L275">    pw.println(&quot;  max released:   &quot; + nReleasedMax);</span>
+<span class="nc" id="L276">    pw.println(&quot;  min released:   &quot; + nReleasedMin);</span>
+<span class="nc" id="L277">    pw.println(&quot;  avg released:   &quot; + nReleasedAv);</span>
+
+<span class="nc" id="L279">    pw.println();</span>
+<span class="nc" id="L280">    pw.print(  &quot;  max path heap (B):   &quot; + maxPathHeap);</span>
+<span class="nc" id="L281">    pw.println(&quot; / &quot; + (maxPathHeap - initHeap));</span>
+<span class="nc" id="L282">    pw.print(  &quot;  max path alive:      &quot; + maxPathAlive);</span>
+<span class="nc" id="L283">    pw.println(&quot; / &quot; + (maxPathAlive - initAlive));</span>
+<span class="nc" id="L284">    pw.print(  &quot;  max path new:        &quot; + maxPathNew);</span>
+<span class="nc" id="L285">    pw.println(&quot; / &quot; + (maxPathNew - initNew));</span>
+<span class="nc" id="L286">    pw.print(  &quot;  max path released:   &quot; + maxPathReleased);</span>
+<span class="nc" id="L287">    pw.println(&quot; / &quot; + (maxPathReleased - initReleased));</span>
+
+<span class="nc bnc" id="L289" title="All 2 branches missed.">    if (showTypeStats) {</span>
+<span class="nc" id="L290">      pw.println();</span>
+<span class="nc" id="L291">      pw.println(&quot;  type allocation statistics:&quot;);</span>
+
+<span class="nc" id="L293">      ArrayList&lt;Map.Entry&lt;String,TypeStat&gt;&gt; list =</span>
+<span class="nc" id="L294">        Misc.createSortedEntryList(typeStat, new Comparator&lt;Map.Entry&lt;String,TypeStat&gt;&gt;() {</span>
+          @Override
+		public int compare (Map.Entry&lt;String,TypeStat&gt; e1,
+                              Map.Entry&lt;String,TypeStat&gt; e2) {
+<span class="nc" id="L298">          return Integer.signum(e1.getValue().nAlloc - e2.getValue().nAlloc);</span>
+        }});
+
+<span class="nc" id="L301">      int i=0;</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">      for (Map.Entry&lt;String,TypeStat&gt; e : list) {</span>
+<span class="nc" id="L303">        TypeStat ts = e.getValue();</span>
+<span class="nc" id="L304">        pw.print(&quot;  &quot;);</span>
+<span class="nc" id="L305">        pw.print(String.format(&quot;%1$9d : &quot;, ts.nAlloc));</span>
+<span class="nc" id="L306">        pw.println(ts.typeName);</span>
+
+<span class="nc bnc" id="L308" title="All 2 branches missed.">        if (i++ &gt; maxTypesShown) {</span>
+<span class="nc" id="L309">          pw.println(&quot;  ...&quot;);</span>
+<span class="nc" id="L310">          break;</span>
+        }
+<span class="nc" id="L312">      }</span>
+    }
+<span class="nc" id="L314">  }</span>
+
+
+  /******************************************* VMListener interface *********/
+  @Override
+  public void gcBegin(VM vm) {
+    /**
+     System.out.println();
+     System.out.println( &quot;----- gc cycle: &quot; + vm.getDynamicArea().getGcNumber()
+     + &quot;, state: &quot; + vm.getStateId());
+     **/
+<span class="nc" id="L325">  }</span>
+
+  @Override
+  public void gcEnd(VM vm) {
+<span class="nc" id="L329">    Heap heap = vm.getHeap();</span>
+
+<span class="nc" id="L331">    int n = 0;</span>
+<span class="nc" id="L332">    int nShared = 0;</span>
+<span class="nc" id="L333">    int nImmutable = 0;</span>
+
+<span class="nc bnc" id="L335" title="All 2 branches missed.">    for (ElementInfo ei : heap.liveObjects()) {</span>
+<span class="nc" id="L336">      n++;</span>
+
+<span class="nc bnc" id="L338" title="All 2 branches missed.">      if (ei.isShared()) nShared++;</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">      if (ei.isImmutable()) nImmutable++;</span>
+
+      //printElementInfo(ei);
+<span class="nc" id="L342">    }</span>
+
+<span class="nc" id="L344">    nElemTotal += n;</span>
+<span class="nc" id="L345">    nGcTotal++;</span>
+
+<span class="nc bnc" id="L347" title="All 2 branches missed.">    if (n &gt; nElemMax) nElemMax = n;</span>
+<span class="nc bnc" id="L348" title="All 2 branches missed.">    if (n &lt; nElemMin) nElemMin = n;</span>
+
+<span class="nc" id="L350">    int pShared = (nShared * 100) / n;</span>
+<span class="nc" id="L351">    int pImmutable = (nImmutable * 100) / n;</span>
+
+<span class="nc bnc" id="L353" title="All 2 branches missed.">    if (pShared &gt; pElemSharedMax) pElemSharedMax = pShared;</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">    if (pShared &lt; pElemSharedMin) pElemSharedMin = pShared;</span>
+
+<span class="nc" id="L356">    nSharedTotal += nShared;</span>
+<span class="nc" id="L357">    nImmutableTotal += nImmutable;</span>
+
+<span class="nc" id="L359">    pElemSharedAv = (nSharedTotal * 100) / nElemTotal;</span>
+<span class="nc" id="L360">    pElemImmutableAv = (nImmutableTotal * 100) / nElemTotal;</span>
+
+<span class="nc bnc" id="L362" title="All 2 branches missed.">    if (pImmutable &gt; pElemImmutableMax) pElemImmutableMax = pImmutable;</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">    if (pImmutable &lt; pElemImmutableMin) pElemImmutableMin = pImmutable;</span>
+
+<span class="nc" id="L365">    nElemAv = nElemTotal / nGcTotal;</span>
+<span class="nc" id="L366">    nReleasedAv = nReleasedTotal / nGcTotal;</span>
+
+<span class="nc bnc" id="L368" title="All 2 branches missed.">    if (nReleased &gt; nReleasedMax) nReleasedMax = nReleased;</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">    if (nReleased &lt; nReleasedMin) nReleasedMin = nReleased;</span>
+
+<span class="nc" id="L371">    nReleased = 0;</span>
+<span class="nc" id="L372">  }</span>
+
+  boolean isRelevantType (ElementInfo ei) {
+<span class="nc" id="L375">    String clsName = ei.getClassInfo().getName();</span>
+<span class="nc" id="L376">    return StringSetMatcher.isMatch(clsName, includes, excludes);</span>
+  }
+
+  @Override
+  public void objectCreated(VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L381">    int idx = ei.getObjectRef();</span>
+<span class="nc" id="L382">    int line = ti.getLine();</span>
+<span class="nc" id="L383">    MethodInfo mi = ti.getTopFrameMethodInfo();</span>
+<span class="nc" id="L384">    SourceRef sr = null;</span>
+
+<span class="nc bnc" id="L386" title="All 2 branches missed.">    if (!isRelevantType(ei)) {</span>
+<span class="nc" id="L387">      return;</span>
+    }
+
+<span class="nc bnc" id="L390" title="All 2 branches missed.">    if (mi != null) {</span>
+<span class="nc" id="L391">      ClassInfo mci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L392" title="All 2 branches missed.">      if (mci != null) {</span>
+<span class="nc" id="L393">        String file = mci.getSourceFileName();</span>
+<span class="nc bnc" id="L394" title="All 2 branches missed.">        if (file != null) {</span>
+<span class="nc" id="L395">          sr = new SourceRef(file, line);</span>
+        } else {
+<span class="nc" id="L397">          sr = new SourceRef(mci.getName(), line);</span>
+        }
+      }
+    }
+
+    // means references with null loc are from synthetic methods
+<span class="nc" id="L403">    loc.set(idx, sr);</span>
+
+<span class="nc" id="L405">    stat.nNew++;</span>
+<span class="nc" id="L406">    stat.heapSize += ei.getHeapSize();</span>
+
+    // update the type statistics
+<span class="nc bnc" id="L409" title="All 2 branches missed.">    if (showTypeStats) {</span>
+<span class="nc" id="L410">      allocTypeStats(ei);</span>
+    }
+
+
+    // check if we should simulate an OutOfMemoryError
+<span class="nc bnc" id="L415" title="All 2 branches missed.">    if (throwOutOfMemory) {</span>
+<span class="nc bnc" id="L416" title="All 8 branches missed.">      if (((maxHeapSizeLimit &gt;=0) &amp;&amp; (stat.heapSize &gt; maxHeapSizeLimit)) ||</span>
+          ((maxLiveLimit &gt;=0) &amp;&amp; ((stat.nNew - stat.nReleased) &gt; maxLiveLimit))){
+<span class="nc" id="L418">        vm.getHeap().setOutOfMemory(true);</span>
+      }
+    }
+<span class="nc" id="L421">  }</span>
+
+  @Override
+  public void objectReleased(VM vm, ThreadInfo ti, ElementInfo ei) {
+
+<span class="nc bnc" id="L426" title="All 2 branches missed.">    if (!isRelevantType(ei)) {</span>
+<span class="nc" id="L427">      return;</span>
+    }
+
+<span class="nc" id="L430">    nReleasedTotal++;</span>
+<span class="nc" id="L431">    nReleased++;</span>
+
+<span class="nc bnc" id="L433" title="All 2 branches missed.">    if (showTypeStats) {</span>
+<span class="nc" id="L434">      releaseTypeStats(ei);</span>
+    }
+
+<span class="nc" id="L437">    stat.nReleased++;</span>
+<span class="nc" id="L438">    stat.heapSize -= ei.getHeapSize();</span>
+<span class="nc" id="L439">  }</span>
+
+  /****************************************** private stuff ******/
+  protected void printElementInfo(ElementInfo ei) {
+<span class="nc" id="L443">    boolean first = false;</span>
+
+<span class="nc" id="L445">    System.out.print( ei.getObjectRef());</span>
+<span class="nc" id="L446">    System.out.print( &quot;: &quot;);</span>
+<span class="nc" id="L447">    System.out.print( ei.getClassInfo().getName());</span>
+<span class="nc" id="L448">    System.out.print( &quot;  [&quot;);</span>
+
+<span class="nc bnc" id="L450" title="All 2 branches missed.">    if (ei.isShared()) {</span>
+<span class="nc" id="L451">      System.out.print( &quot;shared&quot;);</span>
+<span class="nc" id="L452">      first = false;</span>
+    }
+<span class="nc bnc" id="L454" title="All 2 branches missed.">    if (ei.isImmutable()) {</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">      if (!first) System.out.print(' ');</span>
+<span class="nc" id="L456">      System.out.print( &quot;immutable&quot;);</span>
+    }
+<span class="nc" id="L458">    System.out.print( &quot;] &quot;);</span>
+
+<span class="nc" id="L460">    SourceRef sr = loc.get(ei.getObjectRef());</span>
+<span class="nc bnc" id="L461" title="All 2 branches missed.">    if (sr != null) {</span>
+<span class="nc" id="L462">      System.out.println(sr);</span>
+    } else {
+<span class="nc" id="L464">      System.out.println(&quot;?&quot;);</span>
+    }
+<span class="nc" id="L466">  }</span>
+
+
+  static void printUsage () {
+<span class="nc" id="L470">    System.out.println(&quot;HeapTracker - a JPF listener tool to report and check heap utilization&quot;);</span>
+<span class="nc" id="L471">    System.out.println(&quot;usage: java gov.nasa.jpf.tools.HeapTracker &lt;jpf-options&gt; &lt;heapTracker-options&gt; &lt;class&gt;&quot;);</span>
+<span class="nc" id="L472">    System.out.println(&quot;       +heap.size_limit=&lt;num&gt; : report property violation if heap exceeds &lt;num&gt; bytes&quot;);</span>
+<span class="nc" id="L473">    System.out.println(&quot;       +heap.live_limit=&lt;num&gt; : report property violation if more than &lt;num&gt; live objects&quot;);</span>
+<span class="nc" id="L474">    System.out.println(&quot;       +heap.classes=&lt;regEx&gt; : only report instances of classes matching &lt;regEx&gt;&quot;);</span>
+<span class="nc" id="L475">    System.out.println(&quot;       +heap.throw_exception=&lt;bool&gt;: throw a OutOfMemoryError instead of reporting property violation&quot;);</span>
+<span class="nc" id="L476">  }</span>
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

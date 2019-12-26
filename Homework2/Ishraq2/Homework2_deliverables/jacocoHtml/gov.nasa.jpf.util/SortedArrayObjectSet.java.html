@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortedArrayObjectSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SortedArrayObjectSet.java</span></div><h1>SortedArrayObjectSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * a generic set of comparable objects with value based inclusion check
+ * (i.e. using equals())
+ * objects that return compareTo() == 0 are entered LIFO
+ */
+public class SortedArrayObjectSet&lt;T extends Comparable&lt;T&gt;&gt; implements Iterable&lt;T&gt; {
+
+  static final int DEFAULT_CAPACITY = 8;
+  static final int GROWTH = 8;
+      
+<span class="nc" id="L34">  class StorageIterator implements Iterator&lt;T&gt;{</span>
+    int next;
+    
+    @Override
+	public boolean hasNext() {
+<span class="nc bnc" id="L39" title="All 2 branches missed.">      return (next &lt; size);</span>
+    }
+
+    @Override
+	public T next() {
+<span class="nc bnc" id="L44" title="All 2 branches missed.">      if (next &lt; size){</span>
+<span class="nc" id="L45">        return (T)elements[next++];</span>
+      } else {
+<span class="nc" id="L47">        throw new NoSuchElementException();</span>
+      }
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L53">      int idx = next-1;</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">      if (idx &gt;=0){</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (idx &lt; size-1){</span>
+<span class="nc" id="L56">          System.arraycopy(elements, next, elements, idx, size-idx);</span>
+        }
+<span class="nc" id="L58">        size--;</span>
+<span class="nc" id="L59">        next = idx;</span>
+      }
+<span class="nc" id="L61">    }    </span>
+  }
+  
+  
+  int size;
+  Comparable&lt;T&gt;[] elements;
+  
+  //--- private methods
+  
+  // returns the index where the match should be
+  // caller has to make sure size &gt; 0
+  protected final int bisect (T val){
+<span class="fc" id="L73">    int min = 0;</span>
+<span class="fc" id="L74">    int max = size-1;</span>
+<span class="fc" id="L75">    Comparable&lt;T&gt;[] a = elements;</span>
+    
+<span class="fc bfc" id="L77" title="All 2 branches covered.">    while (max &gt; min) {</span>
+<span class="fc" id="L78">      int mid = (min + max) / 2;</span>
+      
+<span class="fc bfc" id="L80" title="All 2 branches covered.">      if (a[mid].compareTo(val) &lt; 0) {</span>
+<span class="fc" id="L81">        min = mid + 1;</span>
+      } else {
+<span class="fc" id="L83">        max = mid;</span>
+      }
+<span class="fc" id="L85">    }</span>
+    
+<span class="fc" id="L87">    return min;</span>
+  }
+  
+  
+  // if we already have elements, idx has to be within range
+  protected final void insertElement (int idx){
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">    if (elements == null){</span>
+<span class="nc" id="L94">      elements = new Comparable[DEFAULT_CAPACITY];</span>
+     
+    } else {
+<span class="fc" id="L97">      Comparable[] a = elements;      </span>
+      
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">      if (size == a.length){</span>
+<span class="nc" id="L100">        int newLength = a.length + GROWTH;</span>
+<span class="nc" id="L101">        Comparable[] newElements = new Comparable[newLength];</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (idx &gt; 0){</span>
+<span class="nc" id="L103">          System.arraycopy(a, 0, newElements, 0, idx);</span>
+        }
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        if (idx &lt; size){</span>
+<span class="nc" id="L106">          System.arraycopy(a, idx, newElements, idx+1, size-idx);</span>
+        }
+<span class="nc" id="L108">        elements = newElements;</span>
+        
+<span class="nc" id="L110">      } else {</span>
+<span class="fc" id="L111">        System.arraycopy(a, idx, a, idx+1, size-idx);</span>
+      }
+    }
+<span class="fc" id="L114">  }</span>
+  
+  
+  //--- public methods
+  
+<span class="fc" id="L119">  public SortedArrayObjectSet (){</span>
+    // nothing
+<span class="fc" id="L121">  }</span>
+  
+<span class="nc" id="L123">  public SortedArrayObjectSet (int initialCapacity){</span>
+<span class="nc" id="L124">    elements = new Comparable[initialCapacity];</span>
+<span class="nc" id="L125">  }</span>
+  
+  public int size(){
+<span class="fc" id="L128">    return size;</span>
+  }
+  
+  public boolean isEmpty(){
+<span class="nc bnc" id="L132" title="All 2 branches missed.">    return (size == 0);</span>
+  }
+  
+  public boolean contains (T v) {
+<span class="pc bpc" id="L136" title="1 of 4 branches missed.">    return ((size &gt; 0) &amp;&amp; elements[bisect(v)].equals(v));      </span>
+  }
+  
+  public void add (T v){
+<span class="fc bfc" id="L140" title="All 2 branches covered.">    if (size == 0){</span>
+<span class="fc" id="L141">      elements = new Comparable[DEFAULT_CAPACITY];</span>
+<span class="fc" id="L142">      elements[0] = v;</span>
+<span class="fc" id="L143">      size++;</span>
+      
+    } else {
+<span class="fc" id="L146">      int i = bisect(v);</span>
+<span class="fc" id="L147">      Comparable&lt;T&gt; e = elements[i];</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">      if (!e.equals(v)){</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (e.compareTo(v) &lt; 0){</span>
+<span class="fc" id="L150">          i++;</span>
+        }
+        
+<span class="fc" id="L153">        insertElement(i);</span>
+<span class="fc" id="L154">        elements[i] = v;</span>
+<span class="fc" id="L155">        size++;</span>
+      }
+    }
+<span class="fc" id="L158">  }</span>
+    
+  public void remove (T v) {
+<span class="fc" id="L161">    int len = size;</span>
+    
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">    if (len &gt; 0){</span>
+<span class="fc" id="L164">      Comparable&lt;T&gt;[] a = elements;</span>
+      
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">      for (int i = bisect(v); i&lt;size &amp;&amp; a[i].compareTo(v) == 0; i++) {</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (v.equals(a[i])){</span>
+<span class="fc" id="L168">          len--;</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">          if (len == 0) {</span>
+<span class="nc" id="L170">            elements = null;</span>
+<span class="nc" id="L171">            size = 0;</span>
+
+          } else {
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">            if (i &lt; len) {</span>
+<span class="fc" id="L175">              System.arraycopy(a, i + 1, a, i, (len - i));</span>
+            }
+<span class="fc" id="L177">            size = len;</span>
+          }
+          
+<span class="fc" id="L180">          return;</span>
+        }
+      }
+    }    
+<span class="nc" id="L184">  }</span>
+
+  @Override
+  public Iterator&lt;T&gt; iterator(){
+<span class="nc" id="L188">    return new StorageIterator();</span>
+  }
+  
+  @Override
+  public String toString (){
+    
+<span class="fc" id="L194">    StringBuilder sb = new StringBuilder(&quot;{&quot;);</span>
+    
+<span class="fc bfc" id="L196" title="All 2 branches covered.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">      if (i &gt; 0){</span>
+<span class="fc" id="L198">        sb.append(',');</span>
+      }
+<span class="fc" id="L200">      sb.append(elements[i]);</span>
+    }
+    
+<span class="fc" id="L203">    sb.append('}');</span>
+<span class="fc" id="L204">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

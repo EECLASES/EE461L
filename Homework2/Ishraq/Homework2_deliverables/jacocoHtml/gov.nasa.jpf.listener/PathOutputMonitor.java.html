@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PathOutputMonitor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">PathOutputMonitor.java</span></div><h1>PathOutputMonitor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.Transition;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
+/**
+ * listener that monitors path output, matching it against specifications
+ * supplied as text files. Per default, this uses simple line-by-line
+ * regular expression matching, also supporting prefixes by means of
+ * special &quot;. . .&quot; ellipsis patterns. Each file can contain a number of
+ * path output specs, separated by &quot;~~~~~&quot; lines.
+ * 
+ *  The major purpose of this listener is to verify JPF state spaces,
+ *  but it can also be used as a functional property
+ */
+public class PathOutputMonitor extends PropertyListenerAdapter {
+ 
+  static final String SEPARATOR = &quot;~~~&quot;;
+  static final String ELLIPSIS = &quot;...&quot;;
+  
+<span class="fc" id="L62">  static Logger log = JPF.getLogger(&quot;gov.nasa.jpf.listener.PathOutputMonitor&quot;);</span>
+
+  public interface PathOutputSpec {
+    boolean add (String spec);
+    boolean matches (String[] output);
+    void printOn (PrintWriter pw);
+    boolean isEmpty();
+  }
+  
+<span class="nc" id="L71">  static class VerbatimOutputSpec implements PathOutputSpec {</span>
+<span class="nc" id="L72">    ArrayList&lt;String&gt; patterns = new ArrayList&lt;String&gt;();</span>
+
+    @Override
+	  public boolean add (String spec) {
+<span class="nc" id="L76">      patterns.add(spec);</span>
+<span class="nc" id="L77">      return true;</span>
+    }
+    
+    @Override
+	  public boolean matches (String[] output) {
+<span class="nc bnc" id="L82" title="All 4 branches missed.">      if ((output != null) &amp;&amp; (output.length &gt; 0)) {</span>
+<span class="nc" id="L83">        Iterator&lt;String&gt; it = patterns.iterator();</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        for (String line : output) {</span>
+<span class="nc bnc" id="L85" title="All 2 branches missed.">          if (it.hasNext()) {</span>
+<span class="nc" id="L86">            String p = it.next();</span>
+<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (!p.equals(line)){</span>
+<span class="nc" id="L88">              return false;</span>
+            }
+<span class="nc" id="L90">          } else {</span>
+<span class="nc" id="L91">            return false;</span>
+          }
+        }
+        
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        return !it.hasNext();</span>
+        
+      } else {
+<span class="nc" id="L98">        return patterns.isEmpty();        </span>
+      }
+    }
+    
+    // sometimes, duck typing would be nice..
+    
+    @Override
+	  public void printOn (PrintWriter pw) {
+<span class="nc bnc" id="L106" title="All 2 branches missed.">      for (String p : patterns) {</span>
+<span class="nc" id="L107">        pw.println(p.toString());</span>
+<span class="nc" id="L108">      }</span>
+<span class="nc" id="L109">    }</span>
+    
+    @Override
+    public boolean isEmpty(){
+<span class="nc" id="L113">      return patterns.isEmpty();</span>
+    }
+  }
+  
+  // simple regular expression matchers (could be a more sophisticated parser)
+<span class="nc" id="L118">  static class RegexOutputSpec implements PathOutputSpec {  </span>
+<span class="nc" id="L119">    ArrayList&lt;Pattern&gt; patterns = new ArrayList&lt;Pattern&gt;();</span>
+    
+    @Override
+	  public boolean add (String spec) {
+      try {
+<span class="nc" id="L124">        Pattern p = Pattern.compile(spec);</span>
+<span class="nc" id="L125">        patterns.add(p);</span>
+<span class="nc" id="L126">      } catch (PatternSyntaxException psx) {</span>
+<span class="nc" id="L127">        return false;</span>
+<span class="nc" id="L128">      }</span>
+      
+<span class="nc" id="L130">      return true;</span>
+    }
+    
+    @Override
+	  public boolean matches (String[] output) {
+      
+<span class="nc bnc" id="L136" title="All 4 branches missed.">      if ((output != null) &amp;&amp; (output.length &gt; 0)) {</span>
+<span class="nc" id="L137">        Iterator&lt;Pattern&gt; it = patterns.iterator();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        for (String line : output) {</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">          if (it.hasNext()) {</span>
+<span class="nc" id="L140">            Pattern p = it.next();</span>
+
+<span class="nc bnc" id="L142" title="All 2 branches missed.">            if (p.toString().equals(ELLIPSIS)) {</span>
+<span class="nc" id="L143">              return true;</span>
+            }
+
+<span class="nc" id="L146">            Matcher m = p.matcher(line);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (!m.matches()) {</span>
+<span class="nc" id="L148">              return false;</span>
+            }
+<span class="nc" id="L150">          } else {</span>
+<span class="nc" id="L151">            return false;</span>
+          }
+        }
+
+<span class="nc bnc" id="L155" title="All 4 branches missed.">        return (!it.hasNext() || it.next().toString().equals(ELLIPSIS));          </span>
+        
+      } else { // no output
+<span class="nc" id="L158">        return patterns.isEmpty();</span>
+      }
+    }
+    
+    @Override
+	  public void printOn (PrintWriter pw) {
+<span class="nc bnc" id="L164" title="All 2 branches missed.">      for (Pattern p : patterns) {</span>
+<span class="nc" id="L165">        pw.println(p.toString());</span>
+<span class="nc" id="L166">      }</span>
+<span class="nc" id="L167">    }</span>
+    
+    @Override
+    public boolean isEmpty(){
+<span class="nc" id="L171">      return patterns.isEmpty();</span>
+    }
+  }
+
+  //---- our instance data
+  VM vm;
+  
+  //--- this is where we store the outputs (line-wise)
+  // &lt;2do&gt; not very space efficient
+<span class="fc" id="L180">  List&lt;String[]&gt; pathOutputs = new ArrayList&lt;String[]&gt;();</span>
+  
+  //--- config options
+  Class&lt;? extends PathOutputSpec&gt; psClass; 
+  boolean printOutput;
+  boolean deferOutput;
+  List&lt;PathOutputSpec&gt; anySpecs, allSpecs, noneSpecs;
+
+  //--- keep track of property violations
+  String errorMsg;
+  List&lt;PathOutputSpec&gt; violatedSpecs;
+  String[] offendingOutput;
+    
+  
+<span class="fc" id="L194">  public PathOutputMonitor (Config config, JPF jpf) {</span>
+<span class="fc" id="L195">    vm = jpf.getVM();</span>
+<span class="fc" id="L196">    vm.storePathOutput();</span>
+    
+<span class="fc" id="L198">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+    
+<span class="fc" id="L200">    printOutput = config.getBoolean(&quot;pom.print_output&quot;, true);</span>
+<span class="fc" id="L201">    deferOutput = config.getBoolean(&quot;pom.defer_output&quot;, true);</span>
+  
+<span class="fc" id="L203">    psClass = config.getClass(&quot;pom.output_spec.class&quot;, PathOutputSpec.class);</span>
+
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">    if (psClass == null) {</span>
+<span class="fc" id="L206">      psClass = RegexOutputSpec.class;</span>
+    }
+    
+<span class="fc" id="L209">    anySpecs = loadSpecs(config, &quot;pom.any&quot;);</span>
+<span class="fc" id="L210">    allSpecs = loadSpecs(config, &quot;pom.all&quot;);</span>
+<span class="fc" id="L211">    noneSpecs = loadSpecs(config, &quot;pom.none&quot;);</span>
+    
+<span class="fc" id="L213">    violatedSpecs = new ArrayList&lt;PathOutputSpec&gt;();</span>
+<span class="fc" id="L214">  }</span>
+
+  
+  List&lt;PathOutputSpec&gt; loadSpecs(Config conf, String key) {
+<span class="fc" id="L218">    String spec = conf.getString(key);</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">    if (spec != null) {</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">      if (spec.startsWith(&quot;\&quot;&quot;)){ // spec is in-situ content (convenience method for test classes)</span>
+<span class="nc" id="L221">        spec = spec.substring(1, spec.length()-1);</span>
+<span class="nc" id="L222">        BufferedReader br = new BufferedReader( new StringReader(spec));</span>
+<span class="nc" id="L223">        return readPathPatterns(br);</span>
+        
+      } else { // spec is pathname of output sepc file
+<span class="fc" id="L226">        File file = new File(spec);</span>
+        try {
+<span class="nc" id="L228">          BufferedReader br = new BufferedReader( new FileReader(file));</span>
+<span class="nc" id="L229">          return readPathPatterns(br);</span>
+          
+<span class="fc" id="L231">        } catch (FileNotFoundException fnfx){</span>
+<span class="fc" id="L232">          log.warning(&quot;pattern file not found: &quot; + spec);</span>
+        }        
+      }
+    }
+    
+<span class="fc" id="L237">    return null;</span>
+  }
+
+  PathOutputSpec createPathOutputSpec() {
+    try {
+<span class="nc" id="L242">      return psClass.newInstance();</span>
+<span class="nc" id="L243">    } catch (Throwable t) {</span>
+<span class="nc" id="L244">      log.severe(&quot;cannot instantiate PathoutputSpec class: &quot; + t.getMessage());</span>
+<span class="nc" id="L245">      return null;</span>
+    }
+  }
+  
+  
+  
+  List&lt;PathOutputSpec&gt; readPathPatterns (BufferedReader br){  
+<span class="nc" id="L252">    ArrayList&lt;PathOutputSpec&gt; results = new ArrayList&lt;PathOutputSpec&gt;();</span>
+    
+    // prefix pattern goes into file
+    
+    try {
+<span class="nc" id="L257">      PathOutputSpec ps = createPathOutputSpec();</span>
+      
+<span class="nc" id="L259">      int lineno = 0;</span>
+<span class="nc" id="L260">      for (String line=br.readLine(); true; line = br.readLine()) {</span>
+<span class="nc bnc" id="L261" title="All 2 branches missed.">        if (line == null) {</span>
+<span class="nc" id="L262">          results.add(ps);</span>
+<span class="nc" id="L263">          break;</span>
+        }
+<span class="nc" id="L265">        lineno++;</span>
+        
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        if (line.startsWith(SEPARATOR)) {</span>
+<span class="nc" id="L268">          results.add(ps);</span>
+<span class="nc" id="L269">          ps = createPathOutputSpec();</span>
+        } else {
+<span class="nc" id="L271">          ps.add(line);</span>
+        }
+      }
+            
+<span class="nc" id="L275">      br.close();</span>
+<span class="nc" id="L276">    } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L277">      return null;</span>
+<span class="nc" id="L278">    } catch (IOException e) {</span>
+<span class="nc" id="L279">      e.printStackTrace();</span>
+<span class="nc" id="L280">    }</span>
+      
+<span class="nc" id="L282">    return results;</span>
+  }
+
+  String[] getLines (String output) {
+<span class="fc" id="L286">    ArrayList&lt;String&gt; lines = new ArrayList&lt;String&gt;();</span>
+<span class="fc" id="L287">    BufferedReader br = new BufferedReader(new StringReader(output));</span>
+    try {
+<span class="fc bfc" id="L289" title="All 2 branches covered.">      for (String line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="fc" id="L290">        lines.add(line);</span>
+      }
+<span class="nc" id="L292">    } catch (IOException iox) {</span>
+<span class="nc" id="L293">      iox.printStackTrace();</span>
+<span class="fc" id="L294">    }</span>
+    
+<span class="fc" id="L296">    return lines.toArray(new String[lines.size()]);</span>
+  }
+
+  boolean matchesAny (List&lt;PathOutputSpec&gt; outputSpecs, String[] lines) {
+<span class="nc bnc" id="L300" title="All 2 branches missed.">    for (PathOutputSpec ps : outputSpecs) {</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">      if (ps.matches(lines)) {</span>
+<span class="nc" id="L302">        return true;</span>
+      }
+<span class="nc" id="L304">    }</span>
+
+<span class="nc" id="L306">    errorMsg = &quot;unmatched output&quot;;</span>
+<span class="nc" id="L307">    offendingOutput = lines;</span>
+    
+<span class="nc" id="L309">    return false;</span>
+  }
+    
+  boolean matchesNone (List&lt;PathOutputSpec&gt; outputSpecs, String[] lines) {
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    for (PathOutputSpec ps : outputSpecs) {</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">      if (ps.matches(lines)) {</span>
+<span class="nc" id="L315">        errorMsg = &quot;illegal output (matching inverse spec)&quot;;</span>
+<span class="nc" id="L316">        offendingOutput = lines;</span>
+<span class="nc" id="L317">        violatedSpecs.add(ps);</span>
+        
+<span class="nc" id="L319">        return false;</span>
+      }
+<span class="nc" id="L321">    }</span>
+        
+<span class="nc" id="L323">    return true;</span>
+  } 
+  
+  boolean matchesAll (List&lt;PathOutputSpec&gt; outputSpecs, List&lt;String[]&gt; outputs) {
+<span class="nc" id="L327">    HashSet&lt;PathOutputSpec&gt; unmatched = new HashSet&lt;PathOutputSpec&gt;();</span>
+<span class="nc" id="L328">    unmatched.addAll(outputSpecs);</span>
+    
+<span class="nc bnc" id="L330" title="All 2 branches missed.">    for (String[] lines : outputs) {</span>
+<span class="nc bnc" id="L331" title="All 2 branches missed.">      for (PathOutputSpec ps : outputSpecs) {</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if (ps.matches(lines)) {</span>
+<span class="nc" id="L333">           unmatched.remove(ps);</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">          if (unmatched.isEmpty()) {</span>
+<span class="nc" id="L335">            return true;</span>
+          }
+        }
+<span class="nc" id="L338">      }</span>
+<span class="nc" id="L339">    }</span>
+
+<span class="nc" id="L341">    errorMsg = &quot;unmatched specs (&quot; + unmatched.size() + ')';</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">    for (PathOutputSpec ps : unmatched) {</span>
+<span class="nc" id="L343">      violatedSpecs.add(ps);</span>
+<span class="nc" id="L344">    }</span>
+    
+<span class="nc" id="L346">    return false;</span>
+  }
+
+  
+  //----------- the listener interface
+  
+  @Override
+  public boolean check(Search search, VM vm) {
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">    return (errorMsg == null);</span>
+  }
+
+  @Override
+  public String getErrorMessage () {
+<span class="nc" id="L359">    StringWriter sw = new StringWriter();</span>
+<span class="nc" id="L360">    PrintWriter pw = new PrintWriter(sw);</span>
+
+<span class="nc" id="L362">    pw.println(errorMsg);</span>
+    
+<span class="nc bnc" id="L364" title="All 2 branches missed.">    if (offendingOutput != null) {</span>
+<span class="nc" id="L365">      pw.println(&quot;offending output:&quot;);</span>
+<span class="nc bnc" id="L366" title="All 2 branches missed.">      for (String line : offendingOutput) {</span>
+<span class="nc" id="L367">        pw.println(line);</span>
+      }
+    }
+    
+<span class="nc bnc" id="L371" title="All 2 branches missed.">    if (!violatedSpecs.isEmpty()) {</span>
+<span class="nc" id="L372">      pw.println(&quot;violated specs:&quot;);</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">      for (PathOutputSpec ps : violatedSpecs) {</span>
+<span class="nc" id="L374">        ps.printOn(pw);</span>
+<span class="nc" id="L375">        pw.println(SEPARATOR);</span>
+<span class="nc" id="L376">      }</span>
+      
+    }
+    
+<span class="nc" id="L380">    String s = sw.toString();</span>
+<span class="nc" id="L381">    pw.close();</span>
+    
+<span class="nc" id="L383">    return s;</span>
+  }
+  
+  @Override
+  public void reset () {
+<span class="nc" id="L388">    errorMsg = null;</span>
+<span class="nc" id="L389">    violatedSpecs.clear();</span>
+<span class="nc" id="L390">    offendingOutput = null;</span>
+<span class="nc" id="L391">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="fc bfc" id="L395" title="All 2 branches covered.">    if (search.isEndState()) {</span>
+      
+<span class="fc" id="L397">      Path path = vm.getPath();</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">      if (path.hasOutput()) {</span>
+<span class="fc" id="L399">        StringBuilder sb = null;</span>
+        
+<span class="pc bpc" id="L401" title="3 of 4 branches missed.">        if (deferOutput || (noneSpecs != null)) {</span>
+<span class="fc" id="L402">          sb = new StringBuilder();</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">          for (Transition t : path) {</span>
+<span class="fc" id="L404">            String s = t.getOutput();</span>
+<span class="pc bpc" id="L405" title="1 of 2 branches missed.">            if (s != null){</span>
+<span class="fc" id="L406">              sb.append(s);</span>
+            }
+<span class="fc" id="L408">          }</span>
+        }
+
+<span class="fc" id="L411">        String[] lines = getLines(sb.toString());</span>
+        
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">        if (deferOutput) {</span>
+<span class="fc" id="L414">          pathOutputs.add(lines);</span>
+          
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        } else if (printOutput){</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">          for (Transition t : path) {</span>
+<span class="nc" id="L418">            String s = t.getOutput();</span>
+<span class="nc bnc" id="L419" title="All 2 branches missed.">            if (s != null){</span>
+<span class="nc" id="L420">              System.out.print(s); // &lt;2do&gt; don't use System.out</span>
+            }            
+<span class="nc" id="L422">          }          </span>
+        }
+      
+        // check safety properties
+<span class="pc bpc" id="L426" title="3 of 4 branches missed.">        if (noneSpecs != null &amp;&amp; !matchesNone(noneSpecs, lines)) {</span>
+<span class="nc" id="L427">           log.warning(&quot;pom.none violated&quot;);</span>
+        }
+<span class="pc bpc" id="L429" title="3 of 4 branches missed.">        if (anySpecs != null &amp;&amp; !matchesAny(anySpecs, lines)) {</span>
+<span class="nc" id="L430">          log.warning(&quot;pom.any violated&quot;);</span>
+       }        
+        
+      }
+    }
+<span class="fc" id="L435">  }</span>
+  
+  @Override
+  public void searchFinished (Search search) {
+<span class="pc bpc" id="L439" title="3 of 4 branches missed.">    if (allSpecs != null &amp;&amp; !matchesAll(allSpecs, pathOutputs)) {</span>
+<span class="nc" id="L440">      log.warning(&quot;pom.all violated&quot;);</span>
+<span class="nc" id="L441">      search.error(this);</span>
+    }
+<span class="fc" id="L443">  }</span>
+  
+  @Override
+  public void publishFinished (Publisher publisher) {
+    
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">    if (printOutput) {</span>
+<span class="fc" id="L449">      PrintWriter pw = publisher.getOut();</span>
+<span class="fc" id="L450">      publisher.publishTopicStart(&quot;path outputs&quot;);</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">      for (String[] output : pathOutputs) {</span>
+<span class="fc bfc" id="L452" title="All 2 branches covered.">        for (String line : output) {</span>
+<span class="fc" id="L453">          pw.println(line);</span>
+        }
+<span class="fc" id="L455">        pw.println(SEPARATOR);</span>
+<span class="fc" id="L456">      }</span>
+    }    
+<span class="fc" id="L458">  }</span>
+    
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

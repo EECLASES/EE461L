@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Simulation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search</a> &gt; <span class="el_source">Simulation.java</span></div><h1>Simulation.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.search;
+
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.VM;
+
+
+/**
+ * this is a straight execution pseudo-search - it doesn't search at
+ * all (i.e. it doesn't backtrack), but just behaves like a 'normal' VM,
+ * going forward() until there is no next state
+ *
+ * &lt;2do&gt; of course it doesn't quite behave like a normal VM, since it
+ * doesn't honor thread priorities yet (needs a special scheduler)
+ *
+ * &lt;2do&gt; it's not really clear to me how this differs from a 'PathSearch'
+ * other than using a different scheduler. Looks like there should be just one
+ *
+ * &lt;2do&gt; this needs to be updated &amp; tested
+ *
+ */
+public class Simulation extends Search {
+  
+  public Simulation (Config config, VM vm) {
+<span class="nc" id="L42">    super(config, vm);</span>
+<span class="nc" id="L43">  }</span>
+
+  @Override
+  public void search () {
+<span class="nc" id="L47">    int    depth = 0;</span>
+
+<span class="nc" id="L49">    depth++;</span>
+
+<span class="nc bnc" id="L51" title="All 2 branches missed.">    if (hasPropertyTermination()) {</span>
+<span class="nc" id="L52">      return;</span>
+    }
+
+<span class="nc" id="L55">    notifySearchStarted();</span>
+    
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    while (!done) {</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">      if (forward()) {</span>
+
+<span class="nc bnc" id="L60" title="All 2 branches missed.">        if (currentError != null){</span>
+<span class="nc" id="L61">          notifyPropertyViolated();</span>
+
+<span class="nc bnc" id="L63" title="All 2 branches missed.">          if (hasPropertyTermination()) {</span>
+<span class="nc" id="L64">            return;</span>
+          }
+        }
+
+<span class="nc" id="L68">        depth++;</span>
+
+      } else { // no next state
+
+        // &lt;2do&gt; we could check for more things here. If the last insn wasn't
+        // the main return, or a System.exit() call, we could flag a JPFException
+<span class="nc" id="L74">        checkPropertyViolation();</span>
+<span class="nc" id="L75">        done = true;</span>
+      }
+    }
+<span class="nc" id="L78">    notifySearchFinished();</span>
+<span class="nc" id="L79">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

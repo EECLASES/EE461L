@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FunctionObjectFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">FunctionObjectFactory.java</span></div><h1>FunctionObjectFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ */
+<span class="fc" id="L23">public class FunctionObjectFactory {</span>
+  
+  public int getFunctionObject(int bsIdx, ThreadInfo ti, ClassInfo fiClassInfo, String samUniqueName, BootstrapMethodInfo bmi, 
+                                         String[] freeVariableTypeNames, Object[] freeVariableValues) {
+    
+<span class="fc" id="L28">    ClassLoaderInfo cli = bmi.enclosingClass.getClassLoaderInfo();</span>
+    
+<span class="fc" id="L30">    ClassInfo funcObjType = cli.getResolvedFuncObjType(bsIdx, fiClassInfo, samUniqueName, bmi, freeVariableTypeNames);</span>
+    
+<span class="fc" id="L32">    funcObjType.registerClass(ti);</span>
+
+<span class="fc" id="L34">    Heap heap = ti.getHeap();</span>
+<span class="fc" id="L35">    ElementInfo ei = heap.newObject(funcObjType, ti);</span>
+    
+<span class="fc" id="L37">    setFuncObjFields(ei, bmi, freeVariableTypeNames, freeVariableValues);</span>
+    
+<span class="fc" id="L39">    return ei.getObjectRef();</span>
+  }
+  
+  public void setFuncObjFields(ElementInfo funcObj, BootstrapMethodInfo bmi, String[] freeVarTypeNames, Object[] freeVarValues) {
+<span class="fc" id="L43">    Fields fields = funcObj.getFields();</span>
+    
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    for(int i = 0; i&lt;freeVarTypeNames.length; i++) {</span>
+<span class="fc" id="L46">      String typeName = freeVarTypeNames[i];</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">      if (typeName.equals(&quot;byte&quot;)) {</span>
+<span class="nc" id="L48">        fields.setByteValue(i, (Byte)freeVarValues[i]);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;char&quot;)) {</span>
+<span class="nc" id="L50">        fields.setCharValue(i, (Character)freeVarValues[i]);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;short&quot;)) {</span>
+<span class="nc" id="L52">        fields.setShortValue(i, (Short)freeVarValues[i]);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">      } else if (typeName.equals(&quot;int&quot;)) {</span>
+<span class="fc" id="L54">        fields.setIntValue(i, (Integer)freeVarValues[i]);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;float&quot;)) {</span>
+<span class="nc" id="L56">        fields.setFloatValue(i, (Float)freeVarValues[i]);</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;long&quot;)) {</span>
+<span class="nc" id="L58">        fields.setLongValue(i, (Long)freeVarValues[i]);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;double&quot;)) {</span>
+<span class="nc" id="L60">        fields.setDoubleValue(i, (Double)freeVarValues[i]);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">      } else if (typeName.equals(&quot;boolean&quot;)) {</span>
+<span class="nc" id="L62">        fields.setBooleanValue(i, (Boolean)freeVarValues[i]);</span>
+      } else {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if(freeVarValues[i] == null) {</span>
+<span class="fc" id="L65">          fields.setReferenceValue(i, MJIEnv.NULL); </span>
+        } else {
+<span class="fc" id="L67">          int val = ((ElementInfo)freeVarValues[i]).getObjectRef();</span>
+<span class="fc" id="L68">          fields.setReferenceValue(i, val);</span>
+        }
+      }
+    }
+<span class="fc" id="L72">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SimpleIdleFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">SimpleIdleFilter.java</span></div><h1>SimpleIdleFilter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.ObjVector;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.logging.Logger;
+
+
+/**
+ * This is the simple version of IdleFilter. This one simply breaks all back-edges
+ * encountered to make sure JPF's partial-order reduction doesn't add meaningless
+ * transitions forever. This is our dual of the cycle-proviso in classic po-reduction theory.
+ *
+ *  One can set how many back-edges to consider before breaking, but by default it is 1
+ *
+ */
+public class SimpleIdleFilter extends ListenerAdapter {
+
+<span class="nc" id="L43">	  static Logger log = JPF.getLogger(&quot;gov.nasa.jpf.listener.SimpleIdleFilter&quot;);</span>
+
+	  static class ThreadStat {
+	    String tname;
+
+	    int backJumps;
+
+	    int loopStartPc;
+
+	    int loopEndPc;
+
+	    int loopStackDepth;
+
+<span class="nc" id="L56">	    ThreadStat(String tname) {</span>
+<span class="nc" id="L57">	      this.tname = tname;</span>
+<span class="nc" id="L58">	    }</span>
+	  }
+
+<span class="nc" id="L61">	  ObjVector&lt;ThreadStat&gt; threadStats = new ObjVector&lt;ThreadStat&gt;();</span>
+
+	  ThreadStat ts;
+
+	  int maxBackJumps;
+
+	  // ----------------------------------------------------- SearchListener
+	  // interface
+
+<span class="nc" id="L70">	  public SimpleIdleFilter(Config config) {</span>
+<span class="nc" id="L71">	    maxBackJumps = config.getInt(&quot;idle.max_backjumps&quot;, 1);</span>
+<span class="nc" id="L72">	  }</span>
+
+	  @Override
+	  public void stateAdvanced(Search search) {
+<span class="nc" id="L76">	    ts.backJumps = 0;</span>
+<span class="nc" id="L77">	    ts.loopStackDepth = 0;</span>
+<span class="nc" id="L78">	    ts.loopStartPc = ts.loopEndPc = 0;</span>
+<span class="nc" id="L79">	  }</span>
+
+	  @Override
+	  public void stateBacktracked(Search search) {
+<span class="nc" id="L83">	    ts.backJumps = 0;</span>
+<span class="nc" id="L84">	    ts.loopStackDepth = 0;</span>
+<span class="nc" id="L85">	    ts.loopStartPc = ts.loopEndPc = 0;</span>
+<span class="nc" id="L86">	  }</span>
+
+	  // ----------------------------------------------------- VMListener interface
+	  @Override
+	  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">       if (!executedInsn.isBackJump()) {     // Put this test first for a performance optimization.</span>
+<span class="nc" id="L93">         return;</span>
+       }
+
+<span class="nc" id="L96">	    int tid = ti.getId();</span>
+<span class="nc" id="L97">	    ts = threadStats.get(tid);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">	    if (ts == null) {</span>
+<span class="nc" id="L99">	      ts = new ThreadStat(ti.getName());</span>
+<span class="nc" id="L100">	      threadStats.set(tid, ts);</span>
+	    }
+
+<span class="nc" id="L103">       ts.backJumps++;</span>
+
+<span class="nc" id="L105">       int loopStackDepth = ti.getStackDepth();</span>
+<span class="nc" id="L106">       int loopPc = nextInsn.getPosition();</span>
+
+<span class="nc bnc" id="L108" title="All 4 branches missed.">       if ((loopStackDepth != ts.loopStackDepth) || (loopPc != ts.loopStartPc)) {</span>
+         // new loop, reset
+<span class="nc" id="L110">         ts.loopStackDepth = loopStackDepth;</span>
+<span class="nc" id="L111">         ts.loopStartPc = loopPc;</span>
+<span class="nc" id="L112">         ts.loopEndPc = executedInsn.getPosition();</span>
+<span class="nc" id="L113">         ts.backJumps = 0;</span>
+       } else {
+<span class="nc bnc" id="L115" title="All 2 branches missed.">         if (ts.backJumps &gt; maxBackJumps) {</span>
+<span class="nc" id="L116">           ti.reschedule(&quot;idleFilter&quot;); // this breaks the executePorStep loop</span>
+         }
+       }
+<span class="nc" id="L119">	  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

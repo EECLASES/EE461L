@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemClassLoaderInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">SystemClassLoaderInfo.java</span></div><h1>SystemClassLoaderInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.util.JPFLogger;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ * Represents the JPF system classloader which models the following hierarchy.
+ * 
+ *            ----------------
+ *            | Bootstrap CL |
+ *            ----------------
+ *                   |
+ *            ----------------
+ *            | Extension CL |
+ *            ----------------
+ *                   |
+ *           ------------------
+ *           | Application CL |
+ *           ------------------
+ *           
+ * Since in the standard VM user does not have any control over the built-in 
+ * classloaders hierarchy, in JPF, we model all three by an instance of 
+ * SystemClassLoader which is responsible to load classes from Java API, 
+ * standard extensions packages, and the local file system.     
+ */
+public abstract class SystemClassLoaderInfo extends ClassLoaderInfo {
+
+<span class="fc" id="L52">  static JPFLogger log = JPF.getLogger(&quot;class&quot;);</span>
+  
+  // we need to keep track of this in case something needs the current SystemClassLoaderInfo before we have a main thread
+  static SystemClassLoaderInfo lastInstance;  
+  
+  // note that initialization requires these to be startup classes
+  protected ClassInfo classLoaderClassInfo;
+  protected ClassInfo objectClassInfo;
+  protected ClassInfo classClassInfo;
+  protected ClassInfo stringClassInfo;
+  protected ClassInfo weakRefClassInfo;
+  protected ClassInfo refClassInfo;
+  protected ClassInfo enumClassInfo;
+  protected ClassInfo threadClassInfo;
+  protected ClassInfo threadGroupClassInfo;
+  protected ClassInfo charArrayClassInfo;
+
+<span class="fc" id="L69">  protected int unCachedClasses = 10;</span>
+  
+  /**
+   * list of configurable Attributors for ClassInfos, MethodInfos and FieldInfos
+   * that are consulted after creating the ClassInfo but before notifying classLoaded() listeners
+   */
+  protected List&lt;Attributor&gt; attributors;
+  
+  
+  public SystemClassLoaderInfo (VM vm, int appId){
+<span class="fc" id="L79">     super(vm);</span>
+
+<span class="fc" id="L81">     lastInstance = this;</span>
+
+    // this is a hack - for user ClassLoaderInfos, we compute the id from the corresponding
+    // objRef of the JPF ClassLoader object. For SystemClassLoaderInfos we can't do that because
+    // they are created before we can create JPF objects. However, this is safe if we know
+    // the provided id is never going to be the objRef of a future ClassLoader object, which is
+    // a safe bet since the first objects created are all system Class objects that are never going to
+    // be recycled.
+<span class="fc" id="L89">    this.id = computeId(appId);</span>
+    
+<span class="fc" id="L91">    initializeSystemClassPath( vm, appId);</span>
+<span class="fc" id="L92">    initializeAttributors( vm, appId);</span>
+<span class="fc" id="L93">  }</span>
+  
+  protected abstract void initializeSystemClassPath (VM vm, int appId);
+  
+  protected void initializeAttributors (VM vm, int appId){
+<span class="fc" id="L98">    attributors = new ArrayList&lt;Attributor&gt;();</span>
+    
+<span class="fc" id="L100">    Config conf = vm.getConfig();</span>
+<span class="fc" id="L101">    String key = conf.getIndexableKey(&quot;vm.attributors&quot;, appId);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">    if (key != null){</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">      for (Attributor a : conf.getInstances(key, Attributor.class)){</span>
+<span class="nc" id="L104">        attributors.add(a);</span>
+<span class="nc" id="L105">      }</span>
+    }
+<span class="fc" id="L107">  }</span>
+
+  public void addAttributor (Attributor a){
+<span class="fc" id="L110">    attributors.add(a);</span>
+<span class="fc" id="L111">  }</span>
+  
+  /**
+   * to be called on each ClassInfo created in the realm of this SystemClassLoader
+   */
+  @Override
+  protected void setAttributes (ClassInfo ci){
+<span class="fc bfc" id="L118" title="All 2 branches covered.">    for (Attributor a: attributors){</span>
+<span class="fc" id="L119">      a.setAttributes(ci);</span>
+<span class="fc" id="L120">    }</span>
+<span class="fc" id="L121">  }</span>
+  
+  //--- these can be used to build the app specific system CP
+  protected File[] getPathElements (Config conf, String keyBase, int appId) {
+<span class="fc" id="L125">    File[] pathElements = null;</span>
+
+    // try appId indexed key first
+<span class="fc" id="L128">    String key = keyBase + '.' + appId;</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">    if (conf.containsKey(key)) {</span>
+<span class="nc" id="L130">      pathElements = conf.getPathArray(key);</span>
+
+    } else { // fall back to keyBase
+<span class="fc" id="L133">      pathElements = conf.getPathArray(keyBase);</span>
+    }
+
+<span class="fc" id="L136">    return pathElements;</span>
+  }
+  
+  @Override
+  public SystemClassLoaderInfo getSystemClassLoader() {
+<span class="fc" id="L141">    return this;</span>
+  }
+
+  
+  @Override
+  public ClassInfo getResolvedClassInfo (String clsName){
+<span class="fc" id="L147">    ClassInfo ci = super.getResolvedClassInfo(clsName);</span>
+    
+<span class="fc bfc" id="L149" title="All 2 branches covered.">    if (unCachedClasses &gt; 0){</span>
+<span class="fc" id="L150">      updateCachedClassInfos(ci);</span>
+    }
+    
+<span class="fc" id="L153">    return ci;</span>
+  }
+
+  @Override
+  public boolean isSystemClassLoader() {
+<span class="fc" id="L158">    return true;</span>
+  }
+
+  static boolean checkClassName (String clsName) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    if ( !clsName.matches(&quot;[a-zA-Z_$][a-zA-Z_$0-9.]*&quot;)) {</span>
+<span class="nc" id="L163">      return false;</span>
+    }
+
+    // well, those two could be part of valid class names, but
+    // in all likeliness somebody specified a filename instead of
+    // a classname
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    if (clsName.endsWith(&quot;.java&quot;)) {</span>
+<span class="nc" id="L170">      return false;</span>
+    }
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    if (clsName.endsWith(&quot;.class&quot;)) {</span>
+<span class="nc" id="L173">      return false;</span>
+    }
+
+<span class="nc" id="L176">    return true;</span>
+  }
+  
+
+  @Override
+  public ClassInfo loadClass(String cname) {
+<span class="fc" id="L182">    return getResolvedClassInfo(cname);</span>
+  }
+
+  @Override
+  protected ClassInfo loadSystemClass (String typeName){
+<span class="fc" id="L187">    return new ClassInfo( typeName, this);</span>
+  }
+
+  protected void setClassLoaderObject (ElementInfo ei){
+<span class="fc" id="L191">    objRef = ei.getObjectRef();</span>
+    //id = computeId(objRef);
+    
+    // cross link
+<span class="fc" id="L195">    ei.setIntField(ID_FIELD, id);</span>
+<span class="fc" id="L196">  }</span>
+  
+
+  //-- ClassInfos cache management --
+
+  protected void updateCachedClassInfos (ClassInfo ci) {
+<span class="fc" id="L202">    String name = ci.name;</span>
+
+<span class="pc bpc" id="L204" title="1 of 4 branches missed.">    if ((objectClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.Object&quot;)) {</span>
+<span class="fc" id="L205">      objectClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L206" title="All 4 branches covered.">    } else if ((classClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.Class&quot;)) {</span>
+<span class="fc" id="L207">      classClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L208" title="All 4 branches covered.">    } else if ((classLoaderClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.ClassLoader&quot;)) {</span>
+<span class="fc" id="L209">      classInfo = ci;</span>
+<span class="fc" id="L210">      classLoaderClassInfo = ci;  unCachedClasses--;</span>
+<span class="fc bfc" id="L211" title="All 4 branches covered.">    } else if ((stringClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.String&quot;)) {</span>
+<span class="fc" id="L212">      stringClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L213" title="All 4 branches covered.">    } else if ((charArrayClassInfo == null) &amp;&amp; name.equals(&quot;[C&quot;)) {</span>
+<span class="fc" id="L214">      charArrayClassInfo = ci; unCachedClasses--;</span>
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">    } else if ((weakRefClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.ref.WeakReference&quot;)) {</span>
+<span class="fc" id="L216">      weakRefClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L217" title="All 4 branches covered.">    } else if ((refClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.ref.Reference&quot;)) {</span>
+<span class="fc" id="L218">      refClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L219" title="All 4 branches covered.">    } else if ((enumClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.Enum&quot;)) {</span>
+<span class="fc" id="L220">      enumClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L221" title="All 4 branches covered.">    } else if ((threadClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.Thread&quot;)) {</span>
+<span class="fc" id="L222">      threadClassInfo = ci; unCachedClasses--;</span>
+<span class="fc bfc" id="L223" title="All 4 branches covered.">    } else if ((threadGroupClassInfo == null) &amp;&amp; name.equals(&quot;java.lang.ThreadGroup&quot;)) {</span>
+<span class="fc" id="L224">      threadGroupClassInfo = ci; unCachedClasses--;</span>
+    }
+<span class="fc" id="L226">  }</span>
+  
+  protected ClassInfo getObjectClassInfo() {
+<span class="fc" id="L229">    return objectClassInfo;</span>
+  }
+
+  protected ClassInfo getClassClassInfo() {
+<span class="fc" id="L233">    return classClassInfo;</span>
+  }
+
+  protected ClassInfo getClassLoaderClassInfo() {
+<span class="fc" id="L237">    return classLoaderClassInfo;</span>
+  }
+
+  protected ClassInfo getStringClassInfo() {
+<span class="fc" id="L241">    return stringClassInfo;</span>
+  }
+  
+  protected ClassInfo getCharArrayClassInfo() {
+<span class="fc" id="L245">    return charArrayClassInfo;</span>
+  }
+
+  protected ClassInfo getEnumClassInfo() {
+<span class="nc" id="L249">    return enumClassInfo;</span>
+  }
+
+  protected ClassInfo getThreadClassInfo() {
+<span class="fc" id="L253">    return threadClassInfo;</span>
+  }
+
+  protected ClassInfo getThreadGroupClassInfo() {
+<span class="nc" id="L257">    return threadGroupClassInfo;</span>
+  }
+
+  protected ClassInfo getReferenceClassInfo() {
+<span class="nc" id="L261">    return refClassInfo;</span>
+  }
+
+  protected ClassInfo getWeakReferenceClassInfo() {
+<span class="nc" id="L265">    return weakRefClassInfo;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

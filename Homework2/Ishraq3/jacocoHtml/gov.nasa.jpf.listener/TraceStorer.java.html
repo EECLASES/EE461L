@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TraceStorer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">TraceStorer.java</span></div><h1>TraceStorer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * tool to save traces upon various conditions like
+ *  - property violation
+ *  - call of a certain method
+ *  - reaching a certain search depth
+ *  - creating a certain thread
+ */
+public class TraceStorer extends ListenerAdapter {
+
+<span class="fc" id="L39">  int nTrace = 1; </span>
+
+  String traceFileName;
+  
+  // do we store to the same file? (i.e. overwrite previously stored traces)
+  // if set to 'true', store all traces (in &lt;traceFileName&gt;.n)
+  boolean storeMultiple;
+  
+  // do we want to terminate after first store, even if it's triggered by a
+  // property violation?
+  boolean terminateOnStore;
+  
+  boolean storeOnConstraintHit;
+  
+  // search depth at what we store the tace 
+  int storeDepth;
+  
+  // calls that should trigger a store
+  StringSetMatcher storeCalls;
+  
+  // thread starts that should trigger a store
+  StringSetMatcher storeThreads;
+  
+  // do we want verbose output
+  boolean verbose;
+  
+  Search search;
+  VM vm;
+  
+<span class="fc" id="L68">  public TraceStorer (Config config, JPF jpf){</span>
+    
+<span class="fc" id="L70">    traceFileName = config.getString(&quot;trace.file&quot;, &quot;trace&quot;);</span>
+<span class="fc" id="L71">    storeMultiple = config.getBoolean(&quot;trace.multiple&quot;, false);    </span>
+<span class="fc" id="L72">    storeDepth = config.getInt(&quot;trace.depth&quot;, Integer.MAX_VALUE);</span>
+<span class="fc" id="L73">    verbose = config.getBoolean(&quot;trace.verbose&quot;, false);</span>
+    
+<span class="fc" id="L75">    terminateOnStore = config.getBoolean(&quot;trace.terminate&quot;, false);</span>
+<span class="fc" id="L76">    storeOnConstraintHit = config.getBoolean(&quot;trace.store_constraint&quot;, false);</span>
+    
+<span class="fc" id="L78">    storeCalls = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;trace.store_calls&quot;));</span>
+<span class="fc" id="L79">    storeThreads = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;trace.store_threads&quot;));</span>
+    
+<span class="fc" id="L81">    vm = jpf.getVM();</span>
+<span class="fc" id="L82">    search = jpf.getSearch();</span>
+<span class="fc" id="L83">  }</span>
+  
+  void storeTrace(String reason) {
+<span class="fc" id="L86">    String fname = traceFileName;</span>
+    
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">    if (storeMultiple){</span>
+<span class="nc" id="L89">      fname = fname  + '.' + nTrace++;</span>
+    }
+    
+<span class="fc" id="L92">    vm.storeTrace(fname, reason, verbose); // &lt;2do&gt; maybe some comment would be in order</span>
+<span class="fc" id="L93">  }</span>
+  
+  @Override
+  public void propertyViolated (Search search){
+    // Ok, this is unconditional
+<span class="fc" id="L98">    storeTrace(&quot;violated property: &quot; + search.getLastError().getDetails());</span>
+    
+    // no need to terminate (and we don't want to interfere with search.multiple_errors)
+<span class="fc" id="L101">  }</span>
+ 
+  @Override
+  public void stateAdvanced (Search search){
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">    if (search.getDepth() == storeDepth){</span>
+<span class="nc" id="L106">      storeTrace(&quot;search depth reached: &quot; + storeDepth);</span>
+<span class="nc" id="L107">      checkSearchTermination();</span>
+    }
+<span class="fc" id="L109">  }</span>
+  
+  @Override
+  public void searchConstraintHit (Search search){
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (storeOnConstraintHit){</span>
+<span class="nc" id="L114">      storeTrace(&quot;search constraint hit: &quot; + search.getLastSearchConstraint());      </span>
+    }
+<span class="nc" id="L116">  }</span>
+  
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn){
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">    if (storeCalls != null){</span>
+<span class="nc bnc" id="L121" title="All 2 branches missed.">      if (executedInsn instanceof JVMInvokeInstruction) {</span>
+<span class="nc" id="L122">        JVMInvokeInstruction iinsn = (JVMInvokeInstruction)executedInsn;</span>
+<span class="nc" id="L123">        String clsName = iinsn.getInvokedMethodClassName();</span>
+<span class="nc" id="L124">        String mthName = iinsn.getInvokedMethodName();</span>
+<span class="nc" id="L125">        String mn = clsName + '.' + mthName;</span>
+        
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (storeCalls.matchesAny(mn)){</span>
+<span class="nc" id="L128">          storeTrace(&quot;call: &quot; + mn);</span>
+<span class="nc" id="L129">          checkVMTermination(ti);</span>
+        }
+      }
+    }
+<span class="fc" id="L133">  }</span>
+  
+  @Override
+  public void threadStarted(VM vm, ThreadInfo ti) {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (storeThreads != null){</span>
+<span class="nc" id="L138">      String tname = ti.getName();</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      if (storeThreads.matchesAny( tname)){</span>
+<span class="nc" id="L140">        storeTrace(&quot;thread started: &quot; + tname);</span>
+<span class="nc" id="L141">        checkVMTermination(ti);</span>
+      }
+    } 
+<span class="nc" id="L144">  }</span>
+
+  boolean checkVMTermination(ThreadInfo ti) {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    if (terminateOnStore){</span>
+<span class="nc" id="L148">      ti.breakTransition(&quot;storeTraceTermination&quot;);</span>
+<span class="nc" id="L149">      search.terminate();</span>
+<span class="nc" id="L150">      return true;</span>
+    }
+    
+<span class="nc" id="L153">    return false;</span>
+  }
+  
+  boolean checkSearchTermination() {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">    if (terminateOnStore){</span>
+<span class="nc" id="L158">      search.terminate();</span>
+<span class="nc" id="L159">      return true;</span>
+    }
+    
+<span class="nc" id="L162">    return false;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BoxObjectCacheManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">BoxObjectCacheManager.java</span></div><h1>BoxObjectCacheManager.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ *         Cache management implementation for the types Boolean, Byte,
+ *         Character, Short, Integer, Long. The references to the caches are in
+ *         the class classes/gov/nasa/jpf/BoxObjectCaches.
+ * 
+ *         All the caches, except Boolean, are initialized on the first
+ *         invocation of valueOf(), and they all exempt from garbage collection.
+ * 
+ *         NOTE: All classes obtained from getResolvedClassInfo in
+ *         BoxObjectCacheManager are safe, and there is no need to check if they
+ *         are initialized. The wrappers and BoxObjectCaches are initialized in
+ *         VM.intialize(), and there are no clinit for array classes.
+ *         
+ *         NOTE: the initXCache allocations are system allocations, whereas the
+ *         valueOfX() allocations are rooted in SUT code
+ */
+<span class="nc" id="L38">public class BoxObjectCacheManager {</span>
+  private static final String MODEL_CLASS = &quot;gov.nasa.jpf.BoxObjectCaches&quot;;
+<span class="fc" id="L40">  private static final int ANCHOR = BoxObjectCacheManager.class.getName().hashCode();  </span>
+  
+  // cache default bounds
+<span class="fc" id="L43">  private static int defLow = -128;</span>
+<span class="fc" id="L44">  private static int defHigh = 127;</span>
+
+  public static int valueOfBoolean (ThreadInfo ti, boolean b) {
+<span class="fc" id="L47">    ClassInfo cls = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Boolean&quot;);</span>
+
+    int boolObj;
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    if (b) {</span>
+<span class="fc" id="L51">      boolObj = cls.getStaticElementInfo().getReferenceField(&quot;TRUE&quot;);</span>
+    } else {
+<span class="fc" id="L53">      boolObj = cls.getStaticElementInfo().getReferenceField(&quot;FALSE&quot;);</span>
+    }
+
+<span class="fc" id="L56">    return boolObj;</span>
+  }
+
+  // Byte cache bounds
+  private static byte byteLow;
+  private static byte byteHigh;
+
+  public static int initByteCache (ThreadInfo ti) {
+<span class="fc" id="L64">    byteLow = (byte) ti.getVM().getConfig().getInt(&quot;vm.cache.low_byte&quot;, defLow);</span>
+<span class="fc" id="L65">    byteHigh = (byte) ti.getVM().getConfig().getInt(&quot;vm.cache.high_byte&quot;, defHigh);</span>
+<span class="fc" id="L66">    int n = (byteHigh - byteLow) + 1;</span>
+    
+<span class="fc" id="L68">    Heap heap = ti.getHeap();</span>
+<span class="fc" id="L69">    ElementInfo eiArray = heap.newSystemArray(&quot;Ljava/lang/Byte&quot;, n, ti, ANCHOR);</span>
+<span class="fc" id="L70">    int arrayRef = eiArray.getObjectRef();</span>
+
+<span class="fc" id="L72">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Byte&quot;);</span>
+<span class="fc" id="L73">    byte val = byteLow;</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L75">      ElementInfo eiByte = heap.newSystemObject(ci, ti, ANCHOR);</span>
+<span class="fc" id="L76">      eiByte.setByteField(&quot;value&quot;, val++);</span>
+<span class="fc" id="L77">      eiArray.setReferenceElement(i, eiByte.getObjectRef());</span>
+    }
+
+<span class="fc" id="L80">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L81">    cacheClass.getModifiableStaticElementInfo().setReferenceField(&quot;byteCache&quot;, arrayRef);</span>
+<span class="fc" id="L82">    return arrayRef;</span>
+  }
+
+  public static int valueOfByte (ThreadInfo ti, byte b) {
+<span class="fc" id="L86">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L87">    int byteCache = cacheClass.getStaticElementInfo().getReferenceField(&quot;byteCache&quot;);</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    if (byteCache == MJIEnv.NULL) { // initializing the cache on demand</span>
+<span class="fc" id="L90">      byteCache = initByteCache(ti);</span>
+    }
+
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">    if (b &gt;= byteLow &amp;&amp; b &lt;= byteHigh) { return ti.getElementInfo(byteCache).getReferenceElement(b - byteLow); }</span>
+
+<span class="nc" id="L95">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Byte&quot;);</span>
+<span class="nc" id="L96">    ElementInfo eiByte = ti.getHeap().newObject(ci, ti);</span>
+<span class="nc" id="L97">    eiByte.setByteField(&quot;value&quot;, b);</span>
+<span class="nc" id="L98">    return eiByte.getObjectRef();</span>
+  }
+
+  // Character cache bound
+  private static int charHigh;
+
+  public static int initCharCache (ThreadInfo ti) {
+<span class="fc" id="L105">    charHigh = ti.getVM().getConfig().getInt(&quot;vm.cache.high_char&quot;, defHigh);</span>
+<span class="fc" id="L106">    int n = charHigh + 1;</span>
+    
+<span class="fc" id="L108">    Heap heap = ti.getHeap();    </span>
+<span class="fc" id="L109">    ElementInfo eiArray = heap.newSystemArray(&quot;Ljava/lang/Character&quot;, n, ti, ANCHOR);</span>
+<span class="fc" id="L110">    int arrayRef = eiArray.getObjectRef();</span>
+
+<span class="fc" id="L112">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Character&quot;);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L114">      ElementInfo eiChar = heap.newSystemObject(ci, ti, ANCHOR);</span>
+<span class="fc" id="L115">      eiChar.setCharField(&quot;value&quot;, (char) i);</span>
+<span class="fc" id="L116">      eiArray.setReferenceElement(i, eiChar.getObjectRef());</span>
+    }
+
+<span class="fc" id="L119">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L120">    cacheClass.getModifiableStaticElementInfo().setReferenceField(&quot;charCache&quot;, arrayRef);</span>
+<span class="fc" id="L121">    return arrayRef;</span>
+  }
+
+  public static int valueOfCharacter (ThreadInfo ti, char c) {
+<span class="fc" id="L125">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L126">    int charCache = cacheClass.getStaticElementInfo().getReferenceField(&quot;charCache&quot;);</span>
+
+<span class="fc bfc" id="L128" title="All 2 branches covered.">    if (charCache == MJIEnv.NULL) { // initializing the cache on demand</span>
+<span class="fc" id="L129">      charCache = initCharCache(ti);</span>
+    }
+
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">    if (c &gt;= 0 &amp;&amp; c &lt;= charHigh) { return ti.getElementInfo(charCache).getReferenceElement(c); }</span>
+
+<span class="fc" id="L134">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Character&quot;);</span>
+<span class="fc" id="L135">    ElementInfo eiChar = ti.getHeap().newObject(ci, ti);</span>
+<span class="fc" id="L136">    eiChar.setCharField(&quot;value&quot;, c);</span>
+<span class="fc" id="L137">    return eiChar.getObjectRef();</span>
+  }
+
+  // Short cache bounds
+  private static short shortLow;
+
+  private static short shortHigh;
+
+  public static int initShortCache (ThreadInfo ti) {
+<span class="fc" id="L146">    shortLow = (short) ti.getVM().getConfig().getInt(&quot;vm.cache.low_short&quot;, defLow);</span>
+<span class="fc" id="L147">    shortHigh = (short) ti.getVM().getConfig().getInt(&quot;vm.cache.high_short&quot;, defHigh);</span>
+<span class="fc" id="L148">    int n = (shortHigh - shortLow) + 1;</span>
+    
+<span class="fc" id="L150">    Heap heap = ti.getHeap();    </span>
+<span class="fc" id="L151">    ElementInfo eiArray = heap.newSystemArray(&quot;Ljava/lang/Short&quot;, n, ti, ANCHOR);</span>
+<span class="fc" id="L152">    int arrayRef = eiArray.getObjectRef();</span>
+
+<span class="fc" id="L154">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Short&quot;);</span>
+<span class="fc" id="L155">    short val = shortLow;</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L157">      ElementInfo eiShort = heap.newSystemObject(ci, ti, ANCHOR);</span>
+<span class="fc" id="L158">      eiShort.setShortField(&quot;value&quot;, val++);</span>
+<span class="fc" id="L159">      eiArray.setReferenceElement(i, eiShort.getObjectRef());</span>
+    }
+
+<span class="fc" id="L162">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L163">    cacheClass.getModifiableStaticElementInfo().setReferenceField(&quot;shortCache&quot;, arrayRef);</span>
+<span class="fc" id="L164">    return arrayRef;</span>
+  }
+
+  public static int valueOfShort (ThreadInfo ti, short s) {
+<span class="fc" id="L168">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L169">    int shortCache = cacheClass.getStaticElementInfo().getReferenceField(&quot;shortCache&quot;);</span>
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">    if (shortCache == MJIEnv.NULL) { // initializing the cache on demand</span>
+<span class="fc" id="L172">      shortCache = initShortCache(ti);</span>
+    }
+
+<span class="pc bpc" id="L175" title="1 of 4 branches missed.">    if (s &gt;= shortLow &amp;&amp; s &lt;= shortHigh) { return ti.getElementInfo(shortCache).getReferenceElement(s - shortLow); }</span>
+
+<span class="fc" id="L177">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Short&quot;);</span>
+<span class="fc" id="L178">    ElementInfo eiShort = ti.getHeap().newObject(ci, ti);</span>
+<span class="fc" id="L179">    eiShort.setShortField(&quot;value&quot;, s);</span>
+<span class="fc" id="L180">    return eiShort.getObjectRef();</span>
+  }
+
+  // Integer cache bounds
+  private static int intLow;
+  private static int intHigh;
+
+  public static int initIntCache (ThreadInfo ti) {
+<span class="fc" id="L188">    intLow = ti.getVM().getConfig().getInt(&quot;vm.cache.low_int&quot;, defLow);</span>
+<span class="fc" id="L189">    intHigh = ti.getVM().getConfig().getInt(&quot;vm.cache.high_int&quot;, defHigh);</span>
+<span class="fc" id="L190">    int n = (intHigh - intLow) + 1;</span>
+    
+<span class="fc" id="L192">    Heap heap = ti.getHeap();    </span>
+<span class="fc" id="L193">    ElementInfo eiArray = heap.newSystemArray(&quot;Ljava/lang/Integer&quot;, n, ti, ANCHOR);</span>
+<span class="fc" id="L194">    int arrayRef = eiArray.getObjectRef();</span>
+
+<span class="fc" id="L196">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Integer&quot;);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L198">      ElementInfo eiInteger = heap.newSystemObject(ci, ti, ANCHOR);</span>
+<span class="fc" id="L199">      eiInteger.setIntField(&quot;value&quot;, i + intLow);</span>
+<span class="fc" id="L200">      eiArray.setReferenceElement(i, eiInteger.getObjectRef());</span>
+    }
+
+<span class="fc" id="L203">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L204">    cacheClass.getModifiableStaticElementInfo().setReferenceField(&quot;intCache&quot;, arrayRef);</span>
+<span class="fc" id="L205">    return arrayRef;</span>
+  }
+
+  public static int valueOfInteger (ThreadInfo ti, int i) {
+<span class="fc" id="L209">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L210">    int intCache = cacheClass.getStaticElementInfo().getReferenceField(&quot;intCache&quot;);</span>
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">    if (intCache == MJIEnv.NULL) { // initializing the cache on demand</span>
+<span class="fc" id="L213">      intCache = initIntCache(ti);</span>
+    }
+
+<span class="pc bpc" id="L216" title="1 of 4 branches missed.">    if (i &gt;= intLow &amp;&amp; i &lt;= intHigh) { return ti.getElementInfo(intCache).getReferenceElement(i - intLow); }</span>
+
+<span class="fc" id="L218">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Integer&quot;);</span>
+<span class="fc" id="L219">    ElementInfo eiInteger = ti.getHeap().newObject(ci, ti);</span>
+<span class="fc" id="L220">    eiInteger.setIntField(&quot;value&quot;, i);</span>
+<span class="fc" id="L221">    return eiInteger.getObjectRef();</span>
+  }
+
+  // Long cache bounds
+  private static int longLow;
+  private static int longHigh;
+
+  public static int initLongCache (ThreadInfo ti) {
+<span class="fc" id="L229">    longLow = ti.getVM().getConfig().getInt(&quot;vm.cache.low_long&quot;, defLow);</span>
+<span class="fc" id="L230">    longHigh = ti.getVM().getConfig().getInt(&quot;vm.cache.high_long&quot;, defHigh);</span>
+<span class="fc" id="L231">    int n = (longHigh - longLow) + 1;</span>
+    
+<span class="fc" id="L233">    Heap heap = ti.getHeap();    </span>
+<span class="fc" id="L234">    ElementInfo eiArray = heap.newSystemArray(&quot;Ljava/lang/Long&quot;, n, ti, ANCHOR);</span>
+<span class="fc" id="L235">    int arrayRef = eiArray.getObjectRef();</span>
+
+<span class="fc" id="L237">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Long&quot;);</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">    for (int i = 0; i &lt; n; i++) {</span>
+<span class="fc" id="L239">      ElementInfo eiLong = heap.newSystemObject(ci, ti, ANCHOR);</span>
+<span class="fc" id="L240">      eiLong.setLongField(&quot;value&quot;, i + longLow);</span>
+<span class="fc" id="L241">      eiArray.setReferenceElement(i, eiLong.getObjectRef());</span>
+    }
+
+<span class="fc" id="L244">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L245">    cacheClass.getModifiableStaticElementInfo().setReferenceField(&quot;longCache&quot;, arrayRef);</span>
+<span class="fc" id="L246">    return arrayRef;</span>
+  }
+
+  public static int valueOfLong (ThreadInfo ti, long l) {
+<span class="fc" id="L250">    ClassInfo cacheClass = ClassLoaderInfo.getSystemResolvedClassInfo(MODEL_CLASS);</span>
+<span class="fc" id="L251">    int longCache = cacheClass.getStaticElementInfo().getReferenceField(&quot;longCache&quot;);</span>
+
+<span class="fc bfc" id="L253" title="All 2 branches covered.">    if (longCache == MJIEnv.NULL) { // initializing the cache on demand</span>
+<span class="fc" id="L254">      longCache = initLongCache(ti);</span>
+    }
+
+<span class="fc bfc" id="L257" title="All 4 branches covered.">    if (l &gt;= longLow &amp;&amp; l &lt;= longHigh) { return ti.getElementInfo(longCache).getReferenceElement((int) l - longLow); }</span>
+
+<span class="fc" id="L259">    ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Long&quot;);</span>
+<span class="fc" id="L260">    ElementInfo eiLong = ti.getHeap().newObject(ci, ti);</span>
+<span class="fc" id="L261">    eiLong.setLongField(&quot;value&quot;, l);</span>
+<span class="fc" id="L262">    return eiLong.getObjectRef();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

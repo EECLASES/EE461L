@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChoicePoint.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ChoicePoint.java</span></div><h1>ChoicePoint.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StreamTokenizer;
+import java.util.HashMap;
+
+/**
+ * a little helper class that is used to replay previously stored traces
+ * (which are little more than just a list of ChoiceGenerator classnames and
+ * choiceIndex indexes stored in a previous run)
+ */
+public class ChoicePoint {
+  String cgClassName;
+  int choiceIndex;
+  ChoicePoint next, prev;
+
+<span class="fc" id="L40">  ChoicePoint (String cgClassName, int choice, ChoicePoint prev) {</span>
+<span class="fc" id="L41">    this.cgClassName = cgClassName;</span>
+<span class="fc" id="L42">    this.choiceIndex = choice;</span>
+
+<span class="fc bfc" id="L44" title="All 2 branches covered.">    if (prev != null) {</span>
+<span class="fc" id="L45">      this.prev = prev;</span>
+<span class="fc" id="L46">      prev.next = this;</span>
+    }
+<span class="fc" id="L48">  }</span>
+
+  public String getCgClassName() {
+<span class="fc" id="L51">    return cgClassName;</span>
+  }
+
+  public int getChoiceIndex() {
+<span class="fc" id="L55">    return choiceIndex;</span>
+  }
+
+  public ChoicePoint getNext() {
+<span class="fc" id="L59">    return next;</span>
+  }
+
+  public ChoicePoint getPrevious() {
+<span class="nc" id="L63">    return prev;</span>
+  }
+
+  public static void storeTrace (String fileName,
+                                 String sutName, String comment,
+                                 ChoiceGenerator[] trace, boolean verbose) {
+    int i;
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">    if (fileName != null) {</span>
+      try {
+<span class="fc" id="L72">        FileWriter fw = new FileWriter(fileName);</span>
+<span class="fc" id="L73">        PrintWriter pw = new PrintWriter(fw);</span>
+
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (comment != null){ // might be multi-line</span>
+<span class="fc" id="L76">          pw.print(&quot;/* &quot;);</span>
+<span class="fc" id="L77">          pw.print(comment);</span>
+<span class="fc" id="L78">          pw.println(&quot; */&quot;);</span>
+        }
+
+        // store the main app class and args here, so that we can do at least some checking
+<span class="fc" id="L82">        pw.print( &quot;application: &quot;);</span>
+<span class="fc" id="L83">        pw.println( sutName);</span>
+
+        // keep a String-&gt;id map so that we don't have to store thousands of redundant strings
+<span class="fc" id="L86">        HashMap&lt;String,Integer&gt; map = new HashMap&lt;String,Integer&gt;();</span>
+<span class="fc" id="L87">        int clsId = 0;</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        for (i=0; i&lt;trace.length; i++) {</span>
+<span class="fc" id="L90">          String cgClsName = trace[i].getClass().getName();</span>
+
+<span class="fc" id="L92">          pw.print('[');</span>
+<span class="fc" id="L93">          pw.print(i);</span>
+<span class="fc" id="L94">          pw.print(&quot;] &quot;);</span>
+
+<span class="fc" id="L96">          Integer ref = map.get(cgClsName);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">          if (ref == null) {</span>
+<span class="fc" id="L98">            pw.print(cgClsName);</span>
+<span class="fc" id="L99">            map.put(cgClsName, clsId++);</span>
+          } else { // us the numeric id instead
+<span class="fc" id="L101">            pw.print('#');</span>
+<span class="fc" id="L102">            pw.print(ref.intValue());</span>
+          }
+
+<span class="fc" id="L105">          pw.print(&quot; &quot;);</span>
+<span class="fc" id="L106">          pw.print( trace[i].getProcessedNumberOfChoices()-1);</span>
+          
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">          if (verbose){</span>
+<span class="nc" id="L109">            pw.print(&quot;  // &quot;);</span>
+<span class="nc" id="L110">            pw.print(trace[i]);</span>
+          }
+          
+<span class="fc" id="L113">          pw.println();</span>
+        }
+
+<span class="fc" id="L116">        pw.close();</span>
+<span class="fc" id="L117">        fw.close();</span>
+<span class="nc" id="L118">      } catch (Throwable t) {</span>
+<span class="nc" id="L119">        throw new JPFException(t);</span>
+<span class="fc" id="L120">      }</span>
+    }
+<span class="fc" id="L122">  }</span>
+
+  static StreamTokenizer createScanner (String fileName) {
+<span class="fc" id="L125">    StreamTokenizer scanner = null;</span>
+
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">    if (fileName == null) {</span>
+<span class="nc" id="L128">      return null;</span>
+    }
+
+<span class="fc" id="L131">    File f = new File(fileName);</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">    if (f.exists()) {</span>
+      try {
+<span class="fc" id="L134">        FileReader fr = new FileReader(f);</span>
+<span class="fc" id="L135">        scanner = new StreamTokenizer(fr);</span>
+
+<span class="fc" id="L137">        scanner.slashSlashComments(true);</span>
+<span class="fc" id="L138">        scanner.slashStarComments(true);</span>
+
+        // how silly - there is no better way to turn off parseNumbers()
+<span class="fc" id="L141">        scanner.resetSyntax();</span>
+<span class="fc" id="L142">        scanner.wordChars('a', 'z');</span>
+<span class="fc" id="L143">        scanner.wordChars('A', 'Z');</span>
+<span class="fc" id="L144">        scanner.wordChars(128 + 32, 255);</span>
+<span class="fc" id="L145">        scanner.whitespaceChars(0, ' ');</span>
+        //scanner.commentChar('/');
+<span class="fc" id="L147">        scanner.quoteChar('&quot;');</span>
+<span class="fc" id="L148">        scanner.quoteChar('\'');</span>
+
+<span class="fc" id="L150">        scanner.wordChars('0','9');</span>
+<span class="fc" id="L151">        scanner.wordChars(':', ':');</span>
+<span class="fc" id="L152">        scanner.wordChars('.', '.');</span>
+<span class="fc" id="L153">        scanner.wordChars('#', '#');</span>
+
+<span class="fc" id="L155">        scanner.nextToken();</span>
+<span class="nc" id="L156">      } catch (IOException iox) {</span>
+<span class="nc" id="L157">        throw new JPFException(&quot;cannot read tracefile: &quot; + fileName);</span>
+<span class="fc" id="L158">      }</span>
+
+<span class="fc" id="L160">      return scanner;</span>
+    } else {
+<span class="fc" id="L162">      return null;</span>
+    }
+  }
+
+  static void match (StreamTokenizer scanner, String s) throws IOException {
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">    if ((scanner.ttype == StreamTokenizer.TT_WORD) &amp;&amp; (scanner.sval.equals(s))) {</span>
+<span class="fc" id="L168">      scanner.nextToken();</span>
+    } else {
+<span class="nc" id="L170">      throw new JPFException (&quot;tracefile error - expected &quot; + s + &quot;, got: &quot; + scanner.sval);</span>
+    }
+<span class="fc" id="L172">  }</span>
+
+  static String matchString (StreamTokenizer scanner) throws IOException {
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">    if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="fc" id="L176">      String s = scanner.sval;</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">      if (s.length() == 0) {</span>
+<span class="nc" id="L178">        throw new JPFException (&quot;tracefile error - non-empty string expected&quot;);</span>
+      }
+<span class="fc" id="L180">      scanner.nextToken();</span>
+<span class="fc" id="L181">      return s;</span>
+    } else {
+<span class="nc" id="L183">      throw new JPFException (&quot;tracefile error - word expected, got: &quot; + scanner.sval);</span>
+    }
+  }
+
+  static void matchChar (StreamTokenizer scanner, char c) throws IOException {
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">    if (scanner.ttype == c) {</span>
+<span class="fc" id="L189">      scanner.nextToken();</span>
+    } else {
+<span class="nc" id="L191">      throw new JPFException (&quot;tracefile error - char '&quot;</span>
+                              + c + &quot;' expected, got: &quot; + scanner.sval);
+    }
+<span class="fc" id="L194">  }</span>
+
+  static int matchNumber (StreamTokenizer scanner) throws IOException {
+    try {
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">      if (scanner.ttype == StreamTokenizer.TT_WORD) {</span>
+<span class="fc" id="L199">        int n = Integer.parseInt(scanner.sval);</span>
+<span class="fc" id="L200">        scanner.nextToken();</span>
+<span class="fc" id="L201">        return n;</span>
+      }
+<span class="nc" id="L203">    } catch (NumberFormatException nfx) {}</span>
+
+<span class="nc" id="L205">    throw new JPFException (&quot;tracefile error - number expected, got: &quot; + scanner.sval);</span>
+  }
+
+  /**
+   * &quot;application:&quot; appName
+   *  {arg}
+   *  &quot;[&quot;searchLevel&quot;]&quot; (choiceGeneratorName | '#'cgID) nChoice
+   */
+  public static ChoicePoint readTrace (String fileName, String sutName) {
+<span class="fc" id="L214">    ChoicePoint firstCp = null, cp = null;</span>
+<span class="fc" id="L215">    StreamTokenizer scanner = createScanner(fileName);</span>
+
+<span class="fc bfc" id="L217" title="All 2 branches covered.">    if (scanner == null) {</span>
+<span class="fc" id="L218">      return null;</span>
+    }
+
+    try {
+<span class="fc" id="L222">    match(scanner, &quot;application:&quot;);</span>
+<span class="fc" id="L223">    match(scanner, sutName);</span>
+
+<span class="fc" id="L225">    HashMap&lt;String,String&gt; map = new HashMap&lt;String,String&gt;();</span>
+<span class="fc" id="L226">    int clsId = 0;</span>
+
+<span class="fc bfc" id="L228" title="All 2 branches covered.">    while (scanner.ttype != StreamTokenizer.TT_EOF) {</span>
+<span class="fc" id="L229">      matchChar(scanner, '[');</span>
+<span class="fc" id="L230">      matchNumber(scanner);</span>
+<span class="fc" id="L231">      matchChar(scanner, ']');</span>
+
+<span class="fc" id="L233">      String cpClass  = matchString(scanner);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">      if (cpClass.charAt(0) == '#') { // it's a CG class id</span>
+<span class="fc" id="L235">        cpClass = map.get(cpClass);</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (cpClass == null) {</span>
+<span class="nc" id="L237">          throw new JPFException(&quot;tracefile error - unknown ChoicePoint class id: &quot; + cpClass);</span>
+        }
+      } else {
+<span class="fc" id="L240">        String id = &quot;#&quot; + clsId++;</span>
+<span class="fc" id="L241">        map.put(id, cpClass);</span>
+      }
+
+<span class="fc" id="L244">      int choiceIndex = matchNumber(scanner);</span>
+
+<span class="fc" id="L246">      cp = new ChoicePoint(cpClass, choiceIndex, cp);</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">      if (firstCp == null) {</span>
+<span class="fc" id="L248">        firstCp = cp;</span>
+      }
+<span class="fc" id="L250">    }</span>
+<span class="nc" id="L251">    } catch (IOException iox) {</span>
+<span class="nc" id="L252">      throw new JPFException(&quot;tracefile read error: &quot; + iox.getMessage());</span>
+<span class="fc" id="L253">    }</span>
+
+<span class="fc" id="L255">    return firstCp;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

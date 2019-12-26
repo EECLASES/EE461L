@@ -1,0 +1,1379 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MethodInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">MethodInfo.java</span></div><h1>MethodInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.LocationSpec;
+import gov.nasa.jpf.vm.bytecode.ReturnInstruction;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+
+/**
+ * information associated with a method. Each method in JPF
+ * is represented by a MethodInfo object
+ */
+public class MethodInfo extends InfoObject implements GenericSignatureHolder  {
+
+<span class="fc" id="L38">  static JPFLogger logger = JPF.getLogger(&quot;gov.nasa.jpf.vm.MethodInfo&quot;);</span>
+  
+  static final int INIT_MTH_SIZE = 4096;
+<span class="fc" id="L41">  protected static final ArrayList&lt;MethodInfo&gt; mthTable = new ArrayList&lt;MethodInfo&gt;(INIT_MTH_SIZE);</span>
+  
+  // special globalIds
+  static final int DIRECT_CALL = -1;
+
+<span class="fc" id="L46">  static final LocalVarInfo[] EMPTY = new LocalVarInfo[0];</span>
+  
+<span class="fc" id="L48">  static final int[] EMPTY_INT = new int[0];</span>
+  
+  /**
+   * Used to warn about local variable information.
+   */
+<span class="fc" id="L53">  protected static boolean warnedLocalInfo = false;</span>
+  
+  //--- various JPF method attributes
+  static final int  EXEC_ATOMIC = 0x10000; // method executed atomically
+  static final int  EXEC_HIDDEN = 0x20000; // method hidden from path
+  static final int  FIREWALL    = 0x40000; // firewall any unhandled exceptionHandlers
+                                           // (turn into UnhandledException throws)
+  static final int  IS_CLINIT   = 0x80000;
+  static final int  IS_INIT     = 0x100000;
+  
+  static final int  IS_REFLECTION = 0x200000; // this is a reflection direct call
+  static final int  IS_DIRECT_CALL = 0x400000;
+  
+  /** a unique int assigned to this method */
+<span class="fc" id="L67">  protected int globalId = -1;</span>
+
+  /**
+   * this is a lazy evaluated mangled name consisting of the name and
+   * arg type signature
+   */
+  protected String uniqueName;
+
+  /** Name of the method */
+  protected String name;
+
+  /** Signature of the method */
+  protected String signature;
+
+  /** Generic signature of the method */
+  protected String genericSignature;
+
+  /** Class the method belongs to */
+  protected ClassInfo ci;
+
+  /** Instructions associated with the method */
+  protected Instruction[] code;
+
+  /** JPFConfigException handlers */
+  protected ExceptionHandler[] exceptionHandlers;
+
+  /** classnames of checked exception thrown by the method */
+  protected String[] thrownExceptionClassNames;
+
+  /** Table used for line numbers 
+   * this assigns a line number to every instruction index, instead of 
+   * using an array of ranges. Assuming we have 2-3 insns per line on average,
+   * this should still require less memory than a reference array with associated
+   * range objects, and allows faster access of instruction line numbers, which
+   * we might need for location specs
+   */
+  protected int[] lineNumbers;
+  
+  /** Local variable information */
+<span class="fc" id="L106">  protected LocalVarInfo localVars[] = null;</span>
+
+  /** Maximum number of local variables */
+  protected int maxLocals;
+
+  /** Maximum number of elements on the stack */
+  protected int maxStack;
+
+  /** null if we don't have any */
+  AnnotationInfo[][] parameterAnnotations;
+
+  //--- a batch of attributes
+  
+  /** the standard Java modifier attributes */
+  protected int modifiers;
+   
+  /** a batch of execution related JPF attributes */
+  protected int attributes;
+      
+
+  //--- all the stuff we need for native methods
+  // &lt;2do&gt; pcm - turn this into a derived class
+
+  /**  the number of stack slots for the arguments (incl. 'this'), lazy eval */
+<span class="fc" id="L130">  protected int argSize = -1;</span>
+
+  /** number of arguments (excl. 'this'), lazy eval */
+<span class="fc" id="L133">  protected int nArgs = -1;</span>
+
+  /** what return type do we have (again, lazy evaluated) */
+<span class="fc" id="L136">  protected byte returnType = -1;</span>
+
+  /** number of stack slots for return value */
+<span class="fc" id="L139">  protected int retSize = -1;</span>
+
+  /** used for native method parameter conversion (lazy evaluated) */
+<span class="fc" id="L142">  protected byte[] argTypes = null;</span>
+  
+  static boolean init (Config config) {
+<span class="fc" id="L145">    mthTable.clear();    </span>
+<span class="fc" id="L146">    return true;</span>
+  }
+
+  public static MethodInfo getMethodInfo (int globalId){
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">    if (globalId &gt;=0 &amp;&amp; globalId &lt;mthTable.size()){</span>
+<span class="fc" id="L151">      return mthTable.get(globalId);</span>
+    } else {
+<span class="nc" id="L153">      return null;</span>
+    }
+  }
+  
+  public static MethodInfo create (String name, String signature, int modifiers){
+<span class="fc" id="L158">    return new MethodInfo( name, signature, modifiers);</span>
+  }
+  
+  public static MethodInfo create (ClassInfo ci, String name, String signature, int modifiers){
+<span class="nc" id="L162">    return new MethodInfo( ci, name, signature, modifiers);</span>
+  }
+  
+  static MethodInfo create (ClassInfo ci, String name, String signature, int modifiers, int maxLocals, int maxStack){
+<span class="nc" id="L166">    return new MethodInfo( ci, name, signature, modifiers, maxLocals, maxStack);</span>
+  }
+
+  /**
+   * for direct call construction
+   * Note: this is only a partial initialization, the code still has to be created/installed by the caller
+   */
+<span class="fc" id="L173">  public MethodInfo (MethodInfo callee, int nLocals, int nOperands) {</span>
+<span class="fc" id="L174">    globalId = DIRECT_CALL;</span>
+    // we don't want direct call methods in the mthTable (would be a memory leak) so don't register
+    
+<span class="fc" id="L177">    ci = callee.ci;</span>
+<span class="fc" id="L178">    name = &quot;[&quot; + callee.name + ']'; // it doesn't allocate anything, so we don't have to be unique</span>
+<span class="fc" id="L179">    signature = &quot;()V&quot;;</span>
+<span class="fc" id="L180">    genericSignature = &quot;&quot;;</span>
+<span class="fc" id="L181">    maxLocals = nLocals;</span>
+<span class="fc" id="L182">    maxStack = nOperands;  // &lt;2do&gt; cache for optimization</span>
+<span class="fc" id="L183">    localVars = EMPTY;</span>
+<span class="fc" id="L184">    lineNumbers = null;</span>
+<span class="fc" id="L185">    exceptionHandlers = null;</span>
+<span class="fc" id="L186">    thrownExceptionClassNames = null;</span>
+<span class="fc" id="L187">    uniqueName = name;</span>
+    
+    // we need to preserve the ClassInfo so that class resolution for static method calls works
+<span class="fc" id="L190">    ci = callee.ci;</span>
+    
+<span class="fc" id="L192">    attributes |= IS_DIRECT_CALL;</span>
+<span class="fc" id="L193">    modifiers = Modifier.STATIC;   // always treated as static</span>
+    
+    // code still has to be installed by caller
+<span class="fc" id="L196">  }</span>
+  
+  /**
+   * This is used to create synthetic methods of function object types
+   */
+  public MethodInfo(String name, String signature, int modifiers, int nLocals, int nOperands) {
+<span class="fc" id="L202">    this( name, signature, modifiers);</span>
+<span class="fc" id="L203">    maxLocals = nLocals;</span>
+<span class="fc" id="L204">    maxStack = nOperands;</span>
+<span class="fc" id="L205">    localVars = EMPTY;</span>
+<span class="fc" id="L206">  }</span>
+  
+  /**
+   * for NativeMethodInfo creation 
+   */
+<span class="fc" id="L211">  public MethodInfo (MethodInfo mi) {</span>
+<span class="fc" id="L212">    globalId = mi.globalId;</span>
+<span class="fc" id="L213">    uniqueName = mi.uniqueName;</span>
+<span class="fc" id="L214">    name = mi.name;</span>
+<span class="fc" id="L215">    signature = mi.signature;</span>
+<span class="fc" id="L216">    genericSignature = mi.genericSignature;</span>
+<span class="fc" id="L217">    ci = mi.ci;</span>
+<span class="fc" id="L218">    modifiers = mi.modifiers;</span>
+<span class="fc" id="L219">    attributes = mi.attributes;</span>
+<span class="fc" id="L220">    thrownExceptionClassNames = mi.thrownExceptionClassNames;</span>
+<span class="fc" id="L221">    parameterAnnotations = mi.parameterAnnotations;</span>
+
+<span class="fc" id="L223">    annotations = mi.annotations;</span>
+    
+<span class="fc" id="L225">    localVars = null; // there are no StackFrame localVarInfos, this is native</span>
+    // code still has to be installed by caller
+<span class="fc" id="L227">  }</span>
+  
+  // &lt;2do&gt; this is going away
+<span class="fc" id="L230">  public MethodInfo (ClassInfo ci, String name, String signature, int modifiers, int maxLocals, int maxStack){</span>
+<span class="fc" id="L231">    this.ci = ci;</span>
+<span class="fc" id="L232">    this.name = name;</span>
+<span class="fc" id="L233">    this.signature = signature;</span>
+<span class="fc" id="L234">    this.uniqueName = getUniqueName(name, signature);</span>
+<span class="fc" id="L235">    this.genericSignature = &quot;&quot;;</span>
+<span class="fc" id="L236">    this.maxLocals = maxLocals;</span>
+<span class="fc" id="L237">    this.maxStack = maxStack;</span>
+<span class="fc" id="L238">    this.modifiers = modifiers;</span>
+
+<span class="fc" id="L240">    this.lineNumbers = null;</span>
+<span class="fc" id="L241">    this.exceptionHandlers = null;</span>
+<span class="fc" id="L242">    this.thrownExceptionClassNames = null;</span>
+
+    // set attributes we can deduce from the name and the ClassInfo
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">    if (ci != null){</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">      if (name.equals(&quot;&lt;init&gt;&quot;)) {</span>
+<span class="nc" id="L247">        attributes |= IS_INIT;</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">      } else if (name.equals(&quot;&lt;clinit&gt;&quot;)) {</span>
+<span class="nc" id="L249">        this.modifiers |= Modifier.SYNCHRONIZED;</span>
+<span class="nc" id="L250">        attributes |= IS_CLINIT | FIREWALL;</span>
+      }
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">      if (ci.isInterface()) { // all interface methods are public</span>
+<span class="nc" id="L253">        this.modifiers |= Modifier.PUBLIC;</span>
+      }
+    }
+
+<span class="fc" id="L257">    this.globalId = mthTable.size();</span>
+<span class="fc" id="L258">    mthTable.add(this);</span>
+<span class="fc" id="L259">  }</span>
+
+  
+<span class="fc" id="L262">  public MethodInfo (String name, String signature, int modifiers){</span>
+<span class="fc" id="L263">    this.name = name;</span>
+<span class="fc" id="L264">    this.signature = signature;</span>
+<span class="fc" id="L265">    this.modifiers = modifiers;</span>
+<span class="fc" id="L266">    this.uniqueName = getUniqueName(name, signature);</span>
+<span class="fc" id="L267">    this.genericSignature = &quot;&quot;;</span>
+
+<span class="fc bfc" id="L269" title="All 2 branches covered.">    if (name.equals(&quot;&lt;init&gt;&quot;)) {</span>
+<span class="fc" id="L270">      attributes |= IS_INIT;</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">    } else if (name.equals(&quot;&lt;clinit&gt;&quot;)) {</span>
+      // for some reason clinits don't have the synchronized modifier, but they are synchronized
+      // we keep it consistent so that we don't have to implement special lock acquisition/release for clinits
+<span class="fc" id="L274">      this.modifiers |= Modifier.SYNCHRONIZED;</span>
+<span class="fc" id="L275">      attributes |= IS_CLINIT | FIREWALL;</span>
+    }
+    
+<span class="fc" id="L278">    this.globalId = mthTable.size();</span>
+<span class="fc" id="L279">    mthTable.add(this);    </span>
+<span class="fc" id="L280">  }</span>
+
+  public MethodInfo (ClassInfo ci, String name, String signature, int modifiers){
+<span class="nc" id="L283">    this(name, signature, modifiers);</span>
+    
+<span class="nc" id="L285">    this.ci = ci;</span>
+<span class="nc" id="L286">  }</span>
+  
+  //--- setters used during construction
+  
+  public void linkToClass (ClassInfo ci){
+<span class="fc" id="L291">    this.ci = ci;</span>
+    
+<span class="fc bfc" id="L293" title="All 2 branches covered.">    if (ci.isInterface()) { // all interface methods are public</span>
+<span class="fc" id="L294">      this.modifiers |= Modifier.PUBLIC;</span>
+    }
+<span class="fc" id="L296">  }</span>
+  
+  public void setMaxLocals(int maxLocals){
+<span class="fc" id="L299">    this.maxLocals = maxLocals;</span>
+<span class="fc" id="L300">  }</span>
+
+  public void setMaxStack(int maxStack){
+<span class="fc" id="L303">    this.maxStack = maxStack;</span>
+<span class="fc" id="L304">  }</span>
+  
+  public void setCode (Instruction[] code){
+<span class="fc bfc" id="L307" title="All 2 branches covered.">    for (int i=0; i&lt;code.length; i++){</span>
+<span class="fc" id="L308">      code[i].setMethodInfo(this);</span>
+    }
+<span class="fc" id="L310">    this.code = code;</span>
+<span class="fc" id="L311">  }</span>
+  
+  
+  public boolean hasParameterAnnotations() {
+<span class="nc bnc" id="L315" title="All 2 branches missed.">    return (parameterAnnotations != null);</span>
+  }
+
+  // since some listeners might call this on every method invocation, we should do a little optimization
+<span class="fc" id="L319">  static AnnotationInfo[][] NO_PARAMETER_ANNOTATIONS_0 = new AnnotationInfo[0][];</span>
+<span class="fc" id="L320">  static AnnotationInfo[][] NO_PARAMETER_ANNOTATIONS_1 = { new AnnotationInfo[0] };</span>
+<span class="fc" id="L321">  static AnnotationInfo[][] NO_PARAMETER_ANNOTATIONS_2 = { new AnnotationInfo[0], new AnnotationInfo[0] };</span>
+<span class="fc" id="L322">  static AnnotationInfo[][] NO_PARAMETER_ANNOTATIONS_3 = { new AnnotationInfo[0], new AnnotationInfo[0], new AnnotationInfo[0] };  </span>
+  
+  public AnnotationInfo[][] getParameterAnnotations() {
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">    if (parameterAnnotations == null){ // keep this similar to getAnnotations()</span>
+<span class="nc" id="L326">      int n = getNumberOfArguments();</span>
+<span class="nc bnc" id="L327" title="All 5 branches missed.">      switch (n){</span>
+<span class="nc" id="L328">      case 0: return NO_PARAMETER_ANNOTATIONS_0;</span>
+<span class="nc" id="L329">      case 1: return NO_PARAMETER_ANNOTATIONS_1;</span>
+<span class="nc" id="L330">      case 2: return NO_PARAMETER_ANNOTATIONS_2;</span>
+<span class="nc" id="L331">      case 3: return NO_PARAMETER_ANNOTATIONS_3;</span>
+      default:
+<span class="nc" id="L333">        AnnotationInfo[][] pai = new AnnotationInfo[n][];</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">        for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L335">          pai[i] = new AnnotationInfo[0];</span>
+        }
+<span class="nc" id="L337">        return pai;</span>
+      }
+      
+    } else {
+<span class="fc" id="L341">      return parameterAnnotations;</span>
+    }
+  }
+
+  /**
+   * return annotations for parameterIndex
+   */
+  public AnnotationInfo[] getParameterAnnotations(int parameterIndex){
+<span class="nc bnc" id="L349" title="All 2 branches missed.">    if (parameterAnnotations == null){</span>
+<span class="nc" id="L350">      return null;</span>
+    } else {
+<span class="nc bnc" id="L352" title="All 2 branches missed.">      if (parameterIndex &gt;= getNumberOfArguments()){</span>
+<span class="nc" id="L353">        return null;</span>
+      } else {
+<span class="nc" id="L355">        return parameterAnnotations[parameterIndex];</span>
+      }
+    }
+  }
+
+
+  
+  public static int getNumberOfLoadedMethods () {
+<span class="nc" id="L363">    return mthTable.size();</span>
+  }
+
+  void setAtomic (boolean isAtomic) {
+<span class="nc bnc" id="L367" title="All 2 branches missed.">    if (isAtomic) {</span>
+<span class="nc" id="L368">      attributes |= EXEC_ATOMIC;</span>
+    } else {
+<span class="nc" id="L370">      attributes &amp;= ~EXEC_ATOMIC;</span>
+    }
+<span class="nc" id="L372">  }</span>
+  public boolean isAtomic () {
+<span class="nc bnc" id="L374" title="All 2 branches missed.">    return ((attributes &amp; EXEC_ATOMIC) != 0);</span>
+  }
+  
+  void setHidden (boolean isHidden) {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    if (isHidden) {</span>
+<span class="nc" id="L379">      attributes |= EXEC_HIDDEN;</span>
+    } else {
+<span class="nc" id="L381">      attributes &amp;= ~EXEC_HIDDEN;</span>
+    }
+<span class="nc" id="L383">  }</span>
+  public boolean isHidden () {
+<span class="nc bnc" id="L385" title="All 2 branches missed.">    return ((attributes &amp; EXEC_HIDDEN) != 0);    </span>
+  }
+  
+  /**
+   * turn unhandled exceptionHandlers at the JPF execution level
+   * into UnhandledException throws at the host VM level
+   * this is useful to implement firewalls for direct calls
+   * which should not let exceptionHandlers permeate into bytecode/
+   * application code
+   */
+  public void setFirewall (boolean isFirewalled) {
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">    if (isFirewalled) {</span>
+<span class="fc" id="L397">      attributes |= FIREWALL;</span>
+    } else {
+<span class="nc" id="L399">      attributes &amp;= ~FIREWALL;</span>
+    }
+<span class="fc" id="L401">  }</span>
+  public boolean isFirewall () {
+<span class="fc bfc" id="L403" title="All 2 branches covered.">    return ((attributes &amp; FIREWALL) != 0);    </span>
+  }
+  
+  
+  
+  @Override
+  public Object clone() {
+    try {
+<span class="nc" id="L411">      return super.clone();</span>
+<span class="nc" id="L412">    } catch (CloneNotSupportedException cnx) {</span>
+<span class="nc" id="L413">      return null;</span>
+    }
+  }
+  
+  public int getGlobalId() {
+<span class="fc" id="L418">    return globalId;</span>
+  }
+
+  public DirectCallStackFrame createRunStartStackFrame (ThreadInfo ti){
+<span class="fc" id="L422">    return ci.createRunStartStackFrame( ti, this);</span>
+  }
+
+  public DirectCallStackFrame createDirectCallStackFrame (ThreadInfo ti, int nLocals){
+<span class="fc" id="L426">    return ci.createDirectCallStackFrame(ti, this, nLocals);</span>
+  }
+
+  public boolean isSyncRelevant () {
+<span class="nc bnc" id="L430" title="All 2 branches missed.">    return (name.charAt(0) != '&lt;');</span>
+  }
+  
+  public boolean isInitOrClinit (){
+<span class="nc bnc" id="L434" title="All 2 branches missed.">    return ((attributes &amp; (IS_CLINIT | IS_INIT)) != 0);</span>
+  }
+  
+  public boolean isClinit () {
+<span class="fc bfc" id="L438" title="All 2 branches covered.">    return ((attributes &amp; IS_CLINIT) != 0);</span>
+  }
+
+  public boolean isClinit (ClassInfo ci) {
+<span class="fc bfc" id="L442" title="All 4 branches covered.">    return (((attributes &amp; IS_CLINIT) != 0) &amp;&amp; (this.ci == ci));</span>
+  }
+
+  public boolean isInit() {
+<span class="fc bfc" id="L446" title="All 2 branches covered.">    return ((attributes &amp; IS_INIT) != 0);</span>
+  }
+  
+  public boolean isDirectCallStub(){
+<span class="nc bnc" id="L450" title="All 2 branches missed.">    return ((attributes &amp; IS_DIRECT_CALL) != 0);    </span>
+  }
+  
+  /**
+   * yet another name - this time with a non-mangled, but abbreviated signature
+   * and without return type (e.g. like &quot;main(String[])&quot;
+   */
+  public String getLongName () {
+<span class="fc" id="L458">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L459">    sb.append(name);</span>
+    
+<span class="fc" id="L461">    sb.append('(');</span>
+<span class="fc" id="L462">    String[] argTypeNames = getArgumentTypeNames();</span>
+<span class="fc bfc" id="L463" title="All 2 branches covered.">    for (int i=0; i&lt;argTypeNames.length; i++) {</span>
+<span class="fc" id="L464">      String a = argTypeNames[i];</span>
+<span class="fc" id="L465">      int idx = a.lastIndexOf('.');</span>
+<span class="pc bpc" id="L466" title="1 of 2 branches missed.">      if (idx &gt; 0) {</span>
+<span class="fc" id="L467">        a = a.substring(idx+1);</span>
+      }
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">      if (i&gt;0) {</span>
+<span class="nc" id="L470">        sb.append(',');</span>
+      }
+<span class="fc" id="L472">      sb.append(a);</span>
+    }
+<span class="fc" id="L474">    sb.append(')');</span>
+    
+<span class="fc" id="L476">    return sb.toString();</span>
+  }
+  
+  /**
+   * return the minimal name that has to be unique for overloading
+   * used as a lookup key
+   * NOTE: with the silent introduction of covariant return types
+   * in Java 5.0, we have to use the full signature to be unique
+   */
+  public static String getUniqueName (String mname, String signature) {
+<span class="fc" id="L486">    return (mname + signature);</span>
+  }
+
+  public String getStackTraceSource() {
+<span class="fc" id="L490">    return getSourceFileName();</span>
+  }
+
+  public byte[] getArgumentTypes () {
+<span class="fc bfc" id="L494" title="All 2 branches covered.">    if (argTypes == null) {</span>
+<span class="fc" id="L495">      argTypes = Types.getArgumentTypes(signature);</span>
+<span class="fc" id="L496">      nArgs = argTypes.length;</span>
+    }
+
+<span class="fc" id="L499">    return argTypes;</span>
+  }
+
+  public String[] getArgumentTypeNames () {
+<span class="fc" id="L503">    return Types.getArgumentTypeNames(signature);</span>
+  }
+  
+  public int getArgumentsSize () {
+<span class="fc bfc" id="L507" title="All 2 branches covered.">    if (argSize &lt; 0) {</span>
+<span class="fc" id="L508">      argSize = Types.getArgumentsSize(signature);</span>
+
+<span class="fc bfc" id="L510" title="All 2 branches covered.">      if (!isStatic()) {</span>
+<span class="fc" id="L511">        argSize++;</span>
+      }
+    }
+
+<span class="fc" id="L515">    return argSize;</span>
+  }
+  
+  /**
+   * return only the LocalVarInfos for arguments, in order of definition
+   * or null if there are no localVarInfos.
+   * throw a JPFException if there are more immediately in scope vars than args
+   * 
+   * NOTE - it is perfectly legal for a method to have arguments but no LocalVarInfos,
+   * which are code attributes, clients have to check for a non-null return value
+   * even if the method has arguments.
+   * Note also that abstract / interface methods don't have code and hence no
+   * LocalVarInfos
+   */
+  public LocalVarInfo[] getArgumentLocalVars(){
+<span class="pc bpc" id="L530" title="1 of 2 branches missed.">    if (localVars == null){ // shortcut in case we don't have args or localVars;</span>
+<span class="nc" id="L531">      return null;</span>
+    }
+    
+<span class="fc" id="L534">    int nArgs = getNumberOfStackArguments(); // we want 'this'</span>
+<span class="fc bfc" id="L535" title="All 2 branches covered.">    if (nArgs == 0){</span>
+<span class="fc" id="L536">      return new LocalVarInfo[0]; // rare enough so that we don't use a static</span>
+    }
+
+<span class="fc" id="L539">    LocalVarInfo[] argLvis = new LocalVarInfo[nArgs];</span>
+<span class="fc" id="L540">    int n = 0; // how many args we've got so far</span>
+    
+<span class="fc bfc" id="L542" title="All 2 branches covered.">    for (LocalVarInfo lvi : localVars){</span>
+      // arguments are the only ones that are immediately in scope
+<span class="fc bfc" id="L544" title="All 2 branches covered.">      if (lvi.getStartPC() == 0){</span>
+<span class="pc bpc" id="L545" title="1 of 2 branches missed.">        if (n == nArgs){ // ARGH - more in-scope vars than args</span>
+<span class="nc" id="L546">          throw new JPFException(&quot;inconsistent localVar table for method &quot; + getFullName());</span>
+        }
+        
+        // order with respect to slot index - since this might get called
+        // frequently, we don't use java.util.Arrays.sort() but sort in
+        // on-the-fly. Note that we can have several localVar entries for the
+        // same name, but only one can be immediately in scope
+<span class="fc" id="L553">        int slotIdx = lvi.getSlotIndex();</span>
+
+        int i;
+<span class="fc bfc" id="L556" title="All 2 branches covered.">        for (i = 0; i &lt; n; i++) {</span>
+<span class="pc bpc" id="L557" title="1 of 2 branches missed.">          if (slotIdx &lt; argLvis[i].getSlotIndex()) {</span>
+<span class="nc bnc" id="L558" title="All 2 branches missed.">            for (int j=n; j&gt;i; j--){</span>
+<span class="nc" id="L559">              argLvis[j] = argLvis[j-1];</span>
+            }
+<span class="nc" id="L561">            argLvis[i] = lvi;</span>
+<span class="nc" id="L562">            n++;</span>
+<span class="nc" id="L563">            break;</span>
+          }
+        }
+<span class="pc bpc" id="L566" title="1 of 2 branches missed.">        if (i == n) { // append</span>
+<span class="fc" id="L567">          argLvis[n++] = lvi;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L572">    return argLvis;</span>
+  }
+  
+  public String getReturnType () {
+<span class="fc" id="L576">    return Types.getReturnTypeSignature(signature);</span>
+  }
+
+  public String getReturnTypeName () {
+<span class="fc" id="L580">    return Types.getReturnTypeName(signature);</span>
+  }
+  
+  public String getSourceFileName () {
+<span class="pc bpc" id="L584" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L585">      return ci.getSourceFileName();</span>
+    } else {
+<span class="nc" id="L587">      return &quot;[VM]&quot;;</span>
+    }
+  }
+
+  public String getClassName () {
+<span class="pc bpc" id="L592" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L593">      return ci.getName();</span>
+    } else {
+<span class="nc" id="L595">      return &quot;[VM]&quot;;</span>
+    }
+  }
+  
+  /**
+   * Returns the class the method belongs to.
+   */
+  public ClassInfo getClassInfo () {
+<span class="fc" id="L603">    return ci;</span>
+  }
+
+  /**
+   * @deprecated - use getFullName
+   */
+  @Deprecated
+public String getCompleteName () {
+<span class="nc" id="L611">    return getFullName();</span>
+  }
+
+  /**
+   * return classname.name (but w/o signature)
+   */
+  public String getBaseName() {
+<span class="fc" id="L618">    return getClassName() + '.' + name;</span>
+  }
+    
+  public boolean isCtor () {
+<span class="fc" id="L622">    return (name.equals(&quot;&lt;init&gt;&quot;));</span>
+  }
+  
+  public boolean isInternalMethod () {
+    // &lt;2do&gt; pcm - should turn this into an attribute for efficiency reasons
+<span class="nc bnc" id="L627" title="All 4 branches missed.">    return (name.equals(&quot;&lt;clinit&gt;&quot;) || uniqueName.equals(&quot;finalize()V&quot;));</span>
+  }
+  
+  public boolean isThreadEntry (ThreadInfo ti) {
+<span class="nc bnc" id="L631" title="All 4 branches missed.">    return (uniqueName.equals(&quot;run()V&quot;) &amp;&amp; (ti.countStackFrames() == 1));</span>
+  }
+  
+  /**
+   * Returns the full classname (if any) + name + signature.
+   */
+  public String getFullName () {
+<span class="pc bpc" id="L638" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L639">      return ci.getName() + '.' + getUniqueName();</span>
+    } else {
+<span class="nc" id="L641">      return getUniqueName();</span>
+    }
+  }
+
+  /**
+   * returns stack trace name: classname (if any) + name
+   */
+  public String getStackTraceName(){
+<span class="pc bpc" id="L649" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L650">      return ci.getName() + '.' + name;</span>
+    } else {
+<span class="nc" id="L652">      return name;</span>
+    }
+  }
+  
+  /**
+   * return number of instructions
+   */
+  public int getNumberOfInstructions() {
+<span class="pc bpc" id="L660" title="1 of 2 branches missed.">    if (code == null){</span>
+<span class="nc" id="L661">      return 0;</span>
+    }
+    
+<span class="fc" id="L664">    return code.length;</span>
+  }
+  
+  /**
+   * Returns a specific instruction.
+   */
+  public Instruction getInstruction (int i) {
+<span class="fc bfc" id="L671" title="All 2 branches covered.">    if (code == null) {</span>
+<span class="fc" id="L672">      return null;</span>
+    }
+
+<span class="pc bpc" id="L675" title="2 of 4 branches missed.">    if ((i &lt; 0) || (i &gt;= code.length)) {</span>
+<span class="nc" id="L676">      return null;</span>
+    }
+
+<span class="fc" id="L679">    return code[i];</span>
+  }
+
+  /**
+   * Returns the instruction at a certain position.
+   */
+  public Instruction getInstructionAt (int position) {
+<span class="pc bpc" id="L686" title="1 of 2 branches missed.">    if (code == null) {</span>
+<span class="nc" id="L687">      return null;</span>
+    }
+
+<span class="pc bpc" id="L690" title="1 of 2 branches missed.">    for (int i = 0, l = code.length; i &lt; l; i++) {</span>
+<span class="pc bpc" id="L691" title="1 of 4 branches missed.">      if ((code[i] != null) &amp;&amp; (code[i].getPosition() == position)) {</span>
+<span class="fc" id="L692">        return code[i];</span>
+      }
+    }
+
+<span class="nc" id="L696">    throw new JPFException(&quot;instruction not found&quot;);</span>
+  }
+
+  /**
+   * Returns the instructions of the method.
+   */
+  public Instruction[] getInstructions () {
+<span class="fc" id="L703">    return code;</span>
+  }
+  
+  public boolean includesLine (int line){
+<span class="nc" id="L707">    int len = code.length;</span>
+<span class="nc bnc" id="L708" title="All 4 branches missed.">    return (code[0].getLineNumber() &lt;= line) &amp;&amp; (code[len].getLineNumber() &gt;= line);</span>
+  }
+
+  public Instruction[] getInstructionsForLine (int line){
+<span class="fc" id="L712">    return getInstructionsForLineInterval(line,line);</span>
+  }
+
+  public Instruction[] getInstructionsForLineInterval (int l1, int l2){
+<span class="fc" id="L716">    Instruction[] c = code;</span>
+       
+    // instruction line numbers don't have to be monotonic (they can decrease for loops)
+    // hence we cannot easily check for overlapping ranges
+    
+<span class="pc bpc" id="L721" title="1 of 2 branches missed.">    if (c != null){</span>
+<span class="fc" id="L722">       ArrayList&lt;Instruction&gt; matchingInsns = null;</span>
+       
+<span class="fc bfc" id="L724" title="All 2 branches covered.">       for (int i = 0; i &lt; c.length; i++) {</span>
+<span class="fc" id="L725">        Instruction insn = c[i];</span>
+<span class="fc" id="L726">        int line = insn.getLineNumber();</span>
+<span class="pc bpc" id="L727" title="2 of 8 branches missed.">        if (line == l1 || line == l2 || (line &gt; l1 &amp;&amp; line &lt; l2)) {</span>
+<span class="fc bfc" id="L728" title="All 2 branches covered.">          if (matchingInsns == null) {</span>
+<span class="fc" id="L729">            matchingInsns = new ArrayList&lt;Instruction&gt;();</span>
+          }
+<span class="fc" id="L731">          matchingInsns.add(insn);</span>
+        }
+      }
+      
+<span class="fc bfc" id="L735" title="All 2 branches covered.">      if (matchingInsns == null) {</span>
+<span class="fc" id="L736">        return null;</span>
+      } else {
+<span class="fc" id="L738">        return matchingInsns.toArray(new Instruction[matchingInsns.size()]);</span>
+      }
+            
+    } else {
+<span class="nc" id="L742">      return null;</span>
+    }
+  }
+
+  public Instruction[] getMatchingInstructions (LocationSpec lspec){
+<span class="fc" id="L747">    return getInstructionsForLineInterval(lspec.getFromLine(), lspec.getToLine());</span>
+  }
+
+
+  /**
+   * Returns the line number for a given position.
+   */
+  public int getLineNumber (Instruction pc) {
+<span class="fc bfc" id="L755" title="All 2 branches covered.">    if (lineNumbers == null) {</span>
+<span class="pc bpc" id="L756" title="1 of 2 branches missed.">      if (pc == null)</span>
+<span class="nc" id="L757">        return -1;</span>
+      else
+<span class="fc" id="L759">        return pc.getPosition();</span>
+    }
+
+<span class="pc bpc" id="L762" title="1 of 2 branches missed.">    if (pc != null) {</span>
+<span class="fc" id="L763">      int idx = pc.getInstructionIndex();</span>
+<span class="pc bpc" id="L764" title="1 of 2 branches missed.">      if (idx &lt; 0) idx = 0;</span>
+<span class="fc" id="L765">      return lineNumbers[idx];</span>
+    } else {
+<span class="nc" id="L767">      return -1;</span>
+    }
+  }
+
+  /**
+   * Returns a table to translate positions into line numbers.
+   */
+  public int[] getLineNumbers () {
+<span class="fc" id="L775">    return lineNumbers;</span>
+  }
+
+  public boolean containsLineNumber (int n){
+<span class="nc bnc" id="L779" title="All 2 branches missed.">    if (lineNumbers != null){</span>
+<span class="nc bnc" id="L780" title="All 4 branches missed.">      return (lineNumbers[0] &lt;= n) &amp;&amp; (lineNumbers[lineNumbers.length-1] &lt;= n);</span>
+    }
+    
+<span class="nc" id="L783">    return false;</span>
+  }
+  
+  public boolean intersectsLineNumbers( int first, int last){
+<span class="nc bnc" id="L787" title="All 2 branches missed.">    if (lineNumbers != null){</span>
+<span class="nc bnc" id="L788" title="All 4 branches missed.">      if ((last &lt; lineNumbers[0]) || (first &gt; lineNumbers[lineNumbers.length-1])){</span>
+<span class="nc" id="L789">        return false;</span>
+      }
+<span class="nc" id="L791">      return true;</span>
+    }
+    
+<span class="nc" id="L794">    return false;</span>
+  }
+  
+  public ExceptionHandler getHandlerFor (ClassInfo ciException, Instruction insn){
+<span class="fc bfc" id="L798" title="All 2 branches covered.">    if (exceptionHandlers != null){</span>
+<span class="fc" id="L799">      int position = insn.getPosition();</span>
+<span class="fc bfc" id="L800" title="All 2 branches covered.">      for (int i=0; i&lt;exceptionHandlers.length; i++){</span>
+<span class="fc" id="L801">        ExceptionHandler handler = exceptionHandlers[i];</span>
+<span class="fc bfc" id="L802" title="All 4 branches covered.">        if ((position &gt;= handler.getBegin()) &amp;&amp; (position &lt; handler.getEnd())) {</span>
+          // checks if this type of exception is caught here (null means 'any')
+<span class="fc" id="L804">          String handledType = handler.getName();</span>
+<span class="fc bfc" id="L805" title="All 2 branches covered.">          if ((handledType == null)   // a catch-all handler</span>
+<span class="fc bfc" id="L806" title="All 2 branches covered.">                  || ciException.isInstanceOf(handledType)) {</span>
+<span class="fc" id="L807">            return handler;</span>
+          }
+        }          
+      }      
+    }
+    
+<span class="fc" id="L813">    return null;</span>
+  }
+  
+  public boolean isMJI () {
+<span class="fc" id="L817">    return false;</span>
+  }
+
+  public int getMaxLocals () {
+<span class="fc" id="L821">    return maxLocals;</span>
+  }
+
+  public int getMaxStack () {
+<span class="fc" id="L825">    return maxStack;</span>
+  }
+
+  public ExceptionHandler[] getExceptions () {
+<span class="nc" id="L829">    return exceptionHandlers;</span>
+  }
+
+  public String[] getThrownExceptionClassNames () {
+<span class="fc" id="L833">    return thrownExceptionClassNames;</span>
+  }
+
+
+  public LocalVarInfo getLocalVar(String name, int pc){
+<span class="fc" id="L838">    LocalVarInfo[] vars = localVars;</span>
+<span class="pc bpc" id="L839" title="1 of 2 branches missed.">    if (vars != null){</span>
+<span class="fc bfc" id="L840" title="All 2 branches covered.">      for (int i = 0; i &lt; vars.length; i++) {</span>
+<span class="fc" id="L841">        LocalVarInfo lv = vars[i];</span>
+<span class="fc bfc" id="L842" title="All 2 branches covered.">        if (lv.matches(name, pc)) {</span>
+<span class="fc" id="L843">          return lv;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L848">    return null;</span>
+
+  }
+
+  public LocalVarInfo getLocalVar (int slotIdx, int pc){
+<span class="fc" id="L853">    LocalVarInfo[] vars = localVars;</span>
+
+<span class="fc bfc" id="L855" title="All 2 branches covered.">    if (vars != null){</span>
+<span class="pc bpc" id="L856" title="1 of 2 branches missed.">      for (int i = 0; i &lt; vars.length; i++) {</span>
+<span class="fc" id="L857">        LocalVarInfo lv = vars[i];</span>
+<span class="fc bfc" id="L858" title="All 2 branches covered.">        if (lv.matches(slotIdx, pc)) {</span>
+<span class="fc" id="L859">          return lv;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L864">    return null;</span>
+  }
+
+  public LocalVarInfo[] getLocalVars() {
+<span class="fc" id="L868">    return localVars; </span>
+  }
+
+
+  /**
+   * note that this might contain duplicates for variables with multiple
+   * scope entries
+   */
+  public String[] getLocalVariableNames() {
+<span class="fc" id="L877">    String[] names = new String[localVars.length];</span>
+
+<span class="fc bfc" id="L879" title="All 2 branches covered.">    for (int i=0; i&lt;localVars.length; i++){</span>
+<span class="fc" id="L880">      names[i] = localVars[i].getName();</span>
+    }
+
+<span class="fc" id="L883">    return names;</span>
+  }
+
+
+  public MethodInfo getOverriddenMethodInfo(){
+<span class="nc" id="L888">    MethodInfo smi = null;</span>
+    
+<span class="nc bnc" id="L890" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L891">      ClassInfo sci = ci.getSuperClass();</span>
+<span class="nc bnc" id="L892" title="All 2 branches missed.">      if (sci != null){</span>
+<span class="nc" id="L893">        smi = sci.getMethod(getUniqueName(), true);</span>
+      }
+    }
+    
+<span class="nc" id="L897">    return smi;</span>
+  }
+  
+  /**
+   * Returns the name of the method.
+   */
+  public String getName () {
+<span class="fc" id="L904">    return name;</span>
+  }
+
+  public String getJNIName () {
+<span class="nc" id="L908">    return Types.getJNIMangledMethodName(null, name, signature);</span>
+  }
+  
+  public int getModifiers () {
+<span class="fc" id="L912">    return modifiers;</span>
+  }
+  
+  /**
+   * Returns true if the method is native
+   */
+  public boolean isNative () {
+<span class="nc bnc" id="L919" title="All 2 branches missed.">    return ((modifiers &amp; Modifier.NATIVE) != 0);</span>
+  }
+
+  public boolean isAbstract () {
+<span class="fc bfc" id="L923" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.ABSTRACT) != 0);</span>
+  }
+  
+  // overridden by NativeMethodInfo
+  public boolean isUnresolvedNativeMethod(){
+<span class="fc bfc" id="L928" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.NATIVE) != 0);</span>
+  }
+
+  // overridden by NativeMethodInfo
+  public boolean isJPFExecutable (){
+<span class="fc bfc" id="L933" title="All 2 branches covered.">    return !hasAttr(NoJPFExec.class);</span>
+  }
+
+  public int getNumberOfArguments () {
+<span class="fc bfc" id="L937" title="All 2 branches covered.">    if (nArgs &lt; 0) {</span>
+<span class="fc" id="L938">      nArgs = Types.getNumberOfArguments(signature);</span>
+    }
+
+<span class="fc" id="L941">    return nArgs;</span>
+  }
+
+  /**
+   * Returns the size of the arguments.
+   * This returns the number of parameters passed on the stack, incl. 'this'
+   */
+  public int getNumberOfStackArguments () {
+<span class="fc" id="L949">    int n = getNumberOfArguments();</span>
+
+<span class="fc bfc" id="L951" title="All 2 branches covered.">    return isStatic() ? n : n + 1;</span>
+  }
+
+  public int getNumberOfCallerStackSlots () {
+<span class="fc" id="L955">    return Types.getNumberOfStackSlots(signature, isStatic()); // includes return type</span>
+  }
+
+  public Instruction getFirstInsn(){
+<span class="pc bpc" id="L959" title="1 of 2 branches missed.">    if (code != null){</span>
+<span class="fc" id="L960">      return code[0];</span>
+    }
+<span class="nc" id="L962">    return null;    </span>
+  }
+  
+  public Instruction getLastInsn() {
+<span class="pc bpc" id="L966" title="1 of 2 branches missed.">    if (code != null){</span>
+<span class="fc" id="L967">      return code[code.length-1];</span>
+    }
+<span class="nc" id="L969">    return null;</span>
+  }
+
+  /**
+   * do we return Object references?
+   */
+  public boolean isReferenceReturnType () {
+<span class="fc" id="L976">    int r = getReturnTypeCode();</span>
+
+<span class="fc bfc" id="L978" title="All 4 branches covered.">    return ((r == Types.T_REFERENCE) || (r == Types.T_ARRAY));</span>
+  }
+
+  public byte getReturnTypeCode () {
+<span class="fc bfc" id="L982" title="All 2 branches covered.">    if (returnType &lt; 0) {</span>
+<span class="fc" id="L983">      returnType = Types.getReturnBuiltinType(signature);</span>
+    }
+
+<span class="fc" id="L986">    return returnType;</span>
+  }
+
+  /**
+   * what is the slot size of the return value
+   */
+  public int getReturnSize() {
+<span class="nc bnc" id="L993" title="All 2 branches missed.">    if (retSize == -1){</span>
+<span class="nc bnc" id="L994" title="All 3 branches missed.">      switch (getReturnTypeCode()) {</span>
+        case Types.T_VOID:
+<span class="nc" id="L996">          retSize = 0;</span>
+<span class="nc" id="L997">          break;</span>
+
+        case Types.T_LONG:
+        case Types.T_DOUBLE:
+<span class="nc" id="L1001">          retSize = 2;</span>
+<span class="nc" id="L1002">          break;</span>
+
+        default:
+<span class="nc" id="L1005">          retSize = 1;</span>
+          break;
+      }
+    }
+
+<span class="nc" id="L1010">    return retSize;</span>
+  }
+
+  public Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; getReturnChoiceGeneratorType (){
+<span class="pc bpc" id="L1014" title="6 of 7 branches missed.">    switch (getReturnTypeCode()){</span>
+      case Types.T_BOOLEAN:
+<span class="nc" id="L1016">        return BooleanChoiceGenerator.class;</span>
+
+      case Types.T_BYTE:
+      case Types.T_CHAR:
+      case Types.T_SHORT:
+      case Types.T_INT:
+<span class="fc" id="L1022">        return IntChoiceGenerator.class;</span>
+
+      case Types.T_LONG:
+<span class="nc" id="L1025">        return LongChoiceGenerator.class;</span>
+
+      case Types.T_FLOAT:
+<span class="nc" id="L1028">        return FloatChoiceGenerator.class;</span>
+
+      case Types.T_DOUBLE:
+<span class="nc" id="L1031">        return DoubleChoiceGenerator.class;</span>
+
+      case Types.T_ARRAY:
+      case Types.T_REFERENCE:
+      case Types.T_VOID:
+<span class="nc" id="L1036">        return ReferenceChoiceGenerator.class;</span>
+    }
+
+<span class="nc" id="L1039">    return null;</span>
+  }
+
+  /**
+   * Returns the signature of the method.
+   */
+  public String getSignature () {
+<span class="fc" id="L1046">    return signature;</span>
+  }
+
+  @Override
+  public String getGenericSignature() {
+<span class="fc" id="L1051">    return genericSignature;</span>
+  }
+
+  @Override
+  public void setGenericSignature(String sig){
+<span class="fc" id="L1056">    genericSignature = sig;</span>
+<span class="fc" id="L1057">  }</span>
+
+  /**
+   * Returns true if the method is static.
+   */
+  public boolean isStatic () {
+<span class="fc bfc" id="L1063" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.STATIC) != 0);</span>
+  }
+
+  /**
+   * is this a public method
+   */
+  public boolean isPublic() {
+<span class="fc bfc" id="L1070" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.PUBLIC) != 0);</span>
+  }
+  
+  public boolean isPrivate() {
+<span class="fc bfc" id="L1074" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.PRIVATE) != 0);</span>
+  }
+  
+  public boolean isProtected() {
+<span class="nc bnc" id="L1078" title="All 2 branches missed.">    return ((modifiers &amp; Modifier.PROTECTED) != 0);</span>
+  }
+
+  /**
+   * Returns true if the method is synchronized.
+   */
+  public boolean isSynchronized () {
+<span class="fc bfc" id="L1085" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.SYNCHRONIZED) != 0);</span>
+  }
+
+  // &lt;2do&gt; these modifiers are still java.lang.reflect internal and not
+  // supported by public Modifier methods, but since we want to keep this 
+  // similar to the Method reflection and we get the modifiers from the
+  // classfile we implement this with explicit values
+  
+  public boolean isSynthetic(){
+<span class="nc bnc" id="L1094" title="All 2 branches missed.">    return ((modifiers &amp; 0x00001000) != 0);    </span>
+  } 
+  public boolean isVarargs(){
+<span class="nc bnc" id="L1097" title="All 2 branches missed.">    return ((modifiers &amp; 0x00000080) != 0);        </span>
+  }
+  
+  /*
+   * is this from a classfile or was it created by JPF (and hence should not
+   * be visible in stacktraces etc)
+   */
+  public boolean isJPFInternal(){
+    // note this has a different meaning than Method.isSynthetic(), which
+    // is defined in VM spec 4.7.8. What we mean here is that this MethodInfo
+    // is not associated with any class (such as direct call MethodInfos), but
+    // there might be more in the future
+<span class="pc bpc" id="L1109" title="1 of 2 branches missed.">    return (ci == null);</span>
+  }
+  
+  public String getUniqueName () {
+<span class="fc" id="L1113">    return uniqueName;</span>
+  }
+  
+  public boolean hasCode(){
+<span class="nc bnc" id="L1117" title="All 2 branches missed.">    return (code != null);</span>
+  }
+  
+  public boolean hasEmptyBody (){
+    // only instruction is a return
+<span class="nc bnc" id="L1122" title="All 4 branches missed.">    return (code.length == 1 &amp;&amp; (code[0] instanceof ReturnInstruction));</span>
+  }
+
+
+  //--- parameter annotations
+  //&lt;2do&gt; these are going away
+  protected void startParameterAnnotations(int annotationCount){
+<span class="nc" id="L1129">    parameterAnnotations = new AnnotationInfo[annotationCount][];</span>
+<span class="nc" id="L1130">  }</span>
+  protected void setParameterAnnotations(int index, AnnotationInfo[] ai){
+<span class="nc" id="L1132">    parameterAnnotations[index] = ai;</span>
+<span class="nc" id="L1133">  }</span>
+  protected void finishParameterAnnotations(){
+    // nothing
+<span class="nc" id="L1136">  }</span>
+
+  public void setParameterAnnotations (AnnotationInfo[][] parameterAnnotations){
+<span class="fc" id="L1139">    this.parameterAnnotations = parameterAnnotations;</span>
+<span class="fc" id="L1140">  }</span>
+  
+  //--- thrown exceptions
+  //&lt;2do&gt; these are going away
+  protected void startTrownExceptions (int exceptionCount){
+<span class="nc" id="L1145">    thrownExceptionClassNames = new String[exceptionCount];</span>
+<span class="nc" id="L1146">  }</span>
+  protected void setException (int index, String exceptionType){
+<span class="nc" id="L1148">    thrownExceptionClassNames[index] = Types.getClassNameFromTypeName(exceptionType);</span>
+<span class="nc" id="L1149">  }</span>
+  protected void finishThrownExceptions(){
+    // nothing
+<span class="nc" id="L1152">  }</span>
+
+  public void setThrownExceptions (String[] exceptions){
+<span class="fc" id="L1155">    thrownExceptionClassNames = exceptions;</span>
+<span class="fc" id="L1156">  }</span>
+  
+
+  //--- exception handler table initialization
+  //&lt;2do&gt; these are going away
+  protected void startExceptionHandlerTable (int handlerCount){
+<span class="nc" id="L1162">    exceptionHandlers = new ExceptionHandler[handlerCount];</span>
+<span class="nc" id="L1163">  }</span>
+  protected void setExceptionHandler (int index, int startPc, int endPc, int handlerPc, String catchType){
+<span class="nc" id="L1165">    exceptionHandlers[index] = new ExceptionHandler(catchType, startPc, endPc, handlerPc);</span>
+<span class="nc" id="L1166">  }</span>
+  protected void finishExceptionHandlerTable(){
+    // nothing
+<span class="nc" id="L1169">  }</span>
+
+  public void setExceptionHandlers (ExceptionHandler[] handlers){
+<span class="fc" id="L1172">    exceptionHandlers = handlers;</span>
+<span class="fc" id="L1173">  }</span>
+  
+  //--- local var table initialization
+  // &lt;2do&gt; these are going away
+  protected void startLocalVarTable (int localVarCount){
+<span class="nc" id="L1178">    localVars = new LocalVarInfo[localVarCount];</span>
+<span class="nc" id="L1179">  }</span>
+  protected void setLocalVar(int index, String varName, String descriptor, int scopeStartPc, int scopeEndPc, int slotIndex){
+<span class="nc" id="L1181">    localVars[index] = new LocalVarInfo(varName, descriptor, &quot;&quot;, scopeStartPc, scopeEndPc, slotIndex);</span>
+<span class="nc" id="L1182">  }</span>
+  protected void finishLocalVarTable(){
+    // nothing to do
+<span class="nc" id="L1185">  }</span>
+
+  public void setLocalVarTable (LocalVarInfo[] locals){
+<span class="fc" id="L1188">    localVars = locals;</span>
+<span class="fc" id="L1189">  }</span>
+  
+  public void setLocalVarAnnotations (){
+<span class="fc bfc" id="L1192" title="All 2 branches covered.">    if (localVars != null){</span>
+<span class="fc bfc" id="L1193" title="All 2 branches covered.">      for (VariableAnnotationInfo ai : getTargetTypeAnnotations(VariableAnnotationInfo.class)){</span>
+<span class="fc bfc" id="L1194" title="All 2 branches covered.">        for (int i = 0; i &lt; ai.getNumberOfScopeEntries(); i++) {</span>
+<span class="fc bfc" id="L1195" title="All 2 branches covered.">          for (LocalVarInfo lv : localVars) {</span>
+<span class="pc bpc" id="L1196" title="1 of 4 branches missed.">            if (lv.getStartPC() == ai.getStartPC(i) &amp;&amp; lv.getSlotIndex() == ai.getSlotIndex(i)) {</span>
+<span class="fc" id="L1197">              lv.addTypeAnnotation(ai);</span>
+            }
+          }
+        }
+<span class="fc" id="L1201">      }</span>
+    }
+<span class="fc" id="L1203">  }</span>
+  
+  public boolean hasTypeAnnotatedLocalVars (){
+<span class="nc bnc" id="L1206" title="All 2 branches missed.">    if (localVars != null){</span>
+<span class="nc bnc" id="L1207" title="All 2 branches missed.">      for (LocalVarInfo lv : localVars){</span>
+<span class="nc bnc" id="L1208" title="All 2 branches missed.">        if (lv.hasTypeAnnotations()){</span>
+<span class="nc" id="L1209">          return true;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L1214">    return false;</span>
+  }
+  
+  public List&lt;LocalVarInfo&gt; getTypeAnnotatedLocalVars (){
+<span class="nc" id="L1218">    List&lt;LocalVarInfo&gt; list = null;</span>
+    
+<span class="nc bnc" id="L1220" title="All 2 branches missed.">    if (localVars != null){</span>
+<span class="nc bnc" id="L1221" title="All 2 branches missed.">      for (LocalVarInfo lv : localVars){</span>
+<span class="nc bnc" id="L1222" title="All 2 branches missed.">        if (lv.hasTypeAnnotations()){</span>
+<span class="nc bnc" id="L1223" title="All 2 branches missed.">          if (list == null){</span>
+<span class="nc" id="L1224">            list = new ArrayList&lt;LocalVarInfo&gt;();</span>
+          }
+<span class="nc" id="L1226">          list.add(lv);</span>
+        }
+      }
+    }
+    
+<span class="nc bnc" id="L1231" title="All 2 branches missed.">    if (list == null){</span>
+<span class="nc" id="L1232">      list = Collections.emptyList();</span>
+    }
+    
+<span class="nc" id="L1235">    return list;</span>
+  }
+  
+  public List&lt;LocalVarInfo&gt; getTypeAnnotatedLocalVars (String annotationClsName){
+<span class="nc" id="L1239">    List&lt;LocalVarInfo&gt; list = null;</span>
+    
+<span class="nc bnc" id="L1241" title="All 2 branches missed.">    if (localVars != null){</span>
+<span class="nc bnc" id="L1242" title="All 2 branches missed.">      for (LocalVarInfo lv : localVars){</span>
+<span class="nc" id="L1243">        AbstractTypeAnnotationInfo tai = lv.getTypeAnnotation(annotationClsName);</span>
+<span class="nc bnc" id="L1244" title="All 2 branches missed.">        if (tai != null){</span>
+<span class="nc bnc" id="L1245" title="All 2 branches missed.">          if (list == null){</span>
+<span class="nc" id="L1246">            list = new ArrayList&lt;LocalVarInfo&gt;();</span>
+          }
+<span class="nc" id="L1248">          list.add(lv);</span>
+        }
+      }
+    }
+    
+<span class="nc bnc" id="L1253" title="All 2 branches missed.">    if (list == null){</span>
+<span class="nc" id="L1254">      list = Collections.emptyList();</span>
+    }
+    
+<span class="nc" id="L1257">    return list;</span>
+  }
+  
+  
+  //--- line number table initialization
+  // &lt;2do&gt; these are going away
+  protected void startLineNumberTable(int lineNumberCount){
+<span class="nc" id="L1264">    int len = code.length;</span>
+<span class="nc" id="L1265">    int[] ln = new int[len];</span>
+
+<span class="nc" id="L1267">    lineNumbers = ln;</span>
+<span class="nc" id="L1268">  }</span>
+  protected void setLineNumber(int index, int lineNumber, int startPc){
+<span class="nc" id="L1270">    int len = code.length;</span>
+<span class="nc" id="L1271">    int[] ln = lineNumbers;</span>
+
+<span class="nc bnc" id="L1273" title="All 2 branches missed.">    for (int i=0; i&lt;len; i++){</span>
+<span class="nc" id="L1274">      Instruction insn = code[i];</span>
+<span class="nc" id="L1275">      int pc = insn.getPosition();</span>
+
+<span class="nc bnc" id="L1277" title="All 2 branches missed.">      if (pc == startPc){ // this is the first insn with this line number</span>
+<span class="nc" id="L1278">        ln[i] = lineNumber;</span>
+<span class="nc" id="L1279">        return;</span>
+      }
+    }
+<span class="nc" id="L1282">  }</span>
+  protected void finishLineNumberTable (){
+<span class="nc" id="L1284">    int len = code.length;</span>
+<span class="nc" id="L1285">    int[] ln = lineNumbers;</span>
+<span class="nc" id="L1286">    int lastLine = ln[0];</span>
+
+<span class="nc bnc" id="L1288" title="All 2 branches missed.">    for (int i=1; i&lt;len; i++){</span>
+<span class="nc bnc" id="L1289" title="All 2 branches missed.">      if (ln[i] == 0){</span>
+<span class="nc" id="L1290">        ln[i] = lastLine;</span>
+      } else {
+<span class="nc" id="L1292">        lastLine = ln[i];</span>
+      }
+    }
+<span class="nc" id="L1295">  }</span>
+
+  /**
+   * note - this depends on that we already have a code array
+   * and that the lines/startPcs are sorted (monotonic increasing)
+   */
+  public void setLineNumbers (int[] lines, int[] startPcs){
+<span class="fc" id="L1302">    int j=0;</span>
+<span class="fc" id="L1303">    int lastLine = -1;</span>
+    
+<span class="fc" id="L1305">    int len = code.length;</span>
+<span class="fc" id="L1306">    int[] ln = new int[len];</span>
+
+<span class="fc bfc" id="L1308" title="All 2 branches covered.">    for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L1309">      Instruction insn = code[i];</span>
+<span class="fc" id="L1310">      int pc = insn.getPosition();</span>
+      
+<span class="fc bfc" id="L1312" title="All 4 branches covered.">      if ((j &lt; startPcs.length) &amp;&amp; pc == startPcs[j]){</span>
+<span class="fc" id="L1313">        lastLine = lines[j];</span>
+<span class="fc" id="L1314">        j++;</span>
+      }
+      
+<span class="fc" id="L1317">      ln[i] = lastLine;</span>
+    }
+    
+<span class="fc" id="L1320">    lineNumbers = ln;</span>
+<span class="fc" id="L1321">  }</span>
+
+  /**
+   * this version takes an already expanded line number array which has to be of
+   * the same size as the code array
+   */
+  public void setLineNumbers (int[] lines){
+<span class="nc bnc" id="L1328" title="All 2 branches missed.">    if (lines.length != code.length){</span>
+<span class="nc" id="L1329">      throw new JPFException(&quot;inconsitent code/line number size&quot;);</span>
+    }
+<span class="nc" id="L1331">    lineNumbers = lines;</span>
+<span class="nc" id="L1332">  }</span>
+  
+  @Override
+  public String toString() {
+<span class="fc" id="L1336">    return &quot;MethodInfo[&quot; + getFullName() + ']';</span>
+  }
+  
+  // for debugging purposes
+  public void dump(){
+<span class="nc" id="L1341">    System.out.println(&quot;--- &quot; + this);</span>
+<span class="nc bnc" id="L1342" title="All 2 branches missed.">    for (int i = 0; i &lt; code.length; i++) {</span>
+<span class="nc" id="L1343">      System.out.printf(&quot;%2d [%d]: %s\n&quot;, i, code[i].getPosition(), code[i].toString());</span>
+    }
+<span class="nc" id="L1345">  }</span>
+
+  /**
+   * Creates a method for a given class, by cloning this MethodInfo
+   * and all the instructions belong to the method
+   */
+  public MethodInfo getInstanceFor(ClassInfo ci) {
+    MethodInfo clone;
+
+    try {
+<span class="fc" id="L1355">      clone = (MethodInfo)super.clone();</span>
+<span class="fc" id="L1356">      clone.ci = ci;</span>
+
+<span class="fc" id="L1358">      clone.globalId = mthTable.size();</span>
+<span class="fc" id="L1359">      mthTable.add(this);</span>
+
+<span class="fc bfc" id="L1361" title="All 2 branches covered.">      if(code == null) {</span>
+<span class="fc" id="L1362">        clone.code = null;</span>
+      } else {
+<span class="fc" id="L1364">        clone.code = new Instruction[code.length];</span>
+
+<span class="fc bfc" id="L1366" title="All 2 branches covered.">        for(int i=0; i&lt;code.length; i++) {</span>
+<span class="fc" id="L1367">          clone.code[i] = code[i].typeSafeClone(clone);</span>
+        }
+      }
+
+<span class="nc" id="L1371">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L1372">      cnsx.printStackTrace();</span>
+<span class="nc" id="L1373">      return null;</span>
+<span class="fc" id="L1374">    }</span>
+
+<span class="fc" id="L1376">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

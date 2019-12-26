@@ -1,0 +1,20 @@
+INDEX VERSION 1.131+/home/miguel/Documents/EE461L/tutorial10/project7EE422C/user/.metadata/.plugins/org.eclipse.jdt.core
+3681211624.index
+3221153583.index
+1273561918.index
+2831262645.index
+2005017129.index
+564179625.index
+288483284.index
+3297528810.index
+3037358795.index
+656962775.index
+1499926217.index
+2050160870.index
+3683590060.index
+468361230.index
+3424455323.index
+649955850.index
+2984006632.index
+1522749964.index
+3304991267.index

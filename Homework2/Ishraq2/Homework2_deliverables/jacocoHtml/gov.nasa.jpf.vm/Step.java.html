@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Step.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Step.java</span></div><h1>Step.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.Source;
+
+import java.util.WeakHashMap;
+
+/**
+ * this corresponds to an executed instruction. Note that we can have a
+ * potentially huge number of Steps, hence we want to save objects here
+ * (e.g. Collection overhead)
+ */
+public class Step {
+
+<span class="nc" id="L31">  private static WeakHashMap&lt;Step, String&gt; s_comments = new WeakHashMap&lt;Step, String&gt;();  // Not every Step gets a comment.  So save memory and put comments in a global comment HashMap.  Make this a WeakHashMap so that old Step objects can be GCed.</span>
+
+  private final Instruction insn;
+  Step next;
+
+<span class="nc" id="L36">  public Step (Instruction insn) {</span>
+<span class="nc bnc" id="L37" title="All 2 branches missed.">    if (insn == null)</span>
+<span class="nc" id="L38">      throw new IllegalArgumentException(&quot;insn == null&quot;);</span>
+
+<span class="nc" id="L40">    this.insn = insn;</span>
+<span class="nc" id="L41">  }</span>
+
+  public Step getNext() {
+<span class="nc" id="L44">    return next;</span>
+  }
+
+  public Instruction getInstruction() {
+<span class="nc" id="L48">    return insn;</span>
+  }
+
+  public void setComment (String s) {
+<span class="nc" id="L52">    s_comments.put(this, s);</span>
+<span class="nc" id="L53">  }</span>
+
+  public String getComment () {
+<span class="nc" id="L56">    return s_comments.get(this);</span>
+  }
+
+  public String getLineString () {
+<span class="nc" id="L60">    MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">    if (mi != null) {</span>
+<span class="nc" id="L62">      Source source = Source.getSource(mi.getSourceFileName());</span>
+<span class="nc bnc" id="L63" title="All 2 branches missed.">      if (source != null) {</span>
+<span class="nc" id="L64">        int line = mi.getLineNumber(insn);</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        if (line &gt; 0) {</span>
+<span class="nc" id="L66">          return source.getLine(line);</span>
+        }
+      }
+    }
+
+<span class="nc" id="L71">    return null;</span>
+  }
+
+  public boolean sameSourceLocation (Step other){
+    
+<span class="nc bnc" id="L76" title="All 2 branches missed.">    if (other != null){</span>
+<span class="nc" id="L77">      MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc" id="L78">      MethodInfo miOther = other.insn.getMethodInfo();</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      if (mi == miOther){</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">        return (mi.getLineNumber(insn) == miOther.getLineNumber(other.insn));</span>
+      }
+    }
+    
+<span class="nc" id="L84">    return false;</span>
+  }
+  
+  public String getLocationString() {
+<span class="nc" id="L88">    MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    if (mi != null) {</span>
+<span class="nc" id="L90">      return mi.getSourceFileName() + ':' + mi.getLineNumber(insn);</span>
+    }
+
+<span class="nc" id="L93">    return &quot;?:?&quot;;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L98">    return getLocationString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

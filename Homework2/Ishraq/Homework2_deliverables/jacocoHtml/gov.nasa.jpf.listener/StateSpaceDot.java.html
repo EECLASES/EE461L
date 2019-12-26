@@ -1,0 +1,528 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateSpaceDot.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">StateSpaceDot.java</span></div><h1>StateSpaceDot.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Step;
+import gov.nasa.jpf.vm.Transition;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+/*
+ * Add a state space observer to JPF and build a graph of the state space
+ * that is explored by JPF. The graph can be generated in different formats.
+ * The current formats that are supported are DOT (visualized by a tool
+ * like GraphViz from ATT - http://www.graphviz.org/) and gdf (used by GUESS
+ * from HP - http://www.hpl.hp.com/research/idl/projects/graphs/).
+ * The graph is stored in a file called &quot;jpf-state-space.&lt;extension&gt;&quot; where
+ * extension is &quot;.dot&quot; or &quot;.gdf&quot;. By default it generates a DOT graph.
+ *
+ * Options:
+ *   -gdf:                Generate the graph in GDF format. The default is DOT.
+ *   -transition-numbers: Include transition numbers in transition labels.
+ *   -show-source:        Include source lines in transition labels.
+ *   -labelvisible:       Indicates if the label on the transitions is visible (used only with the -gdf option)
+ *   -help:               Prints this help information and stops.
+ *
+ * @date 9/12/03
+ * @author Owen O'Malley (Initial version generating the DOT graph)
+ *
+ * @date 7/17/05
+ * @author Masoud Mansouri-Samani (Extended to also generate the gdf graph)
+ */
+public class StateSpaceDot extends ListenerAdapter {
+  // NODE styles constants
+  static final int RECTANGLE = 1;
+  static final int ELLIPSE   = 2;
+  static final int ROUND_RECTANGLE = 3;
+  static final int RECTANGLE_WITH_TEXT = 4;
+  static final int ELLIPSE_WITH_TEXT = 5;
+  static final int ROUND_RECTANGLE_WITH_TEXT = 6;
+
+  private static final String DOT_EXT = &quot;dot&quot;;
+  private static final String GDF_EXT = &quot;gdf&quot;;
+  private static final String OUT_FILENAME_NO_EXT = &quot;jpf-state-space&quot;;
+
+  // State and transition node styles used
+  private static final int state_node_style = ELLIPSE_WITH_TEXT;
+  private static final int transition_node_style = RECTANGLE_WITH_TEXT;
+
+  // File formats supported
+  private static final int DOT_FORMAT=0;
+  private static final int GDF_FORMAT=1;
+
+<span class="nc" id="L78">  private BufferedWriter graph = null;</span>
+<span class="nc" id="L79">  private int edge_id = 0;</span>
+<span class="nc" id="L80">  private static boolean transition_numbers=false;</span>
+<span class="nc" id="L81">  private static boolean show_source=false;</span>
+<span class="nc" id="L82">  private static int format=DOT_FORMAT;</span>
+<span class="nc" id="L83">  private String out_filename = OUT_FILENAME_NO_EXT+&quot;.&quot;+DOT_EXT;</span>
+<span class="nc" id="L84">  private static boolean labelvisible=false;</span>
+<span class="nc" id="L85">  private static boolean helpRequested=false;</span>
+
+
+  /* In gdf format all the edges must come after all the nodes of the graph
+   * are generated. So we first output the nodes as we come across them but
+   * we store the strings for edges in the gdfEdges list and output them when
+   * the search ends.
+   */
+<span class="nc" id="L93">  ArrayList&lt;String&gt; gdfEdges=new ArrayList&lt;String&gt;();</span>
+
+<span class="nc" id="L95">  private StateInformation prev_state = null;</span>
+
+<span class="nc" id="L97">  public StateSpaceDot(Config conf, JPF jpf) {</span>
+
+<span class="nc" id="L99">    VM vm = jpf.getVM();</span>
+<span class="nc" id="L100">    vm.recordSteps(true);</span>
+<span class="nc" id="L101">  }</span>
+
+  @Override
+  public void searchStarted(Search search) {
+    try {
+<span class="nc" id="L106">      beginGraph();</span>
+<span class="nc" id="L107">    } catch (IOException e) {}</span>
+<span class="nc" id="L108">  }</span>
+
+  @Override
+  public void searchFinished(Search search) {
+    try {
+<span class="nc" id="L113">      endGraph();</span>
+<span class="nc" id="L114">    } catch (IOException e) {}</span>
+<span class="nc" id="L115">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="nc" id="L119">    int id = search.getStateId();</span>
+<span class="nc" id="L120">    boolean has_next =search.hasNextState();</span>
+<span class="nc" id="L121">    boolean is_new = search.isNewState();</span>
+    try {
+<span class="nc bnc" id="L123" title="All 2 branches missed.">      if (format==DOT_FORMAT) {</span>
+<span class="nc" id="L124">        graph.write(&quot;/* searchAdvanced(&quot; + id + &quot;, &quot; + makeDotLabel(search, id) +</span>
+                    &quot;, &quot; + has_next + &quot;) */&quot;);
+<span class="nc" id="L126">        graph.newLine();</span>
+      }
+<span class="nc bnc" id="L128" title="All 2 branches missed.">      if (prev_state != null) {</span>
+<span class="nc" id="L129">        addEdge(prev_state.id, id, search);</span>
+      } else {
+<span class="nc" id="L131">        prev_state = new StateInformation();</span>
+      }
+<span class="nc" id="L133">      addNode(prev_state);</span>
+<span class="nc" id="L134">      prev_state.reset(id, has_next, is_new);</span>
+<span class="nc" id="L135">    } catch (IOException e) {}</span>
+<span class="nc" id="L136">  }</span>
+
+  @Override
+  public void stateRestored (Search search) {
+<span class="nc" id="L140">    prev_state.reset(search.getStateId(), false, false);</span>
+<span class="nc" id="L141">  }</span>
+
+  @Override
+  public void stateProcessed (Search search) {
+   // nothing to do
+<span class="nc" id="L146">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+    try {
+<span class="nc" id="L151">      addNode(prev_state);</span>
+<span class="nc" id="L152">      prev_state.reset(search.getStateId(), false, false);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">      if (format==DOT_FORMAT) {</span>
+<span class="nc" id="L154">        graph.write(&quot;/* searchBacktracked(&quot; + prev_state + &quot;) */&quot;);</span>
+<span class="nc" id="L155">        graph.newLine();</span>
+      }
+<span class="nc" id="L157">    } catch (IOException e) {}</span>
+<span class="nc" id="L158">  }</span>
+
+  @Override
+  public void searchConstraintHit(Search search) {
+    try {
+<span class="nc bnc" id="L163" title="All 2 branches missed.">      if (format==DOT_FORMAT) {</span>
+<span class="nc" id="L164">        graph.write(&quot;/* searchConstraintHit(&quot; + search.getStateId() + &quot;) */&quot;);</span>
+<span class="nc" id="L165">        graph.newLine();</span>
+      }
+<span class="nc" id="L167">    } catch (IOException e) {}</span>
+<span class="nc" id="L168">  }</span>
+
+  private String getErrorMsg(Search search) {
+<span class="nc" id="L171">    List&lt;Error&gt; errs = search.getErrors();</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    if (errs.isEmpty()) {</span>
+<span class="nc" id="L173">      return null;</span>
+    } else {
+<span class="nc" id="L175">      return errs.get(0).getDescription();</span>
+    }
+  }
+
+  @Override
+  public void propertyViolated(Search search) {
+	try {
+<span class="nc" id="L182">	  prev_state.error = getErrorMsg(search);</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">	  if (format==DOT_FORMAT) {</span>
+<span class="nc" id="L184">	    graph.write(&quot;/* propertyViolated(&quot; + search.getStateId() + &quot;) */&quot;);</span>
+<span class="nc" id="L185">	    graph.newLine();</span>
+	  }
+<span class="nc" id="L187">	} catch (IOException e) {}</span>
+<span class="nc" id="L188">  }</span>
+
+  /**
+   * Put the header for the graph into the file.
+   */
+  private void beginGraph() throws IOException {
+<span class="nc" id="L194">	graph = new BufferedWriter(new FileWriter(out_filename));</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">	if (format==GDF_FORMAT) {</span>
+<span class="nc" id="L196">	  graph.write(&quot;nodedef&gt;name,label,style,color&quot;);</span>
+	} else { // dot
+<span class="nc" id="L198">	  graph.write(&quot;digraph jpf_state_space {&quot;);</span>
+	}
+<span class="nc" id="L200">	graph.newLine();</span>
+<span class="nc" id="L201">  }</span>
+
+  /**
+   * In the case of the DOT graph it is just adding the final &quot;}&quot; at the end.
+   * In the case of GPF format we must output edge definition and all the
+   * edges that we have found.
+   */
+  private void endGraph() throws IOException {
+<span class="nc bnc" id="L209" title="All 2 branches missed.">    if(prev_state != null)</span>
+<span class="nc" id="L210">      addNode(prev_state);</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">    if (format==GDF_FORMAT) {</span>
+<span class="nc" id="L212">      graph.write(&quot;edgedef&gt;node1,node2,label,labelvisible,directed,thread INT&quot;);</span>
+<span class="nc" id="L213">      graph.newLine();</span>
+
+      // Output all the edges that we have accumulated so far
+<span class="nc" id="L216">      int size=gdfEdges.size();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">  	  for (int i=0; i&lt;size; i++) {</span>
+<span class="nc" id="L218">  		graph.write(gdfEdges.get(i));</span>
+<span class="nc" id="L219">  	    graph.newLine();</span>
+  	  }
+<span class="nc" id="L221">    } else {</span>
+<span class="nc" id="L222">      graph.write(&quot;}&quot;);</span>
+<span class="nc" id="L223">      graph.newLine();</span>
+    }
+<span class="nc" id="L225">    graph.close();</span>
+<span class="nc" id="L226">  }</span>
+
+  /**
+   * Return the string that will be used to label this state for the user.
+   */
+  private String makeDotLabel(Search state, int my_id) {
+<span class="nc" id="L232">    Transition trans = state.getTransition();</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    if (trans == null) {</span>
+<span class="nc" id="L234">      return &quot;-init-&quot;;</span>
+    }
+<span class="nc" id="L236">    Step last_trans_step = trans.getLastStep();</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">    if (last_trans_step == null) {</span>
+<span class="nc" id="L238">      return &quot;?&quot;;</span>
+    }
+
+<span class="nc" id="L241">    StringBuilder result = new StringBuilder();</span>
+
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    if (transition_numbers) {</span>
+<span class="nc" id="L244">      result.append(my_id);</span>
+<span class="nc" id="L245">      result.append(&quot;\\n&quot;);</span>
+    }
+
+<span class="nc" id="L248">    int thread = trans.getThreadIndex();</span>
+
+<span class="nc" id="L250">    result.append(&quot;Thd&quot;);</span>
+<span class="nc" id="L251">    result.append(thread);</span>
+<span class="nc" id="L252">    result.append(':');</span>
+<span class="nc" id="L253">    result.append(last_trans_step.toString());</span>
+
+<span class="nc bnc" id="L255" title="All 2 branches missed.">    if (show_source) {</span>
+<span class="nc" id="L256">      String source_line=last_trans_step.getLineString();</span>
+<span class="nc bnc" id="L257" title="All 4 branches missed.">      if ((source_line != null) &amp;&amp; !source_line.equals(&quot;&quot;)) {</span>
+<span class="nc" id="L258">        result.append(&quot;\\n&quot;);</span>
+
+<span class="nc" id="L260">        StringBuilder sb=new StringBuilder(source_line);</span>
+
+        // We need to precede the dot-specific special characters which appear
+        // in the Java source line, such as ']' and '&quot;', with the '\' escape
+        // characters and also to remove any new lines.
+
+<span class="nc" id="L266">        replaceString(sb, &quot;\n&quot;, &quot;&quot;);</span>
+<span class="nc" id="L267">        replaceString(sb, &quot;]&quot;, &quot;\\]&quot;);</span>
+<span class="nc" id="L268">        replaceString(sb, &quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+<span class="nc" id="L269">        result.append(sb.toString());</span>
+      }
+    }
+
+<span class="nc" id="L273">    return result.toString();</span>
+  }
+
+  /**
+   * Return the string that will be used to label this state in the GDF graph.
+   */
+  private String makeGdfLabel(Search state, int my_id) {
+<span class="nc" id="L280">    Transition trans = state.getTransition();</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">    if (trans == null) {</span>
+<span class="nc" id="L282">  	  return &quot;-init-&quot;;</span>
+  	}
+
+<span class="nc" id="L285">  	StringBuilder result = new StringBuilder();</span>
+
+<span class="nc bnc" id="L287" title="All 2 branches missed.">  	if (transition_numbers) {</span>
+<span class="nc" id="L288">  	  result.append(my_id);</span>
+<span class="nc" id="L289">  	  result.append(':');</span>
+  	}
+
+<span class="nc" id="L292">  	Step last_trans_step = trans.getLastStep();</span>
+<span class="nc" id="L293">  	result.append(last_trans_step.toString());</span>
+
+<span class="nc bnc" id="L295" title="All 2 branches missed.">  	if (show_source) {</span>
+<span class="nc" id="L296">  	  String source_line=last_trans_step.getLineString();</span>
+<span class="nc bnc" id="L297" title="All 4 branches missed.">  	  if ((source_line != null) &amp;&amp; !source_line.equals(&quot;&quot;)) {</span>
+
+  	    // We need to deal with gdf-specific special characters which couls appear
+  	    // in the Java source line, such as '&quot;'.
+<span class="nc" id="L301">  	    result.append(source_line);</span>
+<span class="nc" id="L302">  	  	convertGdfSpecial(result);</span>
+  	  }
+    }
+<span class="nc" id="L305">  	return result.toString();</span>
+  }
+
+  /**
+   * Locates and replaces all occurrences of a given string with another given
+   * string in an original string buffer. There seems to be a bug in Java
+   * String's replaceAll() method which does not allow us to use it to replace
+   * some special chars so here we use StringBuilder's replace method to do
+   * this.
+   * @param original The original string builder.
+   * @param from The replaced string.
+   * @param to The replacing string.
+   * @return The original string builder with the substring replaced
+   *         throughout.
+   */
+  private StringBuilder replaceString(StringBuilder original,
+                                      String from,
+                                      String to) {
+<span class="nc" id="L323">    int indexOfReplaced=0, lastIndexOfReplaced=0;</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">    while (indexOfReplaced!=-1) {</span>
+<span class="nc" id="L325">      indexOfReplaced=original.indexOf(from,lastIndexOfReplaced);</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">      if (indexOfReplaced!=-1) {</span>
+<span class="nc" id="L327">      	original.replace(indexOfReplaced, indexOfReplaced+1, to);</span>
+<span class="nc" id="L328">        lastIndexOfReplaced=indexOfReplaced+to.length();</span>
+      }
+    }
+<span class="nc" id="L331">    return original;</span>
+  }
+
+  /**
+   * Locates and replaces all occurrences of a given string with another given
+   * string in an original string buffer.
+   * @param original The original string buffer.
+   * @param from The replaced string.
+   * @param to The replacing string.
+   * @return The original string buffer with the sub-string replaced
+   *         throughout.
+   */
+  private String replaceString(String original, String from, String to) {
+<span class="nc bnc" id="L344" title="All 6 branches missed.">  	if ((original!=null) &amp;&amp; (from!=null) &amp;&amp; (to!=null)) {</span>
+<span class="nc" id="L345">      return replaceString(new StringBuilder(original), from, to).toString();</span>
+  	} else {
+<span class="nc" id="L347">      return original;</span>
+  	}
+  }
+
+  /**
+   * Add a new node to the graph with the relevant properties.
+   */
+  private void addNode(StateInformation state) throws IOException {
+<span class="nc bnc" id="L355" title="All 2 branches missed.">    if (state.is_new) {</span>
+<span class="nc bnc" id="L356" title="All 2 branches missed.">      if (format==GDF_FORMAT) {</span>
+<span class="nc" id="L357">        graph.write(&quot;st&quot; + state.id + &quot;,\&quot;&quot; + state.id);</span>
+<span class="nc bnc" id="L358" title="All 2 branches missed.">        if (state.error != null) {</span>
+<span class="nc" id="L359">          graph.write(&quot;:&quot; + state.error);</span>
+        }
+<span class="nc" id="L361">        graph.write(&quot;\&quot;,&quot;+state_node_style);</span>
+<span class="nc bnc" id="L362" title="All 2 branches missed.">        if (state.error != null) {</span>
+<span class="nc" id="L363">            graph.write(&quot;,red&quot;);</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">          } else if (state.has_next) {</span>
+<span class="nc" id="L365">            graph.write(&quot;,black&quot;);</span>
+          } else {
+<span class="nc" id="L367">            graph.write(&quot;,green&quot;);</span>
+          }
+      } else { // The dot version
+<span class="nc" id="L370">        graph.write(&quot;  st&quot; + state.id + &quot; [label=\&quot;&quot; + state.id);</span>
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (state.error != null) {</span>
+<span class="nc" id="L372">          graph.write(&quot;:&quot; + state.error);</span>
+        }
+<span class="nc" id="L374">        graph.write(&quot;\&quot;,shape=&quot;);</span>
+<span class="nc bnc" id="L375" title="All 2 branches missed.">        if (state.error != null) {</span>
+<span class="nc" id="L376">          graph.write(&quot;diamond,color=red&quot;);</span>
+<span class="nc bnc" id="L377" title="All 2 branches missed.">        } else if (state.has_next) {</span>
+<span class="nc" id="L378">          graph.write(&quot;circle,color=black&quot;);</span>
+        } else {
+<span class="nc" id="L380">          graph.write(&quot;egg,color=green&quot;);</span>
+        }
+<span class="nc" id="L382">        graph.write(&quot;];&quot;);</span>
+      }
+<span class="nc" id="L384">      graph.newLine();</span>
+    }
+<span class="nc" id="L386">  }</span>
+
+  private static class StateInformation {
+<span class="nc" id="L389">    public StateInformation() {}</span>
+    public void reset(int id, boolean has_next, boolean is_new) {
+<span class="nc" id="L391">      this.id = id;</span>
+<span class="nc" id="L392">      this.has_next = has_next;</span>
+<span class="nc" id="L393">      this.error = null;</span>
+<span class="nc" id="L394">      this.is_new = is_new;</span>
+<span class="nc" id="L395">    }</span>
+<span class="nc" id="L396">    int id = -1;</span>
+<span class="nc" id="L397">    boolean has_next = true;</span>
+<span class="nc" id="L398">    String error = null;</span>
+<span class="nc" id="L399">    boolean is_new = false;</span>
+  }
+
+  /**
+   * Creates an GDF edge string.
+   */
+  private String makeGdfEdgeString(String from_id,
+  		                           String to_id,
+								   String label,
+								   int thread) {
+<span class="nc" id="L409">  	StringBuilder sb=new StringBuilder(from_id);</span>
+<span class="nc" id="L410">  	sb.append(',').append(to_id).append(',').append('\&quot;');</span>
+<span class="nc bnc" id="L411" title="All 4 branches missed.">  	if ((label!=null) &amp;&amp; (!&quot;&quot;.equals(label))) {</span>
+<span class="nc" id="L412">  		sb.append(label);</span>
+  	} else {
+<span class="nc" id="L414">  		sb.append('-');</span>
+  	}
+<span class="nc" id="L416">  	sb.append('\&quot;').append(',').append(labelvisible).append(',').append(true).</span>
+<span class="nc" id="L417">	append(',').append(thread);</span>
+<span class="nc" id="L418">  	replaceString(sb, &quot;\n&quot;, &quot;&quot;);</span>
+<span class="nc" id="L419">  	return sb.toString();</span>
+  }
+
+  /**
+   * GUESS cannot deal with '\n' chars, so remove them. Also convert all '&quot;'
+   * characters to &quot;''&quot;.
+   * @param str The string to perform the conversion on.
+   * @return The converted string.
+   */
+  private String convertGdfSpecial(String str) {
+<span class="nc bnc" id="L429" title="All 4 branches missed.">  	if ((str==null) || &quot;&quot;.equals(str)) return &quot;&quot;;</span>
+
+<span class="nc" id="L431">  	StringBuilder sb=new StringBuilder(str);</span>
+<span class="nc" id="L432">  	convertGdfSpecial(sb);</span>
+<span class="nc" id="L433">  	return sb.toString();</span>
+  }
+
+  /**
+   * GUESS cannot deal with '\n' chars, so replace them with a space. Also
+   * convert all '&quot;' characters to &quot;''&quot;.
+   * @param sb The string buffer to perform the conversion on.
+   */
+  private void convertGdfSpecial(StringBuilder sb) {
+<span class="nc" id="L442">  	replaceString(sb, &quot;\&quot;&quot;, &quot;\'\'&quot;);</span>
+<span class="nc" id="L443">  	replaceString(sb, &quot;\n&quot;, &quot; &quot;);</span>
+<span class="nc" id="L444">  }</span>
+
+  /**
+   * Create an edge in the graph file from old_id to new_id.
+   */
+  private void addEdge(int old_id, int new_id, Search state) throws IOException {
+<span class="nc" id="L450">    int my_id = edge_id++;</span>
+<span class="nc bnc" id="L451" title="All 2 branches missed.">    if (format==GDF_FORMAT) {</span>
+<span class="nc" id="L452">      Transition trans=state.getTransition();</span>
+<span class="nc" id="L453">      int thread = trans.getThreadIndex();</span>
+
+      // edgedef&gt;node1,node2,label,labelvisible,directed,thread INT
+
+      // Old State -&gt; Transition - labeled with the source info if any.
+<span class="nc" id="L458">      gdfEdges.add(</span>
+<span class="nc" id="L459">      		makeGdfEdgeString(&quot;st&quot;+old_id, &quot;tr&quot;+my_id,</span>
+<span class="nc" id="L460">      				          makeGdfLabel(state, my_id),</span>
+      				          thread));
+
+      // Transition node: name,label,style,color
+<span class="nc" id="L464">      graph.write(&quot;tr&quot; + my_id + &quot;,\&quot;&quot; +my_id+&quot;\&quot;,&quot;+transition_node_style);</span>
+
+<span class="nc" id="L466">      graph.newLine();</span>
+      // Transition -&gt; New State - labeled with the last output if any.
+
+<span class="nc" id="L469">      String lastOutputLabel=</span>
+<span class="nc" id="L470">      	replaceString(convertGdfSpecial(trans.getOutput()), &quot;\&quot;&quot;, &quot;\'\'&quot;);</span>
+<span class="nc" id="L471">      gdfEdges.add(</span>
+<span class="nc" id="L472">      	makeGdfEdgeString(&quot;tr&quot;+my_id, &quot;st&quot;+new_id, lastOutputLabel, thread));</span>
+<span class="nc" id="L473">    } else { // DOT</span>
+<span class="nc" id="L474">      graph.write(&quot;  st&quot; + old_id + &quot; -&gt; tr&quot; + my_id + &quot;;&quot;);</span>
+<span class="nc" id="L475">      graph.newLine();</span>
+<span class="nc" id="L476">      graph.write(&quot;  tr&quot; + my_id + &quot; [label=\&quot;&quot; + makeDotLabel(state, my_id) +</span>
+                  &quot;\&quot;,shape=box]&quot;);
+<span class="nc" id="L478">      graph.newLine();</span>
+<span class="nc" id="L479">      graph.write(&quot;  tr&quot; + my_id + &quot; -&gt; st&quot; + new_id + &quot;;&quot;);</span>
+    }
+<span class="nc" id="L481">  }</span>
+
+  /**
+   * Show the usage message.
+   */
+  static void showUsage() {
+<span class="nc" id="L487">    System.out</span>
+<span class="nc" id="L488">        .println(&quot;Usage: \&quot;java [&lt;vm-options&gt;] gov.nasa.jpf.tools.StateSpaceDot [&lt;graph-options&gt;] [&lt;jpf-options-and-args&gt;]&quot;);</span>
+<span class="nc" id="L489">    System.out.println(&quot;  &lt;graph-options&gt; : &quot;);</span>
+<span class="nc" id="L490">    System.out.println(&quot;    -gdf:                Generate the graph in GDF format. The default is DOT.&quot;);</span>
+<span class="nc" id="L491">    System.out.println(&quot;    -transition-numbers: Include transition numbers in transition labels.&quot;);</span>
+<span class="nc" id="L492">    System.out.println(&quot;    -show-source:        Include source lines in transition labels.&quot;);</span>
+<span class="nc" id="L493">    System.out.println(&quot;    -labelvisible:       Indicates if the label on the transitions is visible (used only with the -gdf option)&quot;);</span>
+<span class="nc" id="L494">    System.out.println(&quot;    -help:               Prints this help information and stops.&quot;);</span>
+<span class="nc" id="L495">    System.out.println(&quot;  &lt;jpf-options-and-args&gt;:&quot;);</span>
+<span class="nc" id="L496">    System.out.println(&quot;    Options and command line arguments passed directly to JPF.&quot;);</span>
+<span class="nc" id="L497">    System.out.println(&quot;  Note: With -gdf option transition edges could also include program output &quot;);</span>
+<span class="nc" id="L498">    System.out.println(&quot;  but in order to enable this JPF's vm.path_output option must be set to &quot;);</span>
+<span class="nc" id="L499">    System.out.println(&quot;  true.&quot;);</span>
+<span class="nc" id="L500">  }</span>
+
+  void filterArgs (String[] args) {
+<span class="nc bnc" id="L503" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++) {</span>
+<span class="nc bnc" id="L504" title="All 2 branches missed.">      if (args[i] != null){</span>
+<span class="nc" id="L505">        String arg = args[i];</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">        if (&quot;-transition-numbers&quot;.equals(arg)) {</span>
+<span class="nc" id="L507">          transition_numbers = true;</span>
+<span class="nc" id="L508">          args[i] = null;</span>
+<span class="nc bnc" id="L509" title="All 2 branches missed.">        } else if (&quot;-show-source&quot;.equals(arg)) {</span>
+<span class="nc" id="L510">          show_source = true;</span>
+<span class="nc" id="L511">          args[i] = null;</span>
+<span class="nc bnc" id="L512" title="All 2 branches missed.">        } else if (&quot;-gdf&quot;.equals(arg)) {</span>
+<span class="nc" id="L513">          format=GDF_FORMAT;</span>
+<span class="nc" id="L514">          out_filename=OUT_FILENAME_NO_EXT+&quot;.&quot;+GDF_EXT;</span>
+<span class="nc" id="L515">          args[i] = null;</span>
+<span class="nc bnc" id="L516" title="All 2 branches missed.">        } else if (&quot;-labelvisible&quot;.equals(arg)) {</span>
+<span class="nc" id="L517">          labelvisible=true;</span>
+<span class="nc" id="L518">          args[i] = null;</span>
+<span class="nc bnc" id="L519" title="All 2 branches missed.">        } else if  (&quot;-help&quot;.equals(args[i])) {</span>
+<span class="nc" id="L520">          showUsage();</span>
+<span class="nc" id="L521">          helpRequested=true;</span>
+        }
+      }
+    }
+<span class="nc" id="L525">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

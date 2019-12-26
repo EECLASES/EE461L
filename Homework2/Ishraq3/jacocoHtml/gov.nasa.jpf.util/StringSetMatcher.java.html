@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringSetMatcher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">StringSetMatcher.java</span></div><h1>StringSetMatcher.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * simple utility that can be used to check for string matches in
+ * sets with '*' wildcards, e.g. to check for class name lists such as
+ *
+ *   vm.halt_on_throw=java.lang.reflect.*:my.own.Exception
+ *
+ * Only meta chars in patterns are '*' and '!', i.e. '.' is a regular char to match
+ * A '!' prefix inverts the match
+ */
+public class StringSetMatcher {
+
+  public static final char WILDCARD = '*';
+  public static final char INVERTED = '!';
+  
+  boolean hasAnyPattern; // do we have a universal '*' pattern?
+
+  Pattern[] pattern;
+  Matcher[] matcher;
+  boolean[] inverted;
+
+  /**
+   * convenience method for matcher pairs containing of explicit excludes and
+   * includes
+   */
+  public static boolean isMatch (String s, StringSetMatcher includes, StringSetMatcher excludes){
+<span class="fc bfc" id="L48" title="All 2 branches covered.">    if (excludes != null) {</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">      if (excludes.matchesAny(s)){</span>
+<span class="fc" id="L50">        return false;</span>
+      }
+    }
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">    if (includes != null) {</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">      if (!includes.matchesAny(s)){</span>
+<span class="fc" id="L56">        return false;</span>
+      }
+    }
+
+<span class="fc" id="L60">    return true;</span>
+  }
+
+  public static StringSetMatcher getNonEmpty(String[] set){
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">    if (set != null &amp;&amp; set.length &gt; 0){</span>
+<span class="fc" id="L65">      return new StringSetMatcher(set);</span>
+    } else {
+<span class="fc" id="L67">      return null;</span>
+    }
+  }
+
+<span class="fc" id="L71">  public StringSetMatcher (String... set){</span>
+<span class="fc" id="L72">    int n = set.length;</span>
+<span class="fc" id="L73">    pattern = new Pattern[n];</span>
+<span class="fc" id="L74">    matcher = new Matcher[n];</span>
+<span class="fc" id="L75">    inverted = new boolean[n];</span>
+
+<span class="fc bfc" id="L77" title="All 2 branches covered.">    for (int i=0; i&lt;n; i++){</span>
+<span class="fc" id="L78">      String s = set[i];</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">      if (s.equals(&quot;*&quot;)) {</span>
+<span class="fc" id="L81">        hasAnyPattern = true;</span>
+        // no need to compile this
+
+      } else {
+<span class="fc" id="L85">        Pattern p =  createPattern(s);</span>
+<span class="fc" id="L86">        pattern[i] = p;</span>
+<span class="fc" id="L87">        matcher[i] = p.matcher(&quot;&quot;); // gets reset upon use</span>
+<span class="fc" id="L88">        inverted[i] = isInverted(s);</span>
+      }
+    }
+<span class="fc" id="L91">  }</span>
+
+  @Override
+  public String toString() {
+<span class="nc" id="L95">    int n=0;</span>
+<span class="nc" id="L96">    StringBuilder sb = new StringBuilder(64);</span>
+<span class="nc" id="L97">    sb.append(&quot;StringSetMatcher {patterns=&quot;);</span>
+
+<span class="nc bnc" id="L99" title="All 2 branches missed.">    if (hasAnyPattern) {</span>
+<span class="nc" id="L100">      sb.append(&quot;.*&quot;);</span>
+<span class="nc" id="L101">      n++;</span>
+    }
+
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    for (int i=0; i&lt;pattern.length; i++) {</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">      if (pattern[i] != null) {</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">        if (n++&gt;0) {</span>
+<span class="nc" id="L107">          sb.append(',');</span>
+        }
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (inverted[i]){</span>
+<span class="nc" id="L110">          sb.append(INVERTED);</span>
+        }
+<span class="nc" id="L112">        sb.append(pattern[i]);</span>
+      }
+    }
+<span class="nc" id="L115">    sb.append('}');</span>
+<span class="nc" id="L116">    return sb.toString();</span>
+  }
+
+  public void addPattern (String s){
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    if (s.equals(&quot;*&quot;)) { // no need to compile</span>
+      // note that this doesn't include the - pointless - &quot;!*&quot;, which would match nothing
+<span class="nc" id="L123">      hasAnyPattern = true;</span>
+
+    } else {
+<span class="nc" id="L126">      int n = pattern.length;</span>
+
+<span class="nc" id="L128">      Pattern[] pNew = new Pattern[n+1];</span>
+<span class="nc" id="L129">      System.arraycopy(pattern, 0, pNew, 0, n);</span>
+<span class="nc" id="L130">      pNew[n] = createPattern(s);</span>
+
+<span class="nc" id="L132">      Matcher[] mNew = new Matcher[pNew.length];</span>
+<span class="nc" id="L133">      System.arraycopy(matcher, 0, mNew, 0, n);</span>
+<span class="nc" id="L134">      mNew[n] = pNew[n].matcher(&quot;&quot;);</span>
+
+<span class="nc" id="L136">      boolean[] iNew = new boolean[pNew.length];</span>
+<span class="nc" id="L137">      System.arraycopy( inverted, 0, iNew, 0, n);</span>
+<span class="nc" id="L138">      iNew[n] = isInverted(s);</span>
+      
+<span class="nc" id="L140">      pattern = pNew;</span>
+<span class="nc" id="L141">      matcher = mNew;</span>
+<span class="nc" id="L142">      inverted = iNew;</span>
+    }
+<span class="nc" id="L144">  }</span>
+
+  public static boolean isInverted (String s){
+<span class="pc bpc" id="L147" title="1 of 4 branches missed.">    return (!s.isEmpty() &amp;&amp; s.charAt(0) == INVERTED);</span>
+  }
+  
+  protected Pattern createPattern (String s){
+    Pattern p;
+<span class="fc" id="L152">    int j = 0;</span>
+<span class="fc" id="L153">    int len = s.length();</span>
+
+    // inversion is better done outside of regex
+<span class="pc bpc" id="L156" title="1 of 4 branches missed.">    if ((len &gt; 0) &amp;&amp; s.charAt(0) == INVERTED){</span>
+<span class="fc" id="L157">      j++; // skip INVERTED char</span>
+    }
+    
+<span class="fc" id="L160">    StringBuilder sb = new StringBuilder();</span>
+        
+<span class="fc bfc" id="L162" title="All 2 branches covered.">    for (; j&lt;len; j++){</span>
+<span class="fc" id="L163">      char c = s.charAt(j);</span>
+<span class="pc bpc" id="L164" title="2 of 8 branches missed.">      switch (c){</span>
+<span class="fc" id="L165">      case '.' : sb.append(&quot;\\.&quot;); break;</span>
+<span class="fc" id="L166">      case '$' : sb.append(&quot;\\$&quot;); break;</span>
+<span class="nc" id="L167">      case '[' : sb.append(&quot;\\[&quot;); break;</span>
+<span class="nc" id="L168">      case ']' : sb.append(&quot;\\]&quot;); break;</span>
+<span class="fc" id="L169">      case '*' : sb.append(&quot;.*&quot;); break;</span>
+<span class="fc" id="L170">      case '(' : sb.append(&quot;\\(&quot;); break;</span>
+<span class="fc" id="L171">      case ')' : sb.append(&quot;\\)&quot;); break;</span>
+      // &lt;2do&gt; and probably more..
+<span class="fc" id="L173">      default:   sb.append(c);</span>
+      }
+    }
+
+<span class="fc" id="L177">    p = Pattern.compile(sb.toString());</span>
+<span class="fc" id="L178">    return p;</span>
+  }
+
+  /**
+   * does 's' match at least one of our patterns
+   */
+  public boolean matchesAny (String s){
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">    if (s != null) {</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">      if (hasAnyPattern) {</span>
+<span class="fc" id="L187">        return true; // no need to check</span>
+      }
+
+<span class="fc bfc" id="L190" title="All 2 branches covered.">      for (int i=0; i&lt;matcher.length; i++){</span>
+<span class="fc" id="L191">        Matcher m = matcher[i];</span>
+<span class="fc" id="L192">        m.reset(s);</span>
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (m.matches() != inverted[i]){</span>
+<span class="fc" id="L195">          return true;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L200">    return false;</span>
+  }
+
+  /**
+   * does 's' match ALL of our patterns
+   */
+  public boolean matchesAll (String s){
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">    if (s != null) {</span>
+<span class="fc bfc" id="L208" title="All 4 branches covered.">      if (hasAnyPattern &amp;&amp; pattern.length == 1) { // there might be other patterns</span>
+<span class="fc" id="L209">        return true; // no need to check</span>
+      }
+
+<span class="fc bfc" id="L212" title="All 2 branches covered.">      for (int i=0; i&lt;pattern.length; i++){</span>
+<span class="fc" id="L213">        Pattern p = pattern[i];</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (p != null){</span>
+<span class="fc" id="L215">          Matcher m = matcher[i];</span>
+<span class="fc" id="L216">          m.reset(s);</span>
+
+<span class="fc bfc" id="L218" title="All 2 branches covered.">          if (m.matches() == inverted[i]){</span>
+<span class="fc" id="L219">            return false;</span>
+          }
+<span class="fc" id="L221">        } else {</span>
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">          if (inverted[i]){</span>
+<span class="nc" id="L223">            return false;</span>
+          }
+        }
+      }
+
+<span class="fc" id="L228">      return true;</span>
+
+    } else {
+<span class="nc" id="L231">      return false;</span>
+    }
+  }
+
+  /**
+   * do all elements of 'set' match at least one of our patterns?
+   */
+  public boolean allMatch (String[] set){
+<span class="nc bnc" id="L239" title="All 2 branches missed.">    if (hasAnyPattern) {</span>
+<span class="nc" id="L240">      return true;</span>
+    }
+
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    for (int i=0; i&lt;set.length; i++){</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">      if (!matchesAny(set[i])){</span>
+<span class="nc" id="L245">        return false;</span>
+      }
+    }
+<span class="nc" id="L248">    return true;</span>
+  }
+
+
+  public static void main (String[] args){
+<span class="nc" id="L253">    String[] p = args[0].split(&quot;:&quot;);</span>
+<span class="nc" id="L254">    String[] s = args[1].split(&quot;:&quot;);</span>
+
+<span class="nc" id="L256">    StringSetMatcher sm = new StringSetMatcher(p);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">    if (sm.matchesAny(s[0])){</span>
+<span class="nc" id="L258">      System.out.println(&quot;Bingo, \&quot;&quot; + s[0] + &quot;\&quot; matches &quot; + sm);</span>
+    } else {
+<span class="nc" id="L260">      System.out.println(&quot;nope, \&quot;&quot; + s[0] + &quot;\&quot; doesn't match &quot; + sm);</span>
+    }
+<span class="nc" id="L262">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

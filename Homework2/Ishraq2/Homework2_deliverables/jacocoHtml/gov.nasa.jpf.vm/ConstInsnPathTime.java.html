@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConstInsnPathTime.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ConstInsnPathTime.java</span></div><h1>ConstInsnPathTime.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+
+/**
+ * time model that uses instruction count along current path to deduce
+ * the execution time.
+ * 
+ * NOTE: the requirement that time has to be strictly increasing along a path
+ * means we cannot skip the initialization
+ */
+public class ConstInsnPathTime extends ListenerAdapter implements TimeModel {
+
+  // note - this class is not public since we want to make sure this listener
+  // is the only one using this type
+  static class TimeVal {
+    final long time;
+<span class="fc" id="L36">    TimeVal (long t){</span>
+<span class="fc" id="L37">      time = t;</span>
+<span class="fc" id="L38">    }</span>
+  }
+  
+  VM vm;
+  int perInsnTime; // simple constant time assumed for each instruction
+  
+  long transitionStartTime;
+  
+<span class="fc" id="L46">  public ConstInsnPathTime (VM vm, Config conf){</span>
+<span class="fc" id="L47">    perInsnTime = conf.getInt(&quot;vm.time.per_insn&quot;, 1);</span>
+    
+<span class="fc" id="L49">    vm.addListener(this);</span>
+<span class="fc" id="L50">    this.vm = vm;</span>
+<span class="fc" id="L51">  }</span>
+
+  protected long computeTime (){
+<span class="fc" id="L54">    ThreadInfo tiCurrent = vm.getCurrentThread();</span>
+<span class="fc" id="L55">    long t = tiCurrent.getExecutedInstructions() * perInsnTime;</span>
+    
+<span class="fc" id="L57">    return transitionStartTime + t;</span>
+  }
+  
+  //-- the listener interface
+  @Override
+  public void choiceGeneratorRegistered(VM vm, ChoiceGenerator&lt;?&gt; nextCG, ThreadInfo ti, Instruction executedInsn){
+<span class="fc" id="L63">    ChoiceGenerator&lt;?&gt; cgPrev = nextCG.getPreviousChoiceGenerator();</span>
+<span class="fc" id="L64">    ThreadInfo tiCurrent = vm.getCurrentThread();</span>
+<span class="fc" id="L65">    long t = tiCurrent.getExecutedInstructions() * perInsnTime;</span>
+    
+<span class="fc" id="L67">    TimeVal tv = null;</span>
+    
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">    if (nextCG.isCascaded()){</span>
+      // there's got to be a previous one, and its associated with the same insn
+<span class="nc" id="L71">      tv = cgPrev.getAttr(TimeVal.class);</span>
+      
+    } else {
+<span class="fc bfc" id="L74" title="All 2 branches covered.">      if (cgPrev != null){</span>
+<span class="fc" id="L75">        TimeVal tvPrev = cgPrev.getAttr(TimeVal.class); // there has to be one</span>
+<span class="fc" id="L76">        tv = new TimeVal(tvPrev.time + t);</span>
+             
+<span class="fc" id="L78">      } else {</span>
+<span class="fc" id="L79">        tv = new TimeVal( t);</span>
+      }
+    }
+    
+<span class="fc" id="L83">    nextCG.addAttr( tv);</span>
+<span class="fc" id="L84">  }</span>
+  
+  @Override
+  public void choiceGeneratorAdvanced(VM vm, ChoiceGenerator&lt;?&gt; currentCG){
+<span class="fc" id="L88">    TimeVal tv = currentCG.getAttr(TimeVal.class);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">    if (tv != null){</span>
+<span class="fc" id="L90">      transitionStartTime = tv.time;</span>
+    } else {
+<span class="nc" id="L92">      transitionStartTime = 0;</span>
+    }
+<span class="fc" id="L94">  }</span>
+  
+  //--- the TimeModel interface
+  @Override
+  public long currentTimeMillis() {
+<span class="fc" id="L99">    return computeTime();</span>
+  }
+
+  @Override
+  public long nanoTime() {
+<span class="nc" id="L104">    return computeTime();</span>
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

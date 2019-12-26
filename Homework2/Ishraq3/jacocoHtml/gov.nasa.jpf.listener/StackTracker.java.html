@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StackTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">StackTracker.java</span></div><h1>StackTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.INVOKESPECIAL;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.VirtualInvocation;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+
+/**
+ * simple tool to log stack invocations
+ *
+ * at this point, it doesn't do fancy things yet, but gives a more high
+ * level idea of what got executed by JPF than the ExecTracker
+ */
+public class StackTracker extends ListenerAdapter {
+
+  static final String INDENT = &quot;  &quot;;
+
+  MethodInfo lastMi;
+  PrintWriter out;
+  long nextLog;
+  int logPeriod;
+
+<span class="nc" id="L49">  public StackTracker (Config conf, JPF jpf) {</span>
+<span class="nc" id="L50">    out = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L51">    logPeriod = conf.getInt(&quot;jpf.stack_tracker.log_period&quot;, 5000);</span>
+<span class="nc" id="L52">  }</span>
+
+  void logStack(ThreadInfo ti) {
+<span class="nc" id="L55">    long time = System.currentTimeMillis();</span>
+
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (time &lt; nextLog) {</span>
+<span class="nc" id="L58">      return;</span>
+    }
+
+<span class="nc" id="L61">    nextLog = time + logPeriod;</span>
+
+<span class="nc" id="L63">    out.println();</span>
+<span class="nc" id="L64">    out.print(&quot;Thread: &quot;);</span>
+<span class="nc" id="L65">    out.print(ti.getId());</span>
+<span class="nc" id="L66">    out.println(&quot;:&quot;);</span>
+
+<span class="nc" id="L68">    out.println(ti.getStackTrace());</span>
+<span class="nc" id="L69">    out.println();</span>
+<span class="nc" id="L70">  }</span>
+
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insnToExecute) {
+<span class="nc" id="L74">    MethodInfo mi = insnToExecute.getMethodInfo();</span>
+
+<span class="nc bnc" id="L76" title="All 2 branches missed.">    if (mi != lastMi) {</span>
+<span class="nc" id="L77">      logStack(ti);</span>
+<span class="nc" id="L78">      lastMi = mi;</span>
+
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    } else if (insnToExecute instanceof JVMInvokeInstruction) {</span>
+      MethodInfo callee;
+
+      // that's the only little gist of it - if this is a VirtualInvocation,
+      // we have to dig the callee out by ourselves (it's not known
+      // before execution)
+
+<span class="nc bnc" id="L87" title="All 2 branches missed.">      if (insnToExecute instanceof VirtualInvocation) {</span>
+<span class="nc" id="L88">        VirtualInvocation callInsn = (VirtualInvocation)insnToExecute;</span>
+<span class="nc" id="L89">        int objref = callInsn.getCalleeThis(ti);</span>
+<span class="nc" id="L90">        callee = callInsn.getInvokedMethod(ti, objref);</span>
+
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      } else if (insnToExecute instanceof INVOKESPECIAL) {</span>
+<span class="nc" id="L93">        INVOKESPECIAL callInsn = (INVOKESPECIAL)insnToExecute;</span>
+<span class="nc" id="L94">        callee = callInsn.getInvokedMethod(ti);</span>
+
+<span class="nc" id="L96">      } else {</span>
+<span class="nc" id="L97">        JVMInvokeInstruction callInsn = (JVMInvokeInstruction)insnToExecute;</span>
+<span class="nc" id="L98">        callee = callInsn.getInvokedMethod(ti);</span>
+      }
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">      if (callee != null) {</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">        if (callee.isMJI()) {</span>
+<span class="nc" id="L103">          logStack(ti);</span>
+        }
+      } else {
+<span class="nc" id="L106">        out.println(&quot;ERROR: unknown callee of: &quot; + insnToExecute);</span>
+      }
+    }
+<span class="nc" id="L109">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="nc" id="L113">    lastMi = null;</span>
+<span class="nc" id="L114">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+<span class="nc" id="L118">    lastMi = null;</span>
+<span class="nc" id="L119">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

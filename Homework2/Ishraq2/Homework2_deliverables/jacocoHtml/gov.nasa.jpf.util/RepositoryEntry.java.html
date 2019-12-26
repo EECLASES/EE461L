@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryEntry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">RepositoryEntry.java</span></div><h1>RepositoryEntry.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * simple generic structure to hold repository info for source files
+ * 
+ * &lt;2do&gt; extend this to find out what the status of the repository is, i.e. if
+ * there are any local modifications, update revision etc.
+ */
+public class RepositoryEntry {
+  
+<span class="nc" id="L36">  static HashMap&lt;String,RepositoryEntry&gt; dict = new HashMap&lt;String,RepositoryEntry&gt;();</span>
+  
+  String fileName;
+  String repositoryType;
+  String repository;
+  String revision;
+
+<span class="nc" id="L43">  static RepositoryEntryFactory searchers[] = {</span>
+    new SvnRepositoryEntryFactory(),
+    new HgRepositoryEntryFactory(),
+    new GitRepositoryEntryFactory()
+  };
+
+  public static RepositoryEntry getRepositoryEntry (String fullFileName) {
+<span class="nc" id="L50">    RepositoryEntry e = dict.get(fullFileName);</span>
+    
+<span class="nc bnc" id="L52" title="All 2 branches missed.">    if (e == null) {</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">      for (RepositoryEntryFactory factory : searchers) {</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if ((e = factory.getRepositoryEntry(fullFileName)) != null)</span>
+<span class="nc" id="L55">          break;</span>
+      }
+    }
+    
+<span class="nc" id="L59">    dict.put(fullFileName, e); // no need to look this up more than once</span>
+<span class="nc" id="L60">    return e;</span>
+  }
+  
+<span class="nc" id="L63">  public RepositoryEntry (String fileName, String repositoryType, String repository, String revision) {</span>
+<span class="nc" id="L64">    this.fileName = fileName;</span>
+<span class="nc" id="L65">    this.repositoryType = repositoryType;</span>
+<span class="nc" id="L66">    this.repository = repository;</span>
+<span class="nc" id="L67">    this.revision = revision;</span>
+<span class="nc" id="L68">  }</span>
+  
+  public String getFileName() {
+<span class="nc" id="L71">    return fileName;</span>
+  }
+  
+  public String getRepositoryType() {
+<span class="nc" id="L75">    return repositoryType;</span>
+  }
+  
+  public String getRepository() {
+<span class="nc" id="L79">    return repository;</span>
+  }
+  
+  public String getRevision() {
+<span class="nc" id="L83">    return revision;</span>
+  }
+
+}
+
+interface RepositoryEntryFactory {
+  RepositoryEntry getRepositoryEntry(String fullFileName);
+}
+
+<span class="nc" id="L92">class SvnRepositoryEntryFactory implements RepositoryEntryFactory {</span>
+
+  /*
+   * &lt;2do&gt; doesn't work on Windows, where the .svn/entries is apparently
+   * not stored as an XML file
+   */
+  @Override
+  public RepositoryEntry getRepositoryEntry(String fullFileName) {
+<span class="nc" id="L100">    File f = new File(fullFileName);</span>
+<span class="nc" id="L101">    String fname = f.getName();</span>
+<span class="nc" id="L102">    String dName = f.getParent();</span>
+    
+<span class="nc" id="L104">    File fEntries = new File(dName + File.separatorChar + &quot;.svn&quot; + File.separatorChar + &quot;entries&quot;);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (fEntries.exists()) {</span>
+<span class="nc" id="L106">      String repository = &quot;?&quot;;</span>
+<span class="nc" id="L107">      String revision = &quot;?&quot;;</span>
+      
+<span class="nc" id="L109">      Pattern pName = Pattern.compile(&quot; *name=\&quot;([a-zA-Z0-9.]+)\&quot;&quot;);</span>
+<span class="nc" id="L110">      Pattern pRep = Pattern.compile(&quot; *url=\&quot;([a-zA-Z0-9.:/\\-]+)\&quot;&quot;);</span>
+<span class="nc" id="L111">      Pattern pRev = Pattern.compile(&quot; *committed-rev=\&quot;([0-9]+)\&quot;&quot;);</span>
+      try {
+<span class="nc" id="L113">        BufferedReader r = new BufferedReader(new FileReader(fEntries));</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        for (String line=r.readLine(); line != null; line = r.readLine()) {</span>
+<span class="nc" id="L115">          Matcher mRep = pRep.matcher(line);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">          if (mRep.matches()) {</span>
+<span class="nc" id="L117">            repository = mRep.group(1);</span>
+          } else {
+<span class="nc" id="L119">            Matcher mRev = pRev.matcher(line);</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (mRev.matches()) {</span>
+<span class="nc" id="L121">              revision = mRev.group(1);</span>
+            } else {
+<span class="nc" id="L123">              Matcher mName = pName.matcher(line);</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">              if (mName.matches() &amp;&amp; mName.group(1).equals(fname)) {</span>
+                // Ok, got everything
+<span class="nc" id="L126">                return new RepositoryEntry(fname, &quot;svn&quot;, repository, revision);</span>
+              }
+            }
+          }
+        }
+<span class="nc" id="L131">      } catch (Throwable t) {}</span>
+    }
+    
+<span class="nc" id="L134">    return null;</span>
+  }
+}
+
+<span class="nc" id="L138">class HgRepositoryEntryFactory implements RepositoryEntryFactory {</span>
+
+  @Override
+  public RepositoryEntry getRepositoryEntry(String fullFileName) {
+<span class="nc" id="L142">    File file = new File(fullFileName);</span>
+
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    if (!file.exists())</span>
+<span class="nc" id="L145">      return null;</span>
+
+<span class="nc" id="L147">    File currentDir = file.getParentFile();</span>
+
+    searchForHg:
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    while (currentDir != null) {</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">      for (String childName : currentDir.list())</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (childName.equals(&quot;.hg&quot;))</span>
+<span class="nc" id="L153">          break searchForHg;</span>
+
+<span class="nc" id="L155">      currentDir = currentDir.getParentFile();</span>
+    }
+
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    if (currentDir != null) {</span>
+      try {
+<span class="nc" id="L160">        File hgrcFile = new File(currentDir, &quot;.hg/hgrc&quot;);</span>
+        
+<span class="nc" id="L162">        String repoURL = &quot;&quot;;</span>
+<span class="nc" id="L163">        BufferedReader r = new BufferedReader(new FileReader(hgrcFile));</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        for (String line=r.readLine(); line != null; line = r.readLine()) {</span>
+<span class="nc" id="L165">          String keyVal[] = line.split(&quot;=&quot;);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">          if (keyVal[0].trim().equals(&quot;default&quot;)) {</span>
+<span class="nc" id="L167">            repoURL = keyVal[1].trim();</span>
+<span class="nc" id="L168">            break;</span>
+          }
+
+        }
+
+<span class="nc" id="L173">        File branchHeads = new File(currentDir, &quot;.hg/branchheads.cache&quot;);</span>
+<span class="nc" id="L174">        r = new BufferedReader(new FileReader(branchHeads));</span>
+<span class="nc" id="L175">        String revision = r.readLine().split(&quot; &quot;)[1];</span>
+
+<span class="nc" id="L177">        return new RepositoryEntry(fullFileName, &quot;hg&quot;, repoURL, revision);</span>
+      }
+<span class="nc" id="L179">      catch (Exception ex) {</span>
+<span class="nc" id="L180">        return null;</span>
+      }
+    }
+
+<span class="nc" id="L184">    return null;</span>
+  }
+
+}
+
+<span class="nc" id="L189">class GitRepositoryEntryFactory implements RepositoryEntryFactory {</span>
+
+  @Override
+  public RepositoryEntry getRepositoryEntry(String fullFileName) {
+<span class="nc" id="L193">    File file = new File(fullFileName);</span>
+
+<span class="nc bnc" id="L195" title="All 2 branches missed.">    if (!file.exists())</span>
+<span class="nc" id="L196">      return null;</span>
+
+<span class="nc" id="L198">    File currentDir = file.getParentFile();</span>
+
+    searchForHg:
+<span class="nc bnc" id="L201" title="All 2 branches missed.">    while (currentDir != null) {</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">      for (String childName : currentDir.list()) {</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">        if (childName.equals(&quot;.git&quot;)) {</span>
+<span class="nc" id="L204">          break searchForHg;</span>
+        }
+      }
+
+<span class="nc" id="L208">      currentDir = currentDir.getParentFile();</span>
+    }
+
+<span class="nc bnc" id="L211" title="All 2 branches missed.">    if (currentDir != null) {</span>
+      try {
+<span class="nc" id="L213">        File hgrcFile = new File(currentDir, &quot;.git/config&quot;);</span>
+
+<span class="nc" id="L215">        String repoURL = &quot;&quot;;</span>
+<span class="nc" id="L216">        BufferedReader r = new BufferedReader(new FileReader(hgrcFile));</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        for (String line = r.readLine(); line != null; line = r.readLine()) {</span>
+<span class="nc" id="L218">          String keyVal[] = line.split(&quot;=&quot;);</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">          if (keyVal[0].trim().equals(&quot;url&quot;)) {</span>
+<span class="nc" id="L220">            repoURL = keyVal[1].trim();</span>
+<span class="nc" id="L221">            break;</span>
+          }
+
+        }
+
+        // git doesn't has revision numbers so we will read last revision's hash instead
+<span class="nc" id="L227">        File gitHeadHash = new File(currentDir, &quot;.git/refs/heads/master&quot;);</span>
+<span class="nc" id="L228">        r = new BufferedReader(new FileReader(gitHeadHash));</span>
+<span class="nc" id="L229">        String revision = r.readLine();</span>
+
+<span class="nc" id="L231">        return new RepositoryEntry(fullFileName, &quot;git&quot;, repoURL, revision);</span>
+
+<span class="nc" id="L233">      } catch (Exception ex) {</span>
+<span class="nc" id="L234">        return null;</span>
+      }
+    }
+
+<span class="nc" id="L238">    return null;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

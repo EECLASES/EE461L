@@ -1,0 +1,34 @@
+1.	Theses are the following resources we used - 
+	For first 2 parts - 
+	a. https://github.com/javapathfinder/jpf-core/wiki/Build,-Test,-Run
+	b. https://askubuntu.com/questions/38661/how-do-i-run-sh-scripts
+	c. https://superuser.com/questions/90008/how-to-clear-the-contents-of-a-file-from-the-command-line
+	
+	For second 2 parts - 
+	a. https://reflectoring.io/jacoco/
+	b. https://docs.gradle.org/current/userguide/jacoco_plugin.html
+	c. https://reflectoring.io/jacoco/
+	d. https://engineering.rallyhealth.com/android/code-coverage/testing/2018/06/04/android-code-coverage.html
+	e. Linux Commands:
+			https://docs.gradle.org/current/userguide/command_line_interface.html
+
+
+
+2.	Roughly 17.5 hours we spent on this assignment. Firsst challenge that was the most time-intensive was 
+	to find a good project. We changed our projects 2 times. So, that is why we had to spend a lot of 
+	time for this homework. Second challenge that was the most time-intensive to figure out the JaCoCo
+	part. Figuring out what to do to figure out what tests we were supposed to run and documentation for 
+	JaCoCo was confusing and broken. So, finding appropraite resources was challenging as well.
+
+
+					Pair Programming Log
+
+9/27, 5:30PM - 7:00PM, EER Lab room, Muhammad and Miguel spent 1.5 hours figuring out what needs to be done, 1.5 hour
+9/27, 8:30PM - 10:00PM, Home, Muhammad tried to figure out which projcet to work on, he finalised one, 1.5 hours
+9/29, 9:30AM - 11:00AM, Home, Muhammad tried to make progress on task 1,2,3 and 4, Muhammad was in driving seat, 1.5 hours
+9/29, 11.30AM - 3.30PM, Muhammad and Miguel tried to finish task 1,2,3 and 4, 4 hours
+9/29, 5:00PM - 2:00AM, EER study room, Muhammad and Miguel finished 4 and 5, Miguel was in driving seat for 5 for 8.5 hours, Muhammad was in driving seat for 4, documentation and finalization for 8.5 hours, 8.5 hours
+9/30, 7:30PM - 8:30PM, EER Lab room, Muhammad and Miguel finalizing everything, Muhammad was in driving seat, 1 hour
+
+
+total time 18 hours, 15 hours of pair programming

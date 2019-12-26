@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DefaultBacktracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">DefaultBacktracker.java</span></div><h1>DefaultBacktracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.ImmutableList;
+
+<span class="fc" id="L22">public class DefaultBacktracker&lt;KState&gt; implements Backtracker {</span>
+  /** where we keep the saved KernelState head */ 
+  protected ImmutableList&lt;KState&gt; kstack;
+   
+  /** and that adds the SystemState specifics */
+  protected ImmutableList&lt;Object&gt; sstack;
+  
+  protected SystemState ss;
+  protected StateRestorer&lt;KState&gt; restorer;
+  
+  @Override
+  public void attach(VM vm) {
+<span class="fc" id="L34">    ss = vm.getSystemState();</span>
+<span class="fc" id="L35">    restorer = vm.getRestorer();</span>
+<span class="fc" id="L36">  }</span>
+
+  //--- the backtrack support (depth first only)
+  
+  protected void backtrackKernelState() {
+<span class="fc" id="L41">    KState data = kstack.head;</span>
+<span class="fc" id="L42">    kstack = kstack.tail;</span>
+    
+<span class="fc" id="L44">    restorer.restore(data);</span>
+<span class="fc" id="L45">  }</span>
+
+  protected void backtrackSystemState() {
+<span class="fc" id="L48">    Object o = sstack.head;</span>
+<span class="fc" id="L49">    sstack = sstack.tail;</span>
+<span class="fc" id="L50">    ss.backtrackTo(o);</span>
+<span class="fc" id="L51">  }</span>
+
+  
+  /**
+   * Moves one step backward. This method and forward() are the main methods
+   * used by the search object.
+   * Note this is called with the state that caused the backtrack still being on
+   * the stack, so we have to remove that one first (i.e. popping two states
+   * and restoring the second one)
+   */
+  @Override
+  public boolean backtrack () {
+<span class="fc bfc" id="L63" title="All 2 branches covered.">    if (sstack != null) {</span>
+  
+<span class="fc" id="L65">      backtrackKernelState();</span>
+<span class="fc" id="L66">      backtrackSystemState();</span>
+
+<span class="fc" id="L68">      return true;</span>
+    } else {
+      // we are back to the top of where we can backtrack to
+<span class="fc" id="L71">      return false;</span>
+    }
+  }
+  
+  /**
+   * Saves the state of the system.
+   */
+  @Override
+  public void pushKernelState () {
+<span class="fc" id="L80">    kstack = new ImmutableList&lt;KState&gt;(restorer.getRestorableData(),kstack);</span>
+<span class="fc" id="L81">  }</span>
+  
+  /**
+   * Saves the backtracking information.
+   */
+  @Override
+  public void pushSystemState () {
+<span class="fc" id="L88">    sstack = new ImmutableList&lt;Object&gt;(ss.getBacktrackData(),sstack);</span>
+<span class="fc" id="L89">  }</span>
+
+  
+  //--- the restore support
+  
+  // &lt;2do&gt; this saves both the backtrack and the restore data - too redundant
+  class RestorableStateImpl implements RestorableState {
+    final ImmutableList&lt;KState&gt; savedKstack;
+    final ImmutableList&lt;Object&gt; savedSstack;
+    
+    final KState kcur;
+    final Object scur;
+    
+<span class="fc" id="L102">    RestorableStateImpl() {</span>
+<span class="fc" id="L103">      savedKstack = kstack;</span>
+<span class="fc" id="L104">      savedSstack = sstack;</span>
+<span class="fc" id="L105">      kcur = restorer.getRestorableData();</span>
+<span class="fc" id="L106">      scur = ss.getRestoreData();</span>
+<span class="fc" id="L107">    }</span>
+    
+    void restore() {
+<span class="fc" id="L110">      kstack = savedKstack;</span>
+<span class="fc" id="L111">      sstack = savedSstack;</span>
+<span class="fc" id="L112">      restorer.restore(kcur);</span>
+<span class="fc" id="L113">      ss.restoreTo(scur);</span>
+<span class="fc" id="L114">    }</span>
+  }
+  
+  @Override
+  public void restoreState (RestorableState state) {
+<span class="fc" id="L119">    ((RestorableStateImpl) state).restore();</span>
+<span class="fc" id="L120">  }</span>
+  
+  @Override
+  public RestorableState getRestorableState() {
+<span class="fc" id="L124">    return new RestorableStateImpl();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

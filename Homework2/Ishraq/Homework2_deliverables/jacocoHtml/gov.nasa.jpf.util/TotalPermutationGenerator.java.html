@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TotalPermutationGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">TotalPermutationGenerator.java</span></div><h1>TotalPermutationGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.NoSuchElementException;
+
+/**
+ * a pull mode generator for permutations that executes in constant space,
+ * using Ives' algorithm (F. M. Ives: Permutation enumeration: four new 
+ * permutation algorithms, Comm. ACM, 19, 2, Feb 1976, pg. 68-72)
+ * 
+ * NOTE - this is mostly here for completeness, since use of full permutations
+ * in most cases is prohibitive due to N!
+ */
+public class TotalPermutationGenerator extends PermutationGenerator {
+  
+  protected int[] inverse; // inverse permutations array
+    
+  public TotalPermutationGenerator (int nElements){
+<span class="fc" id="L35">    super( nElements);</span>
+    
+<span class="fc" id="L37">    initInverse();</span>
+<span class="fc" id="L38">  }</span>
+  
+  void initInverse (){
+<span class="fc" id="L41">    inverse = new int[nElements];</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">    for (int i=0; i&lt;nElements; i++){</span>
+<span class="fc" id="L43">      inverse[i] = i;</span>
+    }    
+<span class="fc" id="L45">  }</span>
+  
+  @Override
+  public void reset(){
+<span class="nc" id="L49">    initPermutations();</span>
+<span class="nc" id="L50">    initInverse();</span>
+<span class="nc" id="L51">  }</span>
+  
+  
+  public static long computeNumberOfPermutations(int nElements){
+<span class="fc" id="L55">    long n = 1;</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">    for (int i=1; i&lt;=nElements; i++){</span>
+<span class="fc" id="L57">      n *= i;</span>
+    }
+<span class="fc" id="L59">    return n;    </span>
+  }
+  
+  @Override
+  protected long computeNumberOfPermutations(){
+<span class="fc" id="L64">    return computeNumberOfPermutations(nElements);</span>
+  }
+    
+  @Override
+  public int[] next (){
+<span class="fc bfc" id="L69" title="All 2 branches covered.">    if (nGenerated == 0){</span>
+<span class="fc" id="L70">      nGenerated =1;</span>
+<span class="fc" id="L71">      return permutation;</span>
+      
+    } else {
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">      for (int lower=0, upper=nElements-1; upper &gt; lower; lower++, upper--){</span>
+<span class="fc" id="L75">        int i = inverse[lower];</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        int j = (i == upper) ? lower : i+1;</span>
+<span class="fc" id="L77">        int pj = permutation[j];</span>
+
+<span class="fc" id="L79">        permutation[i] = pj;</span>
+<span class="fc" id="L80">        permutation[j] = lower;</span>
+
+<span class="fc" id="L82">        inverse[lower] = j;</span>
+<span class="fc" id="L83">        inverse[pj] = i;</span>
+
+<span class="fc bfc" id="L85" title="All 4 branches covered.">        if ((permutation[lower] != lower) || (permutation[upper] != upper)){</span>
+<span class="fc" id="L86">          nGenerated++;</span>
+<span class="fc" id="L87">          return permutation;</span>
+        }
+      }
+<span class="nc" id="L90">      throw new NoSuchElementException();</span>
+    }
+  }  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

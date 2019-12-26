@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VarTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">VarTracker.java</span></div><h1>VarTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.ALOAD;
+import gov.nasa.jpf.jvm.bytecode.ArrayStoreInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.GETFIELD;
+import gov.nasa.jpf.jvm.bytecode.GETSTATIC;
+import gov.nasa.jpf.vm.bytecode.ReadInstruction;
+import gov.nasa.jpf.vm.bytecode.StoreInstruction;
+import gov.nasa.jpf.vm.bytecode.LocalVariableInstruction;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.MethodSpec;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.WriteInstruction;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+
+
+/**
+ * simple listener tool to find out which variables (locals and fields) are
+ * changed how often and from where. This should give a good idea if a state
+ * space blows up because of some counter/timer vars, and where to apply the
+ * necessary abstractions to close/shrink it
+ *
+ */
+public class VarTracker extends ListenerAdapter {
+
+  // our matchers to determine which variables we have to report
+<span class="nc" id="L64">  StringSetMatcher includeVars = null; //  means all</span>
+<span class="nc" id="L65">  StringSetMatcher excludeVars = null; //  means none</span>
+
+  // filter methods from which access happens
+  MethodSpec methodSpec;
+
+  int maxVars; // maximum number of variables shown
+  
+<span class="nc" id="L72">  ArrayList&lt;VarChange&gt; queue = new ArrayList&lt;VarChange&gt;();</span>
+  ThreadInfo lastThread;
+<span class="nc" id="L74">  HashMap&lt;String, VarStat&gt; stat = new HashMap&lt;String, VarStat&gt;();</span>
+<span class="nc" id="L75">  int nStates = 0;</span>
+  int maxDepth;
+
+
+<span class="nc" id="L79">  public VarTracker (Config config, JPF jpf){</span>
+
+<span class="nc" id="L81">    includeVars = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;vt.include&quot;));</span>
+<span class="nc" id="L82">    excludeVars = StringSetMatcher.getNonEmpty(config.getStringArray(&quot;vt.exclude&quot;,</span>
+            new String[] {&quot;java.*&quot;, &quot;javax.*&quot;} ));
+
+<span class="nc" id="L85">    maxVars = config.getInt(&quot;vt.max_vars&quot;, 25);</span>
+
+<span class="nc" id="L87">    methodSpec = MethodSpec.createMethodSpec(config.getString(&quot;vt.methods&quot;, &quot;!java.*.*&quot;));</span>
+
+<span class="nc" id="L89">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="nc" id="L90">  }</span>
+
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {
+<span class="nc" id="L94">    PrintWriter pw = publisher.getOut();</span>
+<span class="nc" id="L95">    publisher.publishTopicStart(&quot;field access &quot;);</span>
+
+<span class="nc" id="L97">    report(pw);</span>
+<span class="nc" id="L98">  }</span>
+
+  void print (PrintWriter pw, int n, int length) {
+<span class="nc" id="L101">    String s = Integer.toString(n);</span>
+<span class="nc" id="L102">    int l = length - s.length();</span>
+    
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    for (int i=0; i&lt;l; i++) {</span>
+<span class="nc" id="L105">      pw.print(' ');</span>
+    }
+    
+<span class="nc" id="L108">    pw.print(s);</span>
+<span class="nc" id="L109">  }</span>
+  
+  void report (PrintWriter pw) {
+<span class="nc" id="L112">    pw.println();</span>
+<span class="nc" id="L113">    pw.println(&quot;      change    variable&quot;);</span>
+<span class="nc" id="L114">    pw.println(&quot;---------------------------------------&quot;);</span>
+    
+<span class="nc" id="L116">    Collection&lt;VarStat&gt; values = stat.values();</span>
+<span class="nc" id="L117">    List&lt;VarStat&gt; valueList = new ArrayList&lt;VarStat&gt;();</span>
+<span class="nc" id="L118">    valueList.addAll(values);</span>
+<span class="nc" id="L119">    Collections.sort(valueList);</span>
+
+<span class="nc" id="L121">    int n = 0;</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    for (VarStat s : valueList) {</span>
+      
+<span class="nc bnc" id="L124" title="All 2 branches missed.">      if (n++ &gt; maxVars) {</span>
+<span class="nc" id="L125">        break;</span>
+      }
+      
+<span class="nc" id="L128">      print(pw, s.nChanges, 12);</span>
+<span class="nc" id="L129">      pw.print(&quot;    &quot;);</span>
+<span class="nc" id="L130">      pw.println(s.id);</span>
+<span class="nc" id="L131">    }</span>
+<span class="nc" id="L132">  }</span>
+  
+  @Override
+  public void stateAdvanced(Search search) {
+    
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (search.isNewState()) { // don't count twice</span>
+<span class="nc" id="L138">      int stateId = search.getStateId();</span>
+<span class="nc" id="L139">      nStates++;</span>
+<span class="nc" id="L140">      int depth = search.getDepth();</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      if (depth &gt; maxDepth) maxDepth = depth;</span>
+      
+<span class="nc bnc" id="L143" title="All 2 branches missed.">      if (!queue.isEmpty()) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        for (Iterator&lt;VarChange&gt; it = queue.iterator(); it.hasNext(); ){</span>
+<span class="nc" id="L145">          VarChange change = it.next();</span>
+<span class="nc" id="L146">            String id = change.getVariableId();</span>
+<span class="nc" id="L147">            VarStat s = stat.get(id);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (s == null) {</span>
+<span class="nc" id="L149">              s = new VarStat(id, stateId);</span>
+<span class="nc" id="L150">              stat.put(id, s);</span>
+            } else {
+              // no good - we should filter during reg (think of large vectors or loop indices)
+<span class="nc bnc" id="L153" title="All 2 branches missed.">              if (s.lastState != stateId) { // count only once per new state</span>
+<span class="nc" id="L154">                s.nChanges++;</span>
+<span class="nc" id="L155">                s.lastState = stateId;</span>
+              }
+            }
+<span class="nc" id="L158">        }</span>
+      }
+    }
+
+<span class="nc" id="L162">    queue.clear();</span>
+<span class="nc" id="L163">  }</span>
+
+  // &lt;2do&gt; - general purpose listeners should not use types such as String for storing
+  // attributes, there is no good way to make sure you retrieve your own attributes
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+    String varId;
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">    if (executedInsn instanceof ALOAD) {</span>
+      // a little extra work - we need to keep track of variable names, because
+      // we cannot easily retrieve them in a subsequent xASTORE, which follows
+      // a pattern like:  ..GETFIELD.. some-stack-operations .. xASTORE
+<span class="nc" id="L175">      StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L176">      int objRef = frame.peek();</span>
+<span class="nc bnc" id="L177" title="All 2 branches missed.">      if (objRef != MJIEnv.NULL) {</span>
+<span class="nc" id="L178">        ElementInfo ei = ti.getElementInfo(objRef);</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">        if (ei.isArray()) {</span>
+<span class="nc" id="L180">          varId = ((LocalVariableInstruction) executedInsn).getVariableId();</span>
+
+          // &lt;2do&gt; unfortunately, we can't filter here because we don't know yet
+          // how the array ref will be used (we would only need the attr for
+          // subsequent xASTOREs)
+<span class="nc" id="L185">          frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L186">          frame.addOperandAttr(varId);</span>
+        }
+      }
+
+<span class="nc bnc" id="L190" title="All 4 branches missed.">    } else if ((executedInsn instanceof ReadInstruction) &amp;&amp; ((JVMFieldInstruction)executedInsn).isReferenceField()){</span>
+<span class="nc" id="L191">      varId = ((JVMFieldInstruction)executedInsn).getFieldName();</span>
+
+<span class="nc" id="L193">      StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L194">      frame.addOperandAttr(varId);</span>
+
+
+    // here come the changes - note that we can't update the stats right away,
+    // because we don't know yet if the state this leads into has already been
+    // visited, and we want to detect only var changes that lead to *new* states
+    // (objective is to find out why we have new states). Note that variable
+    // changes do not necessarily contribute to the state hash (@FilterField)
+<span class="nc bnc" id="L202" title="All 2 branches missed.">  } else if (executedInsn instanceof StoreInstruction) {</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">      if (executedInsn instanceof ArrayStoreInstruction) {</span>
+        // did we have a name for the array?
+        // stack is &quot;.. ref idx [l]value =&gt; ..&quot;
+        // &lt;2do&gt; String is not a good attribute type to retrieve
+<span class="nc" id="L207">        Object attr = ((ArrayStoreInstruction)executedInsn).getArrayOperandAttr(ti);</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (attr != null) {</span>
+<span class="nc" id="L209">          varId = attr + &quot;[]&quot;;</span>
+        } else {
+<span class="nc" id="L211">          varId = &quot;?[]&quot;;</span>
+        }
+<span class="nc" id="L213">      } else {</span>
+<span class="nc" id="L214">        varId = ((LocalVariableInstruction)executedInsn).getVariableId();</span>
+      }
+<span class="nc" id="L216">      queueIfRelevant(ti, executedInsn, varId);</span>
+
+<span class="nc bnc" id="L218" title="All 2 branches missed.">    } else if (executedInsn instanceof WriteInstruction){</span>
+<span class="nc" id="L219">      varId = ((WriteInstruction) executedInsn).getFieldInfo().getFullName();</span>
+<span class="nc" id="L220">      queueIfRelevant(ti, executedInsn, varId);</span>
+    }
+<span class="nc" id="L222">  }</span>
+
+  void queueIfRelevant(ThreadInfo ti, Instruction insn, String varId){
+<span class="nc bnc" id="L225" title="All 4 branches missed.">    if (isMethodRelevant(insn.getMethodInfo()) &amp;&amp; isVarRelevant(varId)) {</span>
+<span class="nc" id="L226">      queue.add(new VarChange(varId));</span>
+<span class="nc" id="L227">      lastThread = ti;</span>
+    }
+<span class="nc" id="L229">  }</span>
+
+  boolean isMethodRelevant (MethodInfo mi){
+<span class="nc" id="L232">    return methodSpec.matches(mi);</span>
+  }
+
+  boolean isVarRelevant (String varId) {
+<span class="nc bnc" id="L236" title="All 2 branches missed.">    if (!StringSetMatcher.isMatch(varId, includeVars, excludeVars)){</span>
+<span class="nc" id="L237">      return false;</span>
+    }
+    
+    // filter subsequent changes in the same transition (to avoid gazillions of
+    // VarChanges for loop variables etc.)
+    // &lt;2do&gt; this is very inefficient - improve
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    for (int i=0; i&lt;queue.size(); i++) {</span>
+<span class="nc" id="L244">      VarChange change = queue.get(i);</span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">      if (change.getVariableId().equals(varId)) {</span>
+<span class="nc" id="L246">        return false;</span>
+      }
+    }
+    
+<span class="nc" id="L250">    return true;</span>
+  }
+}
+
+// &lt;2do&gt; expand into types to record value ranges
+class VarStat implements Comparable&lt;VarStat&gt; {
+  String id;               // class[@objRef].field || class[@objref].method.local
+  int nChanges;
+  
+  int lastState;           // this was changed in (&lt;2do&gt; don't think we need this)
+  
+  // might have more info in the future, e.g. total number of changes vs.
+  // number of states incl. this var change, source locations, threads etc.
+  
+<span class="nc" id="L264">  VarStat (String varId, int stateId) {</span>
+<span class="nc" id="L265">    id = varId;</span>
+<span class="nc" id="L266">    nChanges = 1;</span>
+    
+<span class="nc" id="L268">    lastState = stateId;</span>
+<span class="nc" id="L269">  }</span>
+  
+  int getChangeCount () {
+<span class="nc" id="L272">    return nChanges;</span>
+  }
+  
+  @Override
+  public int compareTo (VarStat other) {
+<span class="nc bnc" id="L277" title="All 2 branches missed.">    if (other.nChanges &gt; nChanges) {</span>
+<span class="nc" id="L278">      return 1;</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">    } else if (other.nChanges == nChanges) {</span>
+<span class="nc" id="L280">      return 0;</span>
+    } else {
+<span class="nc" id="L282">      return -1;</span>
+    }
+  }
+}
+
+// &lt;2do&gt; expand into types to record values
+class VarChange {
+  String id;
+  
+<span class="nc" id="L291">  VarChange (String varId) {</span>
+<span class="nc" id="L292">    id = varId;</span>
+<span class="nc" id="L293">  }</span>
+  
+  String getVariableId () {
+<span class="nc" id="L296">    return id;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

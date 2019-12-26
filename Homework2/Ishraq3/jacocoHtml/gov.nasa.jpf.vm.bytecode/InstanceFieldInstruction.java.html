@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstanceFieldInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.bytecode</a> &gt; <span class="el_source">InstanceFieldInstruction.java</span></div><h1>InstanceFieldInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.bytecode;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * common machine independent type for all instance field access instructions
+ */
+public abstract class InstanceFieldInstruction extends FieldInstruction {
+
+<span class="fc" id="L35">  protected int lastThis = MJIEnv.NULL;</span>
+
+  protected InstanceFieldInstruction (String fieldName, String classType, String fieldDescriptor){
+<span class="fc" id="L38">    super(fieldName, classType, fieldDescriptor);</span>
+<span class="fc" id="L39">  }</span>
+
+  public abstract int getObjectSlot (StackFrame frame);
+  
+  @Override
+  public ElementInfo getElementInfo (ThreadInfo ti){
+<span class="nc bnc" id="L45" title="All 2 branches missed.">    if (isCompleted(ti)){</span>
+<span class="nc" id="L46">      return ti.getElementInfo(lastThis);</span>
+    } else {
+<span class="nc" id="L48">      return peekElementInfo(ti);</span>
+    }
+  }
+  
+  @Override
+  public String toPostExecString(){
+<span class="nc" id="L54">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L55">    sb.append(getMnemonic());</span>
+<span class="nc" id="L56">    sb.append(' ');</span>
+<span class="nc" id="L57">    sb.append( getLastElementInfo());</span>
+<span class="nc" id="L58">    sb.append('.');</span>
+<span class="nc" id="L59">    sb.append(fname);</span>
+    
+<span class="nc" id="L61">    return sb.toString();</span>
+  }
+
+  @Override
+  public FieldInfo getFieldInfo () {
+<span class="fc bfc" id="L66" title="All 2 branches covered.">    if (fi == null) {</span>
+<span class="fc" id="L67">      ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(className);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">      if (ci != null) {</span>
+<span class="fc" id="L69">        fi = ci.getInstanceField(fname);</span>
+      }
+    }
+<span class="fc" id="L72">    return fi;</span>
+  }
+
+  /**
+   * NOTE - the return value is *only* valid in a instructionExecuted() context, since
+   * the same instruction can be executed from different threads
+   */
+  public int getLastThis() {
+<span class="fc" id="L80">    return lastThis;</span>
+  }
+
+  /**
+   * since this is based on getLastThis(), the same context restrictions apply
+   */
+  @Override
+  public ElementInfo getLastElementInfo () {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">    if (lastThis != MJIEnv.NULL) {</span>
+<span class="nc" id="L89">      return VM.getVM().getHeap().get(lastThis); // &lt;2do&gt; remove - should be in clients</span>
+    }
+
+<span class="nc" id="L92">    return null;</span>
+  }
+
+  public String getFieldDescriptor () {
+<span class="nc" id="L96">    ElementInfo ei = getLastElementInfo();</span>
+<span class="nc" id="L97">    FieldInfo fi = getFieldInfo();</span>
+
+<span class="nc" id="L99">    return ei.toString() + '.' + fi.getName();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

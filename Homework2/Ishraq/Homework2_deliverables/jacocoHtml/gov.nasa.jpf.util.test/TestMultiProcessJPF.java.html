@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestMultiProcessJPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.test</a> &gt; <span class="el_source">TestMultiProcessJPF.java</span></div><h1>TestMultiProcessJPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.test;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Property;
+import gov.nasa.jpf.util.TypeRef;
+import gov.nasa.jpf.vm.NotDeadlockedProperty;
+
+/**
+ * @author Nastaran Shafiei &lt;nastaran.shafiei@gmail.com&gt;
+ * 
+ * This is a root class for testing multi-processes code. This forces
+ * JPF to use MultiProcessVM and DistributedSchedulerFactory
+ */
+<span class="fc" id="L32">public abstract class TestMultiProcessJPF extends TestJPF {</span>
+  int numOfPrc;
+
+  @Override
+  protected void setTestTargetKeys(Config conf, StackTraceElement testMethod) {
+<span class="fc" id="L37">    conf.put(&quot;target.entry&quot;, &quot;runTestMethod([Ljava/lang/String;)V&quot;);</span>
+<span class="fc" id="L38">    conf.put(&quot;target.replicate&quot;, Integer.toString(numOfPrc));</span>
+<span class="fc" id="L39">    conf.put(&quot;target&quot;, testMethod.getClassName());</span>
+<span class="fc" id="L40">    conf.put(&quot;target.test_method&quot;, testMethod.getMethodName());</span>
+<span class="fc" id="L41">    conf.put(&quot;vm.class&quot;, &quot;gov.nasa.jpf.vm.MultiProcessVM&quot;);</span>
+<span class="fc" id="L42">    conf.put(&quot;vm.scheduler_factory.class&quot;, &quot;gov.nasa.jpf.vm.DistributedSchedulerFactory&quot;);</span>
+<span class="fc" id="L43">  }</span>
+
+  protected native int getProcessId();
+
+  protected boolean mpVerifyAssertionErrorDetails (int prcNum, String details, String... args){
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L49">      return true;</span>
+    } else {
+<span class="nc" id="L51">      numOfPrc = prcNum;</span>
+<span class="nc" id="L52">      unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, details, args);</span>
+<span class="nc" id="L53">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyAssertionError (int prcNum, String... args){
+<span class="nc bnc" id="L58" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L59">      return true;</span>
+    } else {
+<span class="nc" id="L61">      numOfPrc = prcNum;</span>
+<span class="nc" id="L62">      unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, null, args);</span>
+<span class="nc" id="L63">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyNoPropertyViolation (int prcNum, String...args){
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L69">      return true;</span>
+    } else {
+<span class="fc" id="L71">      numOfPrc = prcNum;</span>
+<span class="fc" id="L72">      noPropertyViolation(getCaller(), args);</span>
+<span class="fc" id="L73">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyUnhandledExceptionDetails (int prcNum, String xClassName, String details, String... args){
+<span class="nc bnc" id="L78" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L79">      return true;</span>
+    } else {
+<span class="nc" id="L81">      numOfPrc = prcNum;</span>
+<span class="nc" id="L82">      unhandledException( getCaller(), xClassName, details, args);</span>
+<span class="nc" id="L83">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyUnhandledException (int prcNum, String xClassName, String... args){
+<span class="nc bnc" id="L88" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L89">      return true;</span>
+    } else {
+<span class="nc" id="L91">      numOfPrc = prcNum;</span>
+<span class="nc" id="L92">      unhandledException( getCaller(), xClassName, null, args);</span>
+<span class="nc" id="L93">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyJPFException (int prcNum, TypeRef xClsSpec, String... args){
+<span class="nc bnc" id="L98" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L99">      return true;</span>
+
+    } else {
+<span class="nc" id="L102">      numOfPrc = prcNum;</span>
+      try {
+<span class="nc" id="L104">        Class&lt;? extends Throwable&gt; xCls = xClsSpec.asNativeSubclass(Throwable.class);</span>
+
+<span class="nc" id="L106">        jpfException( getCaller(), xCls, args);</span>
+
+<span class="nc" id="L108">      } catch (ClassCastException ccx){</span>
+<span class="nc" id="L109">        fail(&quot;not a property type: &quot; + xClsSpec);</span>
+<span class="nc" id="L110">      } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L111">        fail(&quot;property class not found: &quot; + xClsSpec);</span>
+<span class="nc" id="L112">      }</span>
+<span class="nc" id="L113">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyPropertyViolation (int prcNum, TypeRef propertyClsSpec, String... args){
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L119">      return true;</span>
+
+    } else {
+<span class="nc" id="L122">      numOfPrc = prcNum;</span>
+      try {
+<span class="nc" id="L124">        Class&lt;? extends Property&gt; propertyCls = propertyClsSpec.asNativeSubclass(Property.class);</span>
+<span class="nc" id="L125">        propertyViolation( getCaller(), propertyCls, args);</span>
+
+<span class="nc" id="L127">      } catch (ClassCastException ccx){</span>
+<span class="nc" id="L128">        fail(&quot;not a property type: &quot; + propertyClsSpec);</span>
+<span class="nc" id="L129">      } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L130">        fail(&quot;property class not found: &quot; + propertyClsSpec);</span>
+<span class="nc" id="L131">      }</span>
+<span class="nc" id="L132">      return false;</span>
+    }
+  }
+
+  protected boolean mpVerifyDeadlock (int prcNum, String... args){
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L138">      return true;</span>
+    } else {
+<span class="nc" id="L140">      numOfPrc = prcNum;</span>
+<span class="nc" id="L141">      propertyViolation( getCaller(), NotDeadlockedProperty.class, args);</span>
+<span class="nc" id="L142">      return false;</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PairPermutationGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">PairPermutationGenerator.java</span></div><h1>PairPermutationGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2015, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.NoSuchElementException;
+
+/**
+ * a generator for pair-wise permutations, which only considers permutations
+ * for each pair of elements, regardless of position. This reduces the
+ * number of generated permutations from N! to sum(i=1..N){N-i} + 1.
+ * This can be used to test order dependencies between two concurrent
+ * entities (threads, state machines etc), based on the same assumptions
+ * that are used in pair-wise testing
+ */
+public class PairPermutationGenerator extends PermutationGenerator {
+
+  protected int i, j;
+
+  public PairPermutationGenerator (int nElements){
+<span class="fc" id="L35">    super(nElements);</span>
+<span class="fc" id="L36">  }</span>
+
+  @Override
+  public void reset(){
+<span class="nc" id="L40">    initPermutations();</span>
+<span class="nc" id="L41">    i = 0;</span>
+<span class="nc" id="L42">    j = 0;</span>
+<span class="nc" id="L43">  }</span>
+  
+  public static long computeNumberOfPermutations (int n){
+<span class="fc" id="L46">    long v = 1;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">    for (int l=1; l&lt;n; l++){</span>
+<span class="fc" id="L48">      v += (n - l);</span>
+    }
+<span class="fc" id="L50">    return v;</span>
+  }
+  
+  @Override
+  protected long computeNumberOfPermutations(){
+<span class="fc" id="L55">    return computeNumberOfPermutations(nElements);</span>
+  }
+          
+  @Override
+  public int[] next (){
+<span class="fc" id="L60">    int n = permutation.length;</span>
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    if (nGenerated == 0){ // the initial order</span>
+<span class="fc" id="L63">      nGenerated = 1;</span>
+<span class="fc" id="L64">      return permutation;</span>
+      
+<span class="fc bfc" id="L66" title="All 2 branches covered.">    } else if (nGenerated &gt; 1){</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">      if (nGenerated == nPermutations){</span>
+<span class="nc" id="L68">        throw new NoSuchElementException();</span>
+      }
+<span class="fc" id="L70">      swap(permutation, i, j); // revert last permutation</span>
+    }
+
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">    if (++j == n){</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">      if (++i == n){</span>
+<span class="nc" id="L76">        throw new NoSuchElementException();</span>
+      } else {
+<span class="fc" id="L78">        j = i+1;</span>
+      }
+    }
+
+<span class="fc" id="L82">    swap(permutation, i, j);</span>
+<span class="fc" id="L83">    nGenerated++;</span>
+<span class="fc" id="L84">    return permutation;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

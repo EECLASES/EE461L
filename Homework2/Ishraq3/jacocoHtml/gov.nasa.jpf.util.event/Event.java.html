@@ -1,0 +1,652 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Event.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.event</a> &gt; <span class="el_source">Event.java</span></div><h1>Event.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.event;
+
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.OATHash;
+import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * class that represents an external stimulus to the SUT, which is produced by EventTree instances
+ * (our environment models)
+ * 
+ * Note that albeit concrete EventTree can provide their own, specialized Event types, this class
+ * is generic enough that we don't declare it as abstract
+ */
+public class Event implements Cloneable {
+
+<span class="fc" id="L36">  static final Object[] NO_ARGUMENTS = new Object[0];</span>
+  
+  //--- linkage
+  protected Event next;
+  protected Event prev;
+  protected Event alt;
+
+  //--- payload
+  protected String name;
+  protected Object[] arguments;
+  
+  protected Object source;  // optional, set on demand to keep track of where an event came from
+
+  public Event (String name){
+<span class="fc" id="L50">    this( name, NO_ARGUMENTS, null);</span>
+<span class="fc" id="L51">  }</span>
+
+  public Event (String name, Object source){
+<span class="fc" id="L54">    this( name, NO_ARGUMENTS, source);</span>
+<span class="fc" id="L55">  }  </span>
+  
+  public Event(String name, Object[] arguments) {
+<span class="nc" id="L58">    this(name, arguments, null);</span>
+<span class="nc" id="L59">  }</span>
+  
+<span class="fc" id="L61">  public Event(String name, Object[] arguments, Object source) {</span>
+<span class="fc" id="L62">    this.name = name;</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">    this.arguments = arguments != null ? arguments : NO_ARGUMENTS;</span>
+<span class="fc" id="L64">    this.source = source;</span>
+<span class="fc" id="L65">  }</span>
+
+  
+  
+  @Override
+  public boolean equals (Object o){
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">    if (o instanceof Event){</span>
+<span class="fc" id="L72">      Event other = (Event)o;</span>
+      
+<span class="fc bfc" id="L74" title="All 2 branches covered.">      if (name.equals(other.name)){</span>
+<span class="fc" id="L75">        return Misc.equals(arguments, other.arguments);</span>
+      }
+    }
+    
+<span class="fc" id="L79">    return false;</span>
+  }
+  
+  @Override
+  public int hashCode(){
+<span class="nc" id="L84">    int h = name.hashCode();</span>
+    
+<span class="nc bnc" id="L86" title="All 2 branches missed.">    for (int i=0; i&lt;arguments.length; i++){</span>
+<span class="nc" id="L87">      h = OATHash.hashMixin(h, arguments[i].hashCode());</span>
+    }
+    
+<span class="nc" id="L90">    return OATHash.hashFinalize(h);</span>
+  }
+  
+  protected void setNext (Event e){
+<span class="fc" id="L94">    next = e;</span>
+<span class="fc" id="L95">    e.prev = this;</span>
+<span class="fc" id="L96">  }</span>
+
+  protected void setPrev (Event e){
+<span class="fc" id="L99">    prev = e;</span>
+
+<span class="fc bfc" id="L101" title="All 2 branches covered.">    if (alt != null){</span>
+<span class="fc" id="L102">      alt.setPrev(e);</span>
+    }
+<span class="fc" id="L104">  }</span>
+
+  protected void setAlt (Event e){
+<span class="fc" id="L107">    alt = e;</span>
+
+<span class="fc bfc" id="L109" title="All 2 branches covered.">    if (prev != null) {</span>
+<span class="fc" id="L110">      e.setPrev(prev);</span>
+    }
+<span class="fc" id="L112">  }</span>
+  
+  public void setLinksFrom (Event other){
+<span class="nc" id="L115">    prev = other.prev;</span>
+<span class="nc" id="L116">    next = other.next;</span>
+<span class="nc" id="L117">    alt = other.alt;</span>
+<span class="nc" id="L118">  }</span>
+
+  public Event replaceWithSequenceFrom (List&lt;Event&gt; list){
+<span class="nc" id="L121">    Event eLast = null;</span>
+    
+<span class="nc bnc" id="L123" title="All 2 branches missed.">    for (Event e: list){</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">      if (eLast == null){</span>
+<span class="nc" id="L125">        e.prev = prev;</span>
+<span class="nc" id="L126">        e.alt = alt;</span>
+      } else {
+<span class="nc" id="L128">        e.prev = eLast;</span>
+<span class="nc" id="L129">        eLast.next = e;</span>
+      }
+      
+<span class="nc" id="L132">      eLast = e;</span>
+<span class="nc" id="L133">    }</span>
+    
+<span class="nc bnc" id="L135" title="All 2 branches missed.">    if (eLast != null){</span>
+<span class="nc" id="L136">      eLast.next = next;</span>
+<span class="nc" id="L137">      return list.get(0);</span>
+    } else {
+<span class="nc" id="L139">      return null;</span>
+    }
+  }
+  
+  public Event replaceWithAlternativesFrom (List&lt;Event&gt; list){
+<span class="fc" id="L144">    Event eLast = null;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">    for (Event e: list){</span>
+<span class="fc" id="L146">      e.prev = prev;</span>
+<span class="fc" id="L147">      e.next = next;</span>
+      
+<span class="fc bfc" id="L149" title="All 2 branches covered.">      if (eLast != null){</span>
+<span class="fc" id="L150">        eLast.alt = e;</span>
+      }
+      
+<span class="fc" id="L153">      eLast = e;</span>
+<span class="fc" id="L154">    }</span>
+    
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">    if (eLast != null){</span>
+<span class="fc" id="L157">      eLast.alt = alt;</span>
+<span class="fc" id="L158">      return list.get(0);</span>
+    } else {
+<span class="nc" id="L160">      return null;</span>
+    }
+  }
+
+  public Event replaceWith (Event e){
+<span class="fc" id="L165">    e.prev = prev;</span>
+<span class="fc" id="L166">    e.next = next;</span>
+<span class="fc" id="L167">    e.alt = alt;</span>
+    
+<span class="fc" id="L169">    return e;</span>
+  }
+  
+  protected void setSource (Object source){
+<span class="nc" id="L173">    this.source = source;</span>
+<span class="nc" id="L174">  }</span>
+  
+  public int getNumberOfAlternatives(){
+<span class="nc" id="L177">    int n = 0;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    for (Event e = alt; e != null; e = e.alt) {</span>
+<span class="nc" id="L179">      n++;</span>
+    }
+
+<span class="nc" id="L182">    return n;</span>
+  }
+
+  public boolean hasAlternatives(){
+<span class="nc bnc" id="L186" title="All 2 branches missed.">    return (alt != null);</span>
+  }
+  
+  public List&lt;Event&gt; getAlternatives(){
+<span class="nc" id="L190">    List&lt;Event&gt; list = new ArrayList&lt;Event&gt;();</span>
+<span class="nc" id="L191">    list.add(this);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">    for (Event e = alt; e != null; e = e.alt) {</span>
+<span class="nc" id="L193">      list.add(e);</span>
+    }
+<span class="nc" id="L195">    return list;</span>
+  }
+  
+  
+  public Event unlinkedClone(){
+    try {
+<span class="fc" id="L201">      Event e = (Event)super.clone();</span>
+<span class="fc" id="L202">      e.next = e.prev = e.alt = null;</span>
+<span class="fc" id="L203">      return e;</span>
+
+<span class="nc" id="L205">    } catch (CloneNotSupportedException x) {</span>
+<span class="nc" id="L206">      throw new RuntimeException(&quot;event clone failed&quot;, x);</span>
+    }
+    
+  }
+
+  public Event clone(){
+    try {
+<span class="nc" id="L213">      return (Event) super.clone();</span>
+<span class="nc" id="L214">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L215">      throw new RuntimeException(&quot;Event clone failed&quot;);</span>
+    }
+  }
+
+  public Event deepClone(){
+    try {
+<span class="fc" id="L221">      Event e = (Event)super.clone();</span>
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">      if (next != null) {</span>
+<span class="fc" id="L224">        e.next = next.deepClone();</span>
+<span class="fc" id="L225">        e.next.prev = e;</span>
+
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (next.alt != null){</span>
+<span class="nc" id="L228">          e.next.alt.prev = e;</span>
+        }
+      }
+
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">      if (alt != null) {</span>
+<span class="nc" id="L233">        e.alt = alt.deepClone();</span>
+      }
+
+<span class="fc" id="L236">      return e;</span>
+
+<span class="nc" id="L238">    } catch (CloneNotSupportedException x) {</span>
+<span class="nc" id="L239">      throw new RuntimeException(&quot;event clone failed&quot;, x);</span>
+    }
+  }
+
+  public String getName(){
+<span class="fc" id="L244">    return name;</span>
+  }
+
+  public Object[] getArguments(){
+<span class="nc" id="L248">    return arguments;</span>
+  }
+
+  public Object getArgument(int idx){
+<span class="nc bnc" id="L252" title="All 2 branches missed.">    if (idx &lt; arguments.length){</span>
+<span class="nc" id="L253">      return arguments[idx];</span>
+    }
+<span class="nc" id="L255">    return null;</span>
+  }
+  
+  public Event getNext(){
+<span class="fc" id="L259">    return next;</span>
+  }
+  
+  public Event getAlt(){
+<span class="fc" id="L263">    return alt;</span>
+  }
+  
+  public Event getPrev(){
+<span class="nc" id="L267">    return prev;</span>
+  }
+  
+  public Object getSource(){
+<span class="nc" id="L271">    return source;</span>
+  }
+  
+  public Event addNext (Event e){
+<span class="fc" id="L275">    boolean first = true;</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">    for (Event ee : endEvents()){  // this includes alternatives</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">      if (!first){</span>
+<span class="fc" id="L278">        e = e.deepClone();</span>
+      } else {
+<span class="fc" id="L280">        first = false;      // first one doesn't need a clone</span>
+      }
+<span class="fc" id="L282">      ee.setNext(e);</span>
+<span class="fc" id="L283">      e.setPrev(ee);</span>
+<span class="fc" id="L284">    }</span>
+
+<span class="fc" id="L286">    return this;</span>
+  }
+
+  public Event addAlternative (Event e){
+    Event ea ;
+<span class="fc bfc" id="L291" title="All 2 branches covered.">    for (ea = this; ea.alt != null; ea = ea.alt);</span>
+<span class="fc" id="L292">    ea.setAlt(e);</span>
+
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">    if (next != null){</span>
+<span class="nc" id="L295">      e.setNext( next.deepClone());</span>
+    }
+
+<span class="fc" id="L298">    return this;</span>
+  }
+  
+  protected static Event createClonedSequence (int firstIdx, int len, Event[] events){
+<span class="fc" id="L302">    Event base = events[firstIdx].unlinkedClone();</span>
+<span class="fc" id="L303">    Event e = base;</span>
+
+<span class="fc bfc" id="L305" title="All 2 branches covered.">    for (int i = firstIdx+1; i &lt; len; i++) {</span>
+<span class="fc" id="L306">      Event ne = events[i].unlinkedClone();</span>
+<span class="fc" id="L307">      e.setNext( ne);</span>
+<span class="fc" id="L308">      e = ne;</span>
+    }
+    
+<span class="fc" id="L311">    return base;</span>
+  }
+  
+  /**
+   * extend this tree with a new path 
+   */
+  public void addPath (int pathLength, Event... path){
+<span class="fc" id="L318">    Event t = this;</span>
+    Event pe;
+    
+    outer:
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">    for (int i=0; i&lt;pathLength; i++){</span>
+<span class="fc" id="L323">      pe = path[i];</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">      for (Event te = t; te != null; te = te.alt){</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        if (pe.equals(te)){      // prefix is in tree</span>
+          
+<span class="fc bfc" id="L327" title="All 2 branches covered.">          if (te.next == null){  // reached tree leaf</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">            if (++i &lt; pathLength){ // but the path still has events</span>
+<span class="fc" id="L329">              Event tail = createClonedSequence( i, pathLength, path);</span>
+<span class="fc" id="L330">              te.setNext(tail);</span>
+<span class="fc" id="L331">              tail.setAlt( new NoEvent()); // preserve the tree path</span>
+            }
+<span class="fc" id="L333">            return;</span>
+            
+          } else { // there is a next in the tree
+<span class="fc" id="L336">            t = te.next;</span>
+            
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">            if (i == pathLength-1){ // but the path is done, add a NoEvent as a next alternative to mark the end</span>
+<span class="nc" id="L339">              Event e = t.getLastAlt();</span>
+<span class="nc" id="L340">              e.setAlt(new NoEvent());</span>
+<span class="nc" id="L341">              return;</span>
+              
+            } else {
+              continue outer;
+            }
+          }
+        }
+      }
+      
+      //--- path prefix was not in tree, append as (last) alternative
+<span class="fc" id="L351">      Event tail = createClonedSequence( i, pathLength, path);</span>
+<span class="fc" id="L352">      Event e = t.getLastAlt();</span>
+<span class="fc" id="L353">      e.setAlt( tail);</span>
+      
+<span class="fc" id="L355">      return;</span>
+    }
+<span class="nc" id="L357">  }</span>
+
+  public Event getLastAlt (){
+    Event e;
+<span class="fc bfc" id="L361" title="All 2 branches covered.">    for (e=this; e.alt != null; e = e.alt);</span>
+<span class="fc" id="L362">    return e;</span>
+  }
+  
+  protected void collectEndEvents (List&lt;Event&gt; list, boolean includeNoEvents) {
+<span class="fc bfc" id="L366" title="All 2 branches covered.">    if (next != null) {</span>
+<span class="fc" id="L367">      next.collectEndEvents(list, includeNoEvents);</span>
+      
+    } else { // base case: no next
+      // strip trailing NoEvents 
+<span class="fc bfc" id="L371" title="All 2 branches covered.">      if (prev == null){</span>
+<span class="fc" id="L372">        list.add(this); // root NoEvents have to stay</span>
+        
+      } else { // else we skip trailing NoEvents up to root
+<span class="fc" id="L375">        Event ee = this;</span>
+<span class="fc bfc" id="L376" title="All 2 branches covered.">        if (!includeNoEvents){</span>
+<span class="fc bfc" id="L377" title="All 4 branches covered.">          for (Event e=this; e.prev != null &amp;&amp; (e instanceof NoEvent); e = e.prev){</span>
+<span class="fc" id="L378">            ee = e.prev;</span>
+          }
+        }
+<span class="fc" id="L381">        list.add(ee);</span>
+      }
+    }
+
+<span class="fc bfc" id="L385" title="All 2 branches covered.">    if (alt != null) {</span>
+<span class="fc" id="L386">      alt.collectEndEvents(list, includeNoEvents);</span>
+    }
+<span class="fc" id="L388">  }</span>
+
+  public Event endEvent() {
+<span class="nc bnc" id="L391" title="All 2 branches missed.">    if (next != null) {</span>
+<span class="nc" id="L392">      return next.endEvent();</span>
+    } else {
+<span class="nc" id="L394">      return this;</span>
+    }
+  }
+
+  public List&lt;Event&gt; visibleEndEvents(){
+<span class="fc" id="L399">    List&lt;Event&gt; list = new ArrayList&lt;Event&gt;();</span>
+<span class="fc" id="L400">    collectEndEvents(list, false);</span>
+<span class="fc" id="L401">    return list;</span>
+  }
+ 
+  
+  public List&lt;Event&gt; endEvents(){
+<span class="fc" id="L406">    List&lt;Event&gt; list = new ArrayList&lt;Event&gt;();</span>
+<span class="fc" id="L407">    collectEndEvents(list, true);</span>
+<span class="fc" id="L408">    return list;</span>
+  }
+  
+ 
+  private void interleave (Event a, Event b, Event[] path, int pathLength, int i, Event result){
+<span class="fc bfc" id="L413" title="All 4 branches covered.">    if (a == null &amp;&amp; b == null){ // base case</span>
+<span class="fc" id="L414">      result.addPath(pathLength, path);</span>
+      
+    } else {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">      if (a != null) {</span>
+<span class="fc" id="L418">        path[i] = a;</span>
+<span class="fc" id="L419">        interleave(a.prev, b, path, pathLength, i - 1, result);</span>
+      }
+
+<span class="fc bfc" id="L422" title="All 2 branches covered.">      if (b != null) {</span>
+<span class="fc" id="L423">        path[i] = b;</span>
+<span class="fc" id="L424">        interleave(a, b.prev, path, pathLength, i - 1, result);</span>
+      }
+    }
+<span class="fc" id="L427">  }</span>
+  
+  /**
+   * this creates a new tree that contains all paths resulting from
+   * all interleavings of all paths of this tree with the specified other events
+   * 
+   * BEWARE: this is a combinatorial bomb that should only be used if we know all
+   * paths are short
+   */
+  public Event interleave (Event... otherEvents){
+<span class="fc" id="L437">    Event t = new NoEvent(); // we need a root for the new tree</span>
+    
+<span class="fc" id="L439">    Event[] pathBuffer = new Event[32];</span>
+<span class="fc" id="L440">    int mergedTrees = 0;</span>
+    
+<span class="fc bfc" id="L442" title="All 2 branches covered.">    for (Event o : otherEvents){</span>
+<span class="pc bpc" id="L443" title="1 of 2 branches missed.">      List&lt;Event&gt; endEvents = (mergedTrees++ &gt; 0) ? t.visibleEndEvents() : visibleEndEvents();</span>
+
+<span class="fc bfc" id="L445" title="All 2 branches covered.">      for (Event ee1 : endEvents) {</span>
+<span class="fc bfc" id="L446" title="All 2 branches covered.">        for (Event ee2 : o.visibleEndEvents()) {</span>
+<span class="fc" id="L447">          int n = ee1.getPathLength() + ee2.getPathLength();</span>
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">          if (n &gt; pathBuffer.length){</span>
+<span class="nc" id="L449">            pathBuffer = new Event[n];</span>
+          }
+
+<span class="fc" id="L452">          interleave(ee1, ee2, pathBuffer, n, n - 1, t);</span>
+<span class="fc" id="L453">        }</span>
+<span class="fc" id="L454">      }</span>
+    }
+        
+<span class="fc" id="L457">    return t.alt;</span>
+  }
+  
+  
+  
+  private void removeSource (Object src, Event[] path, int i, Event result){
+    
+<span class="fc bfc" id="L464" title="All 2 branches covered.">    if (alt != null){</span>
+<span class="fc" id="L465">      alt.removeSource(src, path, i, result);</span>
+    }
+    
+<span class="fc bfc" id="L468" title="All 2 branches covered.">    if (source != src){</span>
+<span class="fc" id="L469">      path[i++] = this;</span>
+    }
+    
+<span class="fc bfc" id="L472" title="All 2 branches covered.">    if (next != null){</span>
+<span class="fc" id="L473">      next.removeSource(src, path, i, result);</span>
+      
+    } else { // done, add path to result
+<span class="fc" id="L476">      result.addPath( i, path);</span>
+    }
+<span class="fc" id="L478">  }</span>
+  
+  /**
+   * remove all events from this tree that are from the specified source 
+   */
+  public Event removeSource (Object src){
+<span class="fc" id="L484">    Event base = new NoEvent(); // we need a root to add to</span>
+<span class="fc" id="L485">    int maxDepth = getMaxDepth();</span>
+<span class="fc" id="L486">    Event[] pathBuffer = new Event[maxDepth];</span>
+    
+<span class="fc" id="L488">    removeSource( src, pathBuffer, 0, base);</span>
+    
+<span class="fc" id="L490">    return base.alt;</span>
+  }
+  
+  private void printPath (PrintStream ps, boolean isLast){
+<span class="fc bfc" id="L494" title="All 2 branches covered.">    if (prev != null){</span>
+<span class="fc" id="L495">      prev.printPath(ps, false);</span>
+    }
+    
+<span class="fc bfc" id="L498" title="All 2 branches covered.">    if (!isNoEvent()){</span>
+<span class="fc" id="L499">      ps.print(name);</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">      if (!isLast){</span>
+<span class="fc" id="L501">        ps.print(',');</span>
+      }
+    }
+<span class="fc" id="L504">  }</span>
+  
+  public void printPath (PrintStream ps){
+<span class="fc" id="L507">    printPath(ps, true);</span>
+<span class="fc" id="L508">  }</span>
+
+  @Override
+  public String toString(){
+<span class="fc" id="L512">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L513">    sb.append(name);</span>
+<span class="pc bpc" id="L514" title="1 of 2 branches missed.">    if (arguments != NO_ARGUMENTS) {</span>
+<span class="nc" id="L515">      sb.append('(');</span>
+<span class="nc" id="L516">      boolean first = true;</span>
+<span class="nc bnc" id="L517" title="All 2 branches missed.">      for (Object a : arguments) {</span>
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (first){</span>
+<span class="nc" id="L519">          first = false;</span>
+        } else {
+<span class="nc" id="L521">          sb.append(',');</span>
+        }
+<span class="nc" id="L523">        sb.append(a.toString());</span>
+      }
+<span class="nc" id="L525">      sb.append(')');</span>
+    }
+<span class="fc" id="L527">    return sb.toString();</span>
+  }
+
+  
+  /**
+   * upwards path length 
+   */
+  public int getPathLength(){
+<span class="fc" id="L535">    int n=0;</span>
+    
+<span class="fc bfc" id="L537" title="All 2 branches covered.">    for (Event e=this; e != null; e = e.prev){</span>
+<span class="fc" id="L538">      n++;</span>
+    }
+    
+<span class="fc" id="L541">    return n;</span>
+  }
+  
+  
+  private int getMaxDepth (int depth){
+<span class="fc" id="L546">    int maxAlt = depth;</span>
+<span class="fc" id="L547">    int maxNext = depth;</span>
+    
+<span class="fc bfc" id="L549" title="All 2 branches covered.">    if (alt != null){</span>
+<span class="fc" id="L550">      maxAlt = alt.getMaxDepth(depth);</span>
+    }
+    
+<span class="fc bfc" id="L553" title="All 2 branches covered.">    if (next != null){</span>
+<span class="fc" id="L554">      maxNext = next.getMaxDepth(depth + 1);</span>
+    }
+    
+<span class="fc bfc" id="L557" title="All 2 branches covered.">    if (maxAlt &gt; maxNext){</span>
+<span class="fc" id="L558">      return maxAlt;</span>
+    } else {
+<span class="fc" id="L560">      return maxNext;</span>
+    }
+  }
+  
+  /**
+   * maximum downwards tree depth 
+   */
+  public int getMaxDepth(){
+<span class="fc" id="L568">    return getMaxDepth(1);</span>
+  }
+  
+  public Event[] getPath(){
+<span class="nc" id="L572">    int n = getPathLength();</span>
+<span class="nc" id="L573">    Event[] trace = new Event[n];</span>
+    
+<span class="nc bnc" id="L575" title="All 2 branches missed.">    for (Event e=this; e != null; e = e.prev){</span>
+<span class="nc" id="L576">      trace[--n] = e;</span>
+    }
+    
+<span class="nc" id="L579">    return trace;</span>
+  }
+  
+  public void printTree (PrintStream ps, int level) {
+<span class="fc bfc" id="L583" title="All 2 branches covered.">    for (int i = 0; i &lt; level; i++) {</span>
+<span class="fc" id="L584">      ps.print(&quot;. &quot;);</span>
+    }
+    
+<span class="fc" id="L587">    ps.print(this);</span>
+    //ps.print(&quot; [&quot; + prev + ']');
+<span class="fc" id="L589">    ps.println();</span>
+
+<span class="fc bfc" id="L591" title="All 2 branches covered.">    if (next != null) {</span>
+<span class="fc" id="L592">      next.printTree(ps, level + 1);</span>
+    }
+
+<span class="fc bfc" id="L595" title="All 2 branches covered.">    if (alt != null) {</span>
+<span class="fc" id="L596">      alt.printTree(ps, level);</span>
+    }
+<span class="fc" id="L598">  }</span>
+  
+  public boolean isEndOfTrace (String[] eventNames){
+<span class="nc" id="L601">    int n = eventNames.length-1;</span>
+    
+<span class="nc bnc" id="L603" title="All 2 branches missed.">    for (Event e=this; e!= null; e = e.prev){</span>
+<span class="nc bnc" id="L604" title="All 2 branches missed.">      if (e.getName().equals(eventNames[n])){</span>
+<span class="nc" id="L605">        n--;</span>
+      } else {
+<span class="nc" id="L607">        return false;</span>
+      }
+    }
+    
+<span class="nc bnc" id="L611" title="All 2 branches missed.">    return (n == 0);</span>
+  }
+  
+  protected void collectTrace (StringBuilder sb, String separator, boolean isLast){
+<span class="fc bfc" id="L615" title="All 2 branches covered.">    if (prev != null){</span>
+<span class="fc" id="L616">      prev.collectTrace(sb, separator, false);    </span>
+    }
+
+<span class="fc bfc" id="L619" title="All 2 branches covered.">    if (!isNoEvent()){</span>
+<span class="fc" id="L620">      sb.append(toString());</span>
+      
+<span class="pc bpc" id="L622" title="1 of 4 branches missed.">      if (!isLast &amp;&amp; separator != null){</span>
+<span class="nc" id="L623">        sb.append(separator);        </span>
+      }
+    }
+<span class="fc" id="L626">  }</span>
+  
+  public String getPathString (String separator){
+<span class="fc" id="L629">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L630">    collectTrace( sb, separator, true);</span>
+<span class="fc" id="L631">    return sb.toString();</span>
+  }
+  
+  public boolean isNoEvent(){
+<span class="fc" id="L635">    return false;</span>
+  }
+
+  public boolean isSystemEvent(){
+<span class="nc" id="L639">    return false;</span>
+  }
+
+  //--- generic processing interface
+  
+  public void process(Object source){
+    // can be overridden by subclass if instance has sufficient context info
+<span class="nc" id="L646">  }</span>
+  
+  public void setProcessed(){
+    // can be overridden by subclass, e.g. to maintain event caches
+<span class="nc" id="L650">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

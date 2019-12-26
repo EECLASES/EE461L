@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CGCall.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">CGCall.java</span></div><h1>CGCall.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.vm.ChoiceGenerator;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ *
+ * @author Ivan Mushketik
+ */
+public class CGCall {
+
+<span class="fc" id="L32">  private ArrayList&lt;Value&gt; params = new ArrayList&lt;Value&gt;();</span>
+  private String name;
+
+<span class="fc" id="L35">  public CGCall(String name) {</span>
+<span class="fc" id="L36">    this.name = name;</span>
+<span class="fc" id="L37">  }</span>
+
+  void addParam(Value value) {
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">    if (value == null) {</span>
+<span class="nc" id="L41">      throw new NullPointerException(&quot;Null value added to CGCall&quot;);</span>
+    }
+
+<span class="fc" id="L44">    params.add(value);</span>
+<span class="fc" id="L45">  }</span>
+
+  public Value[] getValues() {
+<span class="fc" id="L48">    Value paramsArr[] = new Value[params.size()];</span>
+<span class="fc" id="L49">    params.toArray(paramsArr);</span>
+
+<span class="fc" id="L51">    return paramsArr;</span>
+  }
+
+  public String getName() {
+<span class="fc" id="L55">    return name;</span>
+  }
+
+  /**
+   * This method go through JSON object and finds all CGs to set in a current state.
+   * It also gives each CG it's a unique id. Each id is calculated in a following way:
+   * &lt;li&gt; If CG call is in the root of JSON object it's id will be equals to it's key in JSON
+   * &lt;li&gt; If CG call isn't in a root object it's id will be concatenated keys of
+   * all parent objects + key of CG.
+   * &lt;li&gt; If CG call is in an object that is an element of array CG's id will be
+   * concatenated keys of all parent array + &quot;[i&quot; (where i is a pos of parent object
+   * of CG in array + CG's key)
+   *
+   * This id also used in JSONObject.fillObject() to find CG to use when field that
+   * should be set with CG is found.
+   *
+   * @param jsonObject - parsed JSON object
+   * @param CGCreators - hash of factories to create Choice Generators
+   * @return list of choice generators that should be set in a current state.
+   */
+  public static List&lt;ChoiceGenerator&lt;?&gt;&gt; createCGList(JSONObject jsonObject) {
+<span class="fc" id="L76">    List&lt;ChoiceGenerator&lt;?&gt;&gt; result = new ArrayList&lt;ChoiceGenerator&lt;?&gt;&gt;();</span>
+<span class="fc" id="L77">    createCGs(jsonObject, &quot;&quot;, result);</span>
+
+<span class="fc" id="L79">    return result;</span>
+  }
+
+  private static void createCGs(JSONObject jsonObject, String prefix, List&lt;ChoiceGenerator&lt;?&gt;&gt; result) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">    for (String cgKey : jsonObject.getCGCallsKeys()) {</span>
+<span class="fc" id="L84">      CGCall cgCall = jsonObject.getCGCall(cgKey);</span>
+<span class="fc" id="L85">      CGCreator creator = CGCreatorFactory.getFactory().getCGCreator(cgCall.getName());</span>
+
+<span class="fc" id="L87">      ChoiceGenerator&lt;?&gt; newCG = creator.createCG(prefix + cgKey, cgCall.getValues());</span>
+<span class="fc" id="L88">      result.add(newCG);</span>
+    }
+
+<span class="fc bfc" id="L91" title="All 2 branches covered.">    for (String valueKey : jsonObject.getValuesKeys()) {</span>
+<span class="fc" id="L92">      Value v = jsonObject.getValue(valueKey);</span>
+
+<span class="fc bfc" id="L94" title="All 2 branches covered.">      if (v instanceof JSONObjectValue) {</span>
+<span class="fc" id="L95">        createCGs(v.getObject(), prefix + valueKey, result);</span>
+        
+<span class="fc bfc" id="L97" title="All 2 branches covered.">      } else if (v instanceof ArrayValue) {</span>
+<span class="fc" id="L98">        Value[] values = v.getArray();</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (int i = 0; i &lt; values.length; i++) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">          if (values[i] instanceof JSONObjectValue) {</span>
+<span class="fc" id="L102">            createCGs(values[i].getObject(), prefix + valueKey + &quot;[&quot; + i, result);</span>
+          }
+        }
+      }
+    }
+<span class="fc" id="L107">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AmmendableFilterConfiguration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.serialize</a> &gt; <span class="el_source">AmmendableFilterConfiguration.java</span></div><h1>AmmendableFilterConfiguration.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.serialize;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.ObjVector;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.MethodInfo;
+
+import java.util.ArrayList;
+
+<span class="fc" id="L28">public class AmmendableFilterConfiguration implements FilterConfiguration {</span>
+  public interface Ammendment {
+    public static final boolean POLICY_IGNORE = false;
+    public static final boolean POLICY_INCLUDE = true;
+  }
+  
+  public interface FrameAmmendment extends Ammendment {
+    FramePolicy ammendFramePolicy(MethodInfo mi, FramePolicy sofar);
+    
+    //BitArray ammendLocalInclusion(MethodInfo mi, BitArray sofar);
+  }
+  
+  public interface InstanceAmmendment extends Ammendment {
+    boolean ammendFieldInclusion(FieldInfo fi, boolean sofar);
+  }
+  
+  public interface StaticAmmendment extends Ammendment {
+    boolean ammendFieldInclusion(FieldInfo fi, boolean sofar);
+  }
+
+  // convience for implementing both
+  public interface FieldAmmendment extends InstanceAmmendment, StaticAmmendment {}
+  
+  public interface InstanceOverride {
+    boolean isOverriding(ClassInfo ci);
+    
+    Iterable&lt;FieldInfo&gt; getMatchedInstanceFields(ClassInfo ci,
+                                  Iterable&lt;FieldInfo&gt; preOverride);
+  }
+
+  
+<span class="fc" id="L59">  protected final ObjVector&lt;FrameAmmendment&gt; frameAmmendments =</span>
+    new ObjVector&lt;FrameAmmendment&gt;(0); 
+  
+<span class="fc" id="L62">  protected final ObjVector&lt;InstanceAmmendment&gt; instanceAmmendments =</span>
+    new ObjVector&lt;InstanceAmmendment&gt;(0); 
+  
+<span class="fc" id="L65">  protected final ObjVector&lt;StaticAmmendment&gt; staticAmmendments =</span>
+    new ObjVector&lt;StaticAmmendment&gt;(0); 
+  
+<span class="fc" id="L68">  protected final ObjVector&lt;InstanceOverride&gt; instanceOverrides =</span>
+    new ObjVector&lt;InstanceOverride&gt;(0);
+  
+  
+  // configuration stuff
+  
+  @Override
+  public void init(Config config)  {
+<span class="fc" id="L76">    appendConfiguredFrameAmmendments(config);</span>
+<span class="fc" id="L77">    appendConfiguredInstanceAmmendments(config);</span>
+<span class="fc" id="L78">    appendConfiguredStaticAmmendments(config);</span>
+<span class="fc" id="L79">    appendConfiguredInstanceOverrides(config);</span>
+<span class="fc" id="L80">  }</span>
+
+  protected void appendConfiguredFrameAmmendments(Config config) {
+<span class="fc" id="L83">    ArrayList&lt;FrameAmmendment&gt; fas =</span>
+<span class="fc" id="L84">      config.getInstances(&quot;filter.frame_ammendments&quot;, FrameAmmendment.class);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">    if (fas != null) frameAmmendments.append(fas);</span>
+<span class="fc" id="L86">  }</span>
+  
+  protected void appendConfiguredInstanceAmmendments(Config config) {
+<span class="fc" id="L89">    ArrayList&lt;InstanceAmmendment&gt; ias =</span>
+<span class="fc" id="L90">      config.getInstances(&quot;filter.instance_ammendments&quot;, InstanceAmmendment.class);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">    if (ias != null) instanceAmmendments.append(ias);</span>
+<span class="fc" id="L92">  }  </span>
+  
+  protected void appendConfiguredStaticAmmendments(Config config) {
+<span class="fc" id="L95">    ArrayList&lt;StaticAmmendment&gt; sas =</span>
+<span class="fc" id="L96">      config.getInstances(&quot;filter.static_ammendments&quot;, StaticAmmendment.class);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">    if (sas != null) staticAmmendments.append(sas);</span>
+<span class="fc" id="L98">  }</span>
+  
+  protected void appendConfiguredInstanceOverrides(Config config) {
+<span class="fc" id="L101">    ArrayList&lt;InstanceOverride&gt; ios =</span>
+<span class="fc" id="L102">      config.getInstances(&quot;filter.instance_overrides&quot;, InstanceOverride.class);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">    if (ios != null) instanceOverrides.append(ios);</span>
+<span class="fc" id="L104">  }</span>
+  
+
+  // public API for adding to configuration
+  public void appendFrameAmmendment(FrameAmmendment fa) {
+<span class="fc" id="L109">    frameAmmendments.add(fa);</span>
+<span class="fc" id="L110">  }</span>
+  
+  public void appendInstanceAmmendment(InstanceAmmendment ia) {
+<span class="fc" id="L113">    instanceAmmendments.add(ia);</span>
+<span class="fc" id="L114">  }</span>
+  
+  public void appendStaticAmmendment(StaticAmmendment sa) {
+<span class="fc" id="L117">    staticAmmendments.add(sa);</span>
+<span class="fc" id="L118">  }</span>
+  
+  public void appendFieldAmmendment(FieldAmmendment fa) {
+<span class="fc" id="L121">    staticAmmendments.add(fa);</span>
+<span class="fc" id="L122">    instanceAmmendments.add(fa);</span>
+<span class="fc" id="L123">  }</span>
+
+  public void appendInstanceOverride(InstanceOverride io) {
+<span class="nc" id="L126">    instanceOverrides.add(io);</span>
+<span class="nc" id="L127">  }</span>
+  
+  
+  // FilterConfiguration Stuff
+  @Override
+  public FramePolicy getFramePolicy(MethodInfo mi) {
+<span class="nc" id="L133">    FramePolicy policy = new FramePolicy();</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">    for (FrameAmmendment fa : frameAmmendments) {</span>
+<span class="nc" id="L135">      policy = fa.ammendFramePolicy(mi, policy);</span>
+<span class="nc" id="L136">    }</span>
+<span class="nc" id="L137">    return policy;</span>
+  }
+  
+  // not implemented
+  /*public BitArray getFrameLocalInclusion(MethodInfo mi) {
+    BitArray cur = new BitArray(mi.getMaxLocals());
+    cur.setAll(); // by default include everything
+    for (FrameAmmendment fa : frameAmmendments) {
+      cur = fa.ammendLocalInclusion(mi, cur);
+    }
+    return cur;
+  }*/
+
+  @Override
+  public Iterable&lt;FieldInfo&gt; getMatchedInstanceFields(ClassInfo ci) {
+<span class="fc" id="L152">    int fieldCount = ci.getNumberOfInstanceFields();</span>
+<span class="fc" id="L153">    ObjVector&lt;FieldInfo&gt; v = new ObjVector&lt;FieldInfo&gt;(fieldCount); </span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">    for (int i = 0; i &lt; fieldCount; i++) {</span>
+<span class="fc" id="L155">      FieldInfo field = ci.getInstanceField(i);</span>
+<span class="fc" id="L156">      boolean include = true;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">      for (InstanceAmmendment ia : instanceAmmendments) {</span>
+<span class="fc" id="L158">        include = ia.ammendFieldInclusion(field, include);</span>
+<span class="fc" id="L159">      }</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">      if (include) {</span>
+<span class="fc" id="L161">        v.add(field);</span>
+      }
+    }
+<span class="fc" id="L164">    Iterable&lt;FieldInfo&gt; ret = v;</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">    for (InstanceOverride io : instanceOverrides) {</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">      if (io.isOverriding(ci)) {</span>
+<span class="nc" id="L167">        ret = io.getMatchedInstanceFields(ci, ret);</span>
+      }
+<span class="nc" id="L169">    }</span>
+<span class="fc" id="L170">    return ret;</span>
+  }
+
+  @Override
+  public Iterable&lt;FieldInfo&gt; getMatchedStaticFields(ClassInfo ci) {
+<span class="fc" id="L175">    int fieldCount = ci.getNumberOfStaticFields();</span>
+<span class="fc" id="L176">    ObjVector&lt;FieldInfo&gt; v = new ObjVector&lt;FieldInfo&gt;(fieldCount); </span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">    for (int i = 0; i &lt; fieldCount; i++) {</span>
+<span class="fc" id="L178">      FieldInfo field = ci.getStaticField(i);</span>
+<span class="fc" id="L179">      boolean include = true;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">      for (StaticAmmendment sa : staticAmmendments) {</span>
+<span class="fc" id="L181">        include = sa.ammendFieldInclusion(field, include);</span>
+<span class="fc" id="L182">      }</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">      if (include) {</span>
+<span class="fc" id="L184">        v.add(field);</span>
+      }
+    }
+<span class="fc" id="L187">    return v;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

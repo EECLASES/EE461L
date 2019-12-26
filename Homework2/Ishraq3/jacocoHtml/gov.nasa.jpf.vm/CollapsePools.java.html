@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CollapsePools.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">CollapsePools.java</span></div><h1>CollapsePools.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.HashPool;
+import gov.nasa.jpf.util.IntTable.Entry;
+import gov.nasa.jpf.util.WeakPool;
+
+<span class="nc" id="L25">abstract class CollapsePools {</span>
+<span class="nc" id="L26">  static class AllWeak {</span>
+    /** Pool used to store the stack frames.*/
+<span class="nc" id="L28">    private WeakPool&lt;StackFrame&gt; stackFramePool = new WeakPool&lt;StackFrame&gt;(11);</span>
+
+    /** Pool used to store collections of field values.*/
+<span class="nc" id="L31">    private WeakPool&lt;Fields&gt;     fieldsPool     = new WeakPool&lt;Fields&gt;    (11);</span>
+
+    /** Pool used to store the thread data.*/
+<span class="nc" id="L34">    private WeakPool&lt;ThreadData&gt; threadDataPool = new WeakPool&lt;ThreadData&gt;(8);</span>
+    
+    /** Pool used to store monitor states.*/
+<span class="nc" id="L37">    private WeakPool&lt;Monitor&gt;    monitorPool    = new WeakPool&lt;Monitor&gt;   (8);</span>
+
+    public StackFrame poolStackFrame(StackFrame o) {
+<span class="nc" id="L40">      StackFrame p = stackFramePool.pool(o);</span>
+      if (VM.CHECK_CONSISTENCY) assert p.equals(o);
+<span class="nc" id="L42">      return p;</span>
+    }
+
+    public Fields poolFields(Fields o) {
+<span class="nc" id="L46">      Fields p = fieldsPool.pool(o);</span>
+      if (VM.CHECK_CONSISTENCY) assert p.equals(o);
+<span class="nc" id="L48">      return p;</span>
+    }
+
+    public ThreadData poolThreadData(ThreadData o) {
+<span class="nc" id="L52">      ThreadData p = threadDataPool.pool(o);</span>
+      if (VM.CHECK_CONSISTENCY) assert p.equals(o);
+<span class="nc" id="L54">      return p;</span>
+    }
+
+    public Monitor poolMonitor(Monitor o) {
+<span class="nc" id="L58">      Monitor p = monitorPool.pool(o);</span>
+      if (VM.CHECK_CONSISTENCY) assert p.equals(o);
+<span class="nc" id="L60">      return p;</span>
+    }
+  }
+  
+<span class="nc" id="L64">  static class AllIndexed {</span>
+    /** Pool used to store the thread data.*/
+<span class="nc" id="L66">    private HashPool&lt;ThreadData&gt; threadDataPool = new HashPool&lt;ThreadData&gt;(8).addNull();</span>
+
+    /** Pool used to store monitor states.*/
+<span class="nc" id="L69">    private HashPool&lt;Monitor&gt;    monitorPool    = new HashPool&lt;Monitor&gt;   (8).addNull();</span>
+
+    /** Pool used to store the stack frames.*/
+<span class="nc" id="L72">    private HashPool&lt;StackFrame&gt; stackFramePool = new HashPool&lt;StackFrame&gt;(11).addNull();</span>
+
+    /** Pool used to store collections of field values.*/
+<span class="nc" id="L75">    private HashPool&lt;Fields&gt;     fieldsPool     = new HashPool&lt;Fields&gt;    (11).addNull();</span>
+    
+    public StackFrame poolStackFrame(StackFrame o) {
+<span class="nc" id="L78">      StackFrame p = stackFramePool.get(o);</span>
+      if (VM.CHECK_CONSISTENCY) assert p.equals(o);
+<span class="nc" id="L80">      return p;</span>
+    }
+
+    public Fields poolFields(Fields o) {
+<span class="nc" id="L84">      return fieldsPool.get(o);</span>
+    }
+
+    public ThreadData poolThreadData(ThreadData o) {
+<span class="nc" id="L88">      return threadDataPool.get(o);</span>
+    }
+
+    public Monitor poolMonitor(Monitor o) {
+<span class="nc" id="L92">      return monitorPool.get(o);</span>
+    }
+
+    public int getFieldsIndex(ElementInfo ei) {
+<span class="nc" id="L96">      Entry&lt;Fields&gt; entry = fieldsPool.getEntry(ei.getFields());</span>
+<span class="nc" id="L97">      ei.restoreFields(entry.key);</span>
+<span class="nc" id="L98">      return entry.val;</span>
+    }
+
+    public int getStackFrameIndex(StackFrame sf) {
+<span class="nc" id="L102">      return stackFramePool.getIndex(sf);</span>
+    }
+
+    public int getThreadDataIndex(ThreadInfo ti) {
+<span class="nc" id="L106">      Entry&lt;ThreadData&gt; e = threadDataPool.getEntry(ti.threadData);</span>
+<span class="nc" id="L107">      ti.threadData = e.key;</span>
+<span class="nc" id="L108">      return e.val;</span>
+    }
+    
+    public int getMonitorIndex(ElementInfo ei) {
+<span class="nc" id="L112">      Entry&lt;Monitor&gt; entry = monitorPool.getEntry(ei.getMonitor());</span>
+<span class="nc" id="L113">      ei.restoreMonitor(entry.key);</span>
+<span class="nc" id="L114">      return entry.val;</span>
+    }
+    
+    public Fields getFieldsAt(int idx) {
+<span class="nc" id="L118">      return fieldsPool.getObject(idx);</span>
+    }
+
+    public StackFrame getStackFrameAt(int idx) {
+<span class="nc" id="L122">      return stackFramePool.getObject(idx);</span>
+    }
+
+    public ThreadData getThreadDataAt(int idx) {
+<span class="nc" id="L126">      return threadDataPool.getObject(idx);</span>
+    }
+
+    public Monitor getMonitorAt(int idx) {
+<span class="nc" id="L130">      return monitorPool.getObject(idx);</span>
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

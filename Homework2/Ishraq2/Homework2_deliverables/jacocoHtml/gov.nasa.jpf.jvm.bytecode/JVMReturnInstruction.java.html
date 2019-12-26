@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMReturnInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">JVMReturnInstruction.java</span></div><h1>JVMReturnInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.ReturnInstruction;
+
+import java.util.Iterator;
+
+
+/**
+ * abstraction for the various return instructions
+ */
+<span class="fc" id="L32">public abstract class JVMReturnInstruction extends ReturnInstruction implements JVMInstruction {</span>
+
+  // to store where we came from
+  protected StackFrame returnFrame;
+
+  abstract public int getReturnTypeSize();
+  abstract protected Object getReturnedOperandAttr(StackFrame frame);
+  
+  // note these are only callable from within the same enter - thread interleavings
+  // would cause races
+  abstract protected void getAndSaveReturnValue (StackFrame frame);
+  abstract protected void pushReturnValue (StackFrame frame);
+
+  public abstract Object getReturnValue(ThreadInfo ti);
+
+  public StackFrame getReturnFrame() {
+<span class="nc" id="L48">    return returnFrame;</span>
+  }
+
+  public void setReturnFrame(StackFrame frame){
+<span class="nc" id="L52">    returnFrame = frame;</span>
+<span class="nc" id="L53">  }</span>
+
+  /**
+   * this is important since keeping the StackFrame alive would be a major
+   * memory leak
+   */
+  @Override
+  public void cleanupTransients(){
+<span class="fc" id="L61">    returnFrame = null;</span>
+<span class="fc" id="L62">  }</span>
+  
+  //--- attribute accessors
+  
+  // the accessors are here to save the client some effort regarding the
+  // return type (slot size).
+  // Since these are all public methods that can be called by listeners,
+  // we stick to the ThreadInfo argument
+  
+  public boolean hasReturnAttr (ThreadInfo ti){
+<span class="nc" id="L72">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L73">    return frame.hasOperandAttr();</span>
+  }
+  public boolean hasReturnAttr (ThreadInfo ti, Class&lt;?&gt; type){
+<span class="nc" id="L76">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L77">    return frame.hasOperandAttr(type);</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   * 
+   * obviously, this only makes sense from an instructionExecuted(), since
+   * the value is pushed during the enter(). Use ObjectList to access values
+   */
+  public Object getReturnAttr (ThreadInfo ti){
+<span class="nc" id="L88">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L89">    return frame.getOperandAttr();</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   * 
+   * we don't clone since pushing a return value already changed the caller frame
+   */
+  public void setReturnAttr (ThreadInfo ti, Object a){
+<span class="fc" id="L101">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L102">    frame.setOperandAttr(a);</span>
+<span class="fc" id="L103">  }</span>
+  
+  public void addReturnAttr (ThreadInfo ti, Object attr){
+<span class="nc" id="L106">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L107">    frame.addOperandAttr(attr);</span>
+<span class="nc" id="L108">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getReturnAttr (ThreadInfo ti, Class&lt;T&gt; type){
+<span class="nc" id="L115">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L116">    return frame.getOperandAttr(type);</span>
+  }
+  public &lt;T&gt; T getNextReturnAttr (ThreadInfo ti, Class&lt;T&gt; type, Object prev){
+<span class="nc" id="L119">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L120">    return frame.getNextOperandAttr(type, prev);</span>
+  }
+  public Iterator&lt;?&gt; returnAttrIterator (ThreadInfo ti){
+<span class="nc" id="L123">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L124">    return frame.operandAttrIterator();</span>
+  }
+  public &lt;T&gt; Iterator&lt;T&gt; returnAttrIterator (ThreadInfo ti, Class&lt;T&gt; type){
+<span class="nc" id="L127">    StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L128">    return frame.operandAttrIterator(type);</span>
+  }
+  
+  // -- end attribute accessors --
+  
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L135">    boolean didUnblock = false;</span>
+    
+<span class="fc bfc" id="L137" title="All 2 branches covered.">    if (!ti.isFirstStepInsn()) {</span>
+<span class="fc" id="L138">      didUnblock = ti.leave();  // takes care of unlocking before potentially creating a CG</span>
+    }
+    
+<span class="fc bfc" id="L141" title="All 2 branches covered.">    if (mi.isSynchronized()) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">      int objref = mi.isStatic() ? mi.getClassInfo().getClassObjectRef() : ti.getThis();</span>
+<span class="fc" id="L143">      ElementInfo ei = ti.getElementInfo(objref);</span>
+
+<span class="fc bfc" id="L145" title="All 2 branches covered.">      if (ei.getLockCount() == 0) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (ti.getScheduler().setsLockReleaseCG(ti, ei, didUnblock)){</span>
+<span class="fc" id="L147">          return this;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L152">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L153">    returnFrame = frame;</span>
+<span class="fc" id="L154">    Object attr = getReturnedOperandAttr(frame); // the return attr - get this before we pop</span>
+<span class="fc" id="L155">    getAndSaveReturnValue(frame);</span>
+    
+    // note that this is never the first frame, since we start all threads (incl. main)
+    // through a direct call
+<span class="fc" id="L159">    frame = ti.popAndGetModifiableTopFrame();</span>
+
+    // remove args, push return value and continue with next insn
+    // (DirectCallStackFrames don't use this)
+<span class="fc" id="L163">    frame.removeArguments(mi);</span>
+<span class="fc" id="L164">    pushReturnValue(frame);</span>
+
+<span class="fc bfc" id="L166" title="All 2 branches covered.">    if (attr != null) {</span>
+<span class="fc" id="L167">      setReturnAttr(ti, attr);</span>
+    }
+
+<span class="fc" id="L170">    return frame.getPC().getNext();</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L175">	  insVisitor.visit(this);</span>
+<span class="nc" id="L176">  }</span>
+  
+  @Override
+  public String toPostExecString() {
+<span class="nc" id="L180">    return getMnemonic() + &quot; [&quot; + mi.getFullName() + ']';</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

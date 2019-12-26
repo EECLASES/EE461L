@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArrayObjectQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">ArrayObjectQueue.java</span></div><h1>ArrayObjectQueue.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * dynamically growing, cyclic array buffer queue for object references
+ */
+public class ArrayObjectQueue&lt;E&gt; implements ObjectQueue&lt;E&gt; {
+
+  static final int DEFAULT_CAPACITY = 256;
+  
+<span class="fc" id="L31">  int size = 0;</span>
+  int first;  // next index we will remove
+  int last;   // last index we did add
+  
+<span class="fc" id="L35">  Object[] buffer = null;</span>
+  
+<span class="fc" id="L37">  class FIFOIterator implements Iterator&lt;E&gt; {</span>
+<span class="fc" id="L38">    int next = first;</span>
+<span class="fc" id="L39">    int remaining = size;</span>
+    
+    @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">      return (remaining &gt; 0);</span>
+    }
+
+    @Override
+	public E next() {
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">      if (remaining == 0){</span>
+<span class="nc" id="L49">        throw new NoSuchElementException();</span>
+      } else {
+<span class="fc" id="L51">        E e = (E) buffer[next];</span>
+<span class="fc" id="L52">        next = (next+1) % buffer.length;</span>
+<span class="fc" id="L53">        remaining--;</span>
+<span class="fc" id="L54">        return e;</span>
+      }
+    }
+
+    @Override
+	public void remove() { // its a queue
+<span class="nc" id="L60">      throw new UnsupportedOperationException();</span>
+    }
+  }
+  
+  // just for debugging purposes
+<span class="fc" id="L65">  class StorageIterator implements Iterator&lt;E&gt; {</span>
+<span class="fc" id="L66">    int next = 0;</span>
+    
+    @Override
+	public boolean hasNext(){
+<span class="fc bfc" id="L70" title="All 2 branches covered.">      return (next &lt; buffer.length); </span>
+    }
+    
+    @Override
+	public E next(){
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">      if (next == buffer.length){</span>
+<span class="nc" id="L76">        throw new NoSuchElementException();</span>
+      }
+      
+<span class="fc" id="L79">      E e = (E) buffer[next];</span>
+<span class="fc" id="L80">      next++;</span>
+<span class="fc" id="L81">      return e;      </span>
+    }
+    
+    @Override
+	public void remove() { // its a queue
+<span class="nc" id="L86">      throw new UnsupportedOperationException();</span>
+    }
+  }
+  
+<span class="fc" id="L90">  public ArrayObjectQueue (){</span>
+<span class="fc" id="L91">    buffer = new Object[DEFAULT_CAPACITY];</span>
+<span class="fc" id="L92">  }</span>
+  
+<span class="fc" id="L94">  public ArrayObjectQueue (int initialCapacity){</span>
+<span class="fc" id="L95">    buffer = new Object[initialCapacity];</span>
+<span class="fc" id="L96">  }</span>
+  
+  protected void grow(){
+<span class="fc" id="L99">    Object[] newBuffer = new Object[buffer.length * 3 / 2];</span>
+    
+<span class="fc bfc" id="L101" title="All 2 branches covered.">    if (first &lt; last){</span>
+<span class="fc" id="L102">      System.arraycopy(buffer, first, newBuffer, 0, last - first +1);</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">    } else if (first &gt; last){</span>
+<span class="fc" id="L104">      int nRight = buffer.length - first;</span>
+<span class="fc" id="L105">      System.arraycopy(buffer, first, newBuffer, 0, nRight);</span>
+<span class="fc" id="L106">      System.arraycopy(buffer, 0, newBuffer, nRight, last+1);      </span>
+<span class="fc" id="L107">    } else { // just 1 element</span>
+<span class="nc" id="L108">      newBuffer[0] = buffer[first];</span>
+    }
+    
+<span class="fc" id="L111">    first = 0;</span>
+<span class="fc" id="L112">    last = size-1;</span>
+<span class="fc" id="L113">    buffer = newBuffer;</span>
+<span class="fc" id="L114">  }</span>
+  
+  @Override
+  public boolean isEmpty() {
+<span class="fc bfc" id="L118" title="All 2 branches covered.">    return (size == 0);</span>
+  }
+  
+  public int getCurrentCapacity(){
+<span class="fc" id="L122">    return buffer.length;</span>
+  }
+  
+  @Override
+  public int size() {
+<span class="fc" id="L127">    return size;</span>
+  }
+  
+  @Override
+  public boolean offer (E e){
+<span class="nc" id="L132">    return add(e);</span>
+  }
+  
+  @Override
+  public boolean add (E e){
+<span class="fc bfc" id="L137" title="All 2 branches covered.">    if (size == 0){  // first element</span>
+<span class="fc" id="L138">      first = last = 0;</span>
+<span class="fc" id="L139">      buffer[0] = e;</span>
+<span class="fc" id="L140">      size = 1;</span>
+      
+    } else {
+<span class="fc" id="L143">      int i = (last + 1) % buffer.length;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">      if (i == first) {</span>
+<span class="fc" id="L145">        grow();</span>
+<span class="fc" id="L146">        i = size;</span>
+      }
+      
+<span class="fc" id="L149">      last = i;</span>
+<span class="fc" id="L150">      buffer[i] = e;</span>
+<span class="fc" id="L151">      size++;</span>
+    }
+    
+<span class="fc" id="L154">    return true; // this is a dynamic queue, we never run out of space</span>
+  }
+  
+  @Override
+  public E poll (){
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L160">      return null;</span>
+      
+    } else {
+<span class="fc" id="L163">      int i = first;</span>
+      
+<span class="fc" id="L165">      first = (first+1) % buffer.length;</span>
+<span class="fc" id="L166">      size--;</span>
+      
+<span class="fc" id="L168">      E e = (E) buffer[i];</span>
+<span class="fc" id="L169">      buffer[i] = null; // avoid memory leaks</span>
+<span class="fc" id="L170">      return e;</span>
+    }
+    
+  }
+  
+  @Override
+  public E remove () throws NoSuchElementException {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">    if (size == 0){</span>
+<span class="fc" id="L178">      throw new NoSuchElementException();</span>
+    } else {
+<span class="fc" id="L180">      return poll();</span>
+    }
+  }
+
+  @Override
+  public E peek () {
+<span class="nc bnc" id="L186" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L187">      return null;</span>
+    } else {
+<span class="nc" id="L189">      return (E)buffer[first];</span>
+    }
+  }
+  
+  @Override
+  public Iterator&lt;E&gt; iterator() {
+<span class="fc" id="L195">    return new FIFOIterator();</span>
+  }
+ 
+  public Iterator&lt;E&gt; storageIterator(){
+<span class="fc" id="L199">    return new StorageIterator();</span>
+  }
+  
+  
+  @Override
+  public void clear(){
+<span class="fc" id="L205">    buffer = new Object[buffer.length]; // cheaper than iterating over the old one</span>
+<span class="fc" id="L206">    size = 0;</span>
+<span class="fc" id="L207">    first = last = -1;</span>
+<span class="fc" id="L208">  }</span>
+  
+  /**
+   * call Processor.process(e) on each queued object
+   * 
+   * This method does not return before the queue is empty, which makes it
+   * suitable for graph traversal. It also avoids iterator objects, allows
+   * adding new objects while processing the queue, and enables to keep
+   * processing state in the processor
+   */
+  @Override
+  public void process (Processor&lt;E&gt; processor){
+<span class="fc bfc" id="L220" title="All 2 branches covered.">    while (size &gt; 0){</span>
+<span class="fc" id="L221">      E e = remove();</span>
+<span class="fc" id="L222">      processor.process(e);</span>
+<span class="fc" id="L223">    }</span>
+<span class="fc" id="L224">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

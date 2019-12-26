@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GenericDataAbstractor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.perturb</a> &gt; <span class="el_source">GenericDataAbstractor.java</span></div><h1>GenericDataAbstractor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.perturb;
+
+import java.util.Random;
+import java.util.Vector;
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.IntChoiceGenerator;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.choice.IntChoiceFromSet;
+
+/**
+ * This file implements a generic data abstraction module that can be used
+ * with the Perturbator to execute a method with a choice of values for the
+ * method parameters.
+ * 
+ * This module handles all basic types and selects values for them as follows:
+ * int, short: random negative integer | 0 | random positive integer
+ * float: random negative floating point | 0 | random positive floating point
+ * char: two random values in [0, 255] and an explicit 0
+ * boolean: true | false
+ * 
+ * An instance of this class is expected to be specialized for each method that we
+ * want perturbed. The cstor creates a vector of valuations for the parameters
+ * using all choices for each basic type such that each vector can be written 
+ * directly into the method stack frame for parameters
+ * 
+ */
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">public class GenericDataAbstractor implements OperandPerturbator {</span>
+
+  // A valuations helper class
+  public class Valuation {
+<span class="pc" id="L53">    protected int valuation[] = null;</span>
+
+<span class="fc" id="L55">    public Valuation(int size) {</span>
+<span class="fc" id="L56">      valuation = new int[size];</span>
+<span class="fc" id="L57">    }</span>
+    // create an object from an existing valuation
+<span class="fc" id="L59">    public Valuation(Valuation seedValuation) {</span>
+<span class="fc" id="L60">      valuation = seedValuation.valuation.clone();</span>
+<span class="fc" id="L61">    }</span>
+<span class="nc" id="L62">    public Valuation(Valuation val, int size) {</span>
+<span class="nc" id="L63">      valuation = new int[size];</span>
+<span class="nc" id="L64">      int[] valuationArray = val.getValuation();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      for (int i = 0; i &lt; valuationArray.length; i++)</span>
+<span class="nc" id="L66">        valuation[i] = valuationArray[i];</span>
+<span class="nc" id="L67">    }</span>
+    public int[] getValuation() {
+<span class="fc" id="L69">      return valuation;</span>
+    }
+    public void add(int index, int element) {
+<span class="fc" id="L72">      valuation[index] = element;</span>
+<span class="fc" id="L73">    }</span>
+  }
+
+<span class="fc" id="L76">  static long seed = 5;</span>
+
+  protected MethodInfo mi;
+  protected StackFrame stackFrame;
+  protected int nParams;
+<span class="fc" id="L81">  protected byte[] paramTypes = null;</span>
+<span class="fc" id="L82">  protected String[] paramTypeNames = null;</span>
+<span class="fc" id="L83">  protected String[] paramNames = null;</span>
+<span class="fc" id="L84">  protected Vector&lt;Valuation&gt; valuations = new Vector&lt;Valuation&gt;();</span>
+  protected int choices;
+  protected int operandSize;
+<span class="fc" id="L87">  protected Valuation valuation = null;</span>
+  protected boolean isStatic;
+<span class="fc" id="L89">  protected Random randomizer = new Random(seed);</span>
+
+<span class="fc" id="L91">  public GenericDataAbstractor (Config conf, String keyPrefix){</span>
+    // this will expand to read parameters from the configuration
+    // to specialize the behavior of the abstractor
+<span class="fc" id="L94">    mi = null;</span>
+<span class="fc" id="L95">    choices = 0;</span>
+<span class="fc" id="L96">  }</span>
+
+  // At the time of instance creation we don't have the MethodInfo object
+  // for the method that needs its parameters perturbed. Therefore, we 
+  // should set MethodInfo using a call to the following method before
+  // we can use this instance to perturb a method invocation
+  public void setMethodInfo(MethodInfo m, StackFrame frame) {
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">    if (mi != null) </span>
+<span class="nc" id="L104">      return;</span>
+
+<span class="fc" id="L106">    mi = m;</span>
+<span class="fc" id="L107">    stackFrame = frame;</span>
+    // Need to figure out the right number of parameters. 
+<span class="fc" id="L109">    paramTypes = mi.getArgumentTypes();</span>
+<span class="fc" id="L110">    paramTypeNames = mi.getArgumentTypeNames();</span>
+<span class="fc" id="L111">    nParams = paramTypes.length;</span>
+<span class="fc" id="L112">    isStatic = mi.isStatic();</span>
+
+    // now compute the operand size in 32-bit words
+<span class="fc" id="L115">    operandSize = 0;</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">    for (byte type : paramTypes) {</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">      if (type == Types.T_LONG || type == Types.T_DOUBLE)</span>
+<span class="fc" id="L118">        operandSize += 2;</span>
+      else
+<span class="fc" id="L120">        operandSize++;</span>
+    }
+
+    // useful when we call the various populate methods that populate
+    // choice vectors. The parameter name can be used to specialize
+    // population to parameter names
+<span class="fc" id="L126">    paramNames = new String[nParams];</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">    if (nParams != 0) {</span>
+<span class="fc" id="L128">    	String[] localVars = mi.getLocalVariableNames();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">    	for (int i = 0; i &lt; nParams; i++) {</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">    		paramNames[i] = isStatic? localVars[i] : localVars[i + 1];</span>
+    	}
+    }
+
+    // We build an array of choices, with each choice being an index into
+    // an array of integers representing the operand stack values.
+    // We then use an IntChoiceGenerator to give us an index that is then
+    // used to access the values we want to replace for the operands on the
+    // stack
+
+<span class="fc" id="L140">    valuation = new Valuation(operandSize);</span>
+<span class="fc" id="L141">    valuations.add(valuation);</span>
+<span class="fc" id="L142">    populateValuations(frame, 0, 0);</span>
+
+    // we now know how many choices there are and hence set choices
+<span class="fc" id="L145">    choices = valuations.size() - 1;</span>
+<span class="fc" id="L146">  }</span>
+
+  // Method to populate boolean values
+  public int[] populateBoolean(MethodInfo mi, String name) {
+<span class="fc" id="L150">    int[] bVec = {0 /* false */, 1 /* true */};</span>
+
+<span class="fc" id="L152">    return bVec;</span>
+  }
+
+  // Method to populate character values
+  public int[] populateChar(MethodInfo mi, String name) {
+<span class="nc" id="L157">    int[] iVec = {Math.abs(randomizer.nextInt() % 255), 0, Math.abs(randomizer.nextInt() % 255)};</span>
+
+<span class="nc" id="L159">    return iVec;</span>
+  }
+
+  // Method to populate byte values
+  public int[] populateByte(MethodInfo mi, String name) {
+<span class="nc" id="L164">    int[] iVec = {Math.abs(randomizer.nextInt() % 128), 0, -1 * Math.abs(randomizer.nextInt() % 127)};</span>
+
+<span class="nc" id="L166">    return iVec;</span>
+  }
+
+  // Method to populate integer values
+  public int[] populateInt(MethodInfo mi, String name) {
+<span class="fc" id="L171">    int[] iVec = {Math.abs(randomizer.nextInt() % 100), 0, -1 * Math.abs(randomizer.nextInt() % 100)};</span>
+
+<span class="fc" id="L173">    return iVec;</span>
+  }
+
+  // Method to populate integer values
+  public int[] populateShort(MethodInfo mi, String name) {
+<span class="nc" id="L178">    return populateInt(mi, name);</span>
+  }
+
+  // Method to populate long values
+  public int[] populateLong(MethodInfo mi, String name) {
+<span class="fc" id="L183">    long[] lVec = {Math.abs(randomizer.nextLong() % 100), 0, -1 * Math.abs(randomizer.nextLong() % 100)};</span>
+<span class="fc" id="L184">    int[] iVec = new int[lVec.length * 2];</span>
+
+<span class="fc" id="L186">    int i = 0;</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">    for (long l : lVec) {</span>
+<span class="fc" id="L188">      iVec[i++] = Types.hiLong(l);</span>
+<span class="fc" id="L189">      iVec[i++] = Types.loLong(l);</span>
+    }
+<span class="fc" id="L191">    return iVec;</span>
+  }
+
+  // Method to populate integer values
+  public int[] populateFloat(MethodInfo mi, String name) {
+<span class="nc" id="L196">    int[] fVec = {Float.floatToIntBits(randomizer.nextFloat()), 0, </span>
+<span class="nc" id="L197">        -1 * Float.floatToIntBits(randomizer.nextFloat())};</span>
+
+<span class="nc" id="L199">    return fVec;</span>
+  }
+
+  // Method to populate long values
+  public int[] populateDouble(MethodInfo mi, String name) {
+<span class="fc" id="L204">    double[] dVec = {-1.414, 0.0, 3.141};</span>
+<span class="fc" id="L205">    int[] iVec = new int[dVec.length * 2];</span>
+
+<span class="fc" id="L207">    int i = 0;</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">    for (double d : dVec) {</span>
+<span class="fc" id="L209">      iVec[i++] = Types.hiDouble(d);</span>
+<span class="fc" id="L210">      iVec[i++] = Types.loDouble(d);</span>
+    }
+<span class="fc" id="L212">    return iVec;</span>
+  }
+
+  public void populateValuations(StackFrame frame, int paramIndex, int dataIndex) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">    if (paramIndex == nParams) {  		</span>
+      // copy the contents of the previous vector as a
+      // suffix of it will be over-written, retaining 
+      // the valuations for all parameters ahead of the
+      // suffix
+<span class="fc" id="L221">      valuation = new Valuation(valuation);</span>
+<span class="fc" id="L222">      valuations.add(valuation);</span>
+    } else {
+<span class="pc bpc" id="L224" title="6 of 10 branches missed.">      switch (paramTypes[paramIndex]) {</span>
+        case Types.T_ARRAY:
+<span class="nc" id="L226">          populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+<span class="nc" id="L227">          break;</span>
+        case Types.T_BOOLEAN:
+<span class="fc" id="L229">          int[] bVec = populateBoolean(mi, paramNames[paramIndex]);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">          for (int i = 0; i &lt; bVec.length; i++) {</span>
+<span class="fc" id="L231">            valuation.add(dataIndex, bVec[i]);</span>
+<span class="fc" id="L232">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="fc" id="L234">          break;</span>
+        case Types.T_FLOAT:
+<span class="nc" id="L236">          int[] fVec = populateFloat(mi, paramNames[paramIndex]);</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">          for (int i = 0; i &lt; fVec.length; i++) {</span>
+<span class="nc" id="L238">            valuation.add(dataIndex, fVec[i]);</span>
+<span class="nc" id="L239">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="nc" id="L241">          break;</span>
+        case Types.T_CHAR:
+<span class="nc" id="L243">          int[] iVec = populateChar(mi, paramNames[paramIndex]);</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">          for (int i = 0; i &lt; iVec.length; i++) {</span>
+<span class="nc" id="L245">            valuation.add(dataIndex, iVec[i]);</span>
+<span class="nc" id="L246">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="nc" id="L248">          break;</span>
+        case Types.T_BYTE:
+<span class="nc" id="L250">          iVec = populateByte(mi, paramNames[paramIndex]);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">          for (int i = 0; i &lt; iVec.length; i++) {</span>
+<span class="nc" id="L252">            valuation.add(dataIndex, iVec[i]);</span>
+<span class="nc" id="L253">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="nc" id="L255">          break;</span>
+        case Types.T_INT:
+<span class="fc" id="L257">          iVec = populateInt(mi, paramNames[paramIndex]);</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">          for (int i = 0; i &lt; iVec.length; i++) {</span>
+<span class="fc" id="L259">            valuation.add(dataIndex, iVec[i]);</span>
+<span class="fc" id="L260">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="fc" id="L262">          break;</span>
+        case Types.T_SHORT:
+<span class="nc" id="L264">          iVec = populateShort(mi, paramNames[paramIndex]);</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">          for (int i = 0; i &lt; iVec.length; i++) {</span>
+<span class="nc" id="L266">            valuation.add(dataIndex, iVec[i]);</span>
+<span class="nc" id="L267">            populateValuations(frame, paramIndex + 1, dataIndex + 1);</span>
+          }
+<span class="nc" id="L269">          break;</span>
+        case Types.T_LONG:
+<span class="fc" id="L271">          int[] lVec = populateLong(mi, paramNames[paramIndex]);</span>
+<span class="fc" id="L272">          int i = 0;</span>
+<span class="fc bfc" id="L273" title="All 2 branches covered.">          while (i &lt; lVec.length) {</span>
+<span class="fc" id="L274">            valuation.add(dataIndex, lVec[i++]);</span>
+<span class="fc" id="L275">            valuation.add(dataIndex + 1, lVec[i++]);</span>
+<span class="fc" id="L276">            populateValuations(frame, paramIndex + 1, dataIndex + 2);</span>
+          }
+          break;
+        case Types.T_DOUBLE:
+<span class="fc" id="L280">          int[] dVec = populateDouble(mi, paramNames[paramIndex]);</span>
+<span class="fc" id="L281">          i = 0;</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">          while (i &lt; dVec.length) {</span>
+<span class="fc" id="L283">            valuation.add(dataIndex, dVec[i++]);</span>
+<span class="fc" id="L284">            valuation.add(dataIndex + 1, dVec[i++]);</span>
+<span class="fc" id="L285">            populateValuations(frame, paramIndex + 1, dataIndex + 2);</span>
+          }
+          break;
+      }
+    }
+<span class="fc" id="L290">  }</span>
+
+  @Override
+  public ChoiceGenerator&lt;?&gt; createChoiceGenerator (String id, StackFrame frame, Object refObject) {
+    // We expect that the refObject in this case will be a MethodInfo object
+    // Set it so that we can create valuation vectors
+<span class="pc bpc" id="L296" title="2 of 4 branches missed.">    assert refObject instanceof MethodInfo : &quot;wrong refObject type for GenericDataAbstractor: &quot; + </span>
+<span class="nc" id="L297">    refObject.getClass().getName();</span>
+
+<span class="fc" id="L299">  setMethodInfo((MethodInfo)refObject, frame);</span>
+
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">  if (choices &gt; 0) {</span>
+    // now create a choices vector which will be used to iterate over the number of
+    // parameter valuations we want to use. We set each element of the vector simply
+    // to an index into the valuations vector
+<span class="fc" id="L305">    int[] indices = new int[choices];</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">    for (int i = 0; i &lt; choices; i++) {</span>
+<span class="fc" id="L307">      indices[i] = i;</span>
+    }
+<span class="fc" id="L309">    return new IntChoiceFromSet(id, indices);</span>
+  } else
+<span class="nc" id="L311">    return null;</span>
+  }
+
+  @Override
+  public boolean perturb(ChoiceGenerator&lt;?&gt;cg, StackFrame frame) {
+<span class="pc bpc" id="L316" title="2 of 4 branches missed.">    assert cg instanceof IntChoiceGenerator : &quot;wrong choice generator type for GenericDataAbstractor: &quot; + cg.getClass().getName();</span>
+
+<span class="fc" id="L318">  int choice = ((IntChoiceGenerator)cg).getNextChoice();</span>
+<span class="fc" id="L319">  Valuation valuation = valuations.get(choice);</span>
+
+  // iterate over the number of operands and set the operand array to the values
+  // we have in the valuation vector
+<span class="fc" id="L323">  int val = 0;</span>
+
+<span class="fc" id="L325">  int top = frame.getTopPos();</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">  int stackIdx = frame.getLocalVariableCount() + ((isStatic)? 0 : 1);</span>
+<span class="fc" id="L327">  int argSize = paramTypes.length;</span>
+
+<span class="fc bfc" id="L329" title="All 2 branches covered.">  for (int j = 0; j &lt; argSize; j++) { // j ranges over actual arguments</span>
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">    if (!frame.isOperandRef(top - stackIdx)) {</span>
+<span class="fc" id="L331">      frame.setOperand(top - stackIdx++, valuation.getValuation()[val++], false);</span>
+<span class="fc bfc" id="L332" title="All 4 branches covered.">      if (paramTypes[j] == Types.T_LONG || paramTypes[j] == Types.T_DOUBLE) {</span>
+<span class="fc" id="L333">        frame.setOperand(top - stackIdx++, valuation.getValuation()[val++], false);</span>
+      }
+    }
+  }
+
+<span class="fc" id="L338">  return cg.hasMoreChoices();</span>
+  }
+
+  @Override
+  public Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; getChoiceGeneratorType(){
+<span class="fc" id="L343">    return IntChoiceFromSet.class;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

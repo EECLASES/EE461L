@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NullTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">NullTracker.java</span></div><h1>NullTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.ARETURN;
+import gov.nasa.jpf.jvm.bytecode.ASTORE;
+import gov.nasa.jpf.jvm.bytecode.PUTFIELD;
+import gov.nasa.jpf.jvm.bytecode.PUTSTATIC;
+import gov.nasa.jpf.jvm.bytecode.RETURN;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.LocalVarInfo;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.bytecode.FieldInstruction;
+import gov.nasa.jpf.vm.bytecode.InstanceFieldInstruction;
+import gov.nasa.jpf.vm.bytecode.InstanceInvokeInstruction;
+import gov.nasa.jpf.vm.bytecode.InstructionInterface;
+import gov.nasa.jpf.vm.bytecode.InvokeInstruction;
+import gov.nasa.jpf.vm.bytecode.LocalVariableInstruction;
+import gov.nasa.jpf.vm.bytecode.ReturnInstruction;
+import gov.nasa.jpf.vm.bytecode.ReturnValueInstruction;
+import gov.nasa.jpf.vm.bytecode.WriteInstruction;
+import java.io.PrintWriter;
+
+/**
+ * trace where nulls come from - which is either a GETFIELD/STATIC, an
+ * JVMInvokeInstruction, an LocalVariableInstruction or a missing init.
+ * 
+ * Record/accumulate the causes in an attribute and use the attribute 
+ * to explain NPEs
+ */
+public class NullTracker extends ListenerAdapter {
+
+  public static abstract class NullSource {
+    protected InstructionInterface insn;
+    protected ThreadInfo ti;
+    protected ElementInfo ei;
+    
+    protected NullSource cause;
+    
+<span class="fc" id="L68">    NullSource (ThreadInfo ti, InstructionInterface insn, ElementInfo ei){</span>
+<span class="fc" id="L69">      this.ti = ti;</span>
+<span class="fc" id="L70">      this.insn = insn;</span>
+<span class="fc" id="L71">      this.ei = ei;</span>
+<span class="fc" id="L72">    }</span>
+    
+    public void setCause (NullSource cause){
+<span class="fc" id="L75">      this.cause = cause;</span>
+<span class="fc" id="L76">    }</span>
+    
+    abstract void printOn (PrintWriter pw);
+    
+    void printInsnOn (PrintWriter pw){
+<span class="fc" id="L81">      pw.printf(&quot;    instruction: [%04x] %s\n&quot;, insn.getPosition(), insn.toString());</span>
+<span class="fc" id="L82">    }</span>
+        
+    void printThreadInfoOn (PrintWriter pw){
+<span class="fc" id="L85">      pw.println(&quot;    executed by: &quot; + ti.getName() + &quot; (id=&quot; + ti.getId() + &quot;)&quot;);</span>
+<span class="fc" id="L86">    }</span>
+    
+    void printMethodInfoOn (PrintWriter pw, String msg, InstructionInterface instruction){
+<span class="fc" id="L89">      MethodInfo mi = instruction.getMethodInfo();</span>
+<span class="fc" id="L90">      ClassInfo ci = mi.getClassInfo();</span>
+<span class="fc" id="L91">      pw.println( msg + ci.getName() + '.' + mi.getLongName() + &quot; (&quot; + instruction.getFilePos() + ')');</span>
+<span class="fc" id="L92">    }</span>
+    
+    void printCauseOn (PrintWriter pw){
+<span class="fc bfc" id="L95" title="All 2 branches covered.">      if (cause != null){</span>
+<span class="fc" id="L96">        pw.println(&quot;set by: &quot;);</span>
+<span class="fc" id="L97">        cause.printOn(pw);</span>
+      }
+<span class="fc" id="L99">    }</span>
+  }
+  
+  
+  public static class LocalSource extends NullSource {
+    protected LocalVarInfo local;
+    
+    public LocalSource (ThreadInfo ti, LocalVariableInstruction insn, LocalVarInfo local){
+<span class="fc" id="L107">      super(ti, insn, null);</span>
+<span class="fc" id="L108">      this.local = local;</span>
+<span class="fc" id="L109">    }</span>
+    
+    @Override
+    void printOn (PrintWriter pw){
+<span class="fc" id="L113">      printInsnOn(pw);</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">      if (local != null){</span>
+<span class="fc" id="L115">        pw.println(&quot;      for local: &quot; + local.getName());</span>
+      } else {
+<span class="nc" id="L117">        pw.println(&quot;     for local: #&quot; + ((LocalVariableInstruction)insn).getLocalVariableSlot());</span>
+      }
+<span class="fc" id="L119">      printMethodInfoOn(pw, &quot;      in method: &quot;, insn);</span>
+<span class="fc" id="L120">      printThreadInfoOn(pw);</span>
+      
+<span class="fc" id="L122">      printCauseOn(pw);</span>
+<span class="fc" id="L123">    }</span>
+  }
+  
+  public static class FieldSource extends NullSource {
+    public FieldSource (ThreadInfo ti, FieldInstruction insn, ElementInfo ei){
+<span class="fc" id="L128">      super(ti,insn,ei);</span>
+<span class="fc" id="L129">    }</span>
+    
+    @Override
+    void printOn (PrintWriter pw){
+<span class="fc" id="L133">      FieldInfo fi = ((FieldInstruction)insn).getFieldInfo();</span>
+<span class="fc" id="L134">      MethodInfo mi = insn.getMethodInfo();</span>
+            
+<span class="fc" id="L136">      printInsnOn(pw);</span>
+<span class="fc" id="L137">      pw.println(&quot;      for field: &quot; + fi.getFullName());</span>
+<span class="fc" id="L138">      printMethodInfoOn(pw, &quot;      in method: &quot;, insn);</span>
+<span class="fc" id="L139">      printThreadInfoOn(pw);</span>
+      
+<span class="fc" id="L141">      printCauseOn(pw);</span>
+<span class="fc" id="L142">    }</span>
+  }
+
+  public static class MethodSource extends NullSource {
+    InvokeInstruction call;
+    
+    public MethodSource (ThreadInfo ti, InstructionInterface returnInsn, InvokeInstruction call, ElementInfo ei){
+<span class="fc" id="L149">      super(ti,returnInsn,ei);</span>
+<span class="fc" id="L150">      this.call = call;</span>
+<span class="fc" id="L151">    }</span>
+    
+    @Override
+    void printOn (PrintWriter pw){            
+<span class="fc" id="L155">      printInsnOn(pw);</span>
+<span class="fc" id="L156">      printMethodInfoOn(pw, &quot;      of method: &quot;, insn);</span>
+      
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="fc" id="L159">        pw.println(&quot;     for object: &quot; + ei);</span>
+      }
+<span class="fc" id="L161">      printMethodInfoOn(pw, &quot;      called by: &quot;, call);</span>
+<span class="fc" id="L162">      printThreadInfoOn(pw);</span>
+      
+<span class="fc" id="L164">      printCauseOn(pw);</span>
+<span class="fc" id="L165">    }    </span>
+  }
+  
+  public static class CtorSource extends MethodSource {
+    public CtorSource (ThreadInfo ti, Instruction returnInsn, InvokeInstruction call, ElementInfo ei){
+<span class="fc" id="L170">      super(ti,returnInsn,call, ei);</span>
+<span class="fc" id="L171">    }</span>
+    
+    @Override
+    void printOn (PrintWriter pw){ 
+<span class="fc" id="L175">      printMethodInfoOn(pw, &quot;   missing init: &quot;, insn);</span>
+      
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">      if (ei != null){</span>
+<span class="fc" id="L178">        pw.println(&quot;     for object: &quot; + ei);</span>
+      }
+<span class="fc" id="L180">      printMethodInfoOn(pw, &quot;      called by: &quot;, call);</span>
+<span class="fc" id="L181">      printThreadInfoOn(pw);</span>
+      
+<span class="fc" id="L183">      printCauseOn(pw);</span>
+<span class="fc" id="L184">    }    </span>
+  }
+
+  //---------------------------------------------------------------------------------
+  
+  protected NullSource nullSource;
+  
+<span class="fc" id="L191">  public NullTracker (Config config, JPF jpf){</span>
+<span class="fc" id="L192">    jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+<span class="fc" id="L193">  }</span>
+  
+  protected void checkCtorSourcePre (ThreadInfo ti, ReturnInstruction insn){
+<span class="fc" id="L196">    MethodInfo mi = insn.getMethodInfo();</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">    if (mi.isCtor()) {</span>
+<span class="fc" id="L198">      StackFrame callerFrame = null;</span>
+<span class="fc" id="L199">      InvokeInstruction call = null;</span>
+<span class="fc" id="L200">      ElementInfo ei = ti.getThisElementInfo();</span>
+<span class="fc" id="L201">      ClassInfo ci = ei.getClassInfo();</span>
+<span class="fc" id="L202">      int nInstance = ci.getNumberOfDeclaredInstanceFields();</span>
+      
+<span class="fc bfc" id="L204" title="All 2 branches covered.">      for (int i = 0; i &lt; nInstance; i++) {</span>
+<span class="fc" id="L205">        FieldInfo fi = ci.getDeclaredInstanceField(i);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (fi.isReference()) {</span>
+<span class="fc" id="L207">          int ref = ei.getReferenceField(fi);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">          if (ref == MJIEnv.NULL) {</span>
+<span class="fc" id="L209">            ei = ei.getModifiableInstance();  // why do we need this in a ctor?</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (call == null) {</span>
+<span class="fc" id="L211">              callerFrame = ti.getCallerStackFrame();</span>
+<span class="fc" id="L212">              call = (InvokeInstruction) callerFrame.getPC();</span>
+            }
+<span class="fc" id="L214">            NullSource attr = new CtorSource(ti, insn, call, ti.getThisElementInfo());</span>
+<span class="fc" id="L215">            ei.setFieldAttr(fi, attr);</span>
+          }
+        }
+      }
+    }
+<span class="fc" id="L220">  }</span>
+  
+  protected void checkFieldSourcePre (ThreadInfo ti, WriteInstruction put){
+<span class="fc" id="L223">    FieldInfo fi = put.getFieldInfo();</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">    if (fi.isReference()) {</span>
+<span class="fc" id="L225">      StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L226">      int valSlot = put.getValueSlot(frame);</span>
+<span class="fc" id="L227">      int ref = frame.getSlot(valSlot);</span>
+
+<span class="fc bfc" id="L229" title="All 2 branches covered.">      if (ref == MJIEnv.NULL) { // field will be set to null</span>
+<span class="fc" id="L230">        ElementInfo ei = put.getElementInfo(ti);</span>
+<span class="fc" id="L231">        NullSource attr = new FieldSource(ti, (FieldInstruction)put, ei);</span>
+
+<span class="fc" id="L233">        NullSource cause = frame.getSlotAttr(valSlot, NullSource.class);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (cause != null) {</span>
+<span class="fc" id="L235">          attr.setCause(cause);</span>
+<span class="fc" id="L236">          frame.replaceSlotAttr(valSlot, cause, attr);</span>
+        } else {
+<span class="fc" id="L238">          frame.addSlotAttr(valSlot, attr);</span>
+        }
+      }
+    }    
+<span class="fc" id="L242">  }</span>
+  
+  protected void checkMethodSourcePre (ThreadInfo ti, ReturnValueInstruction aret){
+<span class="fc" id="L245">    StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L246">    int valSlot = aret.getValueSlot(frame);</span>
+<span class="fc" id="L247">    int ref = frame.getSlot(valSlot);</span>
+    
+<span class="fc bfc" id="L249" title="All 2 branches covered.">    if (ref == MJIEnv.NULL) {</span>
+<span class="fc" id="L250">      StackFrame callerFrame = ti.getCallerStackFrame();</span>
+<span class="fc" id="L251">      InvokeInstruction call = (InvokeInstruction) callerFrame.getPC();</span>
+<span class="fc" id="L252">      NullSource attr = new MethodSource(ti, aret, call, ti.getThisElementInfo());</span>
+
+<span class="fc" id="L254">      NullSource cause = frame.getSlotAttr(valSlot, NullSource.class);</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">      if (cause != null) {</span>
+<span class="fc" id="L256">        attr.setCause(cause);</span>
+<span class="fc" id="L257">        frame.replaceSlotAttr(valSlot,cause, attr);</span>
+      } else {
+<span class="fc" id="L259">        frame.addSlotAttr(valSlot,attr);</span>
+      }
+    }
+<span class="fc" id="L262">  }</span>
+  
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insn) {
+    
+<span class="fc bfc" id="L267" title="All 2 branches covered.">    if (insn instanceof ARETURN){</span>
+<span class="fc" id="L268">      checkMethodSourcePre( ti, (ARETURN)insn);</span>
+      
+<span class="fc bfc" id="L270" title="All 4 branches covered.">    } else if (insn instanceof PUTFIELD || insn instanceof PUTSTATIC){</span>
+<span class="fc" id="L271">      checkFieldSourcePre( ti, (WriteInstruction) insn);</span>
+      
+<span class="fc bfc" id="L273" title="All 2 branches covered.">    } else if (insn instanceof RETURN){</span>
+<span class="fc" id="L274">      checkCtorSourcePre(ti, (RETURN) insn);</span>
+    }
+<span class="fc" id="L276">  }</span>
+
+  
+  protected void checkLocalSourcePost (ThreadInfo ti, LocalVariableInstruction insn){
+<span class="fc" id="L280">    int slotIdx = insn.getLocalVariableSlot();</span>
+<span class="fc" id="L281">    StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L282">    int ref = frame.getSlot(slotIdx);</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    if (ref == MJIEnv.NULL) {</span>
+<span class="fc" id="L284">      LocalVarInfo lv = insn.getLocalVarInfo();</span>
+<span class="fc" id="L285">      NullSource attr = new LocalSource(ti, insn, lv);</span>
+
+<span class="fc" id="L287">      NullSource cause = frame.getSlotAttr(slotIdx, NullSource.class);</span>
+<span class="fc bfc" id="L288" title="All 2 branches covered.">      if (cause != null) {</span>
+<span class="fc" id="L289">        attr.setCause(cause);</span>
+<span class="fc" id="L290">        frame.replaceSlotAttr(slotIdx, cause, attr);</span>
+      } else {
+<span class="fc" id="L292">        frame.addSlotAttr(slotIdx, attr);</span>
+      }
+    }
+<span class="fc" id="L295">  }</span>
+  
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction insn){
+    
+    // we need to do LocalVariableInstruction post exec since it did overwrite the attr if it had an immediate operand
+<span class="fc bfc" id="L301" title="All 2 branches covered.">    if (insn instanceof ASTORE) {</span>
+<span class="fc" id="L302">      checkLocalSourcePost( ti, (LocalVariableInstruction)insn);</span>
+    }
+<span class="fc" id="L304">  }</span>
+    
+  @Override
+  public void exceptionThrown(VM vm, ThreadInfo ti, ElementInfo thrownException) {
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">    if (thrownException.instanceOf(&quot;Ljava/lang/NullPointerException;&quot;)){</span>
+<span class="fc" id="L309">      StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L310">      Instruction insn = ti.getPC();</span>
+      
+<span class="fc bfc" id="L312" title="All 2 branches covered.">      if (insn instanceof InstanceFieldInstruction){  // field access on null object</span>
+<span class="fc" id="L313">        int objSlot = ((InstanceFieldInstruction)insn).getObjectSlot(frame);</span>
+<span class="fc" id="L314">        NullSource attr = frame.getSlotAttr( objSlot,NullSource.class);</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">        if (attr != null) {</span>
+<span class="fc" id="L316">          nullSource = attr;</span>
+        }
+        
+<span class="fc bfc" id="L319" title="All 2 branches covered.">      } else if (insn instanceof InstanceInvokeInstruction) { // call on a null object</span>
+<span class="fc" id="L320">        int objSlot = ((InstanceInvokeInstruction)insn).getObjectSlot(frame);</span>
+<span class="fc" id="L321">        NullSource attr = frame.getSlotAttr( objSlot, NullSource.class);</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        if (attr != null) {</span>
+<span class="fc" id="L323">          nullSource = attr;</span>
+        }
+      }
+    }
+<span class="fc" id="L327">  }</span>
+
+  
+  @Override
+  public void publishPropertyViolation (Publisher publisher) {    
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">    if (nullSource != null){ // otherwise we don't have anything to report</span>
+<span class="fc" id="L333">      PrintWriter pw = publisher.getOut();</span>
+<span class="fc" id="L334">      publisher.publishTopicStart(&quot;NullTracker &quot; + publisher.getLastErrorId());</span>
+
+<span class="fc" id="L336">      pw.println(&quot;null value set by: &quot;);</span>
+<span class="fc" id="L337">      nullSource.printOn(pw);</span>
+    }
+<span class="fc" id="L339">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

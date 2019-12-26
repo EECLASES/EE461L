@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrioritizedState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search.heuristic</a> &gt; <span class="el_source">PrioritizedState.java</span></div><h1>PrioritizedState.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.search.heuristic;
+
+import gov.nasa.jpf.vm.VM;
+
+/**
+ * HeuristicState with a scalar, static priority.
+ * Due to legacy reasons, lower values represent higher priorities
+ */
+public class PrioritizedState extends HeuristicState implements Comparable&lt;PrioritizedState&gt;{
+
+  int heuristicValue; // watch out, this is inverted: 0 is max priority
+
+  public PrioritizedState(VM vm, int heuristicValue) {
+<span class="fc" id="L32">    super(vm);</span>
+    
+<span class="fc" id="L34">    this.heuristicValue = heuristicValue;</span>
+<span class="fc" id="L35">  }</span>
+
+  public int getPriority () {
+<span class="nc" id="L38">    return heuristicValue;</span>
+  }
+
+  /*
+   * NOTE - since we can't use the Java 1.6 pollFirst()/pollLast() yet,
+   * we have to use remove(o), which in turn requires &quot;compareTo(a) == 0&quot; to
+   * be identical to &quot;equals(o) == true&quot;, so we should implement both
+   */
+  @Override
+  public int compareTo (PrioritizedState o) {
+<span class="fc" id="L48">     int diff = heuristicValue - o.heuristicValue;</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">     if (diff == 0) {</span>
+<span class="fc" id="L50">       return (stateId - o.stateId);</span>
+     } else {
+<span class="fc" id="L52">       return diff;</span>
+     }
+  }
+  @Override
+  public boolean equals (Object o) {
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (o instanceof PrioritizedState) {</span>
+<span class="nc" id="L58">      PrioritizedState other = (PrioritizedState) o;</span>
+<span class="nc bnc" id="L59" title="All 4 branches missed.">      return ((stateId == other.stateId) &amp;&amp; (heuristicValue == other.heuristicValue));</span>
+    } else {
+<span class="nc" id="L61">      return false;</span>
+    }
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L67">    return &quot;{&quot;+stateId+','+heuristicValue+'}';</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

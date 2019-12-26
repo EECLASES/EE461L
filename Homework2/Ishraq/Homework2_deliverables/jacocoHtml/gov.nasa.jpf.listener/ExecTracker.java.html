@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExecTracker.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ExecTracker.java</span></div><h1>ExecTracker.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.annotation.JPFOption;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+
+/**
+ * Listener tool to monitor JPF execution. This class can be used as a drop-in replacement for JPF, which is called by
+ * ExecTracker. ExecTracker is mostly a VMListener of 'instructionExecuted' and a SearchListener of 'stateAdvanced' and
+ * 'statehBacktracked'
+ * 
+ * NOTE - the ExecTracker is machine type agnostic
+ */
+
+public class ExecTracker extends ListenerAdapter {
+  
+<span class="nc" id="L44">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;et.print_insn&quot;, defaultValue = &quot;true&quot;, comment = &quot;print executed bytecode instructions&quot;) </span>
+  boolean printInsn = true;
+  
+<span class="nc" id="L47">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;et.print_src&quot;, defaultValue = &quot;false&quot;, comment = &quot;print source lines&quot;)</span>
+  boolean printSrc = false;
+  
+<span class="nc" id="L50">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;et.print_mth&quot;, defaultValue = &quot;false&quot;, comment = &quot;print executed method names&quot;)</span>
+  boolean printMth = false;
+  
+<span class="nc" id="L53">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;et.skip_init&quot;, defaultValue = &quot;true&quot;, comment = &quot;do not log execution before entering main()&quot;)</span>
+  boolean skipInit = false;
+  
+<span class="nc" id="L56">  boolean showShared = false;</span>
+  
+  PrintWriter out;
+  String lastLine;
+  MethodInfo lastMi;
+  String linePrefix;
+  
+  boolean skip;
+  MethodInfo miMain; // just to make init skipping more efficient
+  
+<span class="nc" id="L66">  public ExecTracker (Config config) {</span>
+    /** @jpfoption et.print_insn : boolean - print executed bytecode instructions (default=true). */
+<span class="nc" id="L68">    printInsn = config.getBoolean(&quot;et.print_insn&quot;, true);</span>
+
+    /** @jpfoption et.print_src : boolean - print source lines (default=false). */
+<span class="nc" id="L71">    printSrc = config.getBoolean(&quot;et.print_src&quot;, false);</span>
+
+    /** @jpfoption et.print_mth : boolean - print executed method names (default=false). */
+<span class="nc" id="L74">    printMth = config.getBoolean(&quot;et.print_mth&quot;, false);</span>
+
+    /** @jpfoption et.skip_init : boolean - do not log execution before entering main() (default=true). */
+<span class="nc" id="L77">    skipInit = config.getBoolean(&quot;et.skip_init&quot;, true);</span>
+    
+<span class="nc" id="L79">    showShared = config.getBoolean(&quot;et.show_shared&quot;, true);</span>
+    
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    if (skipInit) {</span>
+<span class="nc" id="L82">      skip = true;</span>
+    }
+    
+<span class="nc" id="L85">    out = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L86">  }</span>
+  
+  /******************************************* SearchListener interface *****/
+  
+  @Override
+  public void stateRestored(Search search) {
+<span class="nc" id="L92">    int id = search.getStateId();</span>
+<span class="nc" id="L93">    out.println(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L94">                       search.getDepth() + &quot;] restored: &quot; + id);</span>
+<span class="nc" id="L95">  }</span>
+    
+  //--- the ones we are interested in
+  @Override
+  public void searchStarted(Search search) {
+<span class="nc" id="L100">    out.println(&quot;----------------------------------- search started&quot;);</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">    if (skipInit) {</span>
+<span class="nc" id="L102">      ThreadInfo tiCurrent = ThreadInfo.getCurrentThread();</span>
+<span class="nc" id="L103">      miMain = tiCurrent.getEntryMethod();</span>
+      
+<span class="nc" id="L105">      out.println(&quot;      [skipping static init instructions]&quot;);</span>
+    }
+<span class="nc" id="L107">  }</span>
+
+  @Override
+  public void stateAdvanced(Search search) {
+<span class="nc" id="L111">    int id = search.getStateId();</span>
+    
+<span class="nc" id="L113">    out.print(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L114">                     search.getDepth() + &quot;] forward: &quot; + id);</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">    if (search.isNewState()) {</span>
+<span class="nc" id="L116">      out.print(&quot; new&quot;);</span>
+    } else {
+<span class="nc" id="L118">      out.print(&quot; visited&quot;);</span>
+    }
+    
+<span class="nc bnc" id="L121" title="All 2 branches missed.">    if (search.isEndState()) {</span>
+<span class="nc" id="L122">      out.print(&quot; end&quot;);</span>
+    }
+    
+<span class="nc" id="L125">    out.println();</span>
+    
+<span class="nc" id="L127">    lastLine = null; // in case we report by source line</span>
+<span class="nc" id="L128">    lastMi = null;</span>
+<span class="nc" id="L129">    linePrefix = null;</span>
+<span class="nc" id="L130">  }</span>
+
+  @Override
+  public void stateProcessed (Search search) {
+<span class="nc" id="L134">    int id = search.getStateId();</span>
+<span class="nc" id="L135">    out.println(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L136">                       search.getDepth() + &quot;] done: &quot; + id);</span>
+<span class="nc" id="L137">  }</span>
+
+  @Override
+  public void stateBacktracked(Search search) {
+<span class="nc" id="L141">    int id = search.getStateId();</span>
+
+<span class="nc" id="L143">    lastLine = null;</span>
+<span class="nc" id="L144">    lastMi = null;</span>
+
+<span class="nc" id="L146">    out.println(&quot;----------------------------------- [&quot; +</span>
+<span class="nc" id="L147">                       search.getDepth() + &quot;] backtrack: &quot; + id);</span>
+<span class="nc" id="L148">  }</span>
+  
+  @Override
+  public void searchFinished(Search search) {
+<span class="nc" id="L152">    out.println(&quot;----------------------------------- search finished&quot;);</span>
+<span class="nc" id="L153">  }</span>
+
+  /******************************************* VMListener interface *********/
+
+  @Override
+  public void gcEnd(VM vm) {
+<span class="nc" id="L159">    out.println(&quot;\t\t # garbage collection&quot;);</span>
+<span class="nc" id="L160">  }</span>
+
+  //--- the ones we are interested in
+  @Override
+  public void instructionExecuted(VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn) {
+    
+<span class="nc bnc" id="L166" title="All 2 branches missed.">    if (skip) {</span>
+<span class="nc" id="L167">      MethodInfo mi = executedInsn.getMethodInfo();</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      if (mi == miMain) {</span>
+<span class="nc" id="L169">        skip = false; // start recording</span>
+      } else {
+<span class="nc" id="L171">        return;  // skip</span>
+      }
+    }
+
+<span class="nc" id="L175">    int nNoSrc = 0;</span>
+    
+<span class="nc bnc" id="L177" title="All 2 branches missed.">    if (linePrefix == null) {</span>
+<span class="nc" id="L178">      linePrefix = Integer.toString( ti.getId()) + &quot; : &quot;;</span>
+    }
+    
+    // that's pretty redundant to what is done in the ConsolePublisher, but we don't want 
+    // presentation functionality in Step anymore
+<span class="nc bnc" id="L183" title="All 2 branches missed.">    if (printSrc) {</span>
+<span class="nc" id="L184">      String line = executedInsn.getSourceLine();</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">      if (line != null){</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (nNoSrc &gt; 0) {</span>
+<span class="nc" id="L187">          out.println(&quot;            [&quot; + nNoSrc + &quot; insn w/o sources]&quot;);</span>
+        }
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">        if (!line.equals(lastLine)) {</span>
+<span class="nc" id="L191">          out.print(&quot;            [&quot;);</span>
+<span class="nc" id="L192">          out.print(executedInsn.getFileLocation());</span>
+<span class="nc" id="L193">          out.print(&quot;] : &quot;);</span>
+<span class="nc" id="L194">          out.println(line.trim());</span>
+        }
+        
+<span class="nc" id="L197">        nNoSrc = 0;</span>
+        
+      } else { // no source
+<span class="nc" id="L200">        nNoSrc++;</span>
+      }
+      
+<span class="nc" id="L203">      lastLine = line;</span>
+    }
+    
+<span class="nc bnc" id="L206" title="All 2 branches missed.">    if (printInsn) {      </span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">      if (printMth) {</span>
+<span class="nc" id="L208">        MethodInfo mi = executedInsn.getMethodInfo();</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">        if (mi != lastMi){</span>
+<span class="nc" id="L210">          ClassInfo mci = mi.getClassInfo();</span>
+<span class="nc" id="L211">          out.print(&quot;      &quot;);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">          if (mci != null) {</span>
+<span class="nc" id="L213">            out.print(mci.getName());</span>
+<span class="nc" id="L214">            out.print(&quot;.&quot;);</span>
+          }
+<span class="nc" id="L216">          out.println(mi.getUniqueName());</span>
+<span class="nc" id="L217">          lastMi = mi;</span>
+        }
+      }
+      
+<span class="nc" id="L221">      out.print( linePrefix);</span>
+      
+<span class="nc" id="L223">      out.printf(&quot;[%04x]   &quot;, executedInsn.getPosition());</span>
+      
+<span class="nc" id="L225">      out.println( executedInsn.toPostExecString());</span>
+    }
+<span class="nc" id="L227">  }</span>
+
+  @Override
+  public void threadStarted(VM vm, ThreadInfo ti) {
+<span class="nc" id="L231">    out.println( &quot;\t\t # thread started: &quot; + ti.getName() + &quot; index: &quot; + ti.getId());</span>
+<span class="nc" id="L232">  }</span>
+
+  @Override
+  public void threadTerminated(VM vm, ThreadInfo ti) {
+<span class="nc" id="L236">    out.println( &quot;\t\t # thread terminated: &quot; + ti.getName() + &quot; index: &quot; + ti.getId());</span>
+<span class="nc" id="L237">  }</span>
+  
+  @Override
+  public void exceptionThrown (VM vm, ThreadInfo ti, ElementInfo ei) {
+<span class="nc" id="L241">    MethodInfo mi = ti.getTopFrameMethodInfo();</span>
+<span class="nc" id="L242">    out.println(&quot;\t\t\t\t # exception: &quot; + ei + &quot; in &quot; + mi);</span>
+<span class="nc" id="L243">  }</span>
+  
+  @Override
+  public void choiceGeneratorAdvanced (VM vm, ChoiceGenerator&lt;?&gt; currentCG) {
+<span class="nc" id="L247">    out.println(&quot;\t\t # choice: &quot; + currentCG);</span>
+    
+    //vm.dumpThreadStates();
+<span class="nc" id="L250">  }</span>
+  
+  @Override
+  public void objectExposed (VM vm, ThreadInfo currentThread, ElementInfo fieldOwnerObject, ElementInfo exposedObject) {
+<span class="nc bnc" id="L254" title="All 2 branches missed.">    if (showShared){</span>
+<span class="nc" id="L255">      String msg = &quot;\t\t # exposed &quot; + exposedObject;</span>
+<span class="nc bnc" id="L256" title="All 2 branches missed.">      if (fieldOwnerObject != null){</span>
+<span class="nc" id="L257">        String ownerStatus = &quot;&quot;;</span>
+<span class="nc bnc" id="L258" title="All 2 branches missed.">        if (fieldOwnerObject.isShared()){</span>
+<span class="nc" id="L259">          ownerStatus = &quot;shared &quot;;</span>
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        } else if (fieldOwnerObject.isExposed()){</span>
+<span class="nc" id="L261">          ownerStatus = &quot;exposed &quot;;</span>
+        }
+        
+<span class="nc" id="L264">        msg += &quot; through &quot; + ownerStatus + fieldOwnerObject;</span>
+      }
+<span class="nc" id="L266">      out.println(msg);</span>
+    }
+<span class="nc" id="L268">  }</span>
+  
+  @Override
+  public void objectShared (VM vm, ThreadInfo currentThread, ElementInfo sharedObject) {
+<span class="nc bnc" id="L272" title="All 2 branches missed.">    if (showShared){</span>
+<span class="nc" id="L273">      out.println(&quot;\t\t # shared &quot; + sharedObject);</span>
+    }
+<span class="nc" id="L275">  }</span>
+  
+  
+  /****************************************** private stuff ******/
+
+  void filterArgs (String[] args) {
+<span class="nc bnc" id="L281" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++) {</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">      if (args[i] != null) {</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">        if (args[i].equals(&quot;-print-lines&quot;)) {</span>
+<span class="nc" id="L284">          printSrc = true;</span>
+<span class="nc" id="L285">          args[i] = null;</span>
+        }
+      }
+    }
+<span class="nc" id="L289">  }</span>
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

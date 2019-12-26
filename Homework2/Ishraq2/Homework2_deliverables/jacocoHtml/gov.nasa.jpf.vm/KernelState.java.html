@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KernelState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">KernelState.java</span></div><h1>KernelState.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import java.util.Iterator;
+import java.util.Stack;
+
+
+/**
+ * This class represents the SUT program state (statics, heap and threads)
+ */
+public class KernelState implements Restorable&lt;KernelState&gt; {
+
+  /** The area containing the heap */
+  public Heap heap;
+
+  /** The list of the threads */
+  public ThreadList threads;
+
+  /** the list of the class loaders */
+  public ClassLoaderList classLoaders;
+
+  /**
+   * current listeners waiting for notification of next change.
+   */
+<span class="fc" id="L42">  private Stack&lt;ChangeListener&gt; listeners = new Stack&lt;ChangeListener&gt;();</span>
+
+
+  static class KsMemento implements Memento&lt;KernelState&gt; {
+    // note - order does matter: threads need to be restored before the heap
+    Memento&lt;ThreadList&gt; threadsMemento;
+    Memento&lt;ClassLoaderList&gt; cloadersMemento;
+    Memento&lt;Heap&gt; heapMemento;
+
+<span class="fc" id="L51">    KsMemento (KernelState ks){</span>
+<span class="fc" id="L52">      threadsMemento = ks.threads.getMemento();</span>
+<span class="fc" id="L53">      cloadersMemento = ks.classLoaders.getMemento();</span>
+<span class="fc" id="L54">      heapMemento = ks.heap.getMemento();</span>
+<span class="fc" id="L55">    }</span>
+
+    @Override
+	public KernelState restore (KernelState ks) {
+      // those are all in-situ objects, no need to set them in ks
+<span class="fc" id="L60">      threadsMemento.restore(ks.threads);</span>
+<span class="fc" id="L61">      cloadersMemento.restore(ks.classLoaders);</span>
+<span class="fc" id="L62">      heapMemento.restore(ks.heap);</span>
+
+<span class="fc" id="L64">      return ks;</span>
+    }
+  }
+
+  /**
+   * Creates a new kernel state object.
+   */
+<span class="fc" id="L71">  public KernelState (Config config) {</span>
+<span class="fc" id="L72">    Class&lt;?&gt;[] argTypes = { Config.class, KernelState.class };</span>
+<span class="fc" id="L73">    Object[] args = { config, this };</span>
+
+<span class="fc" id="L75">    classLoaders = new ClassLoaderList();  </span>
+<span class="fc" id="L76">    heap = config.getEssentialInstance(&quot;vm.heap.class&quot;, Heap.class, argTypes, args);</span>
+<span class="fc" id="L77">    threads = config.getEssentialInstance(&quot;vm.threadlist.class&quot;, ThreadList.class, argTypes, args);</span>
+<span class="fc" id="L78">  }</span>
+
+  @Override
+  public Memento&lt;KernelState&gt; getMemento(MementoFactory factory) {
+<span class="fc" id="L82">    return factory.getMemento(this);</span>
+  }
+
+  public Memento&lt;KernelState&gt; getMemento(){
+<span class="fc" id="L86">    return new KsMemento(this);</span>
+  }
+
+  /**
+   * Adds the given loader to the list of existing class loaders. 
+   */
+  public void addClassLoader(ClassLoaderInfo cl) {
+<span class="fc" id="L93">    classLoaders.add(cl);</span>
+<span class="fc" id="L94">  }</span>
+
+  /**
+   * Returns the ClassLoader with the given globalId
+   */
+  protected ClassLoaderInfo getClassLoader(int gid) {
+<span class="fc" id="L100">    Iterator&lt;ClassLoaderInfo&gt; it = classLoaders.iterator();</span>
+
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">    while(it.hasNext()) {</span>
+<span class="fc" id="L103">      ClassLoaderInfo cl = it.next();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">      if(cl.getId() == gid) {</span>
+<span class="fc" id="L105">        return cl;</span>
+      }
+<span class="fc" id="L107">    }</span>
+
+<span class="nc" id="L109">    return null;</span>
+  }
+
+  public Heap getHeap() {
+<span class="fc" id="L113">    return heap;</span>
+  }
+
+  public ThreadList getThreadList() {
+<span class="fc" id="L117">    return threads;</span>
+  }
+
+  public ClassLoaderList getClassLoaderList() {
+<span class="fc" id="L121">    return classLoaders;</span>
+  }
+  
+  /**
+   * interface for getting notified of changes to KernelState and everything
+   * &quot;below&quot; it.
+   */
+  public interface ChangeListener {
+    void kernelStateChanged(KernelState ks);
+  }
+
+  /**
+   * called by internals to indicate a change in KernelState.  list of listeners
+   * is emptied.
+   */
+  public void changed() {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">    while (!listeners.empty()) {</span>
+<span class="fc" id="L138">      listeners.pop().kernelStateChanged(this);</span>
+    }
+<span class="fc" id="L140">  }</span>
+
+  /**
+   * push a listener for notification of the next change.  further notification
+   * requires re-pushing.
+   */
+  public void pushChangeListener(ChangeListener cl) {
+<span class="pc bpc" id="L147" title="3 of 4 branches missed.">    if (cl instanceof IncrementalChangeTracker &amp;&amp; listeners.size() &gt; 0) {</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">      for (ChangeListener l : listeners) {</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (l instanceof IncrementalChangeTracker) {</span>
+<span class="nc" id="L150">          throw new IllegalStateException(&quot;Only one IncrementalChangeTracker allowed!&quot;);</span>
+        }
+<span class="nc" id="L152">      }</span>
+    }
+<span class="fc" id="L154">    listeners.push(cl);</span>
+<span class="fc" id="L155">  }</span>
+
+  public int getThreadCount () {
+<span class="nc" id="L158">    return threads.length();</span>
+  }
+
+  public void gc () {
+        
+<span class="fc" id="L163">    heap.gc();</span>
+
+    // we might have stored stale references in live objects
+    // (ElementInfos on the heap have already been cleaned up in the gc)
+<span class="fc" id="L167">    cleanUpDanglingStaticReferences();</span>
+<span class="fc" id="L168">  }</span>
+
+  
+  
+  private void cleanUpDanglingStaticReferences() {
+<span class="fc bfc" id="L173" title="All 2 branches covered.">    for(ClassLoaderInfo cl: classLoaders) {</span>
+<span class="fc" id="L174">      Statics sa = cl.getStatics();</span>
+<span class="fc" id="L175">      sa.cleanUpDanglingReferences(heap);</span>
+<span class="fc" id="L176">    }</span>
+<span class="fc" id="L177">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

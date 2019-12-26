@@ -1,0 +1,455 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Monitor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Monitor.java</span></div><h1>Monitor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.HashData;
+
+import java.io.PrintWriter;
+import java.util.Arrays;
+
+/**
+ * Represents the variable, hash-collapsed pooled data associated with an object
+ * that is not related to the object values (-&gt;Fields), but to the use of the
+ * object for synchronization purposes (locks and signals).
+ * 
+ */
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">public class Monitor implements Cloneable {</span>
+  
+<span class="fc" id="L33">  static ThreadInfo[] emptySet = new ThreadInfo[0];</span>
+  
+  /** the thread owning the lock */
+  private ThreadInfo lockingThread;
+
+  /** the nesting level for recursive lock acquisition */
+  private int lockCount;
+  
+  /** 
+   * the list of threads that try to acquire the lock (can be in blocked, waiting,
+   * interrupted or running state).
+   */
+  ThreadInfo[] lockedThreads;
+
+  /**
+   * Creates a new empty monitor.
+   */
+<span class="fc" id="L50">  public Monitor () {</span>
+<span class="fc" id="L51">    lockingThread = null;</span>
+<span class="fc" id="L52">    lockCount = 0;    </span>
+<span class="fc" id="L53">    lockedThreads = emptySet;</span>
+<span class="fc" id="L54">  }</span>
+
+<span class="nc" id="L56">  private Monitor (ThreadInfo locking, int count, ThreadInfo[] locked) {</span>
+<span class="nc" id="L57">    lockingThread = locking;</span>
+<span class="nc" id="L58">    lockCount = count;</span>
+<span class="nc" id="L59">    lockedThreads = locked.clone();</span>
+<span class="nc" id="L60">    Arrays.sort(lockedThreads);</span>
+<span class="nc" id="L61">  }</span>
+  
+  public void printFields (PrintWriter pw) {
+    int i;
+
+<span class="nc" id="L66">    pw.print(this);</span>
+<span class="nc" id="L67">    pw.print(&quot; [&quot;);</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">    if (lockingThread != null) {</span>
+<span class="nc" id="L69">      pw.print( &quot;locked by: &quot;);</span>
+<span class="nc" id="L70">      pw.print( lockingThread.getName());</span>
+    } else {
+<span class="nc" id="L72">      pw.print( &quot;unlocked&quot;);</span>
+    }
+    
+<span class="nc" id="L75">    pw.print(&quot;, lockCount: &quot;);</span>
+<span class="nc" id="L76">    pw.print( lockCount);</span>
+    
+<span class="nc" id="L78">    pw.print(&quot;, locked: {&quot;);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">    for (i=0; i&lt;lockedThreads.length; i++) {</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">      if (i &gt; 0) pw.print(',');</span>
+<span class="nc" id="L81">      pw.print(lockedThreads[i].getName());</span>
+<span class="nc" id="L82">      pw.print(':');</span>
+<span class="nc" id="L83">      pw.print(lockedThreads[i].getStateName());</span>
+    }
+<span class="nc" id="L85">    pw.println(&quot;}]&quot;);</span>
+<span class="nc" id="L86">  }</span>
+  
+  // for debugging purposes
+  public void dump() {
+<span class="nc" id="L90">    PrintWriter pw = new PrintWriter(System.out);</span>
+<span class="nc" id="L91">    printFields(pw);</span>
+<span class="nc" id="L92">    pw.flush();</span>
+<span class="nc" id="L93">  }</span>
+  
+  Monitor cloneWithLocked (ThreadInfo ti) {
+<span class="nc" id="L96">    return new Monitor(lockingThread, lockCount, add(lockedThreads, ti));</span>
+  }
+
+  Monitor cloneWithoutLocked (ThreadInfo ti) {
+<span class="nc" id="L100">    return new Monitor(lockingThread, lockCount, remove(lockedThreads, ti));</span>
+  }
+
+  @Override
+  public Monitor clone () {
+    try {
+      // no need to clone the empty set (which should be the majority of cases)
+<span class="fc" id="L107">      Monitor m = (Monitor) super.clone();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">      if (lockedThreads != emptySet) {</span>
+<span class="fc" id="L109">        m.lockedThreads = lockedThreads.clone();</span>
+      }
+<span class="fc" id="L111">      return m;</span>
+      
+<span class="nc" id="L113">    } catch (CloneNotSupportedException cnsx) {</span>
+<span class="nc" id="L114">      throw new InternalError(&quot;should not happen&quot;);</span>
+    }
+  }
+  
+  
+  /**
+   * Compares to another object.
+   */
+  @Override
+  public boolean equals (Object o) {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    if (o == null) {</span>
+<span class="nc" id="L125">      return false;</span>
+    }
+
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    if (!(o instanceof Monitor)) {</span>
+<span class="nc" id="L129">      return false;</span>
+    }
+
+<span class="nc" id="L132">    Monitor m = (Monitor) o;</span>
+
+<span class="nc bnc" id="L134" title="All 2 branches missed.">    if (lockingThread != m.getLockingThread()) {</span>
+<span class="nc" id="L135">      return false;</span>
+    }
+
+<span class="nc bnc" id="L138" title="All 2 branches missed.">    if (lockCount != m.getLockCount()) {</span>
+<span class="nc" id="L139">      return false;</span>
+    }
+
+<span class="nc" id="L142">    ThreadInfo[] list = m.lockedThreads;</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">    if (lockedThreads.length != list.length) {</span>
+<span class="nc" id="L144">      return false;</span>
+    }
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    for (int i = 0; i &lt; lockedThreads.length; i++) {</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">      if (lockedThreads[i] != list[i]) {</span>
+<span class="nc" id="L149">        return false;</span>
+      }
+    }
+
+<span class="nc" id="L153">    return true;</span>
+  }
+  
+
+  public void hash (HashData hd) {
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    if (lockingThread != null) {</span>
+<span class="nc" id="L159">      hd.add(lockingThread.getId());</span>
+    }
+    
+<span class="nc" id="L162">    hd.add(lockCount);</span>
+    
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    for (int i = 0; i &lt; lockedThreads.length; i++) {</span>
+<span class="nc" id="L165">      hd.add(lockedThreads[i].getId());</span>
+    }    
+<span class="nc" id="L167">  }</span>
+
+  
+  @Override
+  public int hashCode () {
+<span class="nc" id="L172">    HashData hd = new HashData();</span>
+<span class="nc" id="L173">    hash(hd);</span>
+<span class="nc" id="L174">    return hd.getValue();</span>
+  }
+  
+
+  /**
+   * Returns the number of nested locks acquired.
+   */
+  public int getLockCount () {
+<span class="fc" id="L182">    return lockCount;</span>
+  }
+
+
+  /**
+   * Returns the identifier of the thread holding the lock.
+   */
+  public ThreadInfo getLockingThread () {
+<span class="fc" id="L190">    return lockingThread;</span>
+  }
+
+
+  /**
+   * Returns the list of locked threads
+   */ 
+  public ThreadInfo[] getLockedThreads() {
+<span class="fc" id="L198">    return lockedThreads;</span>
+  }
+  
+
+  public boolean hasLockedThreads () {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">    return (lockedThreads.length &gt; 0);</span>
+  }
+  
+  public boolean hasWaitingThreads () {
+<span class="nc bnc" id="L207" title="All 2 branches missed.">    for (int i=0; i&lt;lockedThreads.length; i++) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">      if (lockedThreads[i].isWaiting()) {</span>
+<span class="nc" id="L209">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L213">    return false;</span>
+  }
+
+  public int getNumberOfWaitingThreads() {
+<span class="nc" id="L217">    int n=0;</span>
+
+<span class="nc bnc" id="L219" title="All 2 branches missed.">    for (ThreadInfo ti : lockedThreads){</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">      if (ti.isWaiting()){</span>
+<span class="nc" id="L221">        n++;</span>
+      }
+    }
+
+<span class="nc" id="L225">    return n;</span>
+  }
+
+
+  public ThreadInfo[] getWaitingThreads() {
+<span class="nc" id="L230">    int n = getNumberOfWaitingThreads();</span>
+
+<span class="nc bnc" id="L232" title="All 2 branches missed.">    if (n &gt; 0){</span>
+<span class="nc" id="L233">      ThreadInfo[] list = new ThreadInfo[n];</span>
+<span class="nc" id="L234">      int i=0;</span>
+<span class="nc bnc" id="L235" title="All 4 branches missed.">      for (int j=0; j&lt;lockedThreads.length &amp;&amp; i&lt;n; j++){</span>
+<span class="nc" id="L236">        ThreadInfo ti = lockedThreads[j];</span>
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        if (ti.isWaiting()){</span>
+<span class="nc" id="L238">          list[i++] = ti;</span>
+        }
+      }
+
+<span class="nc" id="L242">      return list;</span>
+
+    } else {
+<span class="nc" id="L245">      return emptySet;</span>
+    }
+  }
+
+  public int getNumberOfBlockedThreads() {
+<span class="nc" id="L250">    int n=0;</span>
+
+<span class="nc bnc" id="L252" title="All 2 branches missed.">    for (ThreadInfo ti : lockedThreads){</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">      if (ti.isBlocked()){</span>
+<span class="nc" id="L254">        n++;</span>
+      }
+    }
+
+<span class="nc" id="L258">    return n;</span>
+  }
+
+
+  public ThreadInfo[] getBlockedThreads() {
+<span class="nc" id="L263">    int n = getNumberOfBlockedThreads();</span>
+
+<span class="nc bnc" id="L265" title="All 2 branches missed.">    if (n &gt; 0){</span>
+<span class="nc" id="L266">      ThreadInfo[] list = new ThreadInfo[n];</span>
+<span class="nc" id="L267">      int i=0;</span>
+<span class="nc bnc" id="L268" title="All 4 branches missed.">      for (int j=0; j&lt;lockedThreads.length &amp;&amp; i&lt;n; j++){</span>
+<span class="nc" id="L269">        ThreadInfo ti = lockedThreads[j];</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (ti.isBlocked()){</span>
+<span class="nc" id="L271">          list[i++] = ti;</span>
+        }
+      }
+
+<span class="nc" id="L275">      return list;</span>
+
+    } else {
+<span class="nc" id="L278">      return emptySet;</span>
+    }
+  }
+
+
+  public int getNumberOfBlockedOrWaitingThreads() {
+<span class="nc" id="L284">    int n=0;</span>
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">    for (ThreadInfo ti : lockedThreads){</span>
+<span class="nc bnc" id="L287" title="All 4 branches missed.">      if (ti.isBlocked() || ti.isWaiting()){</span>
+<span class="nc" id="L288">        n++;</span>
+      }
+    }
+
+<span class="nc" id="L292">    return n;</span>
+  }
+
+
+  public ThreadInfo[] getBlockedOrWaitingThreads() {
+<span class="nc" id="L297">    int n = getNumberOfBlockedThreads();</span>
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">    if (n &gt; 0){</span>
+<span class="nc" id="L300">      ThreadInfo[] list = new ThreadInfo[n];</span>
+<span class="nc" id="L301">      int i=0;</span>
+<span class="nc bnc" id="L302" title="All 4 branches missed.">      for (int j=0; j&lt;lockedThreads.length &amp;&amp; i&lt;n; j++){</span>
+<span class="nc" id="L303">        ThreadInfo ti = lockedThreads[j];</span>
+<span class="nc bnc" id="L304" title="All 4 branches missed.">        if (ti.isBlocked() || ti.isWaiting()){</span>
+<span class="nc" id="L305">          list[i++] = ti;</span>
+        }
+      }
+
+<span class="nc" id="L309">      return list;</span>
+
+    } else {
+<span class="nc" id="L312">      return emptySet;</span>
+    }
+  }
+
+  
+  /**
+   * Returns true if it is possible to lock the monitor.
+   */
+  public boolean canLock (ThreadInfo th) {
+<span class="fc bfc" id="L321" title="All 2 branches covered.">    if (lockingThread == null) {</span>
+<span class="fc" id="L322">      return true;</span>
+    }
+
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">    return (lockingThread == th);</span>
+  }
+
+
+  void setLockingThread (ThreadInfo ti) {
+<span class="fc" id="L330">    lockingThread = ti;</span>
+<span class="fc" id="L331">  }</span>
+  
+
+  void incLockCount () {
+<span class="fc" id="L335">    lockCount++;</span>
+<span class="fc" id="L336">  }</span>
+  
+  
+  void decLockCount () {
+<span class="pc bpc" id="L340" title="2 of 4 branches missed.">    assert lockCount &gt; 0 : &quot;negative lockCount&quot;;</span>
+<span class="fc" id="L341">    lockCount--;</span>
+<span class="fc" id="L342">  }</span>
+  
+  
+  void setLockCount (int lc) {
+<span class="pc bpc" id="L346" title="2 of 4 branches missed.">    assert lc &gt;= 0 : &quot;attempt to set negative lockCount&quot;;</span>
+<span class="fc" id="L347">    lockCount = lc;</span>
+<span class="fc" id="L348">  }</span>
+  
+  public int objectHashCode () {
+<span class="nc" id="L351">    return super.hashCode();</span>
+  }
+
+  void resetLockedThreads () {
+<span class="nc" id="L355">    lockedThreads = emptySet;</span>
+<span class="nc" id="L356">  }</span>
+
+  public boolean isLocking(ThreadInfo ti){
+<span class="pc bpc" id="L359" title="1 of 2 branches missed.">    if (lockedThreads != null){</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">      for (ThreadInfo lti : lockedThreads){</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        if (lti == ti){</span>
+<span class="fc" id="L362">          return true;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L367">    return false;</span>
+  }
+
+  
+  static boolean containsLocked(ThreadInfo[] list, ThreadInfo ti){
+<span class="fc" id="L372">    int len = list.length;</span>
+ 
+<span class="fc bfc" id="L374" title="All 2 branches covered.">    for (int i=0; i&lt;len; i++){</span>
+<span class="fc bfc" id="L375" title="All 2 branches covered.">      if (list[i] == ti){</span>
+<span class="fc" id="L376">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L380">    return false;</span>
+  }
+  
+  static ThreadInfo[] add (ThreadInfo[] list, ThreadInfo ti) {
+<span class="fc" id="L384">    int len = list.length;</span>
+    
+    //--- first, check if its already there
+<span class="fc bfc" id="L387" title="All 2 branches covered.">    if (containsLocked(list, ti)){</span>
+      // this is required because interrupted parks/joins can try to
+      // re-park/join from their respective handlers (they don't hold locks) 
+<span class="fc" id="L390">      return list;</span>
+    }
+        
+<span class="fc" id="L393">    ThreadInfo[] newList = new ThreadInfo[len+1];</span>
+
+<span class="fc" id="L395">    int pos = 0;</span>
+<span class="fc bfc" id="L396" title="All 4 branches covered.">    for (; pos &lt; len &amp;&amp; ti.compareTo(list[pos]) &gt; 0; pos++) {</span>
+<span class="fc" id="L397">      newList[pos] = list[pos];</span>
+    }
+    
+<span class="fc" id="L400">    newList[pos] = ti;</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">    for (; pos &lt; len; pos++) {</span>
+<span class="fc" id="L402">      newList[pos+1] = list[pos];</span>
+    }
+
+<span class="fc" id="L405">    return newList;</span>
+  }
+  
+  void addLocked (ThreadInfo ti) {
+<span class="fc" id="L409">    lockedThreads = add(lockedThreads, ti);</span>
+<span class="fc" id="L410">  }</span>
+  
+  static ThreadInfo[] remove (ThreadInfo[] list, ThreadInfo ti) {
+<span class="fc" id="L413">    int len = list.length;</span>
+
+<span class="fc bfc" id="L415" title="All 2 branches covered.">    if (len == 0) { // nothing to remove from</span>
+<span class="fc" id="L416">      return list;</span>
+      
+<span class="fc bfc" id="L418" title="All 2 branches covered.">    } else if (len == 1) {  // one element list optimization</span>
+<span class="fc bfc" id="L419" title="All 2 branches covered.">      if (list[0] == ti) {</span>
+<span class="fc" id="L420">        return emptySet;</span>
+      } else {
+<span class="fc" id="L422">        return list;</span>
+      }
+    } else {
+      
+      //--- first, check if its already there
+<span class="fc bfc" id="L427" title="All 2 branches covered.">      if (!containsLocked(list, ti)) {</span>
+        // no known case yet, but we keep it symmetric
+        // &lt;2do&gt; maybe worth a warning
+<span class="fc" id="L430">        return list;</span>
+      }
+      
+<span class="pc bpc" id="L433" title="1 of 2 branches missed.">      for (int i=0; i&lt;len; i++) {</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        if (list[i] == ti) {</span>
+<span class="fc" id="L435">          int newLen = len-1;</span>
+<span class="fc" id="L436">          ThreadInfo[] newList = new ThreadInfo[newLen];</span>
+<span class="fc bfc" id="L437" title="All 2 branches covered.">          if (i &gt; 0) {</span>
+<span class="fc" id="L438">            System.arraycopy(list, 0, newList, 0, i);</span>
+          }
+<span class="fc bfc" id="L440" title="All 2 branches covered.">          if (i &lt; newLen) {</span>
+<span class="fc" id="L441">            System.arraycopy(list, i+1, newList, i, newLen-i);</span>
+          }
+<span class="fc" id="L443">          return newList;</span>
+        }
+      }
+      // else, not in list:
+<span class="nc" id="L447">      return list;</span>
+    }
+  }
+  
+  void removeLocked (ThreadInfo ti) {
+<span class="fc" id="L452">    lockedThreads = remove(lockedThreads, ti);</span>
+<span class="fc" id="L453">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

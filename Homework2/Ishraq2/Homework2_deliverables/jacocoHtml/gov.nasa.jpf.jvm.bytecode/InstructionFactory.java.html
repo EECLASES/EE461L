@@ -1,0 +1,1121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstructionFactory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">InstructionFactory.java</span></div><h1>InstructionFactory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.jvm.JVMInstructionFactory;
+import gov.nasa.jpf.util.Invocation;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NativeMethodInfo;
+
+import java.util.List;
+
+/**
+ * this is the new JVMInstructionFactory
+ */
+public class InstructionFactory extends JVMInstructionFactory {
+
+<span class="fc" id="L36">  public InstructionFactory(){</span>
+    // nothing here
+<span class="fc" id="L38">  }</span>
+
+  @Override
+  public Object clone() {
+    try {
+<span class="nc" id="L43">      return super.clone();</span>
+<span class="nc" id="L44">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L45">      throw new JPFException(&quot;InstructionFactory &quot; + this.getClass().getName() + &quot; does not support cloning&quot;);</span>
+    }
+  }
+
+  //--- the factory methods
+  @Override
+  public Instruction aconst_null() {
+<span class="fc" id="L52">    return new ACONST_NULL();</span>
+  }
+
+  @Override
+  public Instruction aload(int localVarIndex) {
+<span class="fc" id="L57">    return new ALOAD(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction aload_0() {
+<span class="nc" id="L62">    return new ALOAD(0);</span>
+  }
+
+  @Override
+  public Instruction aload_1() {
+<span class="nc" id="L67">    return new ALOAD(1);</span>
+  }
+
+  @Override
+  public Instruction aload_2() {
+<span class="nc" id="L72">    return new ALOAD(2);</span>
+  }
+
+  @Override
+  public Instruction aload_3() {
+<span class="nc" id="L77">    return new ALOAD(3);</span>
+  }
+
+  @Override
+  public Instruction aaload() {
+<span class="fc" id="L82">    return new AALOAD();</span>
+  }
+
+  @Override
+  public Instruction astore(int localVarIndex) {
+<span class="fc" id="L87">    return new ASTORE(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction astore_0() {
+<span class="nc" id="L92">    return new ASTORE(0);</span>
+  }
+
+  @Override
+  public Instruction astore_1() {
+<span class="nc" id="L97">    return new ASTORE(1);</span>
+  }
+
+  @Override
+  public Instruction astore_2() {
+<span class="nc" id="L102">    return new ASTORE(2);</span>
+  }
+
+  @Override
+  public Instruction astore_3() {
+<span class="nc" id="L107">    return new ASTORE(3);</span>
+  }
+
+  @Override
+  public Instruction aastore() {
+<span class="fc" id="L112">    return new AASTORE();</span>
+  }
+
+  @Override
+  public Instruction areturn() {
+<span class="fc" id="L117">    return new ARETURN();</span>
+  }
+
+  @Override
+  public Instruction anewarray(String clsName){
+<span class="fc" id="L122">    return new ANEWARRAY(clsName);</span>
+  }
+
+  @Override
+  public Instruction arraylength() {
+<span class="fc" id="L127">    return new ARRAYLENGTH();</span>
+  }
+
+  @Override
+  public Instruction athrow() {
+<span class="fc" id="L132">    return new ATHROW();</span>
+  }
+
+  @Override
+  public Instruction baload() {
+<span class="fc" id="L137">    return new BALOAD();</span>
+  }
+
+  @Override
+  public Instruction bastore() {
+<span class="fc" id="L142">    return new BASTORE();</span>
+  }
+
+  @Override
+  public Instruction bipush(int b) {
+<span class="fc" id="L147">    return new BIPUSH(b);</span>
+  }
+
+  @Override
+  public Instruction caload() {
+<span class="fc" id="L152">    return new CALOAD();</span>
+  }
+
+  @Override
+  public Instruction castore() {
+<span class="fc" id="L157">    return new CASTORE();</span>
+  }
+
+  @Override
+  public Instruction checkcast(String clsName){
+<span class="fc" id="L162">    return new CHECKCAST(clsName);</span>
+  }
+
+  @Override
+  public Instruction d2f() {
+<span class="fc" id="L167">    return new D2F();</span>
+  }
+
+  @Override
+  public Instruction d2i() {
+<span class="fc" id="L172">    return new D2I();</span>
+  }
+
+  @Override
+  public Instruction d2l() {
+<span class="fc" id="L177">    return new D2L();</span>
+  }
+
+  @Override
+  public Instruction dadd() {
+<span class="fc" id="L182">    return new DADD();</span>
+  }
+
+  @Override
+  public Instruction daload() {
+<span class="fc" id="L187">    return new DALOAD();</span>
+  }
+
+  @Override
+  public Instruction dastore() {
+<span class="fc" id="L192">    return new DASTORE();</span>
+  }
+
+  @Override
+  public Instruction dcmpg() {
+<span class="fc" id="L197">    return new DCMPG();</span>
+  }
+
+  @Override
+  public Instruction dcmpl() {
+<span class="fc" id="L202">    return new DCMPL();</span>
+  }
+
+  @Override
+  public Instruction dconst_0() {
+<span class="fc" id="L207">    return new DCONST(0.0);</span>
+  }
+
+  @Override
+  public Instruction dconst_1() {
+<span class="fc" id="L212">    return new DCONST(1.0);</span>
+  }
+
+  @Override
+  public Instruction ddiv() {
+<span class="fc" id="L217">    return new DDIV();</span>
+  }
+
+  @Override
+  public Instruction dload(int localVarIndex) {
+<span class="fc" id="L222">    return new DLOAD(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction dload_0() {
+<span class="nc" id="L227">    return new DLOAD(0);</span>
+  }
+
+  @Override
+  public Instruction dload_1() {
+<span class="nc" id="L232">    return new DLOAD(1);</span>
+  }
+
+  @Override
+  public Instruction dload_2() {
+<span class="nc" id="L237">    return new DLOAD(2);</span>
+  }
+
+  @Override
+  public Instruction dload_3() {
+<span class="nc" id="L242">    return new DLOAD(3);</span>
+  }
+
+  @Override
+  public Instruction dmul() {
+<span class="fc" id="L247">    return new DMUL();</span>
+  }
+
+  @Override
+  public Instruction dneg() {
+<span class="fc" id="L252">    return new DNEG();</span>
+  }
+
+  @Override
+  public Instruction drem() {
+<span class="nc" id="L257">    return new DREM();</span>
+  }
+
+  @Override
+  public Instruction dreturn() {
+<span class="fc" id="L262">    return new DRETURN();</span>
+  }
+
+  @Override
+  public Instruction dstore(int localVarIndex) {
+<span class="fc" id="L267">    return new DSTORE(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction dstore_0() {
+<span class="nc" id="L272">    return new DSTORE(0);</span>
+  }
+
+  @Override
+  public Instruction dstore_1() {
+<span class="nc" id="L277">    return new DSTORE(1);</span>
+  }
+
+  @Override
+  public Instruction dstore_2() {
+<span class="nc" id="L282">    return new DSTORE(2);</span>
+  }
+
+  @Override
+  public Instruction dstore_3() {
+<span class="nc" id="L287">    return new DSTORE(3);</span>
+  }
+
+  @Override
+  public Instruction dsub() {
+<span class="fc" id="L292">    return new DSUB();</span>
+  }
+
+  @Override
+  public Instruction dup() {
+<span class="fc" id="L297">    return new DUP();</span>
+  }
+
+  @Override
+  public Instruction dup_x1() {
+<span class="fc" id="L302">    return new DUP_X1();</span>
+  }
+
+  @Override
+  public Instruction dup_x2() {
+<span class="fc" id="L307">    return new DUP_X2();</span>
+  }
+
+  @Override
+  public Instruction dup2() {
+<span class="fc" id="L312">    return new DUP2();</span>
+  }
+
+  @Override
+  public Instruction dup2_x1() {
+<span class="fc" id="L317">    return new DUP2_X1();</span>
+  }
+
+  @Override
+  public Instruction dup2_x2() {
+<span class="nc" id="L322">    return new DUP2_X2();</span>
+  }
+
+  @Override
+  public Instruction f2d() {
+<span class="fc" id="L327">    return new F2D();</span>
+  }
+
+  @Override
+  public Instruction f2i() {
+<span class="fc" id="L332">    return new F2I();</span>
+  }
+
+  @Override
+  public Instruction f2l() {
+<span class="fc" id="L337">    return new F2L();</span>
+  }
+
+  @Override
+  public Instruction fadd() {
+<span class="fc" id="L342">    return new FADD();</span>
+  }
+
+  @Override
+  public Instruction faload() {
+<span class="fc" id="L347">    return new FALOAD();</span>
+  }
+
+  @Override
+  public Instruction fastore() {
+<span class="fc" id="L352">    return new FASTORE();</span>
+  }
+
+  @Override
+  public Instruction fcmpg() {
+<span class="fc" id="L357">    return new FCMPG();</span>
+  }
+
+  @Override
+  public Instruction fcmpl() {
+<span class="fc" id="L362">    return new FCMPL();</span>
+  }
+
+  @Override
+  public Instruction fconst_0() {
+<span class="fc" id="L367">    return new FCONST(0.0f);</span>
+  }
+
+  @Override
+  public Instruction fconst_1() {
+<span class="fc" id="L372">    return new FCONST(1.0f);</span>
+  }
+
+  @Override
+  public Instruction fconst_2() {
+<span class="fc" id="L377">    return new FCONST(2.0f);</span>
+  }
+
+  @Override
+  public Instruction fdiv() {
+<span class="fc" id="L382">    return new FDIV();</span>
+  }
+
+  @Override
+  public Instruction fload(int localVarIndex) {
+<span class="fc" id="L387">    return new FLOAD(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction fload_0() {
+<span class="nc" id="L392">    return new FLOAD(0);</span>
+  }
+
+  @Override
+  public Instruction fload_1() {
+<span class="nc" id="L397">    return new FLOAD(1);</span>
+  }
+
+  @Override
+  public Instruction fload_2() {
+<span class="nc" id="L402">    return new FLOAD(2);</span>
+  }
+
+  @Override
+  public Instruction fload_3() {
+<span class="nc" id="L407">    return new FLOAD(3);</span>
+  }
+
+  @Override
+  public Instruction fmul() {
+<span class="fc" id="L412">    return new FMUL();</span>
+  }
+
+  @Override
+  public Instruction fneg() {
+<span class="fc" id="L417">    return new FNEG();</span>
+  }
+
+  @Override
+  public Instruction frem() {
+<span class="nc" id="L422">    return new FREM();</span>
+  }
+
+  @Override
+  public Instruction freturn() {
+<span class="fc" id="L427">    return new FRETURN();</span>
+  }
+
+  @Override
+  public Instruction fstore(int localVarIndex) {
+<span class="fc" id="L432">    return new FSTORE(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction fstore_0() {
+<span class="nc" id="L437">    return new FSTORE(0);</span>
+  }
+
+  @Override
+  public Instruction fstore_1() {
+<span class="nc" id="L442">    return new FSTORE(1);</span>
+  }
+
+  @Override
+  public Instruction fstore_2() {
+<span class="nc" id="L447">    return new FSTORE(2);</span>
+  }
+
+  @Override
+  public Instruction fstore_3() {
+<span class="nc" id="L452">    return new FSTORE(3);</span>
+  }
+
+  @Override
+  public Instruction fsub() {
+<span class="fc" id="L457">    return new FSUB();</span>
+  }
+
+  @Override
+  public Instruction getfield(String fieldName, String clsName, String fieldDescriptor){
+<span class="fc" id="L462">    return new GETFIELD(fieldName, clsName, fieldDescriptor);</span>
+  }
+
+  @Override
+  public Instruction getstatic(String fieldName, String clsName, String fieldDescriptor){
+<span class="fc" id="L467">    return new GETSTATIC(fieldName, clsName, fieldDescriptor);</span>
+  }
+
+
+  @Override
+  public Instruction goto_(int targetPc) {
+<span class="fc" id="L473">    return new GOTO(targetPc);</span>
+  }
+
+  @Override
+  public Instruction goto_w(int targetPc) {
+<span class="fc" id="L478">    return new GOTO_W(targetPc);</span>
+  }
+
+  @Override
+  public Instruction i2b() {
+<span class="fc" id="L483">    return new I2B();</span>
+  }
+
+  @Override
+  public Instruction i2c() {
+<span class="fc" id="L488">    return new I2C();</span>
+  }
+
+  @Override
+  public Instruction i2d() {
+<span class="fc" id="L493">    return new I2D();</span>
+  }
+
+  @Override
+  public Instruction i2f() {
+<span class="fc" id="L498">    return new I2F();</span>
+  }
+
+  @Override
+  public Instruction i2l() {
+<span class="fc" id="L503">    return new I2L();</span>
+  }
+
+  @Override
+  public Instruction i2s() {
+<span class="fc" id="L508">    return new I2S();</span>
+  }
+
+  @Override
+  public Instruction iadd() {
+<span class="fc" id="L513">    return new IADD();</span>
+  }
+
+  @Override
+  public Instruction iaload() {
+<span class="fc" id="L518">    return new IALOAD();</span>
+  }
+
+  @Override
+  public Instruction iand() {
+<span class="fc" id="L523">    return new IAND();</span>
+  }
+
+  @Override
+  public Instruction iastore() {
+<span class="fc" id="L528">    return new IASTORE();</span>
+  }
+
+  @Override
+  public Instruction iconst_m1() {
+<span class="fc" id="L533">    return new ICONST(-1);</span>
+  }
+
+  @Override
+  public Instruction iconst_0() {
+<span class="fc" id="L538">    return new ICONST(0);</span>
+  }
+
+  @Override
+  public Instruction iconst_1() {
+<span class="fc" id="L543">    return new ICONST(1);</span>
+  }
+
+  @Override
+  public Instruction iconst_2() {
+<span class="fc" id="L548">    return new ICONST(2);</span>
+  }
+
+  @Override
+  public Instruction iconst_3() {
+<span class="fc" id="L553">    return new ICONST(3);</span>
+  }
+
+  @Override
+  public Instruction iconst_4() {
+<span class="fc" id="L558">    return new ICONST(4);</span>
+  }
+
+  @Override
+  public Instruction iconst_5() {
+<span class="fc" id="L563">    return new ICONST(5);</span>
+  }
+
+  @Override
+  public Instruction idiv() {
+<span class="fc" id="L568">    return new IDIV();</span>
+  }
+
+  @Override
+  public Instruction if_acmpeq(int targetPc) {
+<span class="fc" id="L573">    return new IF_ACMPEQ(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_acmpne(int targetPc) {
+<span class="fc" id="L578">    return new IF_ACMPNE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmpeq(int targetPc) {
+<span class="fc" id="L583">    return new IF_ICMPEQ(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmpne(int targetPc) {
+<span class="fc" id="L588">    return new IF_ICMPNE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmplt(int targetPc) {
+<span class="fc" id="L593">    return new IF_ICMPLT(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmpge(int targetPc) {
+<span class="fc" id="L598">    return new IF_ICMPGE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmpgt(int targetPc) {
+<span class="fc" id="L603">    return new IF_ICMPGT(targetPc);</span>
+  }
+
+  @Override
+  public Instruction if_icmple(int targetPc) {
+<span class="fc" id="L608">    return new IF_ICMPLE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifeq(int targetPc) {
+<span class="fc" id="L613">    return new IFEQ(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifne(int targetPc) {
+<span class="fc" id="L618">    return new IFNE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction iflt(int targetPc) {
+<span class="fc" id="L623">    return new IFLT(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifge(int targetPc) {
+<span class="fc" id="L628">    return new IFGE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifgt(int targetPc) {
+<span class="fc" id="L633">    return new IFGT(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifle(int targetPc) {
+<span class="fc" id="L638">    return new IFLE(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifnonnull(int targetPc) {
+<span class="fc" id="L643">    return new IFNONNULL(targetPc);</span>
+  }
+
+  @Override
+  public Instruction ifnull(int targetPc) {
+<span class="fc" id="L648">    return new IFNULL(targetPc);</span>
+  }
+
+  @Override
+  public Instruction iinc(int localVarIndex, int incConstant) {
+<span class="fc" id="L653">    return new IINC(localVarIndex, incConstant);</span>
+  }
+
+  @Override
+  public Instruction iload(int localVarIndex) {
+<span class="fc" id="L658">    return new ILOAD(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction iload_0() {
+<span class="nc" id="L663">    return new ILOAD(0);</span>
+  }
+
+  @Override
+  public Instruction iload_1() {
+<span class="nc" id="L668">    return new ILOAD(1);</span>
+  }
+
+  @Override
+  public Instruction iload_2() {
+<span class="nc" id="L673">    return new ILOAD(2);</span>
+  }
+
+  @Override
+  public Instruction iload_3() {
+<span class="nc" id="L678">    return new ILOAD(3);</span>
+  }
+
+  @Override
+  public Instruction imul() {
+<span class="fc" id="L683">    return new IMUL();</span>
+  }
+
+  @Override
+  public Instruction ineg() {
+<span class="fc" id="L688">    return new INEG();</span>
+  }
+
+  @Override
+  public Instruction instanceof_(String clsName){
+<span class="fc" id="L693">    return new INSTANCEOF(clsName);</span>
+  }
+
+  @Override
+  public Instruction invokeinterface(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L698">    return new INVOKEINTERFACE(clsName, methodName, methodSignature);</span>
+  }
+
+  @Override
+  public Instruction invokespecial(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L703">    return new INVOKESPECIAL(clsName, methodName, methodSignature);</span>
+  }
+
+  @Override
+  public Instruction invokestatic(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L708">    return new INVOKESTATIC(clsName, methodName, methodSignature);</span>
+  }
+
+  @Override
+  public Instruction invokevirtual(String clsName, String methodName, String methodSignature){
+<span class="fc" id="L713">    return new INVOKEVIRTUAL(clsName, methodName, methodSignature);</span>
+  }
+
+  @Override
+  public Instruction invokedynamic(int bootstrapIndex, String samMethodName, String functionType){
+<span class="fc" id="L718">    return new INVOKEDYNAMIC(bootstrapIndex, samMethodName, functionType);</span>
+  }
+
+  @Override
+  public Instruction ior() {
+<span class="fc" id="L723">    return new IOR();</span>
+  }
+
+  @Override
+  public Instruction irem() {
+<span class="fc" id="L728">    return new IREM();</span>
+  }
+
+  @Override
+  public Instruction ireturn() {
+<span class="fc" id="L733">    return new IRETURN();</span>
+  }
+
+  @Override
+  public Instruction ishl() {
+<span class="fc" id="L738">    return new ISHL();</span>
+  }
+
+  @Override
+  public Instruction ishr() {
+<span class="fc" id="L743">    return new ISHR();</span>
+  }
+
+  @Override
+  public Instruction istore(int localVarIndex) {
+<span class="fc" id="L748">    return new ISTORE(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction istore_0() {
+<span class="nc" id="L753">    return new ISTORE(0);</span>
+  }
+
+  @Override
+  public Instruction istore_1() {
+<span class="nc" id="L758">    return new ISTORE(1);</span>
+  }
+
+  @Override
+  public Instruction istore_2() {
+<span class="nc" id="L763">    return new ISTORE(2);</span>
+  }
+
+  @Override
+  public Instruction istore_3() {
+<span class="nc" id="L768">    return new ISTORE(3);</span>
+  }
+
+  @Override
+  public Instruction isub() {
+<span class="fc" id="L773">    return new ISUB();</span>
+  }
+
+  @Override
+  public Instruction iushr() {
+<span class="fc" id="L778">    return new IUSHR();</span>
+  }
+
+  @Override
+  public Instruction ixor() {
+<span class="fc" id="L783">    return new IXOR();</span>
+  }
+
+  @Override
+  public Instruction jsr(int targetPc) {
+<span class="nc" id="L788">    return new JSR(targetPc);</span>
+  }
+
+  @Override
+  public Instruction jsr_w(int targetPc) {
+<span class="nc" id="L793">    return new JSR_W(targetPc);</span>
+  }
+
+  @Override
+  public Instruction l2d() {
+<span class="fc" id="L798">    return new L2D();</span>
+  }
+
+  @Override
+  public Instruction l2f() {
+<span class="fc" id="L803">    return new L2F();</span>
+  }
+
+  @Override
+  public Instruction l2i() {
+<span class="fc" id="L808">    return new L2I();</span>
+  }
+
+  @Override
+  public Instruction ladd() {
+<span class="fc" id="L813">    return new LADD();</span>
+  }
+
+  @Override
+  public Instruction laload() {
+<span class="fc" id="L818">    return new LALOAD();</span>
+  }
+
+  @Override
+  public Instruction land() {
+<span class="fc" id="L823">    return new LAND();</span>
+  }
+
+  @Override
+  public Instruction lastore() {
+<span class="fc" id="L828">    return new LASTORE();</span>
+  }
+
+  @Override
+  public Instruction lcmp() {
+<span class="fc" id="L833">    return new LCMP();</span>
+  }
+
+  @Override
+  public Instruction lconst_0() {
+<span class="fc" id="L838">    return new LCONST(0);</span>
+  }
+
+  @Override
+  public Instruction lconst_1() {
+<span class="fc" id="L843">    return new LCONST(1L);</span>
+  }
+
+  @Override
+  public Instruction ldc(int v){
+<span class="fc" id="L848">    return new LDC(v);</span>
+  }
+  @Override
+  public Instruction ldc(float v){
+<span class="fc" id="L852">    return new LDC(v);</span>
+  }
+  @Override
+  public Instruction ldc(String v, boolean isClass){
+<span class="fc" id="L856">    return new LDC(v, isClass);</span>
+  }
+
+
+  @Override
+  public Instruction ldc_w(int v){
+<span class="fc" id="L862">    return new LDC_W(v);</span>
+  }
+  @Override
+  public Instruction ldc_w(float v){
+<span class="fc" id="L866">    return new LDC_W(v);</span>
+  }
+  @Override
+  public Instruction ldc_w(String v, boolean isClass){
+<span class="fc" id="L870">    return new LDC_W(v, isClass);</span>
+  }
+
+  @Override
+  public Instruction ldc2_w(long v){
+<span class="fc" id="L875">    return new LDC2_W(v);</span>
+  }
+  @Override
+  public Instruction ldc2_w(double v){
+<span class="fc" id="L879">    return new LDC2_W(v);</span>
+  }
+
+  @Override
+  public Instruction ldiv() {
+<span class="fc" id="L884">    return new LDIV();</span>
+  }
+
+  @Override
+  public Instruction lload(int localVarIndex) {
+<span class="fc" id="L889">    return new LLOAD(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction lload_0() {
+<span class="nc" id="L894">    return new LLOAD(0);</span>
+  }
+
+  @Override
+  public Instruction lload_1() {
+<span class="nc" id="L899">    return new LLOAD(1);</span>
+  }
+
+  @Override
+  public Instruction lload_2() {
+<span class="nc" id="L904">    return new LLOAD(2);</span>
+  }
+
+  @Override
+  public Instruction lload_3() {
+<span class="nc" id="L909">    return new LLOAD(3);</span>
+  }
+
+  @Override
+  public Instruction lmul() {
+<span class="fc" id="L914">    return new LMUL();</span>
+  }
+
+  @Override
+  public Instruction lneg() {
+<span class="fc" id="L919">    return new LNEG();</span>
+  }
+
+  @Override
+  public Instruction lookupswitch(int defaultTargetPc, int nEntries) {
+<span class="fc" id="L924">    return new LOOKUPSWITCH(defaultTargetPc, nEntries);</span>
+  }
+
+  @Override
+  public Instruction lor() {
+<span class="fc" id="L929">    return new LOR();</span>
+  }
+
+  @Override
+  public Instruction lrem() {
+<span class="fc" id="L934">    return new LREM();</span>
+  }
+
+  @Override
+  public Instruction lreturn() {
+<span class="fc" id="L939">    return new LRETURN();</span>
+  }
+
+  @Override
+  public Instruction lshl() {
+<span class="fc" id="L944">    return new LSHL();</span>
+  }
+
+  @Override
+  public Instruction lshr() {
+<span class="fc" id="L949">    return new LSHR();</span>
+  }
+
+  @Override
+  public Instruction lstore(int localVarIndex) {
+<span class="fc" id="L954">    return new LSTORE(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction lstore_0() {
+<span class="nc" id="L959">    return new LSTORE(0);</span>
+  }
+
+  @Override
+  public Instruction lstore_1() {
+<span class="nc" id="L964">    return new LSTORE(1);</span>
+  }
+
+  @Override
+  public Instruction lstore_2() {
+<span class="nc" id="L969">    return new LSTORE(2);</span>
+  }
+
+  @Override
+  public Instruction lstore_3() {
+<span class="nc" id="L974">    return new LSTORE(3);</span>
+  }
+
+  @Override
+  public Instruction lsub() {
+<span class="fc" id="L979">    return new LSUB();</span>
+  }
+
+  @Override
+  public Instruction lushr() {
+<span class="fc" id="L984">    return new LUSHR();</span>
+  }
+
+  @Override
+  public Instruction lxor() {
+<span class="fc" id="L989">    return new LXOR();</span>
+  }
+
+  @Override
+  public Instruction monitorenter() {
+<span class="fc" id="L994">    return new MONITORENTER();</span>
+  }
+
+  @Override
+  public Instruction monitorexit() {
+<span class="fc" id="L999">    return new MONITOREXIT();</span>
+  }
+
+  @Override
+  public Instruction multianewarray(String clsName, int dimensions){
+<span class="fc" id="L1004">    return new MULTIANEWARRAY(clsName, dimensions);</span>
+  }
+
+  @Override
+  public Instruction new_(String clsName) {
+<span class="fc" id="L1009">    return new NEW(clsName);</span>
+  }
+
+  @Override
+  public Instruction newarray(int typeCode) {
+<span class="fc" id="L1014">    return new NEWARRAY(typeCode);</span>
+  }
+
+  @Override
+  public Instruction nop() {
+<span class="nc" id="L1019">    return new NOP();</span>
+  }
+
+  @Override
+  public Instruction pop() {
+<span class="fc" id="L1024">    return new POP();</span>
+  }
+
+  @Override
+  public Instruction pop2() {
+<span class="fc" id="L1029">    return new POP2();</span>
+  }
+
+  @Override
+  public Instruction putfield(String fieldName, String clsName, String fieldDescriptor){
+<span class="fc" id="L1034">    return new PUTFIELD(fieldName, clsName, fieldDescriptor);</span>
+  }
+
+  @Override
+  public Instruction putstatic(String fieldName, String clsName, String fieldDescriptor){
+<span class="fc" id="L1039">    return new PUTSTATIC(fieldName, clsName, fieldDescriptor);</span>
+  }
+
+  @Override
+  public Instruction ret(int localVarIndex) {
+<span class="nc" id="L1044">    return new RET(localVarIndex);</span>
+  }
+
+  @Override
+  public Instruction return_() {
+<span class="fc" id="L1049">    return new RETURN();</span>
+  }
+
+  @Override
+  public Instruction saload() {
+<span class="fc" id="L1054">    return new SALOAD();</span>
+  }
+
+  @Override
+  public Instruction sastore() {
+<span class="fc" id="L1059">    return new SASTORE();</span>
+  }
+
+  @Override
+  public Instruction sipush(int val) {
+<span class="fc" id="L1064">    return new SIPUSH(val);</span>
+  }
+
+  @Override
+  public Instruction swap() {
+<span class="nc" id="L1069">    return new SWAP();</span>
+  }
+
+  @Override
+  public Instruction tableswitch(int defaultTargetPc, int low, int high) {
+<span class="fc" id="L1074">    return new TABLESWITCH(defaultTargetPc, low, high);</span>
+  }
+
+  @Override
+  public Instruction wide() {
+<span class="fc" id="L1079">    return new WIDE();</span>
+  }
+
+  
+  //--- the JPF specific ones (only used in synthetic methods)
+  @Override
+  public Instruction invokecg(List&lt;Invocation&gt; invokes) {
+<span class="nc" id="L1086">    return new INVOKECG(invokes);</span>
+  }
+
+  @Override
+  public Instruction invokeclinit(ClassInfo ci) {
+<span class="fc" id="L1091">    return new INVOKECLINIT(ci);</span>
+  }
+
+  @Override
+  public Instruction directcallreturn(){
+<span class="fc" id="L1096">    return new DIRECTCALLRETURN();</span>
+  }
+
+  @Override
+  public Instruction executenative(NativeMethodInfo mi){
+<span class="fc" id="L1101">    return new EXECUTENATIVE(mi);</span>
+  }
+
+  @Override
+  public Instruction nativereturn(){
+<span class="fc" id="L1106">    return new NATIVERETURN();</span>
+  }
+
+  // this is never part of MethodInfo stored code
+  @Override
+  public Instruction runstart(MethodInfo miRun){
+<span class="fc" id="L1112">    return new RUNSTART();</span>
+  }
+
+  @Override
+  public Instruction finishclinit(ClassInfo ci) {
+<span class="fc" id="L1117">    return new FINISHCLINIT(ci);</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

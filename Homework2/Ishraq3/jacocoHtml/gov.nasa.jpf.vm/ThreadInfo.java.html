@@ -1,0 +1,3453 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ThreadInfo.java</span></div><h1>ThreadInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.vm.bytecode.ReturnInstruction;
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.SystemAttribute;
+import gov.nasa.jpf.jvm.bytecode.EXECUTENATIVE;
+import gov.nasa.jpf.jvm.bytecode.INVOKESTATIC;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.IntVector;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.Predicate;
+import gov.nasa.jpf.util.StringSetMatcher;
+import gov.nasa.jpf.vm.choice.BreakGenerator;
+
+import java.io.PrintWriter;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.logging.Level;
+
+
+/**
+ * Represents a thread. It contains the state of the thread, static
+ * information about the thread, and the stack frames.
+ * Race detection and lock order also store some information
+ * in this data structure.
+ *
+ * Note that we preserve identities according to their associated java.lang.Thread object
+ * (oref). This esp. means along the same path, a ThreadInfo reference
+ * is kept invariant
+ *
+ * &lt;2do&gt; remove EXECUTENATIVE,INVOKESTATIC .bytecode dependencies
+ */
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">public class ThreadInfo extends InfoObject</span>
+     implements Iterable&lt;StackFrame&gt;, Comparable&lt;ThreadInfo&gt;, Restorable&lt;ThreadInfo&gt; {
+
+<span class="fc" id="L63">  static JPFLogger log = JPF.getLogger(&quot;gov.nasa.jpf.vm.ThreadInfo&quot;);</span>
+<span class="fc" id="L64">  static int[] emptyLockRefs = new int[0];</span>
+
+  //--- our internal thread states
+<span class="fc" id="L67">  public enum State {</span>
+<span class="fc" id="L68">    NEW,  // means created but not yet started</span>
+<span class="fc" id="L69">    RUNNING,</span>
+<span class="fc" id="L70">    BLOCKED,  // waiting to acquire a lock</span>
+<span class="fc" id="L71">    UNBLOCKED,  // was BLOCKED but can acquire the lock now</span>
+<span class="fc" id="L72">    WAITING,  // waiting to be notified</span>
+<span class="fc" id="L73">    TIMEOUT_WAITING,</span>
+<span class="fc" id="L74">    NOTIFIED,  // was WAITING and got notified, but is still blocked</span>
+<span class="fc" id="L75">    INTERRUPTED,  // was WAITING and got interrupted</span>
+<span class="fc" id="L76">    TIMEDOUT,  // was TIMEOUT_WAITING and timed out</span>
+<span class="fc" id="L77">    TERMINATED,</span>
+<span class="fc" id="L78">    SLEEPING</span>
+  };
+
+<span class="fc" id="L81">  static final int[] emptyRefArray = new int[0];</span>
+  static final String MAIN_NAME = &quot;main&quot;;
+  
+  
+  static ThreadInfo currentThread;
+
+<span class="fc" id="L87">  protected class StackIterator implements Iterator&lt;StackFrame&gt; {</span>
+<span class="fc" id="L88">    StackFrame frame = top;</span>
+
+    @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">      return frame != null;</span>
+    }
+
+    @Override
+	public StackFrame next() {
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">      if (frame != null){</span>
+<span class="fc" id="L98">        StackFrame ret = frame;</span>
+<span class="fc" id="L99">        frame = frame.getPrevious();</span>
+<span class="fc" id="L100">        return ret;</span>
+
+      } else {
+<span class="nc" id="L103">        throw new NoSuchElementException();</span>
+      }
+    }
+
+    @Override
+	public void remove() {
+<span class="nc" id="L109">      throw new UnsupportedOperationException(&quot;can't remove StackFrames&quot;);</span>
+    }
+  }
+
+  protected class InvokedStackIterator extends StackIterator implements Iterator&lt;StackFrame&gt; {
+<span class="nc" id="L114">    InvokedStackIterator() {</span>
+<span class="nc" id="L115">      frame = getLastInvokedStackFrame();</span>
+<span class="nc" id="L116">    }</span>
+
+    @Override
+	public StackFrame next() {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">      if (frame != null){</span>
+<span class="nc" id="L121">        StackFrame ret = frame;</span>
+<span class="nc" id="L122">        frame = null;</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">        for (StackFrame f=ret.getPrevious(); f != null; f = f.getPrevious()){</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">          if (!f.isDirectCallFrame()){</span>
+<span class="nc" id="L125">            frame = f;</span>
+<span class="nc" id="L126">            break;</span>
+          }
+        }
+<span class="nc" id="L129">        return ret;</span>
+
+      } else {
+<span class="nc" id="L132">        throw new NoSuchElementException();</span>
+      }
+    }
+  }
+  
+  
+  //--- instance fields
+      
+  // transient, not state stored. This is reset when backtracking or starting a new transition
+  protected ExceptionInfo pendingException;
+
+  // state managed data that is copy-on-first-write
+  protected ThreadData threadData;
+
+  
+  //&lt;2do&gt; Hmm, why are these not in ThreadData?
+  // the top stack frame
+<span class="fc" id="L149">  protected StackFrame top = null;</span>
+
+  // the current stack depth (number of frames)
+  protected int stackDepth;
+
+  
+  // something that tells the ThreadList how to look this up efficiently (e.g. index)
+  // note - this is for internal purposes only, there is no public accessor
+  // (we don't want to expose/hardwire ThreadList implementation)
+  // note also that the ThreadList is allowed to move this thread around, in which
+  // case update is the ThreadLists responsibility
+  protected int tlIdx;
+
+  
+  //--- the invariants
+
+  // we need this mostly for getting our SystemClassLoader
+  protected ApplicationContext appCtx;
+  
+  // search global id, which is the basis for canonical order of threads
+  protected int id;
+  
+  protected int objRef; // the java.lang.Thread object reference
+  protected ClassInfo ci; // the classinfo associated with the thread object
+  protected int targetRef; // the associated java.lang.Runnable
+  
+  // which attributes are stored/restored
+  static final int   ATTR_STORE_MASK = 0x0000ffff;
+
+  //--- the transient (un(re)stored) attributes
+  static final int ATTR_DATA_CHANGED       = 0x10000;
+  static final int ATTR_STACK_CHANGED      = 0x20000;
+  
+ // allow CG in next re-exec
+  static final int ATTR_ENABLE_EMPTY_TRANSITION = 0x4000;
+  
+  // don't call insn.execute()
+  static final int ATTR_SKIP_INSN_EXEC      = 0x100000;
+  
+  // don't store insn execution as transition step
+  static final int ATTR_SKIP_INSN_LOG       = 0x200000;
+  
+  
+  static final int ATTR_ATTRIBUTE_CHANGED  = 0x80000000;
+
+  //--- state stored/restored attributes  
+  // this is a typical &quot;orthogonal&quot; thread state we have to remember, but
+  // that should not affect any locking, blocking, notifying or such
+  static final int ATTR_STOPPED = 0x0001;
+
+  //--- change sets
+  static final int ATTR_ANY_CHANGED = (ATTR_DATA_CHANGED | ATTR_STACK_CHANGED | ATTR_ATTRIBUTE_CHANGED);
+  static final int ATTR_SET_STOPPED = (ATTR_STOPPED | ATTR_ATTRIBUTE_CHANGED);
+
+  protected int attributes;
+
+  
+  /** counter for executed instructions along current transition */
+  protected int executedInstructions;
+
+  /** a listener or peer request for throwing an exception into the SUT, to be processed in executeInstruction */
+  protected SUTExceptionRequest pendingSUTExceptionRequest;
+  
+  /** the last returned direct call frame */
+  protected DirectCallStackFrame returnedDirectCall;
+
+  /** the next insn to enter (null prior to execution) */
+  protected Instruction nextPc;
+
+  /**
+   * not so nice we cross-couple the NativePeers with ThreadInfo,
+   * but to carry on with the JNI analogy, a MJIEnv is clearly
+   * owned by a thread (even though we don't have much ThreadInfo
+   * state dependency in here (yet), hence the simplistic init)
+   */
+  MJIEnv env;
+
+  /**
+   * the VM we are running on. Bad backlink, but then again, we can't really
+   * test a ThreadInfo outside a VM context anyways.
+   * &lt;2do&gt; If we keep 'list' as a field, 'vm' might be moved over there
+   * (all threads in the list share the same VM)
+   */
+  VM vm;
+
+  /**
+   * !! this is a volatile object, i.e. it has to be re-computed explicitly
+   * !! after each backtrack (we don't want to duplicate state storage)
+   * list of lock objects currently held by this thread.
+   * unfortunately, we cannot organize this as a stack, since it might get
+   * restored (from the heap) in random order
+   */
+  int[] lockedObjectReferences;
+
+  /**
+   * !! this is also volatile -&gt; has to be reset after backtrack
+   * the reference of the object if this thread is blocked or waiting for
+   */
+<span class="fc" id="L247">  int lockRef = MJIEnv.NULL;</span>
+
+  Memento&lt;ThreadInfo&gt; cachedMemento; // cache for unchanged ThreadInfos
+
+
+  static class TiMemento implements Memento&lt;ThreadInfo&gt; {
+    // note that we don't have to store the invariants (id, oref, runnableRef, ciException)
+    ThreadInfo ti;
+
+    ThreadData threadData;
+    StackFrame top;
+    int stackDepth;
+    int attributes;
+
+<span class="fc" id="L261">    TiMemento (ThreadInfo ti){</span>
+<span class="fc" id="L262">      this.ti = ti;</span>
+      
+<span class="fc" id="L264">      threadData = ti.threadData;  // no need to clone - it's copy on first write</span>
+<span class="fc" id="L265">      top = ti.top; // likewise</span>
+<span class="fc" id="L266">      stackDepth = ti.stackDepth; // we just copy this for efficiency reasons</span>
+<span class="fc" id="L267">      attributes = (ti.attributes &amp; ATTR_STORE_MASK);</span>
+
+<span class="fc" id="L269">      ti.freeze();</span>
+<span class="fc" id="L270">      ti.markUnchanged();</span>
+<span class="fc" id="L271">    }</span>
+
+    @Override
+	public ThreadInfo restore(ThreadInfo ignored) {
+<span class="fc" id="L275">      ti.resetVolatiles();</span>
+
+<span class="fc" id="L277">      ti.threadData = threadData;</span>
+<span class="fc" id="L278">      ti.top = top;</span>
+<span class="fc" id="L279">      ti.stackDepth = stackDepth;</span>
+<span class="fc" id="L280">      ti.attributes = attributes;</span>
+
+<span class="fc" id="L282">      ti.markUnchanged();</span>
+
+<span class="fc" id="L284">      return ti;</span>
+    }
+  }
+
+
+  // the following parameters are configurable. Would be nice if we could keep
+  // them on a per-instance basis, but there are a few locations
+  // (e.g. ThreadList) where we loose the init context, and it's questionable
+  // if we want to change this at runtime, or POR might make sense on a per-thread
+  // basis
+
+  /** do we halt on each throw, i.e. don't look for an exception handler?
+   * Useful to find empty handler blocks, or misusd exceptionHandlers
+   */
+  static StringSetMatcher haltOnThrow;
+
+  /**
+   * do we delegate to Thread.UncaughtExceptionHandlers (in case there is any
+   * other than the standard ThreadGroup)
+   */
+  static boolean ignoreUncaughtHandlers;
+  
+  /**
+   * do we go on if we return from an UncaughtExceptionHandler, or do we still
+   * regard this as a NoUncaughtExceptionProperty violation
+   */
+  static boolean passUncaughtHandler;
+
+  
+  /**
+   * break the current transition after this number of instructions.
+   * This is a safeguard against paths that won't break because potentially
+   * shared fields are not yet accessed by a second thread (existence of such
+   * paths is the downside of our access tracking). Note that we only break on
+   * backjumps once this count gets exceeded, to give state matching a better
+   * chance and avoid interference with the IdleLoop listener
+   */
+  static int maxTransitionLength;
+
+  /**
+   * reset ThreadInfo statics (e.g. to reinitialize JPF) 
+   */
+  static boolean init (Config config) {
+<span class="fc" id="L327">    currentThread = null;</span>
+    
+<span class="fc" id="L329">    globalTids = new HashMap&lt;Integer, Integer&gt;();</span>
+
+<span class="fc" id="L331">    String[] haltOnThrowSpecs = config.getStringArray(&quot;vm.halt_on_throw&quot;);</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">    if (haltOnThrowSpecs != null){</span>
+<span class="nc" id="L333">      haltOnThrow = new StringSetMatcher(haltOnThrowSpecs);</span>
+    }
+    
+<span class="fc" id="L336">    ignoreUncaughtHandlers = config.getBoolean( &quot;vm.ignore_uncaught_handler&quot;, true);</span>
+<span class="fc" id="L337">    passUncaughtHandler = config.getBoolean( &quot;vm.pass_uncaught_handler&quot;, true);</span>
+
+<span class="fc" id="L339">    maxTransitionLength = config.getInt(&quot;vm.max_transition_length&quot;, 5000);</span>
+
+<span class="fc" id="L341">    return true;</span>
+  }
+    
+  //--- factory methods
+  // &lt;2do&gt; this is going to be a configurable factory method  
+  
+  /*
+   * search global cache for dense ThreadInfo ids. We could just use oref since those are
+   * guaranteed to be global, but not dense. The ids are search global, i.e. there is no
+   * need to store/restore, but it needs to be (re)set during init()  
+   */
+  static Map&lt;Integer, Integer&gt; globalTids;  // initialized by init
+  
+  
+  protected int computeId (int objRef) {
+<span class="fc" id="L356">    Integer id = globalTids.get(objRef);</span>
+    
+<span class="fc bfc" id="L358" title="All 2 branches covered.">    if(id == null) {</span>
+<span class="fc" id="L359">      id = globalTids.size();</span>
+<span class="fc" id="L360">      addId(objRef, id);</span>
+    }
+
+<span class="fc" id="L363">    return id;</span>
+  }
+
+  static void addId(int objRef, int id) {
+<span class="fc" id="L367">    globalTids.put(objRef, id);</span>
+<span class="fc" id="L368">  }</span>
+  
+  /**
+   * mainThread ctor called by the VM. Note we don't have a thread object yet (hen-and-egg problem
+   * since we can't allocate objects without a ThreadInfo)
+   */
+<span class="fc" id="L374">  protected ThreadInfo (VM vm, int id, ApplicationContext appCtx) {</span>
+<span class="fc" id="L375">    this.id = id;</span>
+<span class="fc" id="L376">    this.appCtx = appCtx;</span>
+    
+<span class="fc" id="L378">    init(vm);</span>
+    // we don't have the group yet, no Runnable or parent, and the name is fixed
+    // the thread is also not yet in the ThreadList
+    
+<span class="fc" id="L382">    ci = appCtx.getSystemClassLoader().getThreadClassInfo();</span>
+<span class="fc" id="L383">    targetRef = MJIEnv.NULL;</span>
+<span class="fc" id="L384">    threadData.name = MAIN_NAME;</span>
+<span class="fc" id="L385">  }</span>
+
+  /**
+   * the ctor for all explicitly (bytecode) created threads. At this point, there is at least
+   * a mainThread and we have a corresponding java.lang.Thread object
+   */
+<span class="fc" id="L391">  protected ThreadInfo (VM vm, int objRef, int groupRef, int runnableRef, int nameRef, ThreadInfo parent) {</span>
+<span class="fc" id="L392">    id = computeId(objRef);</span>
+<span class="fc" id="L393">    this.appCtx = parent.getApplicationContext();</span>
+    
+<span class="fc" id="L395">    init(vm); // this is only partial, we still have to link/set the references</span>
+    
+<span class="fc" id="L397">    ElementInfo ei = vm.getModifiableElementInfo(objRef);  </span>
+<span class="fc" id="L398">    ei.setExposed(parent, null);        // all explicitly creatd threads are per se exposed</span>
+    
+<span class="fc" id="L400">    this.ci = ei.getClassInfo();    </span>
+<span class="fc" id="L401">    this.objRef = objRef;</span>
+<span class="fc" id="L402">    this.targetRef = runnableRef;</span>
+   
+<span class="fc" id="L404">    threadData.name = vm.getElementInfo(nameRef).asString();</span>
+    
+<span class="fc" id="L406">    vm.getScheduler().initializeThreadSync(parent, this);</span>
+    
+    // note the thread is not yet in the ThreadList, we have to register from the caller
+<span class="fc" id="L409">  }</span>
+  
+  protected void init(VM vm){
+    // 'gid' is set by the factory method
+    // we can't set the 'id' field of the corresponding java.lang.Thread object until we have one
+    
+<span class="fc" id="L415">    this.vm = vm;</span>
+
+<span class="fc" id="L417">    threadData = new ThreadData();</span>
+<span class="fc" id="L418">    threadData.state = State.NEW;</span>
+<span class="fc" id="L419">    threadData.priority = Thread.NORM_PRIORITY;</span>
+<span class="fc" id="L420">    threadData.isDaemon = false;</span>
+<span class="fc" id="L421">    threadData.lockCount = 0;</span>
+<span class="fc" id="L422">    threadData.suspendCount = 0;</span>
+    // threadData.name not yet known
+    
+    // 'priority', 'name', 'target' and 'group' are not taken
+    // from the object, but set within the java.lang.Thread ctors
+
+<span class="fc" id="L428">    top = null;</span>
+<span class="fc" id="L429">    stackDepth = 0;</span>
+
+<span class="fc" id="L431">    lockedObjectReferences = emptyLockRefs;</span>
+
+<span class="fc" id="L433">    markUnchanged();</span>
+<span class="fc" id="L434">    attributes |= ATTR_DATA_CHANGED; </span>
+<span class="fc" id="L435">    env = new MJIEnv(this);</span>
+<span class="fc" id="L436">  }</span>
+  
+  @Override
+  public Memento&lt;ThreadInfo&gt; getMemento(MementoFactory factory) {
+<span class="nc" id="L440">    return factory.getMemento(this);</span>
+  }
+
+  public Memento&lt;ThreadInfo&gt; getMemento(){
+<span class="fc" id="L444">    return new TiMemento(this);</span>
+  }
+  
+  void freeze() {
+<span class="fc bfc" id="L448" title="All 2 branches covered.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()) {</span>
+<span class="fc" id="L449">      frame.freeze();</span>
+    }
+<span class="fc" id="L451">  }</span>
+
+  //--- cached mementos are only supposed to be accessed from the Restorer
+
+  public Memento&lt;ThreadInfo&gt; getCachedMemento(){
+<span class="nc" id="L456">    return cachedMemento;</span>
+  }
+
+  public void setCachedMemento(Memento&lt;ThreadInfo&gt; memento){
+<span class="nc" id="L460">    cachedMemento = memento;</span>
+<span class="nc" id="L461">  }</span>
+
+  public static ThreadInfo getCurrentThread() {
+<span class="fc" id="L464">    return currentThread;</span>
+  }
+
+  public boolean isExecutingAtomically () {
+<span class="nc" id="L468">    return vm.getSystemState().isAtomic();</span>
+  }
+
+  public boolean holdsLock (ElementInfo ei) {
+<span class="fc" id="L472">    int objRef = ei.getObjectRef();</span>
+    
+<span class="pc bpc" id="L474" title="1 of 2 branches missed.">    for (int i=0; i&lt;lockedObjectReferences.length; i++) {</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">      if (lockedObjectReferences[i] == objRef) {</span>
+<span class="nc" id="L476">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L480">    return false;</span>
+  }
+
+  public VM getVM () {
+<span class="fc" id="L484">    return vm;</span>
+  }
+
+  /**
+   * is *this* transition allowed to be empty (i.e. allowed to set a CG
+   * during re-execution of the current insn)
+   * reset before each instruction.execute()
+   */
+  public boolean isEmptyTransitionEnabled (){
+<span class="fc bfc" id="L493" title="All 2 branches covered.">    return (attributes &amp; ATTR_ENABLE_EMPTY_TRANSITION) != 0;</span>
+  }
+  
+  public void enableEmptyTransition (){
+<span class="fc" id="L497">    attributes |= ATTR_ENABLE_EMPTY_TRANSITION;</span>
+<span class="fc" id="L498">  }</span>
+  
+  public void resetEmptyTransition(){
+<span class="nc" id="L501">    attributes &amp;= ~ATTR_ENABLE_EMPTY_TRANSITION;</span>
+<span class="nc" id="L502">  }</span>
+  
+  /**
+   * answers if is this the first instruction within the current transition.
+   * This is mostly used to tell the top- from the bottom-half of a native method
+   * or Instruction.enter(), so that only one (the top half) registers the CG
+   * (top = register CG and reschedule insn, bottom = re-enter insn and process choice
+   * at beginning of new transition)
+   * 
+   * This can be used in both pre- and post-exec notification listeners, 
+   * the executedInstructions number is incremented before notifying
+   * instructionExecuted()
+   * 
+   * this method depends on the sequence of operations in ThreadInfo.executeInstruction,
+   * which is:
+   *   nextPc = null
+   *   notify executeInstruction
+   *   nextPc = insn.execute
+   *   increment executedInstructions
+   *   notify instructionExecuted
+   */
+  public boolean isFirstStepInsn() {
+<span class="fc" id="L524">    int nInsn = executedInstructions;</span>
+    
+<span class="fc bfc" id="L526" title="All 2 branches covered.">    if (nInsn == 0) {</span>
+      // that would be a break in execute() or instructionExecuted()
+<span class="fc" id="L528">      return true;</span>
+      
+<span class="fc bfc" id="L530" title="All 4 branches covered.">    } else if (nInsn == 1 &amp;&amp; nextPc != null) {</span>
+      // that is for setting the CG in executeInsn and then testing in
+      // instructionExecuted. Note that nextPc is reset before pre-exec notification
+      // and hence should only be non-null from insn.execute() up to the next
+      // ThreadInfo.executeInstruction()
+<span class="fc" id="L535">      return true;</span>
+    }
+    
+<span class="fc" id="L538">    return false;</span>
+  }
+  
+  /**
+   * get the number of instructions executed in the current transition. This
+   * gets incremented after calling Instruction.enter(), i.e. before
+   * notifying instructionExecuted() listeners
+   */
+  public int getExecutedInstructions(){
+<span class="fc" id="L547">    return executedInstructions;</span>
+  }
+  
+  /**
+   * to be used from methods called from listeners, to find out if we are in a
+   * pre- or post-exec notification
+   */
+  public boolean isPreExec() {
+<span class="fc bfc" id="L555" title="All 2 branches covered.">    return (nextPc == null);</span>
+  }
+
+
+  //--- various thread state related methods
+
+  /**
+   * Updates the status of the thread.
+   */
+  public void setState (State newStatus) {
+<span class="fc" id="L565">    State oldStatus = threadData.state;</span>
+
+<span class="fc bfc" id="L567" title="All 2 branches covered.">    if (oldStatus != newStatus) {</span>
+
+<span class="pc bpc" id="L569" title="2 of 4 branches missed.">      assert (oldStatus != State.TERMINATED) : &quot;can't resurrect thread &quot; + this + &quot; to &quot; + newStatus.name();</span>
+
+<span class="fc" id="L571">      threadDataClone().state = newStatus;</span>
+
+<span class="pc bpc" id="L573" title="1 of 9 branches missed.">      switch (newStatus) {</span>
+      case NEW:
+<span class="nc" id="L575">        break; // Hmm, shall we report a thread object creation?</span>
+      case RUNNING:
+        // nothing. the notifyThreadStarted has to happen from
+        // Thread.start(), since the thread could have been blocked
+        // at the time with a sync run() method
+       // assert lockRef == MJIEnv.NULL;
+<span class="fc" id="L581">        break;</span>
+      case TERMINATED:
+<span class="fc" id="L583">        vm.notifyThreadTerminated(this);</span>
+<span class="fc" id="L584">        break;</span>
+      case BLOCKED:
+<span class="pc bpc" id="L586" title="2 of 4 branches missed.">        assert lockRef != MJIEnv.NULL;</span>
+<span class="fc" id="L587">        vm.notifyThreadBlocked(this);</span>
+<span class="fc" id="L588">        break;</span>
+      case UNBLOCKED:
+<span class="pc bpc" id="L590" title="2 of 4 branches missed.">        assert lockRef == MJIEnv.NULL;</span>
+        break; // nothing to notify
+      case WAITING:
+<span class="pc bpc" id="L593" title="2 of 4 branches missed.">        assert lockRef != MJIEnv.NULL;</span>
+<span class="fc" id="L594">        vm.notifyThreadWaiting(this);</span>
+<span class="fc" id="L595">        break;</span>
+      case INTERRUPTED:
+<span class="fc" id="L597">        vm.notifyThreadInterrupted(this);</span>
+<span class="fc" id="L598">        break;</span>
+      case NOTIFIED:
+<span class="pc bpc" id="L600" title="2 of 4 branches missed.">        assert lockRef != MJIEnv.NULL;</span>
+<span class="fc" id="L601">        vm.notifyThreadNotified(this);</span>
+        break;
+      }
+
+<span class="pc bpc" id="L605" title="1 of 2 branches missed.">      if (log.isLoggable(Level.FINE)){</span>
+<span class="nc" id="L606">        log.fine(&quot;setStatus of &quot; + getName() + &quot; from &quot;</span>
+<span class="nc" id="L607">                 + oldStatus.name() + &quot; to &quot; + newStatus.name());</span>
+      }
+    }
+<span class="fc" id="L610">  }</span>
+
+  void setBlockedState (int objref) {
+    
+<span class="fc" id="L614">    State currentState = threadData.state;</span>
+<span class="pc bpc" id="L615" title="1 of 2 branches missed.">    switch (currentState){</span>
+      case NEW:
+      case RUNNING:
+      case UNBLOCKED:
+<span class="fc" id="L619">        lockRef = objref;</span>
+<span class="fc" id="L620">        setState(State.BLOCKED);</span>
+<span class="fc" id="L621">        break;</span>
+
+      default:
+<span class="nc bnc" id="L624" title="All 2 branches missed.">        assert false : &quot;thread &quot; + this + &quot;can't be blocked in state: &quot; + currentState.name();</span>
+    }
+<span class="fc" id="L626">  }</span>
+
+  void setNotifiedState() {
+<span class="fc" id="L629">    State currentState = threadData.state;</span>
+<span class="pc bpc" id="L630" title="2 of 3 branches missed.">    switch (currentState){</span>
+      case BLOCKED:
+      case INTERRUPTED: // too late, we are already interrupted
+      case NOTIFIED:
+        // can happen in a Thread.join()
+<span class="nc" id="L635">        break;</span>
+      case WAITING:
+      case TIMEOUT_WAITING:
+<span class="fc" id="L638">        setState(State.NOTIFIED);</span>
+<span class="fc" id="L639">        break;</span>
+
+      default:
+<span class="nc bnc" id="L642" title="All 2 branches missed.">        assert false : &quot;thread &quot; + this + &quot;can't be notified in state: &quot; + currentState.name();</span>
+    }
+<span class="fc" id="L644">  }</span>
+
+  /**
+   * Returns the current status of the thread.
+   */
+  public State getState () {
+<span class="fc" id="L650">    return threadData.state;</span>
+  }
+
+
+  /**
+   * Returns true if this thread is either RUNNING or UNBLOCKED
+   */
+  public boolean isRunnable () {
+<span class="fc bfc" id="L658" title="All 2 branches covered.">    if (threadData.suspendCount != 0)</span>
+<span class="fc" id="L659">      return false;</span>
+
+<span class="fc bfc" id="L661" title="All 4 branches covered.">    switch (threadData.state) {</span>
+    case RUNNING:
+    case UNBLOCKED:
+<span class="fc" id="L664">      return true;</span>
+    case SLEEPING:
+<span class="fc" id="L666">      return true;    // that's arguable, but since we don't model time we treat it like runnable</span>
+    case TIMEDOUT:
+<span class="fc" id="L668">      return true;    // would have been set to blocked if it couldn't reacquire the lock</span>
+    default:
+<span class="fc" id="L670">      return false;</span>
+    }
+  }
+
+  public boolean willBeRunnable () {
+<span class="nc bnc" id="L675" title="All 2 branches missed.">    if (threadData.suspendCount != 0)</span>
+<span class="nc" id="L676">      return false;</span>
+
+<span class="nc bnc" id="L678" title="All 3 branches missed.">    switch (threadData.state) {</span>
+    case RUNNING:
+    case UNBLOCKED:
+<span class="nc" id="L681">      return true;</span>
+    case TIMEOUT_WAITING: // it's not yet, but it will be at the time it gets scheduled
+    case SLEEPING:
+<span class="nc" id="L684">      return true;</span>
+    default:
+<span class="nc" id="L686">      return false;</span>
+    }
+  }
+
+  public boolean isNew () {
+<span class="pc bpc" id="L691" title="1 of 2 branches missed.">    return (threadData.state == State.NEW);</span>
+  }
+
+  public boolean isTimeoutRunnable () {
+<span class="fc bfc" id="L695" title="All 2 branches covered.">    if (threadData.suspendCount != 0)</span>
+<span class="fc" id="L696">      return false;</span>
+
+<span class="fc bfc" id="L698" title="All 3 branches covered.">    switch (threadData.state) {</span>
+
+    case RUNNING:
+    case UNBLOCKED:
+    case SLEEPING:
+<span class="fc" id="L703">      return true;</span>
+
+    case TIMEOUT_WAITING:
+      // depends on if we can re-acquire the lock
+      //assert lockRef != MJIEnv.NULL : &quot;timeout waiting but no blocked object&quot;;
+<span class="pc bpc" id="L708" title="1 of 2 branches missed.">      if (lockRef != MJIEnv.NULL){</span>
+<span class="fc" id="L709">        ElementInfo ei = vm.getElementInfo(lockRef);</span>
+<span class="fc" id="L710">        return ei.canLock(this);</span>
+      } else {
+<span class="nc" id="L712">        return true;</span>
+      }
+
+    default:
+<span class="fc" id="L716">      return false;</span>
+    }
+  }
+
+  public boolean isTimedOut() {
+<span class="fc bfc" id="L721" title="All 2 branches covered.">    return (threadData.state == State.TIMEDOUT);</span>
+  }
+
+  public boolean isTimeoutWaiting() {
+<span class="fc bfc" id="L725" title="All 2 branches covered.">    return (threadData.state == State.TIMEOUT_WAITING);</span>
+  }
+
+  public void setTimedOut() {
+<span class="fc" id="L729">    setState(State.TIMEDOUT);</span>
+<span class="fc" id="L730">  }</span>
+
+  public void setTerminated() {
+<span class="fc" id="L733">    setState(State.TERMINATED);</span>
+<span class="fc" id="L734">  }</span>
+
+  public void resetTimedOut() {
+    // should probably check for TIMEDOUT
+<span class="nc" id="L738">    setState(State.TIMEOUT_WAITING);</span>
+<span class="nc" id="L739">  }</span>
+
+  public void setSleeping() {
+<span class="fc" id="L742">    setState(State.SLEEPING);</span>
+<span class="fc" id="L743">  }</span>
+
+  public boolean isSleeping(){
+<span class="fc bfc" id="L746" title="All 2 branches covered.">    return (threadData.state == State.SLEEPING);</span>
+  }
+
+  public void setRunning() {
+<span class="fc" id="L750">    setState(State.RUNNING);</span>
+<span class="fc" id="L751">  }</span>
+
+  public void setStopped(int throwableRef){
+<span class="pc bpc" id="L754" title="1 of 2 branches missed.">    if (isTerminated()){</span>
+      // no need to kill twice
+<span class="nc" id="L756">      return;</span>
+    }
+
+<span class="fc" id="L759">    attributes |= ATTR_SET_STOPPED;</span>
+
+<span class="fc bfc" id="L761" title="All 2 branches covered.">    if (!hasBeenStarted()){</span>
+      // that one is easy - just remember the state so that a subsequent start()
+      // does nothing
+<span class="fc" id="L764">      return;</span>
+    }
+
+    // for all other cases, we need to have a proper stopping Throwable that does not
+    // fall victim to GC, and that does not cause NoUncaughtExcceptionsProperty violations
+<span class="pc bpc" id="L769" title="1 of 2 branches missed.">    if (throwableRef == MJIEnv.NULL){</span>
+      // if no throwable was provided (the normal case), throw a java.lang.ThreadDeath Error
+<span class="fc" id="L771">      ClassInfo cix = ClassInfo.getInitializedSystemClassInfo(&quot;java.lang.ThreadDeath&quot;, this);</span>
+<span class="fc" id="L772">      throwableRef = createException(cix, null, MJIEnv.NULL);</span>
+    }
+
+    // now the tricky part - this thread is alive but might be blocked, notified
+    // or waiting. In any case, exception action should not take place before
+    // the thread becomes scheduled again, which
+    // means we are not allowed to fiddle with its state in any way that changes
+    // scheduling/locking behavior. On the other hand, if this is the currently
+    // executing thread, take immediate action
+
+<span class="fc bfc" id="L782" title="All 2 branches covered.">    if (isCurrentThread()){ // we are suicidal</span>
+<span class="pc bpc" id="L783" title="1 of 2 branches missed.">      if (isInNativeMethod()){</span>
+        // remember the exception to be thrown when we return from the native method
+<span class="fc" id="L785">        env.throwException(throwableRef);</span>
+      } else {
+<span class="nc" id="L787">        Instruction nextPc = throwException(throwableRef);</span>
+<span class="nc" id="L788">        setNextPC(nextPc);</span>
+<span class="nc" id="L789">      }</span>
+
+    } else { // this thread is not currently running, this is an external kill
+
+      // remember there was a pending exception that has to be thrown the next
+      // time this gets scheduled, and make sure the exception object does
+      // not get GCed prematurely
+<span class="fc" id="L796">      ElementInfo eit = getModifiableElementInfo(objRef);</span>
+<span class="fc" id="L797">      eit.setReferenceField(&quot;stopException&quot;, throwableRef);</span>
+    }
+<span class="fc" id="L799">  }</span>
+
+  public boolean isCurrentThread(){
+<span class="fc bfc" id="L802" title="All 2 branches covered.">    return this == currentThread;</span>
+  }
+
+  public boolean isInCurrentThreadList(){
+<span class="nc" id="L806">    return vm.getThreadList().contains(this);</span>
+  }
+  
+  /**
+   * An alive thread is anything but TERMINATED or NEW
+   */
+  public boolean isAlive () {
+<span class="fc" id="L813">    State state = threadData.state;</span>
+<span class="fc bfc" id="L814" title="All 4 branches covered.">    return (state != State.TERMINATED &amp;&amp; state != State.NEW);</span>
+  }
+
+  public boolean isWaiting () {
+<span class="fc" id="L818">    State state = threadData.state;</span>
+<span class="fc bfc" id="L819" title="All 4 branches covered.">    return (state == State.WAITING) || (state == State.TIMEOUT_WAITING);</span>
+  }
+
+  public boolean isWaitingOrTimedOut (){
+<span class="fc" id="L823">    State state = threadData.state;</span>
+<span class="fc bfc" id="L824" title="All 6 branches covered.">    return (state == State.WAITING) || (state == State.TIMEOUT_WAITING) || (state == State.TIMEDOUT);</span>
+  }
+
+  public boolean isNotified () {
+<span class="nc bnc" id="L828" title="All 2 branches missed.">    return (threadData.state == State.NOTIFIED);</span>
+  }
+
+  public boolean isUnblocked () {
+<span class="fc" id="L832">    State state = threadData.state;</span>
+<span class="pc bpc" id="L833" title="1 of 4 branches missed.">    return (state == State.UNBLOCKED) || (state == State.TIMEDOUT);</span>
+  }
+
+  public boolean isBlocked () {
+<span class="pc bpc" id="L837" title="1 of 2 branches missed.">    return (threadData.state == State.BLOCKED);</span>
+  }
+
+  public boolean isTerminated () {
+<span class="fc bfc" id="L841" title="All 2 branches covered.">    return (threadData.state == State.TERMINATED);</span>
+  }
+
+  public boolean isAtomic (){
+<span class="fc" id="L845">    return vm.getSystemState().isAtomic();</span>
+  }
+  
+  public void setBlockedInAtomicSection (){
+<span class="nc" id="L849">    vm.getSystemState().setBlockedInAtomicSection();</span>
+<span class="nc" id="L850">  }</span>
+  
+  MethodInfo getExitMethod() {
+<span class="nc" id="L853">    MethodInfo mi = getClassInfo().getMethod(&quot;exit()V&quot;, true);</span>
+<span class="nc" id="L854">    return mi;</span>
+  }
+
+  public boolean isBlockedOrNotified() {
+<span class="nc" id="L858">    State state = threadData.state;</span>
+<span class="nc bnc" id="L859" title="All 4 branches missed.">    return (state == State.BLOCKED) || (state == State.NOTIFIED);</span>
+  }
+
+  // this is just a state attribute
+  public boolean isStopped() {
+<span class="fc bfc" id="L864" title="All 2 branches covered.">    return (attributes &amp; ATTR_STOPPED) != 0;</span>
+  }
+
+  public boolean isInNativeMethod(){
+<span class="pc bpc" id="L868" title="2 of 4 branches missed.">    return top != null &amp;&amp; top.isNative();</span>
+  }
+
+  public boolean hasBeenStarted(){
+<span class="fc bfc" id="L872" title="All 2 branches covered.">    return (threadData.state != State.NEW);</span>
+  }
+
+  public String getStateName () {
+<span class="fc" id="L876">    return threadData.getState().name();</span>
+  }
+
+  @Override
+  public Iterator&lt;StackFrame&gt; iterator () {
+<span class="fc" id="L881">    return new StackIterator();</span>
+  }
+
+  public Iterable&lt;StackFrame&gt; invokedStackFrames () {
+<span class="nc" id="L885">    return new Iterable&lt;StackFrame&gt;() {</span>
+      @Override
+	public Iterator&lt;StackFrame&gt; iterator() {
+<span class="nc" id="L888">        return new InvokedStackIterator();</span>
+      }
+    };
+  }
+
+  /**
+   * this returns a copy of the StackFrames in reverse order. Note this is
+   * redundant because the frames are linked explicitly
+   * @deprecated - use Iterable&lt;StackFrame&gt;
+   */
+  @Deprecated
+  public List&lt;StackFrame&gt; getStack() {
+<span class="nc" id="L900">    ArrayList&lt;StackFrame&gt; list = new ArrayList&lt;StackFrame&gt;(stackDepth);</span>
+
+<span class="nc bnc" id="L902" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc" id="L903">      list.add(frame);</span>
+    }
+
+<span class="nc" id="L906">    Collections.reverse(list);</span>
+
+<span class="nc" id="L908">    return list;</span>
+  }
+
+  /**
+   * returns StackFrames which have been entered through a corresponding
+   * invoke instruction (in top first order)
+   */
+  public List&lt;StackFrame&gt; getInvokedStackFrames() {
+<span class="nc" id="L916">    ArrayList&lt;StackFrame&gt; list = new ArrayList&lt;StackFrame&gt;(stackDepth);</span>
+
+<span class="nc" id="L918">    int i = stackDepth-1;</span>
+<span class="nc bnc" id="L919" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc bnc" id="L920" title="All 2 branches missed.">      if (!frame.isDirectCallFrame()){</span>
+<span class="nc" id="L921">        list.add( frame);</span>
+      }
+    }
+<span class="nc" id="L924">    Collections.reverse(list);</span>
+
+<span class="nc" id="L926">    return list;</span>
+  }
+
+  public Scheduler getScheduler(){
+<span class="fc" id="L930">    return vm.getScheduler();</span>
+  }
+  
+  public int getStackDepth() {
+<span class="fc" id="L934">    return stackDepth;</span>
+  }
+  
+  public MethodInfo getEntryMethod(){    
+<span class="nc" id="L938">    return appCtx.getEntryMethod();</span>
+  }
+
+  public StackFrame getCallerStackFrame (int offset){
+<span class="nc" id="L942">    int n = offset;</span>
+<span class="nc bnc" id="L943" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc bnc" id="L944" title="All 2 branches missed.">      if (n &lt; 0){</span>
+<span class="nc" id="L945">        break;</span>
+<span class="nc bnc" id="L946" title="All 2 branches missed.">      } else if (n == 0){</span>
+<span class="nc" id="L947">        return frame;</span>
+      }
+<span class="nc" id="L949">      n--;</span>
+    }
+<span class="nc" id="L951">    return null;</span>
+  }
+
+  public StackFrame getLastInvokedStackFrame() {
+<span class="nc bnc" id="L955" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc bnc" id="L956" title="All 2 branches missed.">      if (!frame.isDirectCallFrame()){</span>
+<span class="nc" id="L957">        return frame;</span>
+      }
+    }
+
+<span class="nc" id="L961">    return null;</span>
+  }
+
+  public StackFrame getLastNonSyntheticStackFrame (){
+<span class="pc bpc" id="L965" title="1 of 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc bfc" id="L966" title="All 2 branches covered.">      if (!frame.isSynthetic()){</span>
+<span class="fc" id="L967">        return frame;</span>
+      }
+    }
+
+<span class="nc" id="L971">    return null;</span>
+  }
+  
+  // this is ugly - it can modify deeper stack frames
+  public StackFrame getModifiableLastNonSyntheticStackFrame (){
+<span class="pc bpc" id="L976" title="1 of 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc bfc" id="L977" title="All 2 branches covered.">      if (!frame.isSynthetic()){</span>
+<span class="pc bpc" id="L978" title="1 of 2 branches missed.">        if (frame.isFrozen()) {</span>
+<span class="nc" id="L979">          StackFrame newFrame = frame.clone();</span>
+          
+<span class="nc bnc" id="L981" title="All 2 branches missed.">          if (frame == top) {</span>
+<span class="nc" id="L982">            frame = newFrame;</span>
+<span class="nc" id="L983">            top = newFrame;</span>
+            
+          } else {
+            // Ughh, now we have to clone all frozen frames above
+<span class="nc" id="L987">            StackFrame fLast = null;</span>
+<span class="nc bnc" id="L988" title="All 2 branches missed.">            for (StackFrame f = getModifiableTopFrame(); f != frame; f = f</span>
+<span class="nc" id="L989">                .getPrevious()) {</span>
+<span class="nc bnc" id="L990" title="All 2 branches missed.">              if (f.isFrozen()) {</span>
+<span class="nc" id="L991">                f = f.clone();</span>
+<span class="nc bnc" id="L992" title="All 2 branches missed.">                if (fLast != null) {</span>
+<span class="nc" id="L993">                  fLast.setPrevious(f);</span>
+                }
+              }
+<span class="nc" id="L996">              fLast = f;</span>
+            }
+<span class="nc bnc" id="L998" title="All 2 branches missed.">            if (fLast != null) {</span>
+<span class="nc" id="L999">              fLast.setPrevious(newFrame);</span>
+            }
+
+<span class="nc" id="L1002">            frame = newFrame;</span>
+          }
+        }
+        
+<span class="fc" id="L1006">        return frame;</span>
+      }
+    }
+
+<span class="nc" id="L1010">    return null;</span>
+  }
+  
+
+  /**
+   * Returns the this pointer of the callee from the stack.
+   */
+  public int getCalleeThis (MethodInfo mi) {
+<span class="nc" id="L1018">    return top.getCalleeThis(mi);</span>
+  }
+
+  /**
+   * Returns the this pointer of the callee from the stack.
+   */
+  public int getCalleeThis (int size) {
+<span class="fc" id="L1025">    return top.getCalleeThis(size);</span>
+  }
+
+  public ClassInfo getClassInfo (int objref) {
+<span class="fc" id="L1029">    return env.getClassInfo(objref);</span>
+  }
+
+  public boolean isCalleeThis (ElementInfo r) {
+<span class="nc bnc" id="L1033" title="All 4 branches missed.">    if (top == null || r == null) {</span>
+<span class="nc" id="L1034">      return false;</span>
+    }
+
+<span class="nc" id="L1037">    Instruction pc = getPC();</span>
+
+<span class="nc bnc" id="L1039" title="All 6 branches missed.">    if (pc == null ||</span>
+        !(pc instanceof JVMInvokeInstruction) ||
+        pc instanceof INVOKESTATIC) {
+<span class="nc" id="L1042">      return false;</span>
+    }
+
+<span class="nc" id="L1045">    JVMInvokeInstruction call = (JVMInvokeInstruction) pc;</span>
+
+<span class="nc bnc" id="L1047" title="All 2 branches missed.">    return getCalleeThis(Types.getArgumentsSize(call.getInvokedMethodSignature()) + 1) == r.getObjectRef();</span>
+  }
+
+  public ApplicationContext getApplicationContext(){
+<span class="fc" id="L1051">    return appCtx;</span>
+  }
+  
+  public SystemClassLoaderInfo getSystemClassLoaderInfo(){
+<span class="fc" id="L1055">    return appCtx.sysCl;</span>
+  }
+  
+  /**
+   * Returns the class information.
+   */
+  public ClassInfo getClassInfo () {
+<span class="nc" id="L1062">    return ci;</span>
+  }
+
+  public MJIEnv getEnv() {
+<span class="fc" id="L1066">    return env;</span>
+  }
+
+  public boolean isInterrupted (boolean resetStatus) {
+<span class="fc" id="L1070">    ElementInfo ei = getElementInfo(getThreadObjectRef());</span>
+<span class="fc" id="L1071">    boolean status =  ei.getBooleanField(&quot;interrupted&quot;);</span>
+
+<span class="fc bfc" id="L1073" title="All 4 branches covered.">    if (resetStatus &amp;&amp; status) {</span>
+<span class="fc" id="L1074">      ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L1075">      ei.setBooleanField(&quot;interrupted&quot;, false);</span>
+    }
+
+<span class="fc" id="L1078">    return status;</span>
+  }
+
+  /**
+   * path local unique id for live threads. This is what we use for the
+   * public java.lang.Thread.getId() that can be called from SUT code. It is
+   * NOT what we use for our canonical root set
+   */
+  public int getId () {
+<span class="fc" id="L1087">    return id;</span>
+  }
+
+  /**
+   * this is our internal, search global id that is used for the
+   * canonical root set
+   */
+  public int getGlobalId(){
+<span class="fc" id="L1095">    return id;</span>
+  }
+  
+  
+  /**
+   * record what this thread is being blocked on.
+   */
+  void setLockRef (int objref) {
+/**
+    assert ((lockRef == MJIEnv.NULL) || (lockRef == objref)) :
+      &quot;attempt to overwrite lockRef: &quot; + vm.getHeap().get(lockRef) +
+      &quot; with: &quot; + vm.getHeap().get(objref);
+**/
+<span class="fc" id="L1108">    lockRef = objref;</span>
+<span class="fc" id="L1109">  }</span>
+
+  /**
+   * thread is not blocked anymore
+   * needs to be public since we have to use it from INVOKECLINIT (during call skipping)
+   */
+  public void resetLockRef () {
+<span class="fc" id="L1116">    lockRef = MJIEnv.NULL;</span>
+<span class="fc" id="L1117">  }</span>
+
+  public int getLockRef() {
+<span class="nc" id="L1120">    return lockRef;</span>
+  }
+
+  public ElementInfo getLockObject () {
+<span class="fc bfc" id="L1124" title="All 2 branches covered.">    if (lockRef == MJIEnv.NULL) {</span>
+<span class="fc" id="L1125">      return null;</span>
+    } else {
+<span class="fc" id="L1127">      return vm.getElementInfo(lockRef);</span>
+    }
+  }
+
+  /**
+   * Returns the line number of the program counter of the top stack frame.
+   */
+  public int getLine () {
+<span class="nc bnc" id="L1135" title="All 2 branches missed.">    if (top == null) {</span>
+<span class="nc" id="L1136">      return -1;</span>
+    } else {
+<span class="nc" id="L1138">      return top.getLine();</span>
+    }
+  }
+  
+  //--- suspend/resume modeling
+  // modeling this with a count is an approximation. In reality it behaves
+  // rather like a race that /sometimes/ causes the resume to fail, but its
+  // Ok if we overapproximate on the safe side, since suspend/resume is such
+  // an inherently unsafe thing. What we *do* want to preserve faithfully is 
+  // that locks held by the suspended thread are not released
+  
+  /**
+   * set suspension status
+   * @return true if thread was not suspended
+   */
+  public boolean suspend() {
+<span class="pc bpc" id="L1154" title="1 of 2 branches missed.">    return threadDataClone().suspendCount++ == 0;</span>
+  }
+
+  /**
+   * unset suspension status
+   * @return true if thread was suspended
+   */
+  public boolean resume() {
+<span class="pc bpc" id="L1162" title="2 of 4 branches missed.">    return (threadData.suspendCount &gt; 0) &amp;&amp; (--threadDataClone().suspendCount == 0);</span>
+  }
+  
+  public boolean isSuspended() {
+<span class="nc bnc" id="L1166" title="All 2 branches missed.">    return threadData.suspendCount &gt; 0;</span>
+  }
+
+
+  //--- locks
+  
+  /**
+   * Sets the number of locks held at the time of a wait.
+   */
+  public void setLockCount (int l) {
+<span class="fc bfc" id="L1176" title="All 2 branches covered.">    if (threadData.lockCount != l) {</span>
+<span class="fc" id="L1177">      threadDataClone().lockCount = l;</span>
+    }
+<span class="fc" id="L1179">  }</span>
+
+  /**
+   * Returns the number of locks in the last wait.
+   */
+  public int getLockCount () {
+<span class="fc" id="L1185">    return threadData.lockCount;</span>
+  }
+
+  // avoid use in performance critical code
+  public List&lt;ElementInfo&gt; getLockedObjects () {
+<span class="fc" id="L1190">    List&lt;ElementInfo&gt; lockedObjects = new LinkedList&lt;ElementInfo&gt;();</span>
+<span class="fc" id="L1191">    Heap heap = vm.getHeap();</span>
+    
+<span class="fc bfc" id="L1193" title="All 2 branches covered.">    for (int i=0; i&lt;lockedObjectReferences.length; i++) {</span>
+<span class="fc" id="L1194">      ElementInfo ei = heap.get(lockedObjectReferences[i]);</span>
+<span class="fc" id="L1195">      lockedObjects.add(ei);</span>
+    }
+    
+<span class="fc" id="L1198">    return lockedObjects;</span>
+  }
+
+  public boolean hasLockedObjects() {
+<span class="nc bnc" id="L1202" title="All 2 branches missed.">    return lockedObjectReferences.length &gt; 0;</span>
+  }
+  
+  public int[] getLockedObjectReferences () {
+<span class="fc" id="L1206">    return lockedObjectReferences;</span>
+  }
+
+  public boolean isLockOwner (ElementInfo ei){
+<span class="fc bfc" id="L1210" title="All 2 branches covered.">    return ei.getLockingThread() == this;</span>
+  }
+  
+  /**
+   * returns the current method in the top stack frame, which is always a
+   * bytecode method (executed by JPF)
+   */
+  public MethodInfo getTopFrameMethodInfo () {
+<span class="fc bfc" id="L1218" title="All 2 branches covered.">    if (top != null) {</span>
+<span class="fc" id="L1219">      return top.getMethodInfo();</span>
+    } else {
+<span class="fc" id="L1221">      return null;</span>
+    }
+  }
+
+  /**
+   * return the ClassInfo of the topmost stackframe that is not a direct call 
+   */
+  public ClassInfo getExecutingClassInfo(){
+<span class="nc bnc" id="L1229" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc" id="L1230">      MethodInfo miExecuting = frame.getMethodInfo();</span>
+<span class="nc" id="L1231">      ClassInfo ciExecuting = miExecuting.getClassInfo();</span>
+<span class="nc bnc" id="L1232" title="All 2 branches missed.">      if (ciExecuting != null){</span>
+<span class="nc" id="L1233">        return ciExecuting;</span>
+      }
+    }
+    
+<span class="nc" id="L1237">    return null;</span>
+  }
+  
+  
+  
+  public ClassInfo resolveReferencedClass (String clsName){
+<span class="fc" id="L1243">    ClassInfo ciTop = top.getClassInfo();</span>
+<span class="fc" id="L1244">    return ciTop.resolveReferencedClass(clsName);</span>
+            
+    //return ClassLoaderInfo.getCurrentClassLoader(this).getResolvedClassInfo(clsName);
+  }
+  
+  public boolean isInCtor () {
+    // &lt;2do&gt; - hmm, if we don't do this the whole stack, we miss factored
+    // init funcs
+<span class="nc" id="L1252">    MethodInfo mi = getTopFrameMethodInfo();</span>
+<span class="nc bnc" id="L1253" title="All 2 branches missed.">    if (mi != null) {</span>
+<span class="nc" id="L1254">      return mi.isCtor();</span>
+    } else {
+<span class="nc" id="L1256">      return false;</span>
+    }
+  }
+
+  public boolean isCtorOnStack (int objRef){
+<span class="nc bnc" id="L1261" title="All 2 branches missed.">    for (StackFrame f = top; f != null; f = f.getPrevious()){</span>
+<span class="nc bnc" id="L1262" title="All 4 branches missed.">      if (f.getThis() == objRef &amp;&amp; f.getMethodInfo().isCtor()){</span>
+<span class="nc" id="L1263">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L1267">    return false;</span>
+  }
+
+  public boolean isClinitOnStack (ClassInfo ci){
+<span class="nc bnc" id="L1271" title="All 2 branches missed.">    for (StackFrame f = top; f != null; f = f.getPrevious()){</span>
+<span class="nc" id="L1272">      MethodInfo mi = f.getMethodInfo();</span>
+<span class="nc bnc" id="L1273" title="All 2 branches missed.">      if (mi.isClinit(ci)){</span>
+<span class="nc" id="L1274">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L1278">    return false;</span>
+  }
+
+
+  public String getName () {
+<span class="fc" id="L1283">    return threadData.name;</span>
+  }
+
+
+
+  /**
+   * Returns the object reference.
+   */
+  public int getThreadObjectRef () {
+<span class="fc" id="L1292">    return objRef;</span>
+  }
+
+  public ElementInfo getThreadObject(){
+<span class="fc" id="L1296">    return getElementInfo(objRef);</span>
+  }
+
+  public ElementInfo getModifiableThreadObject() {
+<span class="fc" id="L1300">    return getModifiableElementInfo(objRef);</span>
+  }
+  
+
+  /**
+   * Sets the program counter of the top stack frame.
+   */
+  public void setPC (Instruction pc) {
+<span class="fc" id="L1308">    getModifiableTopFrame().setPC(pc);</span>
+<span class="fc" id="L1309">  }</span>
+
+  public void advancePC () {
+<span class="nc" id="L1312">    getModifiableTopFrame().advancePC();</span>
+<span class="nc" id="L1313">  }</span>
+
+  /**
+   * Returns the program counter of the top stack frame.
+   */
+  public Instruction getPC () {
+<span class="fc bfc" id="L1319" title="All 2 branches covered.">    if (top != null) {</span>
+<span class="fc" id="L1320">      return top.getPC();</span>
+    } else {
+<span class="fc" id="L1322">      return null;</span>
+    }
+  }
+
+  public Instruction getNextPC () {
+<span class="fc" id="L1327">    return nextPc;</span>
+  }
+
+
+  /**
+   * get the current stack trace of this thread
+   * this is called during creation of a Throwable, hence we should skip
+   * all throwable ctors in here
+   * &lt;2do&gt; this is only a partial solution,since we don't catch exceptionHandlers
+   * in Throwable ctors yet
+   */
+  public String getStackTrace () {
+<span class="nc" id="L1339">    StringBuilder sb = new StringBuilder(256);</span>
+
+<span class="nc bnc" id="L1341" title="All 2 branches missed.">    for (StackFrame sf = top; sf != null; sf = sf.getPrevious()){</span>
+<span class="nc" id="L1342">      MethodInfo mi = sf.getMethodInfo();</span>
+
+<span class="nc bnc" id="L1344" title="All 2 branches missed.">      if (mi.isCtor()){</span>
+<span class="nc" id="L1345">        ClassInfo ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L1346" title="All 2 branches missed.">        if (ci.isInstanceOf(&quot;java.lang.Throwable&quot;)) {</span>
+<span class="nc" id="L1347">          continue;</span>
+        }
+      }
+
+<span class="nc" id="L1351">      sb.append(&quot;\tat &quot;);</span>
+<span class="nc" id="L1352">      sb.append(sf.getStackTraceInfo());</span>
+<span class="nc" id="L1353">      sb.append('\n');</span>
+    }
+
+<span class="nc" id="L1356">    return sb.toString();</span>
+  }
+
+
+  /**
+   * Returns the information necessary to store.
+   *
+   * &lt;2do&gt; pcm - not clear to me how lower stack frames can contribute to
+   * a different threadinfo state hash - only the current one can be changed
+   * by the executing method
+   */
+  public void dumpStoringData (IntVector v) {
+<span class="nc" id="L1368">    v = null;  // Get rid of IDE warnings</span>
+<span class="nc" id="L1369">  }</span>
+
+  /**
+   * Returns the object reference of the target.
+   */
+  public int getRunnableRef () {
+<span class="fc" id="L1375">    return targetRef;</span>
+  }
+
+  /**
+   * Returns the pointer to the object reference of the executing method
+   */
+  public int getThis () {
+<span class="fc" id="L1382">    return top.getThis();</span>
+  }
+
+  public ElementInfo getThisElementInfo(){
+<span class="fc" id="L1386">    return getElementInfo(getThis());</span>
+  }
+
+  public boolean isThis (ElementInfo ei) {
+<span class="nc bnc" id="L1390" title="All 2 branches missed.">    if (ei == null) {</span>
+<span class="nc" id="L1391">      return false;</span>
+    }
+
+<span class="nc bnc" id="L1394" title="All 2 branches missed.">    if (top == null) {</span>
+<span class="nc" id="L1395">      return false;</span>
+    }
+
+<span class="nc bnc" id="L1398" title="All 2 branches missed.">    if (getTopFrameMethodInfo().isStatic()) {</span>
+<span class="nc" id="L1399">      return false;</span>
+    } else {
+<span class="nc" id="L1401">      int thisRef = top.getThis();</span>
+<span class="nc bnc" id="L1402" title="All 2 branches missed.">      return ei.getObjectRef() == thisRef;</span>
+    }
+  }
+
+  public boolean atMethod (String mname) {
+<span class="nc bnc" id="L1407" title="All 4 branches missed.">    return top != null &amp;&amp; getTopFrameMethodInfo().getFullName().equals(mname);</span>
+  }
+
+  public boolean atPosition (int position) {
+<span class="nc bnc" id="L1411" title="All 2 branches missed.">    if (top == null) {</span>
+<span class="nc" id="L1412">      return false;</span>
+    } else {
+<span class="nc" id="L1414">      Instruction pc = getPC();</span>
+<span class="nc bnc" id="L1415" title="All 4 branches missed.">      return pc != null &amp;&amp; pc.getPosition() == position;</span>
+    }
+  }
+
+  public boolean atReturn () {
+<span class="nc bnc" id="L1420" title="All 2 branches missed.">    if (top == null) {</span>
+<span class="nc" id="L1421">      return false;</span>
+    } else {
+<span class="nc" id="L1423">      Instruction pc = getPC();</span>
+<span class="nc" id="L1424">      return pc instanceof ReturnInstruction;</span>
+    }
+  }
+
+
+  /**
+   * reset any information that has to be re-computed in a backtrack
+   * (i.e. hasn't been stored explicitly)
+   */
+  void resetVolatiles () {
+    // resetting lock sets goes here
+<span class="fc" id="L1435">    lockedObjectReferences = emptyLockRefs;</span>
+
+    // the ref of the object we are blocked on or waiting for
+<span class="fc" id="L1438">    lockRef = MJIEnv.NULL;</span>
+
+<span class="fc" id="L1440">    pendingException = null;</span>
+<span class="fc" id="L1441">  }</span>
+  
+  /**
+   * this is used when restoring states
+   */
+  void updateLockedObject (ElementInfo ei) {
+<span class="fc" id="L1447">    int n = lockedObjectReferences.length;    </span>
+<span class="fc" id="L1448">    int[] a = new int[n+1];</span>
+<span class="fc" id="L1449">    System.arraycopy(lockedObjectReferences, 0, a, 0, n);</span>
+<span class="fc" id="L1450">    a[n] = ei.getObjectRef();</span>
+<span class="fc" id="L1451">    lockedObjectReferences = a;</span>
+    
+    // don't notify here, it's just a restore
+<span class="fc" id="L1454">  }</span>
+
+  void addLockedObject (ElementInfo ei) {
+<span class="fc" id="L1457">    int n = lockedObjectReferences.length;    </span>
+<span class="fc" id="L1458">    int[] a = new int[n+1];</span>
+<span class="fc" id="L1459">    System.arraycopy(lockedObjectReferences, 0, a, 0, n);</span>
+<span class="fc" id="L1460">    a[n] = ei.getObjectRef();</span>
+<span class="fc" id="L1461">    lockedObjectReferences = a;</span>
+    
+<span class="fc" id="L1463">    vm.notifyObjectLocked(this, ei);</span>
+<span class="fc" id="L1464">  }</span>
+
+  void removeLockedObject (ElementInfo ei) {
+<span class="fc" id="L1467">    int objRef = ei.getObjectRef();</span>
+<span class="fc" id="L1468">    int n = lockedObjectReferences.length;</span>
+    
+<span class="fc bfc" id="L1470" title="All 2 branches covered.">    if (n == 1) {</span>
+<span class="pc bpc" id="L1471" title="2 of 4 branches missed.">      assert lockedObjectReferences[0] == objRef;</span>
+<span class="fc" id="L1472">      lockedObjectReferences = emptyLockRefs;</span>
+      
+    } else {
+<span class="fc" id="L1475">      int[] a = new int[n - 1];</span>
+
+<span class="fc bfc" id="L1477" title="All 2 branches covered.">      for (int i = 0, j = 0; i &lt; n; i++) {</span>
+<span class="fc bfc" id="L1478" title="All 2 branches covered.">        if (lockedObjectReferences[i] != objRef) {</span>
+<span class="fc" id="L1479">          a[j++] = lockedObjectReferences[i];</span>
+        }
+      }
+<span class="fc" id="L1482">      lockedObjectReferences = a;</span>
+    }
+    
+<span class="fc" id="L1485">    vm.notifyObjectUnlocked(this, ei);</span>
+<span class="fc" id="L1486">  }</span>
+
+
+  @Override
+  public Object clone() {
+    try {
+      // threadData and top StackFrame are copy-on-write, so we should not have to clone them
+      // lockedObjects are state-volatile and restored explicitly after a backtrack
+<span class="fc" id="L1494">      return super.clone();</span>
+
+<span class="nc" id="L1496">    } catch (CloneNotSupportedException cnsx) {</span>
+<span class="nc" id="L1497">      return null;</span>
+    }
+  }
+
+  /**
+   * Returns the number of stack frames.
+   */
+  public int countStackFrames () {
+<span class="fc" id="L1505">    return stackDepth;</span>
+  }
+
+  /**
+   * get a stack snapshot that consists of an array of {mthId,pc} pairs.
+   * strip stackframes that enter instance methods of the exception object
+   */
+  public int[] getSnapshot (int xObjRef) {
+<span class="fc" id="L1513">    StackFrame frame = top;</span>
+<span class="fc" id="L1514">    int n = stackDepth;</span>
+    
+<span class="fc bfc" id="L1516" title="All 2 branches covered.">    if (xObjRef != MJIEnv.NULL){ // filter out exception method frames</span>
+<span class="pc bpc" id="L1517" title="1 of 2 branches missed.">      for (;frame != null; frame = frame.getPrevious()){</span>
+<span class="fc bfc" id="L1518" title="All 2 branches covered.">        if (frame.getThis() != xObjRef){</span>
+<span class="fc" id="L1519">          break;</span>
+        }
+<span class="fc" id="L1521">        n--;</span>
+      }
+    }
+
+<span class="fc" id="L1525">    int j=0;</span>
+<span class="fc" id="L1526">    int[] snap = new int[n*2];</span>
+
+<span class="fc bfc" id="L1528" title="All 2 branches covered.">    for (; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc" id="L1529">      snap[j++] = frame.getMethodInfo().getGlobalId();</span>
+<span class="fc" id="L1530">      snap[j++] = frame.getPC().getInstructionIndex();</span>
+    }
+
+<span class="fc" id="L1533">    return snap;</span>
+  }
+
+  /**
+   * turn a snapshot into an JPF array of StackTraceElements, which means
+   * a lot of objects. Do this only on demand
+   */
+  public int createStackTraceElements (int[] snapshot) {
+<span class="fc" id="L1541">    int n = snapshot.length/2;</span>
+<span class="fc" id="L1542">    int nVisible=0;</span>
+<span class="fc" id="L1543">    StackTraceElement[] list = new StackTraceElement[n];</span>
+<span class="fc bfc" id="L1544" title="All 2 branches covered.">    for (int i=0, j=0; i&lt;n; i++){</span>
+<span class="fc" id="L1545">      int methodId = snapshot[j++];</span>
+<span class="fc" id="L1546">      int pcOffset = snapshot[j++];</span>
+<span class="fc" id="L1547">      StackTraceElement ste = new StackTraceElement( methodId, pcOffset);</span>
+<span class="fc bfc" id="L1548" title="All 2 branches covered.">      if (!ste.ignore){</span>
+<span class="fc" id="L1549">        list[nVisible++] = ste;</span>
+      }
+    }
+
+<span class="fc" id="L1553">    Heap heap = vm.getHeap();</span>
+<span class="fc" id="L1554">    ElementInfo eiArray = heap.newArray(&quot;Ljava/lang/StackTraceElement;&quot;, nVisible, this);</span>
+<span class="fc bfc" id="L1555" title="All 2 branches covered.">    for (int i=0; i&lt;nVisible; i++){</span>
+<span class="fc" id="L1556">      int eref = list[i].createJPFStackTraceElement();</span>
+<span class="fc" id="L1557">      eiArray.setReferenceElement( i, eref);</span>
+    }
+
+<span class="fc" id="L1560">    return eiArray.getObjectRef();</span>
+  }
+
+  void print (PrintWriter pw, String s) {
+<span class="fc bfc" id="L1564" title="All 2 branches covered.">    if (pw != null){</span>
+<span class="fc" id="L1565">      pw.print(s);</span>
+    } else {
+<span class="fc" id="L1567">      vm.print(s);</span>
+    }
+<span class="fc" id="L1569">  }</span>
+
+  public void printStackTrace (int objRef) {
+<span class="fc" id="L1572">    printStackTrace(null, objRef);</span>
+<span class="fc" id="L1573">  }</span>
+
+  public void printPendingExceptionOn (PrintWriter pw) {
+<span class="nc bnc" id="L1576" title="All 2 branches missed.">    if (pendingException != null) {</span>
+<span class="nc" id="L1577">      printStackTrace( pw, pendingException.getExceptionReference());</span>
+    }
+<span class="nc" id="L1579">  }</span>
+
+  /**
+   * the reason why this is kind of duplicated (there is also a StackFrame.getPositionInfo)
+   * is that this might be working off a StackTraceElement[] that is created when the exception
+   * is created. At the time printStackTrace() is called, the StackFrames in question
+   * are most likely already be unwinded
+   */
+  public void printStackTrace (PrintWriter pw, int objRef) {
+    // 'env' usage is not ideal, since we don't know from what context we are called, and
+    // hence the MJIEnv calling context might not be set (no Method or ClassInfo)
+    // on the other hand, we don't want to re-implement all the MJIEnv accessor methods
+
+<span class="fc" id="L1592">    print(pw, env.getClassInfo(objRef).getName());</span>
+<span class="fc" id="L1593">    int msgRef = env.getReferenceField(objRef,&quot;detailMessage&quot;);</span>
+<span class="fc bfc" id="L1594" title="All 2 branches covered.">    if (msgRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L1595">      print(pw, &quot;: &quot;);</span>
+<span class="fc" id="L1596">      print(pw, env.getStringObject(msgRef));</span>
+    }
+<span class="fc" id="L1598">    print(pw, &quot;\n&quot;);</span>
+
+    // try the 'stackTrace' field first, it might have been set explicitly
+<span class="fc" id="L1601">    int aRef = env.getReferenceField(objRef, &quot;stackTrace&quot;); // StackTrace[]</span>
+<span class="pc bpc" id="L1602" title="1 of 2 branches missed.">    if (aRef != MJIEnv.NULL) {</span>
+<span class="nc" id="L1603">      int len = env.getArrayLength(aRef);</span>
+<span class="nc bnc" id="L1604" title="All 2 branches missed.">      for (int i=0; i&lt;len; i++) {</span>
+<span class="nc" id="L1605">        int steRef = env.getReferenceArrayElement(aRef, i);</span>
+<span class="nc bnc" id="L1606" title="All 2 branches missed.">        if (steRef != MJIEnv.NULL){  // might be ignored (e.g. direct call)</span>
+<span class="nc" id="L1607">          StackTraceElement ste = new StackTraceElement(steRef);</span>
+<span class="nc" id="L1608">          ste.printOn( pw);</span>
+        }
+      }
+
+<span class="nc" id="L1612">    } else { // fall back to use the snapshot stored in the exception object</span>
+<span class="fc" id="L1613">      aRef = env.getReferenceField(objRef, &quot;snapshot&quot;);</span>
+<span class="fc" id="L1614">      int[] snapshot = env.getIntArrayObject(aRef);</span>
+<span class="fc" id="L1615">      int len = snapshot.length/2;</span>
+
+<span class="fc bfc" id="L1617" title="All 2 branches covered.">      for (int i=0, j=0; i&lt;len; i++){</span>
+<span class="fc" id="L1618">        int methodId = snapshot[j++];</span>
+<span class="fc" id="L1619">        int pcOffset = snapshot[j++];</span>
+<span class="fc" id="L1620">        StackTraceElement ste = new StackTraceElement( methodId, pcOffset);</span>
+<span class="fc" id="L1621">        ste.printOn( pw);</span>
+      }
+    }
+
+<span class="fc" id="L1625">    int causeRef = env.getReferenceField(objRef, &quot;cause&quot;);</span>
+<span class="fc bfc" id="L1626" title="All 4 branches covered.">    if ((causeRef != objRef) &amp;&amp; (causeRef != MJIEnv.NULL)){</span>
+<span class="fc" id="L1627">      print(pw, &quot;Caused by: &quot;);</span>
+<span class="fc" id="L1628">      printStackTrace(pw, causeRef);</span>
+    }
+<span class="fc" id="L1630">  }</span>
+
+  class StackTraceElement {
+    String clsName, mthName, fileName;
+    int line;
+    boolean ignore;
+
+
+<span class="fc" id="L1638">    StackTraceElement (int methodId, int pcOffset) {</span>
+<span class="fc bfc" id="L1639" title="All 2 branches covered.">      if (methodId == MethodInfo.DIRECT_CALL) {</span>
+<span class="fc" id="L1640">        ignore = true;</span>
+
+      } else {
+<span class="fc" id="L1643">        MethodInfo mi = MethodInfo.getMethodInfo(methodId);</span>
+<span class="pc bpc" id="L1644" title="1 of 2 branches missed.">        if (mi != null) {</span>
+<span class="fc" id="L1645">          clsName = mi.getClassName();</span>
+<span class="fc" id="L1646">          mthName = mi.getName();</span>
+
+<span class="fc" id="L1648">          fileName = mi.getStackTraceSource();          </span>
+<span class="pc bpc" id="L1649" title="1 of 2 branches missed.">          if (pcOffset &lt; 0){</span>
+            // See ThreadStopTest.threadDeathWhileRunstart
+            // &lt;2do&gt; remove when RUNSTART is gone
+<span class="nc" id="L1652">            pcOffset = 0;</span>
+          }
+<span class="fc" id="L1654">          line = mi.getLineNumber(mi.getInstruction(pcOffset));</span>
+
+        } else { // this sounds like a bug
+<span class="nc" id="L1657">          clsName = &quot;?&quot;;</span>
+<span class="nc" id="L1658">          mthName = &quot;?&quot;;</span>
+<span class="nc" id="L1659">          fileName = &quot;?&quot;;</span>
+<span class="nc" id="L1660">          line = -1;</span>
+        }
+      }
+<span class="fc" id="L1663">    }</span>
+
+<span class="nc" id="L1665">    StackTraceElement (int sRef){</span>
+<span class="nc" id="L1666">      clsName = env.getStringObject(env.getReferenceField(sRef, &quot;clsName&quot;));</span>
+<span class="nc" id="L1667">      mthName = env.getStringObject(env.getReferenceField(sRef, &quot;mthName&quot;));</span>
+<span class="nc" id="L1668">      fileName = env.getStringObject(env.getReferenceField(sRef, &quot;fileName&quot;));</span>
+<span class="nc" id="L1669">      line = env.getIntField(sRef, &quot;line&quot;);</span>
+<span class="nc" id="L1670">    }</span>
+
+    int createJPFStackTraceElement() {
+<span class="pc bpc" id="L1673" title="1 of 2 branches missed.">      if (ignore) {</span>
+<span class="nc" id="L1674">        return MJIEnv.NULL;</span>
+        
+      } else {
+<span class="fc" id="L1677">        Heap heap = vm.getHeap();</span>
+<span class="fc" id="L1678">        ClassInfo ci = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.StackTraceElement&quot;);</span>
+<span class="fc" id="L1679">        ElementInfo ei = heap.newObject(ci, ThreadInfo.this);</span>
+
+<span class="fc" id="L1681">        ei.setReferenceField(&quot;clsName&quot;, heap.newString(clsName, ThreadInfo.this).getObjectRef());</span>
+<span class="fc" id="L1682">        ei.setReferenceField(&quot;mthName&quot;, heap.newString(mthName, ThreadInfo.this).getObjectRef());</span>
+
+<span class="pc bpc" id="L1684" title="1 of 2 branches missed.">        String fname = fileName != null ? fileName : &quot;Unknown Source&quot;;</span>
+<span class="fc" id="L1685">        ei.setReferenceField(&quot;fileName&quot;, heap.newString(fname, ThreadInfo.this).getObjectRef());</span>
+                
+<span class="fc" id="L1687">        ei.setIntField(&quot;line&quot;, line);</span>
+
+<span class="fc" id="L1689">        return ei.getObjectRef();</span>
+      }
+    }
+
+    void printOn (PrintWriter pw){
+<span class="fc bfc" id="L1694" title="All 2 branches covered.">      if (!ignore){</span>
+        // the usual behavior is to print only the filename, strip the path
+<span class="fc bfc" id="L1696" title="All 2 branches covered.">        if (fileName != null){</span>
+<span class="fc" id="L1697">          int idx = fileName.lastIndexOf(File.separatorChar);</span>
+<span class="fc bfc" id="L1698" title="All 2 branches covered.">          if (idx &gt;=0) {</span>
+<span class="fc" id="L1699">            fileName = fileName.substring(idx+1);</span>
+          }
+        }
+
+<span class="fc" id="L1703">        print(pw, &quot;\tat &quot;);</span>
+<span class="pc bpc" id="L1704" title="1 of 2 branches missed.">        if (clsName != null){</span>
+<span class="fc" id="L1705">          print(pw, clsName);</span>
+<span class="fc" id="L1706">          print(pw, &quot;.&quot;);</span>
+        } else { // some synthetic methods don't belong to classes
+<span class="nc" id="L1708">          print(pw, &quot;[no class] &quot;);</span>
+        }
+<span class="fc" id="L1710">        print(pw, mthName);</span>
+
+<span class="fc bfc" id="L1712" title="All 2 branches covered.">        if (fileName != null){</span>
+<span class="fc" id="L1713">          print(pw, &quot;(&quot;);</span>
+<span class="fc" id="L1714">          print(pw, fileName);</span>
+<span class="fc bfc" id="L1715" title="All 2 branches covered.">          if (line &gt;= 0){</span>
+<span class="fc" id="L1716">            print(pw, &quot;:&quot;);</span>
+<span class="fc" id="L1717">            print(pw, Integer.toString(line));</span>
+          }
+<span class="fc" id="L1719">          print(pw, &quot;)&quot;);</span>
+        } else {
+          //print(pw, &quot;&lt;no source&gt;&quot;);
+        }
+
+<span class="fc" id="L1724">        print(pw, &quot;\n&quot;);</span>
+      }
+<span class="fc" id="L1726">    }</span>
+  }
+
+  /**
+   * this is a helper class to store listener generated exception requests that are checked before and after
+   * calling Instruction.execute(). This is a safe way to raise SUT exceptions from listener code without compromising
+   * consistency of executes() that are not prepared to cut short by means of re-execution or host VM exceptions
+   */
+  static class SUTExceptionRequest {
+    String xClsName;
+    String details;
+    
+<span class="nc" id="L1738">    SUTExceptionRequest (String xClsName, String details){</span>
+<span class="nc" id="L1739">      this.xClsName = xClsName;</span>
+<span class="nc" id="L1740">      this.details = details;</span>
+<span class="nc" id="L1741">    }</span>
+    
+    public String getExceptionClassName(){
+<span class="nc" id="L1744">      return xClsName;</span>
+    }
+    
+    public String getDetails(){
+<span class="nc" id="L1748">      return details;</span>
+    }
+  }
+  
+  public void requestSUTException (String exceptionClsName, String details){
+<span class="nc" id="L1753">    pendingSUTExceptionRequest = new SUTExceptionRequest( exceptionClsName, details);</span>
+<span class="nc bnc" id="L1754" title="All 2 branches missed.">    if (nextPc == null){ // this is pre-exec, skip the execute()</span>
+<span class="nc" id="L1755">      attributes |= ATTR_SKIP_INSN_EXEC;</span>
+    }
+<span class="nc" id="L1757">  }</span>
+  
+  protected void processPendingSUTExceptionRequest (){
+<span class="nc bnc" id="L1760" title="All 2 branches missed.">    if (pendingSUTExceptionRequest != null){</span>
+      // &lt;2do&gt; we could do more specific checks for ClassNotFoundExceptions here
+<span class="nc" id="L1762">      nextPc = createAndThrowException( pendingSUTExceptionRequest.getExceptionClassName(), pendingSUTExceptionRequest.getDetails());</span>
+<span class="nc" id="L1763">      pendingSUTExceptionRequest = null;</span>
+    }
+<span class="nc" id="L1765">  }</span>
+  
+  
+  /**
+   * &lt;2do&gt; pcm - this is only valid for java.* and our own Throwables that don't
+   * need ctor execution since we only initializeSharednessPolicy the Throwable fields. This method
+   * is here to avoid round trips in case of exceptions
+   */
+  int createException (ClassInfo ci, String details, int causeRef){
+<span class="fc" id="L1774">    int[] snap = getSnapshot(MJIEnv.NULL);</span>
+<span class="fc" id="L1775">    return vm.getHeap().newSystemThrowable(ci, details, snap, causeRef, this, 0).getObjectRef();</span>
+  }
+
+  /**
+   * Creates and throws an exception. This is what is used if the exception is
+   * thrown by the VM (or a listener)
+   */
+  public Instruction createAndThrowException (ClassInfo ci, String details) {
+    //if (ci.initializeClass(this)) {
+    //  return getPC();
+    //}
+<span class="fc" id="L1786">    ci.initializeClassAtomic(this);</span>
+
+<span class="fc" id="L1788">    int objref = createException(ci,details, MJIEnv.NULL);</span>
+<span class="fc" id="L1789">    return throwException(objref);</span>
+  }
+
+  /**
+   * Creates an exception and throws it.
+   */
+  public Instruction createAndThrowException (String cname) {
+<span class="fc" id="L1796">    return createAndThrowException(cname, null);</span>
+  }
+
+  public Instruction createAndThrowException (String cname, String details) {
+    try {
+<span class="fc" id="L1801">      ClassInfo ci = null;</span>
+      try {
+<span class="fc" id="L1803">        ci = ClassLoaderInfo.getCurrentResolvedClassInfo(cname);</span>
+<span class="fc" id="L1804">      } catch(ClassInfoException cie) {</span>
+        // the non-system class loader couldn't find the class, 
+<span class="pc bpc" id="L1806" title="1 of 2 branches missed.">        if(cie.getExceptionClass().equals(&quot;java.lang.ClassNotFoundException&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L1807" title="1 of 2 branches missed.">                        !ClassLoaderInfo.getCurrentClassLoader().isSystemClassLoader()) {</span>
+<span class="fc" id="L1808">          ci = ClassLoaderInfo.getSystemResolvedClassInfo(cname);</span>
+        } else {
+<span class="nc" id="L1810">          throw cie;</span>
+        }
+<span class="fc" id="L1812">      }</span>
+<span class="fc" id="L1813">      return createAndThrowException(ci, details);</span>
+      
+<span class="nc" id="L1815">    } catch (ClassInfoException cie){</span>
+<span class="nc bnc" id="L1816" title="All 2 branches missed.">      if(!cname.equals(cie.getExceptionClass())) {</span>
+<span class="nc" id="L1817">        ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(cie.getExceptionClass());</span>
+<span class="nc" id="L1818">        return createAndThrowException(ci, cie.getMessage());</span>
+      } else {
+<span class="nc" id="L1820">        throw cie;</span>
+      }
+    }
+  }
+
+  /**
+   * can be used by instructions to break long transitions (preferably on 
+   * backjumps so that state matching could terminate the search)
+   */
+  public boolean maxTransitionLengthExceeded(){
+<span class="fc bfc" id="L1830" title="All 2 branches covered.">    return executedInstructions &gt;= maxTransitionLength;</span>
+  }
+  
+  /**
+   * enter instructions until there is none left or somebody breaks
+   * the transition (e.g. by registering a CG)
+   * 
+   * this is the inner interpreter loop of JPF
+   */
+  protected void executeTransition (SystemState ss) throws JPFException {
+    Instruction pc;
+    outer:
+<span class="fc bfc" id="L1842" title="All 2 branches covered.">    while ((pc = getPC()) != null){</span>
+<span class="fc" id="L1843">      Instruction nextPc = null;</span>
+
+<span class="fc" id="L1845">      currentThread = this;</span>
+<span class="fc" id="L1846">      executedInstructions = 0;</span>
+<span class="fc" id="L1847">      pendingException = null;</span>
+
+<span class="fc bfc" id="L1849" title="All 2 branches covered.">      if (isStopped()){</span>
+<span class="fc" id="L1850">        pc = throwStopException();</span>
+<span class="fc" id="L1851">        setPC(pc);</span>
+      }
+
+      // this constitutes the main transition loop. It gobbles up
+      // insns until someone registered a ChoiceGenerator, there are no insns left,
+      // the transition was explicitly marked as ignored, or we have reached a
+      // max insn count and preempt the thread upon the next available backjump
+<span class="fc bfc" id="L1858" title="All 2 branches covered.">      while (pc != null) {</span>
+<span class="fc" id="L1859">        nextPc = executeInstruction();</span>
+
+<span class="fc bfc" id="L1861" title="All 2 branches covered.">        if (ss.breakTransition()) {</span>
+<span class="fc bfc" id="L1862" title="All 2 branches covered.">          if (ss.extendTransition()){</span>
+<span class="fc" id="L1863">            continue outer;</span>
+            
+          } else {
+<span class="pc bpc" id="L1866" title="1 of 2 branches missed.">            if (executedInstructions == 0){ // a CG from a re-executed insn</span>
+<span class="nc bnc" id="L1867" title="All 2 branches missed.">              if (isEmptyTransitionEnabled()){ // treat as a new state if empty transitions are enabled</span>
+<span class="nc" id="L1868">                ss.setForced(true);</span>
+              }
+            }
+<span class="fc" id="L1871">            return;</span>
+          }
+
+        } else {        
+<span class="fc" id="L1875">          pc = nextPc;</span>
+        }
+      }
+<span class="fc" id="L1878">    }</span>
+<span class="fc" id="L1879">  }</span>
+
+
+  protected void resetTransientAttributes(){
+<span class="fc" id="L1883">    attributes &amp;= ~(ATTR_SKIP_INSN_EXEC | ATTR_SKIP_INSN_LOG | ATTR_ENABLE_EMPTY_TRANSITION);</span>
+<span class="fc" id="L1884">  }</span>
+  
+  /**
+   * Execute next instruction.
+   */
+  public Instruction executeInstruction () {
+<span class="fc" id="L1890">    Instruction pc = getPC();</span>
+<span class="fc" id="L1891">    SystemState ss = vm.getSystemState();</span>
+
+<span class="fc" id="L1893">    resetTransientAttributes();</span>
+<span class="fc" id="L1894">    nextPc = null;</span>
+    
+    // note that we don't reset pendingSUTExceptionRequest since it could be set outside executeInstruction()
+    
+<span class="pc bpc" id="L1898" title="1 of 2 branches missed.">    if (log.isLoggable(Level.FINER)) {</span>
+<span class="nc" id="L1899">      log.fine( pc.getMethodInfo().getFullName() + &quot; &quot; + pc.getPosition() + &quot; : &quot; + pc);</span>
+    }
+
+    // this is the pre-execution notification, during which a listener can perform
+    // on-the-fly instrumentation or even replace the instruction alltogether
+<span class="fc" id="L1904">    vm.notifyExecuteInstruction(this, pc);</span>
+
+<span class="pc bpc" id="L1906" title="1 of 4 branches missed.">    if ((pendingSUTExceptionRequest == null) &amp;&amp; ((attributes &amp; ATTR_SKIP_INSN_EXEC) == 0)){</span>
+        try {
+<span class="fc" id="L1908">          nextPc = pc.execute(this);</span>
+<span class="nc" id="L1909">        } catch (ClassInfoException cie) {</span>
+<span class="nc" id="L1910">          nextPc = this.createAndThrowException(cie.getExceptionClass(), cie.getMessage());</span>
+<span class="fc" id="L1911">        }</span>
+      }
+
+    // we also count the skipped ones
+<span class="fc" id="L1915">    executedInstructions++;</span>
+    
+<span class="pc bpc" id="L1917" title="1 of 2 branches missed.">    if ((attributes &amp; ATTR_SKIP_INSN_LOG) == 0) {</span>
+<span class="fc" id="L1918">      ss.recordExecutionStep(pc);</span>
+    }
+
+    // here we have our post exec bytecode exec observation point
+<span class="fc" id="L1922">    vm.notifyInstructionExecuted(this, pc, nextPc);</span>
+    
+    // since this is part of the inner execution loop, it is a convenient place to check for probes
+<span class="fc" id="L1925">    vm.getSearch().checkAndResetProbeRequest();</span>
+    
+    // clean up whatever might have been stored by enter
+<span class="fc" id="L1928">    pc.cleanupTransients();</span>
+
+<span class="pc bpc" id="L1930" title="1 of 2 branches missed.">    if (pendingSUTExceptionRequest != null){</span>
+<span class="nc" id="L1931">      processPendingSUTExceptionRequest();</span>
+    }
+    
+    // set+return the next insn to enter if we did not return from the last stack frame.
+    // Note that 'nextPc' might have been set by a listener, and/or 'top' might have
+    // been changed by executing an invoke, return or throw (handler), or by
+    // pushing overlay calls on the stack
+<span class="fc bfc" id="L1938" title="All 2 branches covered.">    if (top != null) {</span>
+      // &lt;2do&gt; this is where we would have to handle general insn repeat
+<span class="fc" id="L1940">      setPC(nextPc);</span>
+<span class="fc" id="L1941">      return nextPc;</span>
+    } else {
+<span class="fc" id="L1943">      return null;</span>
+    }
+  }
+
+  /**
+   * enter instruction hidden from any listeners, and do not
+   * record it in the path
+   */
+  public Instruction executeInstructionHidden () {
+<span class="fc" id="L1952">    Instruction pc = getPC();</span>
+<span class="fc" id="L1953">    SystemState ss = vm.getSystemState();</span>
+<span class="fc" id="L1954">    KernelState ks = vm.getKernelState();</span>
+
+<span class="fc" id="L1956">    nextPc = null; // reset in case pc.execute() blows (this could be behind an exception firewall)</span>
+
+<span class="pc bpc" id="L1958" title="1 of 2 branches missed.">    if (log.isLoggable(Level.FINE)) {</span>
+<span class="nc" id="L1959">      log.fine( pc.getMethodInfo().getFullName() + &quot; &quot; + pc.getPosition() + &quot; : &quot; + pc);</span>
+    }
+
+    try {
+<span class="fc" id="L1963">        nextPc = pc.execute(this);</span>
+<span class="nc" id="L1964">      } catch (ClassInfoException cie) {</span>
+<span class="nc" id="L1965">        nextPc = this.createAndThrowException(cie.getExceptionClass(), cie.getMessage());</span>
+<span class="fc" id="L1966">      }</span>
+
+    // we also count the hidden ones since isFirstStepInsn depends on it
+<span class="fc" id="L1969">    executedInstructions++;</span>
+    
+    // since this is part of the inner execution loop, it is a convenient place  to check probe notifications
+<span class="fc" id="L1972">    vm.getSearch().checkAndResetProbeRequest();</span>
+    
+    // we did not return from the last frame stack
+<span class="pc bpc" id="L1975" title="1 of 2 branches missed.">    if (top != null) { // &lt;2do&gt; should probably bomb otherwise</span>
+<span class="fc" id="L1976">      setPC(nextPc);</span>
+    }
+
+<span class="fc" id="L1979">    return nextPc;</span>
+  }
+
+  /**
+   * is this after calling Instruction.enter()
+   * used by instructions and listeners
+   */
+  public boolean isPostExec() {
+<span class="fc bfc" id="L1987" title="All 2 branches covered.">    return (nextPc != null);</span>
+  }
+
+  public void reExecuteInstruction() {
+<span class="fc" id="L1991">    nextPc = getPC();</span>
+<span class="fc" id="L1992">  }</span>
+
+  public boolean willReExecuteInstruction() {
+<span class="fc bfc" id="L1995" title="All 2 branches covered.">    return (getPC() == nextPc);</span>
+  }
+  
+  /**
+   * skip the next bytecode. To be used by listeners to on-the-fly replace
+   * instructions
+   */
+  public void skipInstruction (Instruction nextInsn) {
+<span class="fc" id="L2003">    attributes |= ATTR_SKIP_INSN_EXEC;</span>
+    
+    //assert nextInsn != null;
+<span class="fc" id="L2006">    nextPc = nextInsn;</span>
+<span class="fc" id="L2007">  }</span>
+
+  /**
+   * skip and continue with the following instruction. This is deprecated because
+   * callers should explicitly provide the next instruction (depending on the
+   * skipped insn)
+   */
+  @Deprecated
+  public void skipInstruction(){
+<span class="nc" id="L2016">    skipInstruction(getPC().getNext());</span>
+<span class="nc" id="L2017">  }</span>
+
+  public boolean isInstructionSkipped() {
+<span class="nc bnc" id="L2020" title="All 2 branches missed.">    return (attributes &amp; ATTR_SKIP_INSN_EXEC) != 0;</span>
+  }
+
+  public void skipInstructionLogging () {
+<span class="nc" id="L2024">    attributes |= ATTR_SKIP_INSN_LOG;</span>
+<span class="nc" id="L2025">  }</span>
+
+  /**
+   * explicitly set the next insn to enter. To be used by listeners that
+   * replace bytecode exec (during 'executeInstruction' notification
+   *
+   * Note this is dangerous because you have to make sure the operand stack is
+   * in a consistent state. This also will fail if someone already ordered
+   * reexecution of the current instruction
+   */
+  public boolean setNextPC (Instruction insn) {
+<span class="pc bpc" id="L2036" title="1 of 2 branches missed.">    if (nextPc == null){</span>
+      // this is pre-execution, if we don't skip then the next insn.execute() is going
+      // to override what we set here
+<span class="nc" id="L2039">      attributes |= ATTR_SKIP_INSN_EXEC;</span>
+<span class="nc" id="L2040">      nextPc = insn;</span>
+<span class="nc" id="L2041">      return true;</span>
+      
+    } else {
+<span class="pc bpc" id="L2044" title="2 of 4 branches missed.">      if (top != null &amp;&amp; nextPc != top.getPC()){ // this needs to be re-executed</span>
+<span class="fc" id="L2045">        nextPc = insn;   </span>
+<span class="fc" id="L2046">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L2050">    return false;</span>
+  }
+
+  /**
+   * Executes a method call. Be aware that it executes the whole method as one atomic
+   * step. Arguments have to be already on the provided stack
+   *
+   * This only works for non-native methods, and does not allow any choice points,
+   * so you have to know very well what you are doing.
+   *
+   * Instructions executed by this method are still fully observable and stored in
+   * the path
+   */
+  public void executeMethodAtomic (StackFrame frame) {
+
+<span class="fc" id="L2065">    pushFrame(frame);</span>
+<span class="fc" id="L2066">    int    depth = countStackFrames();</span>
+<span class="fc" id="L2067">    Instruction pc = frame.getPC();</span>
+<span class="fc" id="L2068">    SystemState ss = vm.getSystemState();</span>
+
+<span class="fc" id="L2070">    ss.incAtomic(); // to shut off avoidable context switches (MONITOR_ENTER and wait() can still block)</span>
+
+<span class="fc bfc" id="L2072" title="All 2 branches covered.">    while (depth &lt;= countStackFrames()) {</span>
+<span class="fc" id="L2073">      Instruction nextPC = executeInstruction();</span>
+
+<span class="pc bpc" id="L2075" title="1 of 2 branches missed.">      if (ss.getNextChoiceGenerator() != null) {</span>
+        // BANG - we can't have CG's here
+        // should be rather an ordinary exception
+        // createAndThrowException(&quot;java.lang.AssertionError&quot;, &quot;choice point in sync executed method: &quot; + frame);
+<span class="nc" id="L2079">        throw new JPFException(&quot;choice point in atomic method execution: &quot; + frame);</span>
+      } else {
+<span class="fc" id="L2081">        pc = nextPC;</span>
+      }
+<span class="fc" id="L2083">    }</span>
+
+<span class="fc" id="L2085">    vm.getSystemState().decAtomic();</span>
+
+<span class="fc" id="L2087">    nextPc = null;</span>
+
+    // the frame was already removed by the RETURN insn of the frame's method
+<span class="fc" id="L2090">  }</span>
+
+  /**
+   * enter method atomically, but also hide it from listeners and do NOT add
+   * executed instructions to the path.
+   *
+   * this can be even more confusing than executeMethodAtomic(), since
+   * nothing prevents such a method from changing the program state, and we
+   * wouldn't know for what reason by looking at the trace
+   *
+   * this method should only be used if we have to enter test application code
+   * like hashCode() or equals() from native code, e.g. to silently check property
+   * violations
+   *
+   * executeMethodHidden also acts as an exception firewall, since we don't want
+   * any silently executed code fall back into the visible path (for
+   * no observable reason)
+   */
+  public void executeMethodHidden (StackFrame frame) {
+
+<span class="fc" id="L2110">    pushFrame(frame);</span>
+    
+<span class="fc" id="L2112">    int depth = countStackFrames(); // this includes the DirectCallStackFrame</span>
+<span class="fc" id="L2113">    Instruction pc = frame.getPC();</span>
+
+<span class="fc" id="L2115">    vm.getSystemState().incAtomic(); // to shut off avoidable context switches (MONITOR_ENTER and wait() can still block)</span>
+
+<span class="fc bfc" id="L2117" title="All 2 branches covered.">    while (depth &lt;= countStackFrames()) {</span>
+<span class="fc" id="L2118">      Instruction nextPC = executeInstructionHidden();</span>
+
+<span class="pc bpc" id="L2120" title="1 of 2 branches missed.">      if (pendingException != null) {</span>
+
+      } else {
+<span class="pc bpc" id="L2123" title="1 of 2 branches missed.">        if (nextPC == pc) {</span>
+          // BANG - we can't have CG's here
+          // should be rather an ordinary exception
+          // createAndThrowException(&quot;java.lang.AssertionError&quot;, &quot;choice point in sync executed method: &quot; + frame);
+<span class="nc" id="L2127">          throw new JPFException(&quot;choice point in hidden method execution: &quot; + frame);</span>
+        } else {
+<span class="fc" id="L2129">          pc = nextPC;</span>
+        }
+      }
+<span class="fc" id="L2132">    }</span>
+
+<span class="fc" id="L2134">    vm.getSystemState().decAtomic();</span>
+
+<span class="fc" id="L2136">    nextPc = null;</span>
+
+    // the frame was already removed by the RETURN insn of the frame's method
+<span class="fc" id="L2139">  }</span>
+
+  public Heap getHeap () {
+<span class="fc" id="L2142">    return vm.getHeap();</span>
+  }
+
+  public ElementInfo getElementInfo (int objRef) {
+<span class="fc" id="L2146">    Heap heap = vm.getHeap();</span>
+<span class="fc" id="L2147">    return heap.get(objRef);</span>
+  }
+  
+  public ElementInfo getModifiableElementInfo (int ref) {
+<span class="fc" id="L2151">    Heap heap = vm.getHeap();</span>
+<span class="fc" id="L2152">    return heap.getModifiable(ref);</span>
+  }
+  
+  public ElementInfo getBlockedObject (MethodInfo mi, boolean isBeforeCall, boolean isModifiable) {
+    int         objref;
+<span class="nc" id="L2157">    ElementInfo ei = null;</span>
+
+<span class="nc bnc" id="L2159" title="All 2 branches missed.">    if (mi.isSynchronized()) {</span>
+<span class="nc bnc" id="L2160" title="All 2 branches missed.">      if (mi.isStatic()) {</span>
+<span class="nc" id="L2161">        objref = mi.getClassInfo().getClassObjectRef();</span>
+      } else {
+        // NOTE 'inMethod' doesn't work for natives, because getThis() pulls 'this' from the stack frame, 
+        // which we don't have (and don't need) for natives
+<span class="nc bnc" id="L2165" title="All 2 branches missed.">        objref = isBeforeCall ? getCalleeThis(mi) : getThis();</span>
+      }
+
+<span class="nc bnc" id="L2168" title="All 2 branches missed.">      ei = (isModifiable) ? getModifiableElementInfo(objref) : getElementInfo(objref);</span>
+
+<span class="nc bnc" id="L2170" title="All 4 branches missed.">      assert (ei != null) : (&quot;inconsistent stack, no object or class ref: &quot; +</span>
+<span class="nc" id="L2171">                               mi.getFullName() + &quot; (&quot; + objref +&quot;)&quot;);</span>
+    }
+
+<span class="nc" id="L2174">    return ei;</span>
+  }
+
+  //--- convenience methods for call sites that don't have direct access to the VM
+  
+  public boolean setNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg){
+<span class="nc" id="L2180">    return vm.setNextChoiceGenerator(cg);</span>
+  }
+  
+  public boolean hasNextChoiceGenerator(){
+<span class="fc" id="L2184">    return vm.hasNextChoiceGenerator();</span>
+  }
+
+  public void checkNextChoiceGeneratorSet (String msg){
+<span class="pc bpc" id="L2188" title="1 of 2 branches missed.">    if (!vm.hasNextChoiceGenerator()){</span>
+<span class="nc" id="L2189">      throw new JPFException(msg);</span>
+    }
+<span class="fc" id="L2191">  }</span>
+  
+  //--- call processing
+  
+  /**
+   * note - this assumes the stackframe of the method to enter is already initialized and on top (pushed)
+   */
+  public void enter (){
+<span class="fc" id="L2199">    MethodInfo mi = top.getMethodInfo();</span>
+
+<span class="fc bfc" id="L2201" title="All 2 branches covered.">    if (!mi.isJPFExecutable()){</span>
+      //printStackTrace();
+<span class="fc" id="L2203">      throw new JPFException(&quot;method is not JPF executable: &quot; + mi);</span>
+    }
+
+<span class="fc bfc" id="L2206" title="All 2 branches covered.">    if (mi.isSynchronized()){</span>
+<span class="fc bfc" id="L2207" title="All 2 branches covered.">      int oref = mi.isStatic() ?  mi.getClassInfo().getClassObjectRef() : top.getThis();</span>
+<span class="fc" id="L2208">      ElementInfo ei = getModifiableElementInfo( oref);</span>
+      
+<span class="fc" id="L2210">      ei.lock(this);</span>
+    }
+
+<span class="fc" id="L2213">    vm.notifyMethodEntered(this, mi);</span>
+<span class="fc" id="L2214">  }</span>
+
+  /**
+   * note - this assumes the stackframe is still on top (not yet popped)
+   * 
+   * return true if any threads became unblocked due to a return from a sync method
+   */
+  public boolean leave(){
+<span class="fc" id="L2222">    boolean didUnblock = false;</span>
+<span class="fc" id="L2223">    MethodInfo mi = top.getMethodInfo();</span>
+    
+    // &lt;2do&gt; - that's not really enough, we might have suspicious bytecode that fails
+    // to release locks acquired by monitor_enter (e.g. by not having a handler that
+    // monitor_exits &amp; re-throws). That's probably shifted into the bytecode verifier
+    // in the future (i.e. outside JPF), but maybe we should add an explicit test here
+    // and report an error if the code does asymmetric locking (according to the specs,
+    // VMs are allowed to silently fix this, so it might run on some and fail on others)
+    
+<span class="fc bfc" id="L2232" title="All 2 branches covered.">    if (mi.isSynchronized()) {</span>
+<span class="fc bfc" id="L2233" title="All 2 branches covered.">      int oref = mi.isStatic() ?  mi.getClassInfo().getClassObjectRef() : top.getThis();</span>
+<span class="fc" id="L2234">      ElementInfo ei = getElementInfo( oref);</span>
+<span class="pc bpc" id="L2235" title="1 of 2 branches missed.">      if (ei.isLocked()){</span>
+<span class="fc" id="L2236">        ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L2237">        didUnblock = ei.unlock(this);</span>
+      }
+    }
+
+<span class="fc" id="L2241">    vm.notifyMethodExited(this, mi);</span>
+<span class="fc" id="L2242">    return didUnblock;</span>
+  }
+
+  
+  /**
+   * this should only be called from the top half of the last DIRECTCALLRETURN of
+   * a thread.
+   * @return true - if the thread is done, false - if instruction has to be re-executed
+   */
+  public boolean exit(){
+<span class="fc" id="L2252">    int objref = getThreadObjectRef();</span>
+<span class="fc" id="L2253">    ElementInfo ei = getModifiableElementInfo(objref); // we are going to modify it no matter what</span>
+<span class="fc" id="L2254">    SystemState ss = vm.getSystemState();</span>
+<span class="fc" id="L2255">    Scheduler scheduler = getScheduler();</span>
+
+<span class="fc" id="L2257">    enableEmptyTransition();</span>
+    
+    // if this is the last non-daemon and there are only daemons left (which
+    // would be killed by our termination) we have to give them a chance to
+    // run BEFORE we terminate, to catch errors in those daemons we might have
+    // triggered in our last transition. Even if a daemon has a proper CG
+    // on the trigger that would expose the error subsequently, it would not be
+    // scheduled anymore but hard terminated. This is even true if the trigger
+    // is the last operation in the daemon since a host VM might preempt
+    // on every instruction, not just CG insns (see .test.mc.DaemonTest)
+<span class="fc bfc" id="L2267" title="All 2 branches covered.">    if (vm.getThreadList().hasOnlyMatchingOtherThan(this, vm.getDaemonRunnablePredicate())) {</span>
+<span class="pc bpc" id="L2268" title="1 of 2 branches missed.">      if (scheduler.setsRescheduleCG(this, &quot;daemonTermination&quot;)) {</span>
+<span class="fc" id="L2269">        return false;</span>
+      }
+    }
+    
+    // beware - this notifies all waiters for this thread (e.g. in a join())
+    // hence it has to be able to acquire the lock
+<span class="pc bpc" id="L2275" title="1 of 2 branches missed.">    if (!ei.canLock(this)) {</span>
+      // if we can't acquire the lock, it means there needs to be another live thread,
+      // but it might not be runnable (deadlock) and we don't want to mask that error
+      
+      // block first, so that we don't get this thread in the list of CGs
+<span class="nc" id="L2280">      ei.block(this);</span>
+<span class="nc bnc" id="L2281" title="All 2 branches missed.">      if (!scheduler.setsBlockedThreadCG(this, ei)){</span>
+<span class="nc" id="L2282">        throw new JPFException(&quot;blocking thread termination without transition break&quot;);            </span>
+      }    
+<span class="nc" id="L2284">      return false; // come back once we can obtain the lock to notify our waiters</span>
+    }
+      
+    // we have to be able to acquire the group lock since we are going to remove
+    // the thread from the group
+<span class="fc" id="L2289">    int grpRef = getThreadGroupRef();</span>
+<span class="fc" id="L2290">    ElementInfo eiGrp = getModifiableElementInfo(grpRef);</span>
+<span class="pc bpc" id="L2291" title="1 of 2 branches missed.">    if (eiGrp != null){</span>
+<span class="fc bfc" id="L2292" title="All 2 branches covered.">      if (!eiGrp.canLock(this)){</span>
+<span class="fc" id="L2293">        eiGrp.block(this);</span>
+<span class="pc bpc" id="L2294" title="1 of 2 branches missed.">        if (!scheduler.setsBlockedThreadCG(this, eiGrp)){</span>
+<span class="nc" id="L2295">          throw new JPFException(&quot;blocking thread termination on group without transition break&quot;);            </span>
+        }    
+<span class="fc" id="L2297">        return false; // come back once we can obtain the lock to update the group</span>
+      }
+    }
+
+    // Ok, we can get the lock, time to die
+    
+    // this simulates the ThreadGroup.remove(), which would cause a lot
+    // of states if done in bytecode. Since we don't have a ThreadGroup peer
+    // we keep all this code in ThreadInfo.
+    // This might cause the ThreadGroup to notify waiters, which has to
+    // happen before the notification on the thread object
+<span class="fc" id="L2308">    eiGrp.lock(this);</span>
+<span class="fc" id="L2309">    cleanupThreadGroup(grpRef, objref);</span>
+<span class="fc" id="L2310">    eiGrp.unlock(this);</span>
+    
+    
+    // notify waiters on thread termination
+<span class="pc bpc" id="L2314" title="1 of 2 branches missed.">    if (!holdsLock(ei)) {</span>
+      // we only need to increase the lockcount if we don't own the lock yet,
+      // as is the case for synchronized run() in anonymous threads (otherwise
+      // we have a lockcount &gt; 1 and hence do not unlock upon return)
+<span class="fc" id="L2318">      ei.lock(this);</span>
+    }
+
+<span class="fc" id="L2321">    ei.notifiesAll(); // watch out, this might change the runnable count</span>
+<span class="fc" id="L2322">    ei.unlock(this);</span>
+
+<span class="fc" id="L2324">    setState(State.TERMINATED);</span>
+
+    // we don't unregister this thread yet, this happens when the corresponding
+    // thread object is collected
+<span class="fc" id="L2328">    ss.clearAtomic();</span>
+<span class="fc" id="L2329">    cleanupThreadObject(ei);</span>
+<span class="fc" id="L2330">    vm.activateGC();  // stack is gone, so reachability might change</span>
+
+    // give the thread tracking policy a chance to remove this thread from
+    // object/class thread sets
+<span class="fc" id="L2334">    scheduler.cleanupThreadTermination(this);</span>
+
+<span class="fc bfc" id="L2336" title="All 2 branches covered.">    if (vm.getThreadList().hasAnyMatchingOtherThan(this, getRunnableNonDaemonPredicate())) {</span>
+<span class="pc bpc" id="L2337" title="1 of 2 branches missed.">      if (!scheduler.setsTerminationCG(this)){</span>
+<span class="nc" id="L2338">        throw new JPFException(&quot;thread termination without transition break&quot;);</span>
+      }
+    }
+
+<span class="fc" id="L2342">    popFrame(); // we need to do this *after* setting the CG (so that we still have a CG insn)</span>
+
+<span class="fc" id="L2344">    return true;</span>
+  }
+
+  Predicate&lt;ThreadInfo&gt; getRunnableNonDaemonPredicate() {
+<span class="fc" id="L2348">    return new Predicate&lt;ThreadInfo&gt;() {</span>
+      @Override
+	public boolean isTrue (ThreadInfo ti) {
+<span class="pc bpc" id="L2351" title="1 of 4 branches missed.">        return (ti.isRunnable() &amp;&amp; !ti.isDaemon());</span>
+      }
+    };
+  }
+  
+  /**
+   * this is called upon ThreadInfo.exit() and corresponds to the private Thread.exit()
+   */
+  void cleanupThreadObject (ElementInfo ei) {
+    // ideally, this should be done by calling Thread.exit(), but this
+    // does a ThreadGroup.remove(), which does a lot of sync stuff on the shared
+    // ThreadGroup object, which might create lots of states. So we just nullify
+    // the Thread fields and remove it from the ThreadGroup from here
+<span class="fc" id="L2364">    int grpRef = ei.getReferenceField(&quot;group&quot;);</span>
+<span class="fc" id="L2365">    cleanupThreadGroup(grpRef, ei.getObjectRef());</span>
+
+<span class="fc" id="L2367">    ei.setReferenceField(&quot;group&quot;, MJIEnv.NULL);    </span>
+<span class="fc" id="L2368">    ei.setReferenceField(&quot;threadLocals&quot;, MJIEnv.NULL);</span>
+    
+<span class="fc" id="L2370">    ei.setReferenceField(&quot;uncaughtExceptionHandler&quot;, MJIEnv.NULL);</span>
+<span class="fc" id="L2371">  }</span>
+
+  /**
+   * this is called upon ThreadInfo.exit() and corresponds to ThreadGroup.remove(t), which is called from Thread.exit()
+   * 
+   * ideally this should be in the ThreadGroup peer, but we don't want to reference concrete peers from core (which is the
+   * lowest layer).
+   * Since we already depend on ThreadGroup fields during VM initialization we just keep all Thread/ThreadGroup
+   * related methods here
+   */
+  void cleanupThreadGroup (int grpRef, int threadRef) {
+<span class="pc bpc" id="L2382" title="1 of 2 branches missed.">    if (grpRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L2383">      ElementInfo eiGrp = getModifiableElementInfo(grpRef);</span>
+<span class="fc" id="L2384">      int threadsRef = eiGrp.getReferenceField(&quot;threads&quot;);</span>
+<span class="pc bpc" id="L2385" title="1 of 2 branches missed.">      if (threadsRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L2386">        ElementInfo eiThreads = getModifiableElementInfo(threadsRef);</span>
+<span class="pc bpc" id="L2387" title="1 of 2 branches missed.">        if (eiThreads.isArray()) {</span>
+<span class="fc" id="L2388">          int nthreads = eiGrp.getIntField(&quot;nthreads&quot;);</span>
+
+<span class="fc bfc" id="L2390" title="All 2 branches covered.">          for (int i=0; i&lt;nthreads; i++) {</span>
+<span class="fc" id="L2391">            int tref = eiThreads.getReferenceElement(i);</span>
+
+<span class="fc bfc" id="L2393" title="All 2 branches covered.">            if (tref == threadRef) { // compact the threads array</span>
+<span class="fc" id="L2394">              int n1 = nthreads-1;</span>
+<span class="fc bfc" id="L2395" title="All 2 branches covered.">              for (int j=i; j&lt;n1; j++) {</span>
+<span class="fc" id="L2396">                eiThreads.setReferenceElement(j, eiThreads.getReferenceElement(j+1));</span>
+              }
+<span class="fc" id="L2398">              eiThreads.setReferenceElement(n1, MJIEnv.NULL);</span>
+
+<span class="fc" id="L2400">              eiGrp.setIntField(&quot;nthreads&quot;, n1);</span>
+<span class="fc bfc" id="L2401" title="All 2 branches covered.">              if (n1 == 0) {</span>
+<span class="fc" id="L2402">                eiGrp.lock(this);</span>
+<span class="fc" id="L2403">                eiGrp.notifiesAll();</span>
+<span class="fc" id="L2404">                eiGrp.unlock(this);</span>
+              }
+
+              // &lt;2do&gt; we should probably also check if we have to set it destroyed
+<span class="fc" id="L2408">              return;</span>
+            }
+          }
+        }
+      }
+    }
+<span class="fc" id="L2414">  }</span>
+
+  /**
+   * this is called by the VM upon initialization of the main thread. At this point, we have a tiMain and a java.lang.Thread
+   * object, but there is no ThreadGroup yet
+   * 
+   * This method is here to keep all Thread/ThreadGroup field dependencies in one place. The downside of not keeping this in
+   * VM is that we can't override in order to have specialized ThreadInfos, but there is no factory for them anyways
+   */
+  protected void createMainThreadObject (SystemClassLoaderInfo sysCl){
+    //--- now create &amp; initializeSharednessPolicy all the related JPF objects
+<span class="fc" id="L2425">    Heap heap = getHeap();</span>
+
+<span class="fc" id="L2427">    ClassInfo ciThread = sysCl.threadClassInfo;</span>
+<span class="fc" id="L2428">    ElementInfo eiThread = heap.newObject( ciThread, this);</span>
+<span class="fc" id="L2429">    objRef = eiThread.getObjectRef();</span>
+     
+<span class="fc" id="L2431">    ElementInfo eiName = heap.newString(MAIN_NAME, this);</span>
+<span class="fc" id="L2432">    int nameRef = eiName.getObjectRef();</span>
+<span class="fc" id="L2433">    eiThread.setReferenceField(&quot;name&quot;, nameRef);</span>
+    
+<span class="fc" id="L2435">    ElementInfo eiGroup = createMainThreadGroup(sysCl);</span>
+<span class="fc" id="L2436">    eiThread.setReferenceField(&quot;group&quot;, eiGroup.getObjectRef());</span>
+    
+<span class="fc" id="L2438">    eiThread.setIntField(&quot;priority&quot;, Thread.NORM_PRIORITY);</span>
+
+<span class="fc" id="L2440">    ClassInfo ciPermit = sysCl.getResolvedClassInfo(&quot;java.lang.Thread$Permit&quot;);</span>
+<span class="fc" id="L2441">    ElementInfo eiPermit = heap.newObject( ciPermit, this);</span>
+<span class="fc" id="L2442">    eiPermit.setBooleanField(&quot;blockPark&quot;, true);</span>
+<span class="fc" id="L2443">    eiThread.setReferenceField(&quot;permit&quot;, eiPermit.getObjectRef());</span>
+
+<span class="fc" id="L2445">    addToThreadGroup(eiGroup);</span>
+    
+<span class="fc" id="L2447">    addId( objRef, id);</span>
+
+    //--- set the thread running
+<span class="fc" id="L2450">    setState(ThreadInfo.State.RUNNING);</span>
+<span class="fc" id="L2451">  }</span>
+  
+
+  /**
+   * this creates and inits the main ThreadGroup object, which we have to do explicitly since
+   * we can't execute bytecode yet
+   */
+  protected ElementInfo createMainThreadGroup (SystemClassLoaderInfo sysCl) {
+<span class="fc" id="L2459">    Heap heap = getHeap();</span>
+    
+<span class="fc" id="L2461">    ClassInfo ciGroup = sysCl.getResolvedClassInfo(&quot;java.lang.ThreadGroup&quot;);</span>
+<span class="fc" id="L2462">    ElementInfo eiThreadGrp = heap.newObject( ciGroup, this);</span>
+
+<span class="fc" id="L2464">    ElementInfo eiGrpName = heap.newString(&quot;main&quot;, this);</span>
+<span class="fc" id="L2465">    eiThreadGrp.setReferenceField(&quot;name&quot;, eiGrpName.getObjectRef());</span>
+
+<span class="fc" id="L2467">    eiThreadGrp.setIntField(&quot;maxPriority&quot;, java.lang.Thread.MAX_PRIORITY);</span>
+
+    // 'threads' and 'nthreads' will be set later from createMainThreadObject
+
+<span class="fc" id="L2471">    return eiThreadGrp;</span>
+  }
+
+  /**
+   * this is used for all thread objects, not just main 
+   */
+  protected void addToThreadGroup (ElementInfo eiGroup){
+<span class="fc" id="L2478">    FieldInfo finThreads = eiGroup.getFieldInfo(&quot;nthreads&quot;);</span>
+<span class="fc" id="L2479">    int nThreads = eiGroup.getIntField(finThreads);</span>
+    
+<span class="pc bpc" id="L2481" title="1 of 2 branches missed.">    if (eiGroup.getBooleanField(&quot;destroyed&quot;)){</span>
+<span class="nc" id="L2482">      env.throwException(&quot;java.lang.IllegalThreadStateException&quot;);</span>
+      
+    } else {
+<span class="fc" id="L2485">      FieldInfo fiThreads = eiGroup.getFieldInfo(&quot;threads&quot;);</span>
+<span class="fc" id="L2486">      int threadsRef = eiGroup.getReferenceField(fiThreads);</span>
+      
+<span class="fc bfc" id="L2488" title="All 2 branches covered.">      if (threadsRef == MJIEnv.NULL){</span>
+<span class="fc" id="L2489">        threadsRef = env.newObjectArray(&quot;Ljava/lang/Thread;&quot;, 1);</span>
+<span class="fc" id="L2490">        env.setReferenceArrayElement(threadsRef, 0, objRef);</span>
+<span class="fc" id="L2491">        eiGroup.setReferenceField(fiThreads, threadsRef);</span>
+        
+      } else {
+<span class="fc" id="L2494">        int newThreadsRef = env.newObjectArray(&quot;Ljava/lang/Thread;&quot;, nThreads+1);</span>
+<span class="fc" id="L2495">        ElementInfo eiNewThreads = env.getElementInfo(newThreadsRef);        </span>
+<span class="fc" id="L2496">        ElementInfo eiThreads = env.getElementInfo(threadsRef);</span>
+        
+<span class="fc bfc" id="L2498" title="All 2 branches covered.">        for (int i=0; i&lt;nThreads; i++){</span>
+<span class="fc" id="L2499">          int tr = eiThreads.getReferenceElement(i);</span>
+<span class="fc" id="L2500">          eiNewThreads.setReferenceElement(i, tr);</span>
+        }
+        
+<span class="fc" id="L2503">        eiNewThreads.setReferenceElement(nThreads, objRef);</span>
+<span class="fc" id="L2504">        eiGroup.setReferenceField(fiThreads, newThreadsRef);</span>
+      }
+      
+<span class="fc" id="L2507">      eiGroup.setIntField(finThreads, nThreads+1);</span>
+      
+      /** &lt;2do&gt; we don't model this yet
+      FieldInfo finUnstartedThreads = eiGroup.getFieldInfo(&quot;nUnstartedThreads&quot;);
+      int nUnstarted = eiGroup.getIntField(finUnstartedThreads);
+      eiGroup.setIntField(finUnstartedThreads, nUnstarted-1);
+      **/
+    }    
+<span class="fc" id="L2515">  }</span>
+  
+  
+  public void hash (HashData hd) {
+<span class="nc" id="L2519">    threadData.hash(hd);</span>
+
+<span class="nc bnc" id="L2521" title="All 2 branches missed.">    for (StackFrame f = top; f != null; f = f.getPrevious()){</span>
+<span class="nc" id="L2522">      f.hash(hd);</span>
+    }
+<span class="nc" id="L2524">  }</span>
+
+  public void interrupt () {
+<span class="fc" id="L2527">    ElementInfo eiThread = getModifiableElementInfo(getThreadObjectRef());</span>
+
+<span class="fc" id="L2529">    State status = getState();</span>
+
+<span class="pc bpc" id="L2531" title="1 of 4 branches missed.">    switch (status) {</span>
+    case RUNNING:
+    case BLOCKED:
+    case UNBLOCKED:
+    case NOTIFIED:
+    case TIMEDOUT:
+      // just set interrupt flag
+<span class="fc" id="L2538">      eiThread.setBooleanField(&quot;interrupted&quot;, true);</span>
+<span class="fc" id="L2539">      break;</span>
+
+    case WAITING:
+    case TIMEOUT_WAITING:
+<span class="fc" id="L2543">      eiThread.setBooleanField(&quot;interrupted&quot;, true);</span>
+<span class="fc" id="L2544">      setState(State.INTERRUPTED);</span>
+
+      // since this is potentially called w/o owning the wait lock, we
+      // have to check if the waiter goes directly to UNBLOCKED
+<span class="fc" id="L2548">      ElementInfo eiLock = getElementInfo(lockRef);</span>
+<span class="fc bfc" id="L2549" title="All 2 branches covered.">      if (eiLock.canLock(this)) {</span>
+<span class="fc" id="L2550">        resetLockRef();</span>
+<span class="fc" id="L2551">        setState(State.UNBLOCKED);</span>
+        
+        // we cannot yet remove this thread from the Monitor lock contender list
+        // since it still has to re-acquire the lock before becoming runnable again
+        
+        // NOTE: this can lead to attempts to reenter the same thread to the 
+        // lock contender list if the interrupt handler of the interrupted thread
+        // tries to wait/block/park again
+        //eiLock.setMonitorWithoutLocked(this);
+      }
+      
+      break;
+
+    case NEW:
+    case TERMINATED:
+      // ignore
+<span class="fc" id="L2567">      break;</span>
+
+    default:
+    }
+<span class="fc" id="L2571">  }</span>
+
+  /**
+   * mark all objects during gc phase1 which are reachable from this threads
+   * root set (Thread object, Runnable, stack)
+   * @aspects: gc
+   */
+  void markRoots (Heap heap) {
+    
+    // 1. mark the Thread object itself
+<span class="fc" id="L2581">    heap.markThreadRoot(objRef, id);</span>
+
+    // 2. and its runnable
+<span class="fc bfc" id="L2584" title="All 2 branches covered.">    if (targetRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L2585">      heap.markThreadRoot(targetRef,id);</span>
+    }
+
+    // 3. if we have a pending exception that wasn't handled, make sure the exception object is not collected before we match states
+<span class="pc bpc" id="L2589" title="1 of 2 branches missed.">    if (pendingException != null){</span>
+<span class="nc" id="L2590">      heap.markThreadRoot(pendingException.getExceptionReference(), id);</span>
+    }
+    
+    // 4. now all references on the stack
+<span class="fc bfc" id="L2594" title="All 2 branches covered.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc" id="L2595">      frame.markThreadRoots(heap, id);</span>
+    }
+<span class="fc" id="L2597">  }</span>
+
+
+  /**
+   * replace the top frame - this is a dangerous method that should only
+   * be used from Restoreres and to restore operators and locals in post-execution notifications
+   * to their pre-execution contents
+   */
+  public void setTopFrame (StackFrame frame) {
+<span class="fc" id="L2606">    top = frame;</span>
+
+    // since we have swapped the top frame, the stackDepth might have changed
+<span class="fc" id="L2609">    int n = 0;</span>
+<span class="fc bfc" id="L2610" title="All 2 branches covered.">    for (StackFrame f = frame; f != null; f = f.getPrevious()){</span>
+<span class="fc" id="L2611">      n++;</span>
+    }
+<span class="fc" id="L2613">    stackDepth = n;</span>
+<span class="fc" id="L2614">  }</span>
+
+  /**
+   * Adds a new stack frame for a new called method.
+   */
+  public void pushFrame (StackFrame frame) {
+
+<span class="fc" id="L2621">    frame.setPrevious(top);</span>
+
+<span class="fc" id="L2623">    top = frame;</span>
+<span class="fc" id="L2624">    stackDepth++;</span>
+
+    // a new frame cannot have been stored yet, so we don't need to clone on the next mod
+    // note this depends on not pushing a frame in the top half of a CG method
+<span class="fc" id="L2628">    markTfChanged(top);</span>
+
+<span class="fc" id="L2630">    returnedDirectCall = null;</span>
+<span class="fc" id="L2631">  }</span>
+
+  /**
+   * Removes a stack frame
+   */
+  public void popFrame() {
+<span class="fc" id="L2637">    StackFrame frame = top;</span>
+
+    //--- do our housekeeping
+<span class="fc bfc" id="L2640" title="All 2 branches covered.">    if (frame.hasAnyRef()) {</span>
+<span class="fc" id="L2641">      vm.getSystemState().activateGC();</span>
+    }
+
+    // there always is one since we start all threads through directcalls
+<span class="fc" id="L2645">    top = frame.getPrevious();</span>
+<span class="fc" id="L2646">    stackDepth--;</span>
+<span class="fc" id="L2647">  }</span>
+
+  public StackFrame popAndGetModifiableTopFrame() {
+<span class="fc" id="L2650">    popFrame();</span>
+
+<span class="fc bfc" id="L2652" title="All 2 branches covered.">    if (top.isFrozen()) {</span>
+<span class="fc" id="L2653">      top = top.clone();</span>
+    }
+    
+<span class="fc" id="L2656">    return top;</span>
+  }
+  
+  public StackFrame popAndGetTopFrame(){
+<span class="nc" id="L2660">    popFrame();</span>
+<span class="nc" id="L2661">    return top;</span>
+  }
+  
+  /**
+   * removing DirectCallStackFrames is a bit different (only happens from
+   * DIRECTCALLRETURN insns)
+   */
+  public StackFrame popDirectCallFrame() {
+    //assert top instanceof DirectCallStackFrame;
+
+<span class="fc" id="L2671">    returnedDirectCall = (DirectCallStackFrame) top;</span>
+
+<span class="fc bfc" id="L2673" title="All 2 branches covered.">    if (top.hasFrameAttr( UncaughtHandlerAttr.class)){</span>
+<span class="fc" id="L2674">      return popUncaughtHandlerFrame();</span>
+    }
+    
+<span class="fc" id="L2677">    top = top.getPrevious();</span>
+<span class="fc" id="L2678">    stackDepth--;</span>
+    
+<span class="fc" id="L2680">    return top;</span>
+  }
+
+  
+  public boolean hasReturnedFromDirectCall () {
+    // this is reset each time we push a new frame
+<span class="nc bnc" id="L2686" title="All 2 branches missed.">    return (returnedDirectCall != null);</span>
+  }
+
+  public boolean hasReturnedFromDirectCall(String directCallId){
+<span class="nc bnc" id="L2690" title="All 2 branches missed.">    return (returnedDirectCall != null &amp;&amp;</span>
+<span class="nc bnc" id="L2691" title="All 2 branches missed.">            returnedDirectCall.getMethodName().equals(directCallId));</span>
+  }
+
+  public DirectCallStackFrame getReturnedDirectCall () {
+<span class="fc" id="L2695">    return returnedDirectCall;</span>
+  }
+
+
+  public String getStateDescription () {
+<span class="fc" id="L2700">    StringBuilder sb = new StringBuilder(&quot;thread &quot;);</span>
+<span class="fc" id="L2701">    sb.append(getThreadObjectClassInfo().getName());</span>
+<span class="fc" id="L2702">    sb.append(&quot;:{id:&quot;);</span>
+<span class="fc" id="L2703">    sb.append(id);</span>
+<span class="fc" id="L2704">    sb.append(',');</span>
+<span class="fc" id="L2705">    sb.append(threadData.getFieldValues());</span>
+<span class="fc" id="L2706">    sb.append('}');</span>
+    
+<span class="fc" id="L2708">    return sb.toString();</span>
+  }
+
+  public ClassInfo getThreadObjectClassInfo() {
+<span class="fc" id="L2712">    return getThreadObject().getClassInfo();</span>
+  }
+  
+  /**
+   * Prints the content of the stack
+   */
+  public void printStackContent () {
+<span class="nc bnc" id="L2719" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc" id="L2720">      frame.printStackContent();</span>
+    }
+<span class="nc" id="L2722">  }</span>
+
+  /**
+   * Prints current stacktrace information
+   */
+  public void printStackTrace () {
+<span class="nc bnc" id="L2728" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()){</span>
+<span class="nc" id="L2729">      frame.printStackTrace();</span>
+    }
+<span class="nc" id="L2731">  }</span>
+
+  protected boolean haltOnThrow (String exceptionClassName){
+<span class="pc bpc" id="L2734" title="3 of 4 branches missed.">    if ((haltOnThrow != null) &amp;&amp; (haltOnThrow.matchesAny(exceptionClassName))){</span>
+<span class="nc" id="L2735">      return true;</span>
+    }
+
+<span class="fc" id="L2738">    return false;</span>
+  }
+
+  protected Instruction throwStopException (){
+    // &lt;2do&gt; maybe we should do a little sanity check first
+<span class="fc" id="L2743">    ElementInfo ei = getModifiableThreadObject();</span>
+
+<span class="fc" id="L2745">    int xRef = ei.getReferenceField(&quot;stopException&quot;);</span>
+<span class="fc" id="L2746">    ei.setReferenceField(&quot;stopException&quot;, MJIEnv.NULL);</span>
+<span class="fc" id="L2747">    attributes &amp;= ~ATTR_SET_STOPPED;  // otherwise we would throw again if thread gets still executed</span>
+
+<span class="fc" id="L2749">    Instruction insn = getPC();</span>
+<span class="fc bfc" id="L2750" title="All 2 branches covered.">    if (insn instanceof EXECUTENATIVE){</span>
+      // we only get here if there was a CG in a native method and we might
+      // have to reacquire a lock to go on
+
+      // &lt;2do&gt; it would be better if we could avoid to enter the native method
+      // since it might have side effects like overwriting the exception or
+      // doing roundtrips in its bottom half, but we don't know which lock that
+      // is (lockRef might be already reset)
+
+<span class="fc" id="L2759">      env.throwException(xRef);</span>
+<span class="fc" id="L2760">      return insn;</span>
+    }
+
+<span class="fc" id="L2763">    return throwException(xRef);</span>
+  }
+  
+  /**
+   * this is basically a side-effect free version of throwException to determine if a given
+   * exception will be handled.
+   */
+  public HandlerContext getHandlerContextFor (ClassInfo ciException){
+<span class="nc" id="L2771">    ExceptionHandler matchingHandler = null; // the matching handler we found (if any)</span>
+    
+<span class="nc bnc" id="L2773" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()) {</span>
+      // that means we have to turn the exception into an InvocationTargetException
+<span class="nc bnc" id="L2775" title="All 2 branches missed.">      if (frame.isReflection()) {</span>
+<span class="nc" id="L2776">        ciException = ClassInfo.getInitializedSystemClassInfo(&quot;java.lang.reflect.InvocationTargetException&quot;, this);</span>
+      }
+
+<span class="nc" id="L2779">      matchingHandler = frame.getHandlerFor( ciException);</span>
+<span class="nc bnc" id="L2780" title="All 2 branches missed.">      if (matchingHandler != null){</span>
+<span class="nc" id="L2781">        return new HandlerContext( this, ciException, frame, matchingHandler);</span>
+      }
+    }
+    
+<span class="nc bnc" id="L2785" title="All 4 branches missed.">    if (!ignoreUncaughtHandlers &amp;&amp; !isUncaughtHandlerOnStack()) {</span>
+      int uchRef;
+<span class="nc bnc" id="L2787" title="All 2 branches missed.">      if ((uchRef = getInstanceUncaughtHandler()) != MJIEnv.NULL) {</span>
+<span class="nc" id="L2788">        return new HandlerContext( this, ciException, HandlerContext.UncaughtHandlerType.INSTANCE, uchRef);</span>
+      }
+
+<span class="nc" id="L2791">      int grpRef = getThreadGroupRef();</span>
+<span class="nc bnc" id="L2792" title="All 2 branches missed.">      if ((uchRef = getThreadGroupUncaughtHandler(grpRef)) != MJIEnv.NULL) {</span>
+<span class="nc" id="L2793">        return new HandlerContext( this, ciException, HandlerContext.UncaughtHandlerType.GROUP, uchRef);</span>
+      }
+
+<span class="nc bnc" id="L2796" title="All 2 branches missed.">      if ((uchRef = getGlobalUncaughtHandler()) != MJIEnv.NULL) {</span>
+<span class="nc" id="L2797">        return new HandlerContext( this, ciException, HandlerContext.UncaughtHandlerType.GLOBAL, uchRef);</span>
+      }
+    }
+    
+<span class="nc" id="L2801">    return null;</span>
+  }
+  
+  /**
+   * unwind stack frames until we find a matching handler for the exception object
+   */
+  public Instruction throwException (int exceptionObjRef) {
+<span class="fc" id="L2808">    Heap heap = vm.getHeap();</span>
+<span class="fc" id="L2809">    ElementInfo eiException = heap.get(exceptionObjRef);</span>
+<span class="fc" id="L2810">    ClassInfo ciException = eiException.getClassInfo();</span>
+<span class="fc" id="L2811">    String exceptionName = ciException.getName();</span>
+<span class="fc" id="L2812">    StackFrame handlerFrame = null; // the stackframe that has a matching handler (if any)</span>
+<span class="fc" id="L2813">    ExceptionHandler matchingHandler = null; // the matching handler we found (if any)</span>
+
+    // first, give the VM a chance to intercept (we do this before changing anything)
+<span class="fc" id="L2816">    Instruction insn = vm.handleException(this, exceptionObjRef);</span>
+<span class="pc bpc" id="L2817" title="1 of 2 branches missed.">    if (insn != null){</span>
+<span class="nc" id="L2818">      return insn;</span>
+    }
+
+    // we don't have to store the stacktrace explicitly anymore, since that is now
+    // done in the Throwable ctor (more specifically the native fillInStackTrace)
+<span class="fc" id="L2823">    pendingException = new ExceptionInfo(this, eiException);</span>
+
+<span class="fc" id="L2825">    vm.notifyExceptionThrown(this, eiException);</span>
+
+<span class="pc bpc" id="L2827" title="1 of 2 branches missed.">    if (haltOnThrow(exceptionName)) {</span>
+      // shortcut - we don't try to find a handler for this one but bail immediately
+      //NoUncaughtExceptionsProperty.setExceptionInfo(pendingException);
+<span class="nc" id="L2830">      throw new UncaughtException(this, exceptionObjRef);</span>
+    }
+
+    // check if we find a matching handler, and if we do store it. Leave the
+    // stack untouched so that listeners can still inspect it
+<span class="pc bpc" id="L2835" title="1 of 4 branches missed.">    for (StackFrame frame = top; (frame != null) &amp;&amp; (handlerFrame == null); frame = frame.getPrevious()) {</span>
+      // that means we have to turn the exception into an InvocationTargetException
+<span class="fc bfc" id="L2837" title="All 2 branches covered.">      if (frame.isReflection()) {</span>
+        // make sure it's in the startup class set since we are not able to re-execute here
+<span class="fc" id="L2839">        ciException = ClassInfo.getInitializedSystemClassInfo(&quot;java.lang.reflect.InvocationTargetException&quot;, this);</span>
+<span class="fc" id="L2840">        exceptionObjRef  = createException(ciException, exceptionName, exceptionObjRef);</span>
+<span class="fc" id="L2841">        exceptionName = ciException.getName();</span>
+<span class="fc" id="L2842">        eiException = heap.get(exceptionObjRef);</span>
+<span class="fc" id="L2843">        pendingException = new ExceptionInfo(this, eiException);</span>
+      }
+
+<span class="fc" id="L2846">      matchingHandler = frame.getHandlerFor( ciException);</span>
+<span class="fc bfc" id="L2847" title="All 2 branches covered.">      if (matchingHandler != null){</span>
+<span class="fc" id="L2848">        handlerFrame = frame;</span>
+<span class="fc" id="L2849">        break;</span>
+      }
+
+<span class="pc bpc" id="L2852" title="1 of 4 branches missed.">      if ((handlerFrame == null) &amp;&amp; frame.isFirewall()) {</span>
+        // this method should not let exceptionHandlers pass into lower level stack frames
+        // (e.g. for &lt;clinit&gt;, or hidden direct calls)
+        // &lt;2do&gt; if this is a &lt;clinit&gt;, we should probably turn into an
+        // ExceptionInInitializerError first
+<span class="fc" id="L2857">        unwindTo(frame);</span>
+        //NoUncaughtExceptionsProperty.setExceptionInfo(pendingException);
+<span class="fc" id="L2859">        throw new UncaughtException(this, exceptionObjRef);</span>
+      }
+    }
+
+<span class="fc bfc" id="L2863" title="All 2 branches covered.">    if (handlerFrame == null) {</span>
+      // we still have to check if there is a Thread.UncaughtExceptionHandler in effect,
+      // and if we already enter within one, in which case we don't reenter it
+<span class="pc bpc" id="L2866" title="1 of 4 branches missed.">      if (!ignoreUncaughtHandlers &amp;&amp; !isUncaughtHandlerOnStack()) {</span>
+        // we use a direct call instead of exception handlers within the run()/main()
+        // direct call methods because we want to preserve the whole stack in case
+        // we treat returned (report-only) handlers as NoUncaughtExceptionProperty
+        // violations (passUncaughtHandler=false)
+<span class="fc" id="L2871">        insn = callUncaughtHandler(pendingException);</span>
+<span class="fc bfc" id="L2872" title="All 2 branches covered.">        if (insn != null) {</span>
+          // we only do this if there is a UncaughtHandler other than the standard
+          // ThreadGroup, hence we have to check for the return value. If there is
+          // only ThreadGroup.uncaughtException(), we put the system out of its misery
+<span class="fc" id="L2876">          return insn;</span>
+        }
+      }
+
+      // there was no overridden uncaughtHandler, or we already executed it
+<span class="fc bfc" id="L2881" title="All 2 branches covered.">      if (&quot;java.lang.ThreadDeath&quot;.equals(exceptionName)) { // gracefully shut down</span>
+<span class="fc" id="L2882">        unwindToFirstFrame();</span>
+<span class="fc" id="L2883">        pendingException = null;</span>
+<span class="fc" id="L2884">        return top.getPC().getNext(); // the final DIRECTCALLRETURN</span>
+
+      } else { // we have a NoUncaughtPropertyViolation
+        //NoUncaughtExceptionsProperty.setExceptionInfo(pendingException);
+<span class="fc" id="L2888">        throw new UncaughtException(this, exceptionObjRef);</span>
+      }
+
+    } else { // we found a matching handler
+      
+<span class="fc" id="L2893">      unwindTo(handlerFrame);</span>
+
+      // according to the VM spec, before transferring control to the handler we have
+      // to reset the operand stack to contain only the exception reference
+      // (4.9.2 - &quot;4. merge the state of the operand stack..&quot;)
+<span class="fc" id="L2898">      handlerFrame = getModifiableTopFrame();</span>
+<span class="fc" id="L2899">      handlerFrame.setExceptionReference(exceptionObjRef);</span>
+
+      // jump to the exception handler and set pc so that listeners can see it
+<span class="fc" id="L2902">      int handlerOffset = matchingHandler.getHandler();</span>
+<span class="fc" id="L2903">      insn = handlerFrame.getMethodInfo().getInstructionAt(handlerOffset);</span>
+<span class="fc" id="L2904">      handlerFrame.setPC(insn);</span>
+
+      // notify before we reset the pendingException
+<span class="fc" id="L2907">      vm.notifyExceptionHandled(this);</span>
+
+<span class="fc" id="L2909">      pendingException = null; // handled, no need to keep it</span>
+
+<span class="fc" id="L2911">      return insn;</span>
+    }
+  }
+
+  /**
+   * is there any UncaughHandler in effect for this thread?
+   * NOTE - this doesn't check if we are already executing one (i.e. it would still handle an exception)
+   * or if uncaughtHandlers are enabled within JPF
+   */
+  public boolean hasUncaughtHandler (){
+<span class="nc bnc" id="L2921" title="All 2 branches missed.">    if (getInstanceUncaughtHandler() != MJIEnv.NULL){</span>
+<span class="nc" id="L2922">      return true;</span>
+    }
+    
+<span class="nc" id="L2925">    int grpRef = getThreadGroupRef();</span>
+<span class="nc bnc" id="L2926" title="All 2 branches missed.">    if (getThreadGroupUncaughtHandler(grpRef) != MJIEnv.NULL){</span>
+<span class="nc" id="L2927">      return true;</span>
+    }
+    
+<span class="nc bnc" id="L2930" title="All 2 branches missed.">    if (getGlobalUncaughtHandler() != MJIEnv.NULL){</span>
+<span class="nc" id="L2931">      return true;</span>
+    }
+    
+<span class="nc" id="L2934">    return false;</span>
+  }
+  
+  /**
+   * this explicitly models the standard ThreadGroup.uncaughtException(), but we want
+   * to save us a roundtrip if that's the only handler we got. If we would use
+   * a handler block in the run()/main() direct call stubs that just delegate to
+   * the standard ThreadGroup.uncaughtException(), we would have trouble mapping
+   * this to NoUncaughtExceptionProperty violations (which is just a normal
+   * printStackTrace() in there).
+   */
+  protected Instruction callUncaughtHandler (ExceptionInfo xi){
+<span class="fc" id="L2946">    Instruction insn = null;</span>
+    
+    // 1. check if this thread has its own uncaughtExceptionHandler set. If not,
+    // hand it over to ThreadGroup.uncaughtException()
+<span class="fc" id="L2950">    int  hRef = getInstanceUncaughtHandler();</span>
+<span class="fc bfc" id="L2951" title="All 2 branches covered.">    if (hRef != MJIEnv.NULL){</span>
+<span class="fc" id="L2952">      insn = callUncaughtHandler(xi, hRef, &quot;[threadUncaughtHandler]&quot;);</span>
+      
+    } else {
+      // 2. check if any of the ThreadGroup chain has an overridden uncaughtException
+<span class="fc" id="L2956">      int grpRef = getThreadGroupRef();</span>
+<span class="fc" id="L2957">      hRef = getThreadGroupUncaughtHandler(grpRef);</span>
+      
+<span class="fc bfc" id="L2959" title="All 2 branches covered.">      if (hRef != MJIEnv.NULL){</span>
+<span class="fc" id="L2960">        insn = callUncaughtHandler(xi, hRef, &quot;[threadGroupUncaughtHandler]&quot;);</span>
+      
+      } else {
+        // 3. as a last measure, check if there is a global handler 
+<span class="fc" id="L2964">        hRef = getGlobalUncaughtHandler();</span>
+<span class="fc bfc" id="L2965" title="All 2 branches covered.">        if (hRef != MJIEnv.NULL){</span>
+<span class="fc" id="L2966">          insn = callUncaughtHandler(xi, hRef, &quot;[globalUncaughtHandler]&quot;);</span>
+        }    
+      }
+    }
+    
+<span class="fc" id="L2971">    return insn;</span>
+  }
+  
+  protected boolean isUncaughtHandlerOnStack(){
+<span class="fc bfc" id="L2975" title="All 2 branches covered.">    for (StackFrame frame = top; frame != null; frame = frame.getPrevious()) {</span>
+<span class="fc bfc" id="L2976" title="All 2 branches covered.">      if (frame.hasFrameAttr(UncaughtHandlerAttr.class)){</span>
+<span class="fc" id="L2977">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L2981">    return false;</span>
+  }
+  
+  protected int getInstanceUncaughtHandler (){
+<span class="fc" id="L2985">    ElementInfo ei = getElementInfo(objRef);</span>
+<span class="fc" id="L2986">    int handlerRef = ei.getReferenceField(&quot;uncaughtExceptionHandler&quot;);</span>
+<span class="fc" id="L2987">    return handlerRef;</span>
+  }
+  
+  protected int getThreadGroupRef() {
+<span class="fc" id="L2991">    ElementInfo ei = getElementInfo(objRef);</span>
+<span class="fc" id="L2992">    int groupRef = ei.getReferenceField(&quot;group&quot;);</span>
+<span class="fc" id="L2993">    return groupRef;</span>
+  }
+  
+  protected int getThreadGroupUncaughtHandler (int grpRef){
+
+    // get the first overridden uncaughtException() implementation in the group chain
+<span class="fc bfc" id="L2999" title="All 2 branches covered.">    while (grpRef != MJIEnv.NULL){</span>
+<span class="fc" id="L3000">      ElementInfo eiGrp = getElementInfo(grpRef);</span>
+<span class="fc" id="L3001">      ClassInfo ciGrp = eiGrp.getClassInfo();</span>
+<span class="fc" id="L3002">      MethodInfo miHandler = ciGrp.getMethod(&quot;uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V&quot;, true);</span>
+<span class="fc" id="L3003">      ClassInfo ciHandler = miHandler.getClassInfo();</span>
+<span class="fc bfc" id="L3004" title="All 2 branches covered.">      if (!ciHandler.getName().equals(&quot;java.lang.ThreadGroup&quot;)) {</span>
+<span class="fc" id="L3005">        return eiGrp.getObjectRef();</span>
+      }
+
+<span class="fc" id="L3008">      grpRef = eiGrp.getReferenceField(&quot;parent&quot;);</span>
+<span class="fc" id="L3009">    }</span>
+    
+    // no overridden uncaughtHandler found
+<span class="fc" id="L3012">    return MJIEnv.NULL;</span>
+  }
+  
+  protected int getGlobalUncaughtHandler(){
+<span class="fc" id="L3016">    ElementInfo ei = getElementInfo(objRef);</span>
+<span class="fc" id="L3017">    ClassInfo ci = ei.getClassInfo();</span>
+<span class="fc" id="L3018">    FieldInfo fi = ci.getStaticField(&quot;defaultUncaughtExceptionHandler&quot;);</span>
+    
+    // the field is in our java.lang.Thread, but the concrete thread object class might differ
+<span class="fc" id="L3021">    ClassInfo fci = fi.getClassInfo();</span>
+<span class="fc" id="L3022">    return fci.getStaticElementInfo().getReferenceField(fi);</span>
+  }
+  
+  /**
+   * using an attribute to mark DirectCallStackFrames executing uncaughtHandlers is not
+   * ideal, but the case is so exotic that we don't want another concrete StackFrame subclass that
+   * would have to be created through the ClassInfo factory. Apart from retrieving the 
+   * ExceptionInfo this is just a normal DirectCallStackFrame.
+   * We could directly use ExceptionInfo, but it seems more advisable to have a dedicated,
+   * private type. This could also store execution state
+   */
+  class UncaughtHandlerAttr implements SystemAttribute {
+    ExceptionInfo xInfo;
+    
+<span class="fc" id="L3036">    UncaughtHandlerAttr (ExceptionInfo xInfo){</span>
+<span class="fc" id="L3037">      this.xInfo = xInfo;</span>
+<span class="fc" id="L3038">    }</span>
+    
+    ExceptionInfo getExceptionInfo(){
+<span class="nc" id="L3041">      return xInfo;</span>
+    }
+  }
+  
+  protected Instruction callUncaughtHandler (ExceptionInfo xi, int handlerRef, String id){
+<span class="fc" id="L3046">    ElementInfo eiHandler = getElementInfo(handlerRef);</span>
+<span class="fc" id="L3047">    ClassInfo ciHandler = eiHandler.getClassInfo();</span>
+<span class="fc" id="L3048">    MethodInfo miHandler = ciHandler.getMethod(&quot;uncaughtException(Ljava/lang/Thread;Ljava/lang/Throwable;)V&quot;, true);</span>
+
+    // we have to clear this here in case there is a CG while executing the uncaughtHandler
+<span class="fc" id="L3051">    pendingException = null;</span>
+    
+<span class="fc" id="L3053">    DirectCallStackFrame frame = miHandler.createDirectCallStackFrame(this, 0);</span>
+<span class="fc" id="L3054">    int argOffset = frame.setReferenceArgument( 0, handlerRef, null);</span>
+<span class="fc" id="L3055">    argOffset = frame.setReferenceArgument( argOffset, objRef, null);</span>
+<span class="fc" id="L3056">    frame.setReferenceArgument( argOffset, xi.getExceptionReference(), null);</span>
+    
+<span class="fc" id="L3058">    UncaughtHandlerAttr uchContext = new UncaughtHandlerAttr( xi);</span>
+<span class="fc" id="L3059">    frame.setFrameAttr( uchContext);</span>
+    
+<span class="fc" id="L3061">    pushFrame(frame);</span>
+<span class="fc" id="L3062">    return frame.getPC();</span>
+  }
+  
+  protected StackFrame popUncaughtHandlerFrame(){    
+    // we return from an overridden uncaughtException() direct call, but
+    // its debatable if this counts as 'handled'. For handlers that just do
+    // reporting this is probably false and we want JPF to report the defect.
+    // If this is a fail-safe handler that tries to clean up so that other threads can
+    // take over, we want to be able to go on and properly shut down the 
+    // thread without property violation
+    
+<span class="pc bpc" id="L3073" title="1 of 2 branches missed.">    if (passUncaughtHandler) {</span>
+      // gracefully shutdown this thread
+<span class="fc" id="L3075">      unwindToFirstFrame(); // this will take care of notifying</span>
+      
+<span class="fc" id="L3077">      getModifiableTopFrame().advancePC();</span>
+<span class="pc bpc" id="L3078" title="2 of 4 branches missed.">      assert top.getPC() instanceof ReturnInstruction : &quot;topframe PC not a ReturnInstruction: &quot; + top.getPC();</span>
+<span class="fc" id="L3079">      return top;</span>
+
+    } else {
+      // treat this still as an NoUncaughtExceptionProperty violation
+<span class="nc" id="L3083">      UncaughtHandlerAttr ctx = returnedDirectCall.getFrameAttr(UncaughtHandlerAttr.class);</span>
+<span class="nc" id="L3084">      pendingException = ctx.getExceptionInfo();</span>
+      //NoUncaughtExceptionsProperty.setExceptionInfo(pendingException);
+<span class="nc" id="L3086">      throw new UncaughtException(this, pendingException.getExceptionReference());</span>
+    }
+  }
+
+  
+  protected void unwindTo (StackFrame newTopFrame){
+<span class="pc bpc" id="L3092" title="1 of 4 branches missed.">    for (StackFrame frame = top; (frame != null) &amp;&amp; (frame != newTopFrame); frame = frame.getPrevious()) {</span>
+<span class="fc" id="L3093">      leave(); // that takes care of releasing locks</span>
+<span class="fc" id="L3094">      vm.notifyExceptionBailout(this); // notify before we pop the frame</span>
+<span class="fc" id="L3095">      popFrame();</span>
+    }
+<span class="fc" id="L3097">  }</span>
+
+  protected StackFrame unwindToFirstFrame(){
+    StackFrame frame;
+
+<span class="fc bfc" id="L3102" title="All 2 branches covered.">    for (frame = top; frame.getPrevious() != null; frame = frame.getPrevious()) {</span>
+<span class="fc" id="L3103">      leave(); // that takes care of releasing locks</span>
+<span class="fc" id="L3104">      vm.notifyExceptionBailout(this); // notify before we pop the frame</span>
+<span class="fc" id="L3105">      popFrame();</span>
+    }
+
+<span class="fc" id="L3108">    return frame;</span>
+  }
+
+  public ExceptionInfo getPendingException () {
+<span class="fc" id="L3112">    return pendingException;</span>
+  }
+
+  /**
+   * watch out - just clearing it might cause an infinite loop
+   * if we don't drop frames and/or advance the pc
+   */
+  public void clearPendingException () {
+    //NoUncaughtExceptionsProperty.setExceptionInfo(null);
+<span class="fc" id="L3121">    pendingException = null;</span>
+<span class="fc" id="L3122">  }</span>
+
+  /**
+   * Returns a clone of the thread data. To be called every time we change some ThreadData field
+   * (which unfortunately includes lock counts, hence this should be changed)
+   */
+  protected ThreadData threadDataClone () {
+<span class="fc bfc" id="L3129" title="All 2 branches covered.">    if ((attributes &amp; ATTR_DATA_CHANGED) != 0) {</span>
+      // already cloned, so we don't have to clone
+    } else {
+      // reset, so that next storage request would recompute tdIndex
+<span class="fc" id="L3133">      markTdChanged();</span>
+<span class="fc" id="L3134">      vm.kernelStateChanged();</span>
+
+<span class="fc" id="L3136">      threadData = threadData.clone();</span>
+    }
+
+<span class="fc" id="L3139">    return threadData;</span>
+  }
+
+  public void restoreThreadData(ThreadData td) {
+<span class="nc" id="L3143">    threadData = td;</span>
+<span class="nc" id="L3144">  }</span>
+
+
+  /**
+   * this is a generic request to reschedule that is not based on instruction type
+   * Note that we check for a mandatory CG, i.e. the policy has to return a CG to make sure
+   * there is a transition break. We still go through the policy object for selection
+   * of scheduling choices though
+   * 
+   */
+  public boolean reschedule (String reason){
+<span class="fc" id="L3155">    return getScheduler().setsRescheduleCG(this, reason);</span>
+  }
+  
+  /**
+   * this is a version that unconditionally breaks the current transition
+   * without really adding choices. It only goes on with the same thread
+   * (to avoid state explosion). Since we require a break, and there is no
+   * choice (current thread is supposed to continue), there is no point 
+   * going through the SyncPolicy
+   *
+   * if the current transition is already marked as ignored, this method does nothing
+   */
+  public boolean breakTransition(String reason) {
+<span class="fc" id="L3168">    SystemState ss = vm.getSystemState();</span>
+
+    // no need to set a CG if this transition is already marked as ignored
+    // (which will also break executeTransition)
+<span class="fc" id="L3172">    BreakGenerator cg = new BreakGenerator(reason, this, false);</span>
+<span class="fc" id="L3173">    return ss.setNextChoiceGenerator(cg); // this breaks the transition</span>
+  }
+  
+  /**
+   * this breaks the current transition with a CG that forces an end state (i.e.
+   * has no choices)
+   * this only takes effect if the current transition is not already marked
+   * as ignored
+   */
+  public boolean breakTransition(boolean isTerminator) {
+<span class="nc" id="L3183">    SystemState ss = vm.getSystemState();</span>
+
+<span class="nc bnc" id="L3185" title="All 2 branches missed.">    if (!ss.isIgnored()){</span>
+<span class="nc" id="L3186">      BreakGenerator cg = new BreakGenerator( &quot;breakTransition&quot;, this, isTerminator);</span>
+<span class="nc" id="L3187">      return ss.setNextChoiceGenerator(cg); // this breaks the transition</span>
+    }
+    
+<span class="nc" id="L3190">    return false;</span>
+  }
+
+  public boolean hasOtherRunnables () {
+<span class="fc" id="L3194">    return vm.getThreadList().hasAnyMatchingOtherThan(this, vm.getRunnablePredicate());</span>
+  }
+  
+  protected void markUnchanged() {
+<span class="fc" id="L3198">    attributes &amp;= ~ATTR_ANY_CHANGED;</span>
+<span class="fc" id="L3199">  }</span>
+
+  protected void markTfChanged(StackFrame frame) {
+<span class="fc" id="L3202">    attributes |= ATTR_STACK_CHANGED;</span>
+<span class="fc" id="L3203">    vm.kernelStateChanged();</span>
+<span class="fc" id="L3204">  }</span>
+
+  protected void markTdChanged() {
+<span class="fc" id="L3207">    attributes |= ATTR_DATA_CHANGED;</span>
+<span class="fc" id="L3208">    vm.kernelStateChanged();</span>
+<span class="fc" id="L3209">  }</span>
+
+  public StackFrame getCallerStackFrame() {
+<span class="pc bpc" id="L3212" title="1 of 2 branches missed.">    if (top != null){</span>
+<span class="fc" id="L3213">      return top.getPrevious();</span>
+    } else {
+<span class="nc" id="L3215">      return null;</span>
+    }
+  }
+
+  public int mixinExecutionStateHash(int h) {
+<span class="nc bnc" id="L3220" title="All 2 branches missed.">    for (StackFrame frame = top; frame != null; frame = frame.prev) {</span>
+<span class="nc bnc" id="L3221" title="All 2 branches missed.">      if (!frame.isNative()) {</span>
+<span class="nc" id="L3222">        h = frame.mixinExecutionStateHash(h);</span>
+      }
+    }
+    
+<span class="nc" id="L3226">    return h;</span>
+  }
+  
+  public boolean hasDataChanged() {
+<span class="nc bnc" id="L3230" title="All 2 branches missed.">    return (attributes &amp; ATTR_DATA_CHANGED) != 0;</span>
+  }
+
+  public boolean hasStackChanged() {
+<span class="nc bnc" id="L3234" title="All 2 branches missed.">    return (attributes &amp; ATTR_STACK_CHANGED) != 0;</span>
+  }
+
+  public boolean hasChanged() {
+<span class="fc bfc" id="L3238" title="All 2 branches covered.">    return (attributes &amp; ATTR_ANY_CHANGED) != 0;</span>
+  }
+
+  /**
+   * Returns a clone of the top stack frame.
+   */
+  public StackFrame getModifiableTopFrame () {
+<span class="fc bfc" id="L3245" title="All 2 branches covered.">    if (top.isFrozen()) {</span>
+<span class="fc" id="L3246">      top = top.clone();</span>
+<span class="fc" id="L3247">      markTfChanged(top);</span>
+    }
+<span class="fc" id="L3249">    return top;</span>
+  }
+
+  /**
+   * Returns the top stack frame.
+   */
+  public StackFrame getTopFrame () {
+<span class="fc" id="L3256">    return top;</span>
+  }
+
+  /**
+   * this replaces all frames up from 'frame' to 'top' with modifiable ones.
+   * 
+   * NOTE - you can't use this AFTER getModifiableTopFrame() since it changes top. Because
+   * it is inherently unsafe, it should be used with care and you have to make sure nothing
+   * else has stored top references, or respective references are updated after this call.
+   * 
+   * NOTE also that we assume there is no frozen frame on top of an unfrozen one
+   * &lt;2do&gt; that should probably be reported as an error since it is a stack consistency violation
+   */
+  public StackFrame getModifiableFrame (StackFrame frame){
+<span class="nc" id="L3270">    StackFrame newTop = null;</span>
+<span class="nc" id="L3271">    StackFrame last = null;</span>
+<span class="nc" id="L3272">    boolean done = false;</span>
+    
+<span class="nc bnc" id="L3274" title="All 2 branches missed.">    for (StackFrame f = top; f != null; f = f.getPrevious()){</span>
+<span class="nc bnc" id="L3275" title="All 2 branches missed.">      done = (f == frame);</span>
+      
+<span class="nc bnc" id="L3277" title="All 2 branches missed.">      if (f.isFrozen()){</span>
+<span class="nc" id="L3278">        f = f.clone();</span>
+<span class="nc bnc" id="L3279" title="All 2 branches missed.">        if (newTop == null){</span>
+<span class="nc" id="L3280">          newTop = f;</span>
+        } else {
+<span class="nc" id="L3282">          last.setPrevious(f);</span>
+        }
+<span class="nc" id="L3284">        last = f;</span>
+        
+      }
+      
+<span class="nc bnc" id="L3288" title="All 2 branches missed.">      if (done){ // done</span>
+<span class="nc bnc" id="L3289" title="All 2 branches missed.">        if (newTop != null){</span>
+<span class="nc" id="L3290">          top = newTop;</span>
+<span class="nc" id="L3291">          markTfChanged(top);</span>
+        }
+<span class="nc" id="L3293">        return f;</span>
+      }
+    }
+    
+<span class="nc" id="L3297">    return null; // it wasn't on the callstack</span>
+  }
+  
+  /**
+   * note that we don't provide a modifiable version of this. All modifications
+   * should only happen in the executing (top) frame
+   */
+  public StackFrame getStackFrameExecuting (Instruction insn, int offset){
+<span class="fc" id="L3305">    int n = offset;</span>
+<span class="fc" id="L3306">    StackFrame frame = top;</span>
+
+<span class="pc bpc" id="L3308" title="1 of 4 branches missed.">    for (; (n &gt; 0) &amp;&amp; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc" id="L3309">      n--;</span>
+    }
+
+<span class="fc bfc" id="L3312" title="All 2 branches covered.">    for(; frame != null; frame = frame.getPrevious()){</span>
+<span class="fc bfc" id="L3313" title="All 2 branches covered.">      if (frame.getPC() == insn){</span>
+<span class="fc" id="L3314">        return frame;</span>
+      }
+    }
+
+<span class="fc" id="L3318">    return null;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="fc" id="L3323">    return &quot;ThreadInfo [name=&quot; + getName() +</span>
+            &quot;,id=&quot; + id +
+<span class="fc" id="L3325">            &quot;,state=&quot; + getStateName() +</span>
+            // &quot;,obj=&quot; + Integer.toHexString(getThreadObjectRef()) +
+            ']';
+  }
+
+  void setDaemon (boolean isDaemon) {
+<span class="fc" id="L3331">    threadDataClone().isDaemon = isDaemon;</span>
+<span class="fc" id="L3332">  }</span>
+
+  public boolean isDaemon () {
+<span class="fc" id="L3335">    return threadData.isDaemon;</span>
+  }
+
+  public MJIEnv getMJIEnv () {
+<span class="fc" id="L3339">    return env;</span>
+  }
+  
+  void setName (String newName) {
+<span class="fc" id="L3343">    threadDataClone().name = newName;</span>
+
+    // see 'setPriority()', only that it's more serious here, because the
+    // java.lang.Thread name is stored as a char[]
+<span class="fc" id="L3347">  }</span>
+
+  public void setPriority (int newPrio) {
+<span class="pc bpc" id="L3350" title="1 of 2 branches missed.">    if (threadData.priority != newPrio) {</span>
+<span class="fc" id="L3351">      threadDataClone().priority = newPrio;</span>
+
+      // note that we don't update the java.lang.Thread object, but
+      // use our threadData value (which works because the object
+      // values are just used directly from the Thread ctors (from where we pull
+      // it out in our ThreadInfo ctor), and henceforth only via our intercepted
+      // native getters
+    }
+<span class="fc" id="L3359">  }</span>
+
+  public int getPriority () {
+<span class="fc" id="L3362">    return threadData.priority;</span>
+  }
+
+  /**
+   * Comparison for sorting based on index.
+   */
+  @Override
+  public int compareTo (ThreadInfo that) {
+<span class="fc" id="L3370">    return this.id - that.id;</span>
+  }
+  
+  
+  /**
+   * only for debugging purposes
+   */
+  public void checkConsistency(boolean isStore){
+<span class="nc bnc" id="L3378" title="All 2 branches missed.">    checkAssertion(threadData != null, &quot;no thread data&quot;);</span>
+    
+    // if the thread is runnable, it can't be blocked
+<span class="nc bnc" id="L3381" title="All 2 branches missed.">    if (isRunnable()){</span>
+<span class="nc bnc" id="L3382" title="All 2 branches missed.">      checkAssertion(lockRef == MJIEnv.NULL, &quot;runnable thread with non-null lockRef: &quot; + lockRef) ;</span>
+    }
+    
+    // every thread that has been started and is not terminated has to have a stackframe with a next pc
+<span class="nc bnc" id="L3386" title="All 4 branches missed.">    if (!isTerminated() &amp;&amp; !isNew()){</span>
+<span class="nc bnc" id="L3387" title="All 2 branches missed.">      checkAssertion( stackDepth &gt; 0, &quot;empty stack &quot; + getState());</span>
+<span class="nc bnc" id="L3388" title="All 2 branches missed.">      checkAssertion( top != null, &quot;no top frame&quot;);</span>
+<span class="nc bnc" id="L3389" title="All 2 branches missed.">      checkAssertion( top.getPC() != null, &quot;no top PC&quot;);</span>
+    }
+    
+    // if we are timedout, the top pc has to be either on a native Object.wait() or Unsafe.park()
+<span class="nc bnc" id="L3393" title="All 2 branches missed.">    if (isTimedOut()){</span>
+<span class="nc" id="L3394">      Instruction insn = top.getPC();</span>
+<span class="nc" id="L3395">      checkAssertion( insn instanceof EXECUTENATIVE, &quot;thread timedout outside of native method&quot;);</span>
+      
+      // this is a bit dangerous in case we introduce new timeout points
+<span class="nc" id="L3398">      MethodInfo mi = ((EXECUTENATIVE)insn).getExecutedMethod();</span>
+<span class="nc" id="L3399">      String mname = mi.getUniqueName();</span>
+<span class="nc bnc" id="L3400" title="All 4 branches missed.">      checkAssertion( mname.equals(&quot;wait(J&quot;) || mname.equals(&quot;park(ZJ&quot;), &quot;timedout thread outside timeout method: &quot; + mi.getFullName());</span>
+    }
+  
+<span class="nc" id="L3403">    List&lt;ElementInfo&gt; lockedObjects = getLockedObjects();</span>
+    
+<span class="nc bnc" id="L3405" title="All 2 branches missed.">    if (lockRef != MJIEnv.NULL){</span>
+      // object we are blocked on has to exist
+<span class="nc" id="L3407">      ElementInfo ei = this.getElementInfo(lockRef);</span>
+<span class="nc bnc" id="L3408" title="All 2 branches missed.">      checkAssertion( ei != null, &quot;thread locked on non-existing object: &quot; + lockRef);</span>
+      
+      // we have to be in the lockedThreads list of that objects monitor
+<span class="nc" id="L3411">      checkAssertion( ei.isLocking(this), &quot;thread blocked on non-locking object: &quot; + ei);</span>
+        
+      // can't be blocked on a lock we own (but could be in waiting before giving it up)
+<span class="nc bnc" id="L3414" title="All 4 branches missed.">      if (!isWaiting() &amp;&amp; lockedObjectReferences.length &gt; 0){</span>
+<span class="nc bnc" id="L3415" title="All 2 branches missed.">        for (ElementInfo lei : lockedObjects){</span>
+<span class="nc bnc" id="L3416" title="All 2 branches missed.">            checkAssertion( lei.getObjectRef() != lockRef, &quot;non-waiting thread blocked on owned lock: &quot; + lei);</span>
+<span class="nc" id="L3417">        }</span>
+      }
+      
+      // the state has to be BLOCKED, NOTIFIED, WAITING or TIMEOUT_WAITING
+<span class="nc bnc" id="L3421" title="All 4 branches missed.">      checkAssertion( isWaiting() || isBlockedOrNotified(), &quot;locked thread not waiting, blocked or notified&quot;);</span>
+      
+<span class="nc" id="L3423">    } else { // no lockRef set</span>
+<span class="nc bnc" id="L3424" title="All 4 branches missed.">      checkAssertion( !isWaiting() &amp;&amp; !isBlockedOrNotified(), &quot;non-locked thread is waiting, blocked or notified&quot;);</span>
+    }
+    
+    // if we have locked objects, we have to be the locking thread of each of them
+<span class="nc bnc" id="L3428" title="All 4 branches missed.">    if (lockedObjects != null &amp;&amp; !lockedObjects.isEmpty()){</span>
+<span class="nc bnc" id="L3429" title="All 2 branches missed.">      for (ElementInfo ei : lockedObjects){</span>
+<span class="nc" id="L3430">        ThreadInfo lti = ei.getLockingThread();</span>
+<span class="nc bnc" id="L3431" title="All 2 branches missed.">        if (lti != null){</span>
+<span class="nc bnc" id="L3432" title="All 2 branches missed.">          checkAssertion(lti == this, &quot;not the locking thread for locked object: &quot; + ei + &quot; owned by &quot; + lti);</span>
+        } else {
+          // can happen for a nested monitor lockout
+        }
+<span class="nc" id="L3436">      }</span>
+    }
+
+<span class="nc" id="L3439">  }</span>
+  
+  protected void checkAssertion(boolean cond, String failMsg){
+<span class="nc bnc" id="L3442" title="All 2 branches missed.">    if (!cond){</span>
+<span class="nc" id="L3443">      System.out.println(&quot;!!!!!! failed thread consistency: &quot;  + this + &quot;: &quot; + failMsg);</span>
+<span class="nc" id="L3444">      vm.dumpThreadStates();</span>
+<span class="nc bnc" id="L3445" title="All 2 branches missed.">      assert false;</span>
+    }
+<span class="nc" id="L3447">  }</span>
+  
+  public boolean isSystemThread() {
+<span class="fc" id="L3450">    return false;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

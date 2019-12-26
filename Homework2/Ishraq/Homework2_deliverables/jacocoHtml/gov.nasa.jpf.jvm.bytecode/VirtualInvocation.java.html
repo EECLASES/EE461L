@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VirtualInvocation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">VirtualInvocation.java</span></div><h1>VirtualInvocation.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ClassChangeException;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+
+/**
+ * a base class for virtual call instructions
+ */
+public abstract class VirtualInvocation extends InstanceInvocation {
+
+  // note that we can't null laseCalleeCi and invokedMethod in cleanupTransients()
+  // since we use it as an internal optimization (loops with repeated calls on the
+  // same object)
+  
+  ClassInfo lastCalleeCi; // cached for performance
+
+<span class="nc" id="L40">  protected VirtualInvocation () {}</span>
+
+  protected VirtualInvocation (String clsDescriptor, String methodName, String signature){
+<span class="fc" id="L43">    super(clsDescriptor, methodName, signature);</span>
+<span class="fc" id="L44">  }</span>
+
+  @Override
+  public String toPostExecString(){
+<span class="nc" id="L48">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L49">    sb.append(getMnemonic());</span>
+<span class="nc" id="L50">    sb.append(' ');</span>
+    
+<span class="nc bnc" id="L52" title="All 2 branches missed.">    if (invokedMethod != null){</span>
+<span class="nc" id="L53">      sb.append( lastCalleeCi.getName());</span>
+<span class="nc" id="L54">      sb.append('@');</span>
+<span class="nc" id="L55">      sb.append(Integer.toHexString(lastObj));</span>
+<span class="nc" id="L56">      sb.append('.');</span>
+<span class="nc" id="L57">      sb.append(invokedMethod.getUniqueName());</span>
+
+<span class="nc bnc" id="L59" title="All 2 branches missed.">      if (invokedMethod.isMJI()){</span>
+<span class="nc" id="L60">        sb.append(&quot; [native]&quot;);</span>
+      }
+      
+    } else { // something went wrong, the method wasn't found
+<span class="nc bnc" id="L64" title="All 2 branches missed.">      if (lastCalleeCi != null){</span>
+<span class="nc" id="L65">        sb.append( lastCalleeCi.getName());</span>
+      } else {
+<span class="nc" id="L67">        sb.append(cname);</span>
+      }
+<span class="nc" id="L69">      sb.append('@');</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">      if (lastObj == MJIEnv.NULL){</span>
+<span class="nc" id="L71">        sb.append(&quot;&lt;null&gt;&quot;);</span>
+      } else {
+<span class="nc" id="L73">        sb.append(Integer.toHexString(lastObj));</span>
+      }
+<span class="nc" id="L75">      sb.append('.');</span>
+<span class="nc" id="L76">      sb.append(mname);</span>
+<span class="nc" id="L77">      sb.append(signature);</span>
+<span class="nc" id="L78">      sb.append(&quot; (?)&quot;);</span>
+    }
+    
+<span class="nc" id="L81">    return sb.toString();</span>
+  }
+  
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L86">    int objRef = ti.getCalleeThis(getArgSize());</span>
+    MethodInfo callee;
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    if (objRef == MJIEnv.NULL) {</span>
+<span class="fc" id="L90">      lastObj = MJIEnv.NULL;</span>
+<span class="fc" id="L91">      return ti.createAndThrowException(&quot;java.lang.NullPointerException&quot;, &quot;Calling '&quot; + mname + &quot;' on null object&quot;);</span>
+    }
+
+    try {
+<span class="fc" id="L95">      callee = getInvokedMethod(ti, objRef);</span>
+<span class="nc" id="L96">    } catch (ClassChangeException ccx){</span>
+<span class="nc" id="L97">      return ti.createAndThrowException(&quot;java.lang.IncompatibleClassChangeError&quot;, ccx.getMessage());</span>
+<span class="fc" id="L98">    }</span>
+    
+<span class="fc" id="L100">    ElementInfo ei = ti.getElementInfo(objRef);</span>
+    
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">    if (callee == null) {</span>
+<span class="nc" id="L103">      String clsName = ti.getClassInfo(objRef).getName();</span>
+<span class="nc" id="L104">      return ti.createAndThrowException(&quot;java.lang.NoSuchMethodError&quot;, clsName + '.' + mname);</span>
+    } else {
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">      if (callee.isAbstract()){</span>
+<span class="nc" id="L107">        return ti.createAndThrowException(&quot;java.lang.AbstractMethodError&quot;, callee.getFullName() + &quot;, object: &quot; + ei);</span>
+      }
+    }
+
+<span class="fc bfc" id="L111" title="All 2 branches covered.">    if (callee.isSynchronized()) {</span>
+<span class="fc" id="L112">      ei = ti.getScheduler().updateObjectSharedness(ti, ei, null); // locks most likely belong to shared objects</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">      if (reschedulesLockAcquisition(ti, ei)){</span>
+<span class="fc" id="L114">        return this;</span>
+      }
+    }
+
+<span class="fc" id="L118">    setupCallee( ti, callee); // this creates, initializes and pushes the callee StackFrame</span>
+
+<span class="fc" id="L120">    return ti.getPC(); // we can't just return the first callee insn if a listener throws an exception</span>
+  }
+  
+  /**
+   * If the current thread already owns the lock, then the current thread can go on.
+   * For example, this is a recursive acquisition.
+   */
+  protected boolean isLockOwner(ThreadInfo ti, ElementInfo ei) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    return ei.getLockingThread() == ti;</span>
+  }
+
+  /**
+   * If the object will still be owned, then the current thread can go on.
+   * For example, all but the last monitorexit for the object.
+   */
+  protected boolean isLastUnlock(ElementInfo ei) {
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    return ei.getLockCount() == 1;</span>
+  }
+
+
+  @Override
+  public MethodInfo getInvokedMethod(ThreadInfo ti){
+    int objRef;
+
+<span class="fc bfc" id="L144" title="All 2 branches covered.">    if (ti.getNextPC() == null){ // this is pre-exec</span>
+<span class="fc" id="L145">      objRef = ti.getCalleeThis(getArgSize());</span>
+    } else {                     // this is post-exec
+<span class="fc" id="L147">      objRef = lastObj;</span>
+    }
+
+<span class="fc" id="L150">    return getInvokedMethod(ti, objRef);</span>
+  }
+
+  public MethodInfo getInvokedMethod (ThreadInfo ti, int objRef) {
+
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">    if (objRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L156">      lastObj = objRef;</span>
+
+<span class="fc" id="L158">      ClassInfo cci = ti.getClassInfo(objRef);</span>
+
+<span class="fc bfc" id="L160" title="All 2 branches covered.">      if (lastCalleeCi != cci) { // callee ClassInfo has changed</span>
+<span class="fc" id="L161">        lastCalleeCi = cci;</span>
+<span class="fc" id="L162">        invokedMethod = cci.getMethod(mname, true);</span>
+
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (invokedMethod == null) {</span>
+<span class="fc" id="L165">          invokedMethod = cci.getDefaultMethod(mname);</span>
+                    
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">          if (invokedMethod == null){</span>
+<span class="nc" id="L168">            lastObj = MJIEnv.NULL;</span>
+<span class="nc" id="L169">            lastCalleeCi = null;</span>
+          }
+        }
+      }
+
+<span class="fc" id="L174">    } else {</span>
+<span class="nc" id="L175">      lastObj = MJIEnv.NULL;</span>
+<span class="nc" id="L176">      lastCalleeCi = null;</span>
+<span class="nc" id="L177">      invokedMethod = null;</span>
+    }
+
+<span class="fc" id="L180">    return invokedMethod;</span>
+  }
+
+  @Override
+  public Object getFieldValue (String id, ThreadInfo ti){
+<span class="nc" id="L185">    int objRef = getCalleeThis(ti);</span>
+<span class="nc" id="L186">    ElementInfo ei = ti.getElementInfo(objRef);</span>
+
+<span class="nc" id="L188">    Object v = ei.getFieldValueObject(id);</span>
+
+<span class="nc bnc" id="L190" title="All 2 branches missed.">    if (v == null){ // try a static field</span>
+<span class="nc" id="L191">      v = ei.getClassInfo().getStaticFieldValueObject(id);</span>
+    }
+
+<span class="nc" id="L194">    return v;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L199">	  insVisitor.visit(this);</span>
+<span class="nc" id="L200">  }</span>
+
+  @Override
+  public Instruction typeSafeClone(MethodInfo clonedMethod) {
+<span class="fc" id="L204">    VirtualInvocation clone = null;</span>
+
+    try {
+<span class="fc" id="L207">      clone = (VirtualInvocation) super.clone();</span>
+
+      // reset the method that this insn belongs to
+<span class="fc" id="L210">      clone.mi = clonedMethod;</span>
+
+<span class="fc" id="L212">      clone.lastCalleeCi = null;</span>
+<span class="fc" id="L213">      clone.invokedMethod = null;</span>
+<span class="nc" id="L214">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L215">      e.printStackTrace();</span>
+<span class="fc" id="L216">    }</span>
+
+<span class="fc" id="L218">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

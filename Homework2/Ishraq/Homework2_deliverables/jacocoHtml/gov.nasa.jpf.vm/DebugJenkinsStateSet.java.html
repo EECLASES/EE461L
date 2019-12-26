@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DebugJenkinsStateSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">DebugJenkinsStateSet.java</span></div><h1>DebugJenkinsStateSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFConfigException;
+import gov.nasa.jpf.JPFException;
+
+/**
+ * a JenkinsStateSet that stores program state information in a readable
+ * and diffable format.
+ * 
+ * Storing states as readable text is enabled by setting vm.storage.class to this class
+ * 
+ * Note: this automatically sets/overrides the serializer to Debug&lt;serializer-class&gt;
+ */
+public class DebugJenkinsStateSet extends JenkinsStateSet {
+
+  static final String LOGFILE = &quot;state&quot;;
+  
+  File outputDir;
+  File outputFile;
+  
+<span class="nc" id="L45">  public DebugJenkinsStateSet (Config conf){</span>
+<span class="nc" id="L46">    String serializerCls = conf.getString(&quot;vm.serializer.class&quot;);</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">    if (serializerCls != null){</span>
+<span class="nc" id="L48">      int idx = serializerCls.lastIndexOf('.') + 1;</span>
+<span class="nc" id="L49">      String cname = serializerCls.substring(idx);</span>
+      
+<span class="nc bnc" id="L51" title="All 2 branches missed.">      if (!cname.startsWith(&quot;Debug&quot;)){</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (idx &gt; 0){</span>
+<span class="nc" id="L53">          serializerCls = serializerCls.substring(0,idx) + &quot;Debug&quot; + cname;</span>
+        } else {
+<span class="nc" id="L55">          serializerCls = &quot;Debug&quot; + cname;</span>
+        }
+      }
+      
+<span class="nc" id="L59">      serializer = conf.getInstance(null, serializerCls, DebugStateSerializer.class);</span>
+<span class="nc bnc" id="L60" title="All 2 branches missed.">      if (serializer == null){</span>
+<span class="nc" id="L61">        throw new JPFConfigException(&quot;Debug StateSet cannot instantiate serializer: &quot; + serializerCls);</span>
+      }
+    }
+    
+<span class="nc" id="L65">    String path = conf.getString(&quot;vm.serializer.output&quot;, &quot;tmp&quot;);</span>
+<span class="nc" id="L66">    outputDir = new File(path);</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (!outputDir.isDirectory()){</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      if (!outputDir.mkdirs()){</span>
+<span class="nc" id="L69">        throw new JPFConfigException(&quot;Debug StateSet cannot create output dir: &quot; + outputDir.getAbsolutePath());        </span>
+      }
+    }
+    
+<span class="nc" id="L73">    outputFile = new File( outputDir, LOGFILE);</span>
+<span class="nc" id="L74">  }</span>
+  
+  @Override
+  public void attach(VM vm){
+    // we use our own serializer
+<span class="nc" id="L79">    vm.setSerializer( serializer);</span>
+    
+    // &lt;2do&gt; this is a bit hack'ish - why does the VM keep the serializer anyways,
+    // if it is only used here
+<span class="nc" id="L83">    super.attach(vm);</span>
+<span class="nc" id="L84">  }</span>
+  
+  @Override
+  public int addCurrent () {
+<span class="nc" id="L88">    int maxId = lastStateId;</span>
+<span class="nc" id="L89">    FileOutputStream fos = null;</span>
+    
+    try {
+<span class="nc" id="L92">      fos = new FileOutputStream( outputFile);</span>
+<span class="nc" id="L93">    } catch (FileNotFoundException fnfx){</span>
+<span class="nc" id="L94">      throw new JPFException(&quot;cannot create Debug state set output file: &quot; + outputFile.getAbsolutePath());</span>
+<span class="nc" id="L95">    }</span>
+    
+<span class="nc" id="L97">    ((DebugStateSerializer)serializer).setOutputStream(fos);</span>
+    
+<span class="nc" id="L99">    int stateId = super.addCurrent();</span>
+    
+    try {
+<span class="nc" id="L102">      fos.flush();</span>
+<span class="nc" id="L103">      fos.close();</span>
+<span class="nc" id="L104">    } catch (IOException iox){</span>
+<span class="nc" id="L105">      throw new JPFException(&quot;cannot write Debug state set output file: &quot; + outputFile.getAbsolutePath());      </span>
+<span class="nc" id="L106">    }</span>
+    
+    // if this is a new state, store it under its id, otherwise throw it away
+<span class="nc bnc" id="L109" title="All 2 branches missed.">    if (stateId &gt; maxId){</span>
+<span class="nc" id="L110">      String fname = &quot;state.&quot; + stateId;</span>
+<span class="nc" id="L111">      outputFile.renameTo( new File(outputDir, fname));</span>
+<span class="nc" id="L112">    } else {</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">      if (outputFile.isFile()){</span>
+<span class="nc" id="L114">        outputFile.delete();</span>
+      }
+    }
+    
+<span class="nc" id="L118">    return stateId;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

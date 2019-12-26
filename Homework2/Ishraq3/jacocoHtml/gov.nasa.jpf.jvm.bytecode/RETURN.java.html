@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RETURN.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">RETURN.java</span></div><h1>RETURN.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+
+/**
+ * Return void from method
+ *   ...  [empty]
+ */
+<span class="fc" id="L31">public class RETURN extends JVMReturnInstruction {</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+
+<span class="fc bfc" id="L36" title="All 2 branches covered.">    if (mi.isInit()) {  // Check to see if this method is a constructor.</span>
+<span class="fc" id="L37">      int objref = ti.getThis();</span>
+<span class="fc" id="L38">      ElementInfo ei = ti.getElementInfo(objref); // Get the object.</span>
+
+<span class="fc bfc" id="L40" title="All 2 branches covered.">      if (!ei.isConstructed()) {  // Don't bother doing the following work if the object is already constructed.</span>
+
+<span class="fc" id="L42">        ClassInfo ei_ci = ei.getClassInfo();  // Get the object's class.</span>
+<span class="fc" id="L43">        ClassInfo mi_ci = mi.getClassInfo();  // Get the method's class.</span>
+
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (ei_ci == mi_ci) { // If the object's class and the method's class are equal, then the thread is returning from the object's constructor.</span>
+<span class="fc" id="L46">          ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L47">          ei.setConstructed();</span>
+        }
+      }
+
+<span class="fc bfc" id="L51" title="All 2 branches covered.">    } else if (mi.isClinit()) {</span>
+      // this also needs to happen in NATIVERETURN for native clinits. See comment
+      // there why we can't refactor this into DIRECTCALLRETURN
+<span class="fc" id="L54">      mi.getClassInfo().setInitialized();</span>
+    }
+
+<span class="fc" id="L57">    return super.execute(ti);</span>
+  }
+
+  @Override
+  public int getReturnTypeSize() {
+<span class="nc" id="L62">    return 0;</span>
+  }
+  
+  @Override
+  protected Object getReturnedOperandAttr (StackFrame frame) {
+<span class="fc" id="L67">    return null;</span>
+  }
+
+  
+  @Override
+  public Object getReturnAttr (ThreadInfo ti){
+<span class="nc" id="L73">    return null; // no return value</span>
+  }
+
+  @Override
+  protected void getAndSaveReturnValue (StackFrame frame) {
+    // we don't have any
+<span class="fc" id="L79">  }</span>
+
+  @Override
+  protected void pushReturnValue (StackFrame frame) {
+    // nothing to do
+<span class="fc" id="L84">  }</span>
+
+  @Override
+  public Object getReturnValue(ThreadInfo ti) {
+    //return Void.class; // Hmm, not sure if this is right, but we have to distinguish from ARETURN &lt;null&gt;
+<span class="nc" id="L89">    return null;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L94">    return &quot;return  &quot; + mi.getFullName();</span>
+  }
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L99">    return 0xB1;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L104">	  insVisitor.visit(this);</span>
+<span class="fc" id="L105">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,8 @@
+indexes:
+- kind: "Greeting"
+  ancestor: yes
+  properties:
+  - name: "user"
+    direction: desc
+  - name: "date"
+    direction: desc

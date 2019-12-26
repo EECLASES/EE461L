@@ -1,0 +1,13 @@
+package observer3;
+
+import java.awt.Color;
+
+public interface Observer {
+	
+
+
+
+	void Update(float newHue, float newSaturation, float newBrightness);
+	
+	
+}

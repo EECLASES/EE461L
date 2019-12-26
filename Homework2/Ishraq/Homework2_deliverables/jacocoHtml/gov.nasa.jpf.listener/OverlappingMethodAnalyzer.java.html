@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OverlappingMethodAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">OverlappingMethodAnalyzer.java</span></div><h1>OverlappingMethodAnalyzer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.io.PrintWriter;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+
+/**
+ * this is a specialized MethodAnalyzer that looks for overlapping method
+ * calls on the same object from different threads.
+ * 
+ * &lt;2do&gt; transition reporting does not work yet
+ */
+public class OverlappingMethodAnalyzer extends MethodAnalyzer {
+
+  public OverlappingMethodAnalyzer (Config config, JPF jpf){
+<span class="nc" id="L43">    super(config,jpf);</span>
+<span class="nc" id="L44">  }</span>
+
+  MethodOp getReturnOp (MethodOp op, boolean withinSameThread){
+<span class="nc" id="L47">    MethodInfo mi = op.mi;</span>
+<span class="nc" id="L48">    int stateId = op.stateId;</span>
+<span class="nc" id="L49">    int stackDepth = op.stackDepth;</span>
+<span class="nc" id="L50">    ElementInfo ei = op.ei;</span>
+<span class="nc" id="L51">    ThreadInfo ti = op.ti;</span>
+
+<span class="nc bnc" id="L53" title="All 2 branches missed.">    for (MethodOp o = op.p; o != null; o = o.p){</span>
+<span class="nc bnc" id="L54" title="All 4 branches missed.">      if (withinSameThread &amp;&amp; o.ti != ti){</span>
+<span class="nc" id="L55">        break;</span>
+      }
+
+<span class="nc bnc" id="L58" title="All 8 branches missed.">      if ((o.mi == mi) &amp;&amp; (o.ti == ti) &amp;&amp; (o.stackDepth == stackDepth) &amp;&amp; (o.ei == ei)){</span>
+<span class="nc" id="L59">        return o;</span>
+      }
+    }
+
+<span class="nc" id="L63">    return null;</span>
+  }
+
+  // check if there is an open exec from another thread for the same ElementInfo
+  boolean isOpenExec (HashMap&lt;ThreadInfo,Deque&lt;MethodOp&gt;&gt; openExecs, MethodOp op){
+<span class="nc" id="L68">    ThreadInfo ti = op.ti;</span>
+<span class="nc" id="L69">    ElementInfo ei = op.ei;</span>
+
+<span class="nc bnc" id="L71" title="All 2 branches missed.">    for (Map.Entry&lt;ThreadInfo, Deque&lt;MethodOp&gt;&gt; e : openExecs.entrySet()) {</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">      if (e.getKey() != ti) {</span>
+<span class="nc" id="L73">        Deque&lt;MethodOp&gt; s = e.getValue();</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        for (Iterator&lt;MethodOp&gt; it = s.descendingIterator(); it.hasNext();) {</span>
+<span class="nc" id="L75">          MethodOp o = it.next();</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">          if (o.ei == ei) {</span>
+<span class="nc" id="L77">            return true;</span>
+          }
+<span class="nc" id="L79">        }</span>
+      }
+<span class="nc" id="L81">    }</span>
+
+<span class="nc" id="L83">    return false;</span>
+  }
+
+  // clean up (if necessary) - both RETURNS and exceptions
+  void cleanUpOpenExec (HashMap&lt;ThreadInfo,Deque&lt;MethodOp&gt;&gt; openExecs, MethodOp op){
+<span class="nc" id="L88">    ThreadInfo ti = op.ti;</span>
+<span class="nc" id="L89">    int stackDepth = op.stackDepth;</span>
+
+<span class="nc" id="L91">    Deque&lt;MethodOp&gt; stack = openExecs.get(ti);</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">    if (stack != null &amp;&amp; !stack.isEmpty()) {</span>
+<span class="nc bnc" id="L93" title="All 4 branches missed.">      for (MethodOp o = stack.peek(); o != null &amp;&amp; o.stackDepth &gt;= stackDepth; o = stack.peek()) {</span>
+<span class="nc" id="L94">        stack.pop();</span>
+      }
+    }
+<span class="nc" id="L97">  }</span>
+
+  void addOpenExec (HashMap&lt;ThreadInfo,Deque&lt;MethodOp&gt;&gt; openExecs, MethodOp op){
+<span class="nc" id="L100">    ThreadInfo ti = op.ti;</span>
+<span class="nc" id="L101">    Deque&lt;MethodOp&gt; stack = openExecs.get(ti);</span>
+
+<span class="nc bnc" id="L103" title="All 2 branches missed.">    if (stack == null){</span>
+<span class="nc" id="L104">      stack = new ArrayDeque&lt;MethodOp&gt;();</span>
+<span class="nc" id="L105">      stack.push(op);</span>
+<span class="nc" id="L106">      openExecs.put(ti, stack);</span>
+
+    } else {
+<span class="nc" id="L109">      stack.push(op);</span>
+    }
+<span class="nc" id="L111">  }</span>
+
+  @Override
+  void printOn (PrintWriter pw) {
+<span class="nc" id="L115">    MethodOp start = firstOp;</span>
+
+<span class="nc" id="L117">    HashMap&lt;ThreadInfo,Deque&lt;MethodOp&gt;&gt; openExecs = new HashMap&lt;ThreadInfo,Deque&lt;MethodOp&gt;&gt;();</span>
+
+<span class="nc" id="L119">    int lastStateId  = -1;</span>
+<span class="nc" id="L120">    int lastTid = start.ti.getId();</span>
+
+<span class="nc bnc" id="L122" title="All 2 branches missed.">    for (MethodOp op = start; op != null; op = op.p) {</span>
+
+<span class="nc" id="L124">      cleanUpOpenExec(openExecs, op);</span>
+
+<span class="nc bnc" id="L126" title="All 2 branches missed.">      if (op.isMethodEnter()) {  // EXEC or CALL_EXEC</span>
+<span class="nc" id="L127">        MethodOp retOp = getReturnOp(op, true);</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (retOp != null) { // completed, skip</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">          if (!isOpenExec(openExecs, op)) {</span>
+<span class="nc" id="L130">            op = retOp;</span>
+<span class="nc" id="L131">            lastStateId = op.stateId;</span>
+<span class="nc" id="L132">            continue;</span>
+          }
+        } else { // this is an open method exec, record it
+<span class="nc" id="L135">          addOpenExec(openExecs, op);</span>
+        }
+      }
+
+<span class="nc" id="L139">      op = consolidateOp(op);</span>
+      
+<span class="nc bnc" id="L141" title="All 2 branches missed.">      if (showTransition) {</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (op.stateId != lastStateId) {</span>
+<span class="nc bnc" id="L143" title="All 2 branches missed.">          if (lastStateId &gt;= 0){</span>
+<span class="nc" id="L144">            pw.print(&quot;------------------------------------------ #&quot;);</span>
+<span class="nc" id="L145">            pw.println(lastStateId);</span>
+          }
+        }
+<span class="nc" id="L148">        lastStateId = op.stateId;</span>
+        
+      } else {
+<span class="nc" id="L151">        int tid = op.ti.getId();</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (tid != lastTid) {</span>
+<span class="nc" id="L153">          lastTid = tid;</span>
+<span class="nc" id="L154">          pw.println(&quot;------------------------------------------&quot;);</span>
+        }
+      }
+      
+<span class="nc" id="L158">      op.printOn(pw, this);</span>
+<span class="nc" id="L159">      pw.println();</span>
+    }
+<span class="nc" id="L161">  }</span>
+
+  MethodOp consolidateOp (MethodOp op){
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    for (MethodOp o = op.p; o != null; o = o.p){</span>
+<span class="nc bnc" id="L165" title="All 4 branches missed.">      if (showTransition &amp;&amp; (o.stateId != op.stateId)){</span>
+<span class="nc" id="L166">        break;</span>
+      }
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      if (o.isSameMethod(op)){</span>
+<span class="nc bnc" id="L169" title="All 4 branches missed.">        switch (o.type) {</span>
+          case RETURN:
+<span class="nc bnc" id="L171" title="All 3 branches missed.">            switch (op.type){</span>
+              case CALL_EXECUTE:
+<span class="nc" id="L173">                op = o.clone(OpType.CALL_EXEC_RETURN); break;</span>
+              case EXECUTE:
+<span class="nc" id="L175">                op = o.clone(OpType.EXEC_RETURN); break;</span>
+            }
+<span class="nc" id="L177">            break;</span>
+          case EXEC_RETURN:
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            switch (op.type){</span>
+              case CALL:
+<span class="nc" id="L181">                op = o.clone(OpType.CALL_EXEC_RETURN); break;</span>
+            }
+<span class="nc" id="L183">            break;</span>
+          case CALL_EXECUTE:  // simple loop
+<span class="nc bnc" id="L185" title="All 2 branches missed.">            switch (op.type){</span>
+              case CALL_EXEC_RETURN:
+<span class="nc" id="L187">                op = o;</span>
+            }
+            break;
+        }
+      } else {
+        break;
+      }
+    }
+
+<span class="nc" id="L196">    return op;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

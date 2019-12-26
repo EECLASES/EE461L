@@ -1,0 +1,936 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">SystemState.java</span></div><h1>SystemState.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.TypeSpecMatcher;
+import gov.nasa.jpf.vm.choice.BreakGenerator;
+
+import java.io.PrintWriter;
+import java.util.LinkedHashMap;
+
+
+/**
+ * the class that encapsulates not only the current execution state of the VM
+ * (the KernelState), but also the part of it's history that is required
+ * by VM to backtrack, plus some potential annotations that can be used to
+ * control the search (i.e. forward/backtrack calls)
+ */
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">public class SystemState {</span>
+
+  /**
+   * instances of this class are used to store the SystemState parts which are
+   * subject to backtracking/state resetting. At some point, we might have
+   * stripped SystemState down enough to just store the SystemState itself
+   * (so far, we don't change it's identity, there is only one)
+   * the KernelState is still stored separately (which seems to be another
+   * anachronism)
+   *
+   * NOTE: this gets stored at the end of a transition, i.e. if we need a value
+   * to be restored to it's transition entry state (like atomicLevel), we have
+   * to do that explicitly. Alternatively we could create the Memento before
+   * we start to enter the step, but then we have to update the nextCg in the
+   * snapshot, since it's only set at the transition end (required for
+   * restore(), i.e.  HeuristicSearches)
+   * 
+   * NOTE: the plain Memento doesn't deep copy the CGs, which means it can
+   * only be used for depth first search, where the parent CG states are always
+   * current if we encounter an error. If general state restoration is
+   * required (where the parent CGs might have been changed at the time we
+   * restore), we have to use a RestorableMemento
+   * &lt;2do&gt; this separation is error prone and fragile. It depends on correct
+   * ChoiceGenerator deepCopy() implementations and a separate state acquisition
+   * for restorable states. Currently, the gate for this is VM.getRestorableState(),
+   * but this could be bypassed.
+   */
+  static class Memento {
+    ChoiceGenerator&lt;?&gt; curCg;  // the ChoiceGenerator for the current transition
+    ChoiceGenerator&lt;?&gt; nextCg;
+    int atomicLevel;
+    ChoicePoint trace;
+    ThreadInfo execThread;
+    int id;              // the state id
+    LinkedHashMap&lt;Object,ClosedMemento&gt; restorers;
+    
+    static protected ChoiceGenerator&lt;?&gt; cloneCG( ChoiceGenerator&lt;?&gt; cg){
+<span class="fc bfc" id="L72" title="All 2 branches covered.">      if (cg != null){</span>
+        try {
+<span class="fc" id="L74">          return cg.deepClone();</span>
+<span class="nc" id="L75">        } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L76">          throw new JPFException(&quot;clone failed: &quot; + cg);          </span>
+        }
+      } else {
+<span class="fc" id="L79">        return null;</span>
+      }
+    }
+    
+<span class="fc" id="L83">    Memento (SystemState ss) {</span>
+<span class="fc" id="L84">      nextCg = ss.nextCg;      </span>
+<span class="fc" id="L85">      curCg = ss.curCg;</span>
+      
+<span class="fc" id="L87">      atomicLevel = ss.entryAtomicLevel; // store the value we had when we started the transition</span>
+<span class="fc" id="L88">      id = ss.id;</span>
+<span class="fc" id="L89">      execThread = ss.execThread;</span>
+      
+      // we can just copy the reference since it is re-created in each transition
+<span class="fc" id="L92">      restorers = ss.restorers;</span>
+<span class="fc" id="L93">    }</span>
+
+    /**
+     * this one is used to restore to a state which will re-enter with the next choice
+     * of the same CG, i.e. nextCG is reset
+     */
+    void backtrack (SystemState ss) {
+<span class="fc" id="L100">      ss.nextCg = null; // this is important - the nextCG will be set by the next Transition      </span>
+<span class="fc" id="L101">      ss.curCg = curCg;</span>
+      
+<span class="fc" id="L103">      ss.atomicLevel = atomicLevel;</span>
+<span class="fc" id="L104">      ss.id = id;</span>
+<span class="fc" id="L105">      ss.execThread = execThread;</span>
+      
+<span class="fc bfc" id="L107" title="All 2 branches covered.">      if (restorers != null){</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        for (ClosedMemento r : restorers.values()){</span>
+<span class="fc" id="L109">          r.restore();</span>
+<span class="fc" id="L110">        }</span>
+      }
+<span class="fc" id="L112">    }</span>
+
+    void restore (SystemState ss) {
+<span class="nc" id="L115">      throw new JPFException(&quot;can't restore a SystemState.Memento that was created for backtracking&quot;);</span>
+      
+      /**
+      ss.nextCg = nextCg;
+      ss.curCg = curCg;
+
+      ss.atomicLevel = atomicLevel;
+      ss.id = id;
+      ss.execThread = execThread;
+      **/
+    }
+  }
+  
+  /**
+   * a Memento that can be restored, not just backtracked to. Be aware this can
+   * be a lot more expensive since it has to deep copy CGs so that we have
+   * the state of the parent CGs restored properly
+   */
+  static class RestorableMemento extends Memento {
+    RestorableMemento (SystemState ss){
+<span class="fc" id="L135">      super(ss);</span>
+      
+<span class="fc" id="L137">      nextCg = cloneCG(nextCg);</span>
+<span class="fc" id="L138">      curCg = cloneCG( curCg);</span>
+<span class="fc" id="L139">    }</span>
+    
+    @Override
+	void backtrack (SystemState ss){
+<span class="nc" id="L143">      super.backtrack(ss);</span>
+<span class="nc" id="L144">      ss.curCg = cloneCG(curCg);</span>
+<span class="nc" id="L145">    }</span>
+    
+    /**
+     * this one is used if we restore and then advance, i.e. it might change the CG on
+     * the next advance (if nextCg was set)
+     */
+    @Override
+	void restore (SystemState ss) {      
+      // if we don't clone them on restore, it means we can only restore this memento once
+<span class="fc" id="L154">      ss.nextCg = cloneCG(nextCg);</span>
+<span class="fc" id="L155">      ss.curCg = cloneCG(curCg);</span>
+
+<span class="fc" id="L157">      ss.atomicLevel = atomicLevel;</span>
+<span class="fc" id="L158">      ss.id = id;</span>
+<span class="fc" id="L159">      ss.execThread = execThread;</span>
+      
+<span class="fc bfc" id="L161" title="All 2 branches covered.">      if (restorers != null){</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (ClosedMemento r : restorers.values()){</span>
+<span class="fc" id="L163">          r.restore();</span>
+<span class="fc" id="L164">        }</span>
+      }
+<span class="fc" id="L166">    }  </span>
+  }
+
+  int id;                   /** the state id */
+
+  ChoiceGenerator&lt;?&gt; nextCg;   // the ChoiceGenerator for the next transition
+  ChoiceGenerator&lt;?&gt;  curCg;   // the ChoiceGenerator used in the current transition
+  ThreadInfo execThread;    // currently executing thread, reset by ThreadChoiceGenerators
+  
+  // on-demand list of optional restorers that run if we backtrack to this state
+  // this is reset before each transition
+  LinkedHashMap&lt;Object,ClosedMemento&gt; restorers;
+  
+
+  /** current execution state of the VM (stored separately by VM) */
+  public KernelState ks;
+
+  public Transition trail;      /** trace information */
+
+  //--- attributes that can be explicitly set for a state
+
+  boolean retainAttributes; // as long as this is set, we don't reset attributes
+
+  //--- ignored and isNewState are imperative
+  boolean isIgnored; // treat this as a matched state, i.e. backtrack
+  boolean isForced;  // treat this as a new state
+
+  //--- those are hints (e.g. for HeuristicSearches)
+  boolean isInteresting;
+  boolean isBoring;
+
+  boolean isBlockedInAtomicSection;
+
+  /** uncaught exception in current transition */
+  public UncaughtException uncaughtException;
+
+  /** set to true if garbage collection is necessary */
+<span class="fc" id="L203">  boolean GCNeeded = false;</span>
+
+  // this is an optimization - long transitions can cause a lot of short-living
+  // garbage, which in turn can slow down the system considerably (heap size)
+  // by setting 'nAllocGCThreshold', we can do sync. on-the-fly gc when the
+  // number of new allocs within a single transition exceeds this value
+  int maxAllocGC;
+  int nAlloc;
+
+  /** NOTE: this has changed its meaning again. Now it once more is an
+   * optimization that can be used by applications calling Verify.begin/endAtomic(),
+   * but be aware of that it now reports a deadlock property violation in
+   * case of a blocking op inside an atomic section
+   * Data CGs however are now allowed to be inside atomic sections
+   *
+   * BEWARE - It is in the nature of atomic sections that they might loose paths that
+   * are relevant. This is esp. true for Thread.start() within AS if the starter
+   * runs to completion without further scheduling points (DiningPhil problem).
+   */
+  int atomicLevel;
+  int entryAtomicLevel;
+
+  /** do we want executed insns to be recorded */
+  boolean recordSteps;
+
+  /** CG types for which we extend transitions if the CG has only non-rescheduling single choices */
+  TypeSpecMatcher extendTransitions;
+  
+  /**
+   * Creates a new system state.
+   */
+<span class="fc" id="L234">  public SystemState (Config config, VM vm) {</span>
+<span class="fc" id="L235">    ks = new KernelState(config);</span>
+<span class="fc" id="L236">    id = StateSet.UNKNOWN_ID;</span>
+
+<span class="fc" id="L238">    Class&lt;?&gt;[] argTypes = { Config.class, VM.class, SystemState.class };</span>
+
+    // we can't yet initialize the trail until we have the start thread
+    
+<span class="fc" id="L242">    maxAllocGC = config.getInt(&quot;vm.max_alloc_gc&quot;, Integer.MAX_VALUE);</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">    if (maxAllocGC &lt;= 0){</span>
+<span class="fc" id="L244">      maxAllocGC = Integer.MAX_VALUE;</span>
+    }
+
+<span class="fc" id="L247">    extendTransitions = TypeSpecMatcher.create(config.getStringArray(&quot;vm.extend_transitions&quot;));</span>
+    // recordSteps is set later by VM, first we need a reporter (which requires the VM)
+<span class="fc" id="L249">  }</span>
+
+<span class="fc" id="L251">  protected SystemState() {</span>
+    // just for unit test mockups
+<span class="fc" id="L253">  }</span>
+
+  public void setStartThread (ThreadInfo ti) {
+<span class="fc" id="L256">    execThread = ti;</span>
+<span class="fc" id="L257">    trail = new Transition(nextCg, execThread);</span>
+<span class="fc" id="L258">  }</span>
+
+  public int getId () {
+<span class="fc" id="L261">    return id;</span>
+  }
+
+  public void setId (int newId) {
+<span class="fc" id="L265">    id = newId;</span>
+<span class="fc" id="L266">    trail.setStateId(newId);</span>
+    
+<span class="fc bfc" id="L268" title="All 2 branches covered.">    if (nextCg != null){</span>
+<span class="fc" id="L269">      nextCg.setStateId(newId);</span>
+    }
+<span class="fc" id="L271">  }</span>
+
+  public void recordSteps (boolean cond) {
+<span class="fc" id="L274">    recordSteps = cond;</span>
+<span class="fc" id="L275">  }</span>
+
+  /**
+   * use those with extreme care, it overrides scheduling choices
+   */
+  public void incAtomic () {
+<span class="fc" id="L281">    atomicLevel++;</span>
+<span class="fc" id="L282">  }</span>
+
+  public void decAtomic () {
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">    if (atomicLevel &gt; 0) {</span>
+<span class="fc" id="L286">      atomicLevel--;</span>
+    }
+<span class="fc" id="L288">  }</span>
+  public void clearAtomic() {
+<span class="fc" id="L290">    atomicLevel = 0;</span>
+<span class="fc" id="L291">  }</span>
+
+  public boolean isAtomic () {
+<span class="fc bfc" id="L294" title="All 2 branches covered.">    return (atomicLevel &gt; 0);</span>
+  }
+
+  public boolean isBlockedInAtomicSection() {
+<span class="fc" id="L298">    return isBlockedInAtomicSection;</span>
+  }
+
+  public void setBlockedInAtomicSection() {
+<span class="fc" id="L302">    isBlockedInAtomicSection = true;</span>
+<span class="fc" id="L303">  }</span>
+
+  public Transition getTrail() {
+<span class="fc" id="L306">    return trail;</span>
+  }
+
+  public KernelState getKernelState() {
+<span class="fc" id="L310">    return ks;</span>
+  }
+
+  public Heap getHeap() {
+<span class="fc" id="L314">    return ks.getHeap();</span>
+  }
+
+  //--- these are the various choice generator retrievers
+
+  /**
+   * answer the ChoiceGenerator that is used in the current transition
+   */
+  public ChoiceGenerator&lt;?&gt; getChoiceGenerator () {
+<span class="nc" id="L323">    return curCg;</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt; getChoiceGenerator (String id) {
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getPreviousChoiceGenerator()){</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">      if (id.equals(cg.getId())){</span>
+<span class="fc" id="L329">        return cg;</span>
+      }
+    }
+
+<span class="nc" id="L333">    return null;</span>
+  }
+  
+  /**
+   * return the whole stack of CGs of the current path
+   */
+  public ChoiceGenerator&lt;?&gt;[] getChoiceGenerators () {
+<span class="pc bpc" id="L340" title="1 of 2 branches missed.">    if (curCg != null){</span>
+<span class="fc" id="L341">      return curCg.getAll();</span>
+    } else {
+<span class="nc" id="L343">      return null;</span>
+    }
+  }
+
+  public ChoiceGenerator&lt;?&gt; getLastChoiceGeneratorInThread (ThreadInfo ti){
+<span class="nc bnc" id="L348" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getPreviousChoiceGenerator()){</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">      if (cg.getThreadInfo() == ti){</span>
+<span class="nc" id="L350">        return cg;</span>
+      }
+    }
+    
+<span class="nc" id="L354">    return null;</span>
+  }
+  
+  
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T[] getChoiceGeneratorsOfType (Class&lt;T&gt; cgType) {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">    if (curCg != null){</span>
+<span class="nc" id="L360">      return curCg.getAllOfType(cgType);</span>
+    } else {
+<span class="nc" id="L362">      return null;</span>
+    }
+  }
+
+
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getLastChoiceGeneratorOfType (Class&lt;T&gt; cgType) {
+<span class="fc bfc" id="L368" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getPreviousChoiceGenerator()){</span>
+<span class="fc bfc" id="L369" title="All 2 branches covered.">      if (cgType.isAssignableFrom(cg.getClass())) {</span>
+<span class="fc" id="L370">        return (T)cg;</span>
+      }
+    }
+
+<span class="fc" id="L374">    return null;</span>
+  }
+
+  public &lt;T&gt; ChoiceGenerator&lt;T&gt; getLastChoiceGeneratorOfChoiceType (String id, Class&lt;T&gt; choiceType){
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getPreviousChoiceGenerator()){</span>
+<span class="nc bnc" id="L379" title="All 6 branches missed.">      if ((id == null || id.equals(cg.getId())) &amp;&amp; choiceType.isAssignableFrom(cg.getChoiceType())) {</span>
+<span class="nc" id="L380">        return (ChoiceGenerator&lt;T&gt;)cg;</span>
+      }
+    }
+
+<span class="nc" id="L384">    return null;    </span>
+  }
+
+  
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getCurrentChoiceGeneratorOfType (Class&lt;T&gt; cgType) {
+<span class="nc bnc" id="L389" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getCascadedParent()){</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">      if (cgType.isAssignableFrom(cg.getClass())){</span>
+<span class="nc" id="L391">        return (T)cg;</span>
+      }
+    }
+
+<span class="nc" id="L395">    return null;</span>
+  }
+
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getCurrentChoiceGenerator (String id, Class&lt;T&gt; cgType) {
+<span class="fc bfc" id="L399" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getCascadedParent()){</span>
+<span class="pc bpc" id="L400" title="1 of 4 branches missed.">      if (id.equals(cg.getId()) &amp;&amp; cgType.isAssignableFrom(cg.getClass())){</span>
+<span class="fc" id="L401">        return (T)cg;</span>
+      }
+    }
+
+<span class="fc" id="L405">    return null;</span>
+  }
+  
+  public &lt;T&gt; ChoiceGenerator&lt;T&gt; getCurrentChoiceGeneratorForChoiceType (String id, Class&lt;T&gt; choiceType){
+<span class="nc bnc" id="L409" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getCascadedParent()){</span>
+<span class="nc bnc" id="L410" title="All 6 branches missed.">      if ((id == null || id.equals(cg.getId())) &amp;&amp; choiceType.isAssignableFrom(cg.getChoiceType())){</span>
+<span class="nc" id="L411">        return (ChoiceGenerator&lt;T&gt;)cg;</span>
+      }
+    }
+
+<span class="nc" id="L415">    return null;    </span>
+  }
+
+
+  public ChoiceGenerator&lt;?&gt; getCurrentChoiceGenerator (String id) {
+<span class="nc bnc" id="L420" title="All 2 branches missed.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getCascadedParent()){</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">      if (id.equals(cg.getId())){</span>
+<span class="nc" id="L422">        return cg;</span>
+      }
+    }
+
+<span class="nc" id="L426">    return null;</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt; getCurrentChoiceGenerator (ChoiceGenerator&lt;?&gt; cgPrev) {
+<span class="nc bnc" id="L430" title="All 2 branches missed.">    if (cgPrev == null){</span>
+<span class="nc" id="L431">      return curCg;</span>
+    } else {
+<span class="nc" id="L433">      return cgPrev.getCascadedParent();</span>
+    }
+  }
+
+  /**
+   * this returns the most recently registered ThreadChoiceGenerator that is 
+   * also a scheduling point, or 'null' if there is none in the list of current CGs
+   */
+  public ThreadChoiceGenerator getCurrentSchedulingPoint () {
+<span class="fc bfc" id="L442" title="All 2 branches covered.">    for (ChoiceGenerator&lt;?&gt; cg = curCg; cg != null; cg = cg.getCascadedParent()){</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">      if (cg instanceof ThreadChoiceGenerator){</span>
+<span class="fc" id="L444">        ThreadChoiceGenerator tcg = (ThreadChoiceGenerator)cg;</span>
+<span class="pc bpc" id="L445" title="1 of 2 branches missed.">        if (tcg.isSchedulingPoint()){</span>
+<span class="fc" id="L446">          return tcg;</span>
+        }
+      }
+    }
+
+<span class="fc" id="L451">    return null;</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt;[] getCurrentChoiceGenerators () {
+<span class="fc" id="L455">    return curCg.getCascade();</span>
+  }
+
+  
+  public &lt;T extends ChoiceGenerator&lt;?&gt;&gt; T getInsnChoiceGeneratorOfType (Class&lt;T&gt; cgType, Instruction insn, ChoiceGenerator&lt;?&gt; cgPrev){
+<span class="nc bnc" id="L460" title="All 2 branches missed.">    ChoiceGenerator&lt;?&gt; cg = cgPrev != null ? cgPrev.getPreviousChoiceGenerator() : curCg;</span>
+
+<span class="nc bnc" id="L462" title="All 6 branches missed.">    if (cg != null &amp;&amp; cg.getInsn() == insn &amp;&amp; cgType.isAssignableFrom(cg.getClass())){</span>
+<span class="nc" id="L463">      return (T)cg;</span>
+    }
+
+<span class="nc" id="L466">    return null;</span>
+  }
+
+  public ChoiceGenerator&lt;?&gt; getNextChoiceGenerator () {
+<span class="fc" id="L470">    return nextCg;</span>
+  }
+
+  /**
+   * set the ChoiceGenerator to be used in the next transition
+   * @return true if there is a nextCg set after registration and listener notification
+   */
+  public boolean setNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg) {
+<span class="fc bfc" id="L478" title="All 2 branches covered.">    if (isIgnored){</span>
+      // if this transition is already marked as ignored, we are not allowed
+      // to set nextCg because 'isIgnored' results in a shortcut backtrack that
+      // is not handed back to the Search (its solely in VM forward)
+<span class="fc" id="L482">      return false;</span>
+    }
+
+<span class="pc bpc" id="L485" title="1 of 2 branches missed.">    if (cg != null){</span>
+      // first, check if we have to randomize it. Note this might change the CG
+      // instance since some algorithmic CG types need to be transformed into
+      // explicit choice lists
+<span class="pc bpc" id="L489" title="1 of 2 branches missed.">      if (ChoiceGeneratorBase.useRandomization()) {</span>
+<span class="nc" id="L490">        cg = cg.randomize();</span>
+      }
+
+      // set its context (thread and insn)
+<span class="fc" id="L494">      cg.setContext(execThread);</span>
+
+      // do we already have a nextCG, which means this one is a cascaded CG
+<span class="fc bfc" id="L497" title="All 2 branches covered.">      if (nextCg != null) {</span>
+<span class="fc" id="L498">        cg.setPreviousChoiceGenerator(nextCg);</span>
+<span class="fc" id="L499">        nextCg.setCascaded(); // note the last registered CG is NOT set cascaded</span>
+
+      } else {
+<span class="fc" id="L502">        cg.setPreviousChoiceGenerator(curCg);</span>
+      }
+
+<span class="fc" id="L505">      nextCg = cg;</span>
+
+<span class="fc" id="L507">      execThread.getVM().notifyChoiceGeneratorRegistered(cg, execThread); // &lt;2do&gt; we need a better way to get the vm</span>
+    }
+
+    // a choiceGeneratorRegistered listener might have removed this CG
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">    return (nextCg != null);</span>
+  }
+
+  public void setMandatoryNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg, String failMsg){
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">    if (!setNextChoiceGenerator(cg)){</span>
+<span class="nc" id="L516">      throw new JPFException(failMsg);</span>
+    }
+<span class="fc" id="L518">  }</span>
+
+  /**
+   * remove the current 'nextCg'
+   * Note this has to be called in a loop if all cascaded CGs have to be removed 
+   */
+  public void removeNextChoiceGenerator (){
+<span class="pc bpc" id="L525" title="1 of 2 branches missed.">    if (nextCg != null){</span>
+<span class="fc" id="L526">      nextCg = nextCg.getPreviousChoiceGenerator();</span>
+    }
+<span class="fc" id="L528">  }</span>
+
+  /**
+   * remove the whole chain of currently registered nextCGs
+   */
+  public void removeAllNextChoiceGenerators(){
+<span class="nc bnc" id="L534" title="All 2 branches missed.">    while (nextCg != null){</span>
+<span class="nc" id="L535">      nextCg = nextCg.getPreviousChoiceGenerator();</span>
+    }
+<span class="nc" id="L537">  }</span>
+
+  
+  public Object getBacktrackData () {
+<span class="fc" id="L541">    return new Memento(this);</span>
+  }
+
+  public void backtrackTo (Object backtrackData) {
+<span class="fc" id="L545">    ((Memento) backtrackData).backtrack( this);</span>
+<span class="fc" id="L546">  }</span>
+
+  public Object getRestoreData(){
+<span class="fc" id="L549">    return new RestorableMemento(this);</span>
+  }
+  
+  public void restoreTo (Object backtrackData) {
+<span class="fc" id="L553">    ((Memento) backtrackData).restore( this);</span>
+<span class="fc" id="L554">  }</span>
+
+  public void retainAttributes (boolean b){
+<span class="nc" id="L557">    retainAttributes = b;</span>
+<span class="nc" id="L558">  }</span>
+
+  public boolean getRetainAttributes() {
+<span class="nc" id="L561">    return retainAttributes;</span>
+  }
+
+  /**
+   * this can be called anywhere from within a transition, to revert it and
+   * go on with the next choice. This is mostly used explicitly in the app
+   * via Verify.ignoreIf(..)
+   *
+   * calling setIgnored() also breaks the current transition, i.e. no further
+   * instructions are executed within this step
+   */
+  public void setIgnored (boolean b) {
+<span class="fc" id="L573">    isIgnored = b;</span>
+
+<span class="fc bfc" id="L575" title="All 2 branches covered.">    if (b){</span>
+<span class="fc" id="L576">      isForced = false; // mutually exclusive</span>
+    }
+<span class="fc" id="L578">  }</span>
+
+  public boolean isIgnored () {
+<span class="fc" id="L581">    return isIgnored;</span>
+  }
+
+  public void setForced (boolean b){
+<span class="nc" id="L585">    isForced = b;</span>
+
+<span class="nc bnc" id="L587" title="All 2 branches missed.">    if (b){</span>
+<span class="nc" id="L588">      isIgnored = false; // mutually exclusive</span>
+    }
+<span class="nc" id="L590">  }</span>
+
+  public boolean isForced () {
+<span class="fc" id="L593">    return isForced;</span>
+  }
+
+  public void setInteresting (boolean b) {
+<span class="nc" id="L597">    isInteresting = b;</span>
+
+<span class="nc bnc" id="L599" title="All 2 branches missed.">    if (b){</span>
+<span class="nc" id="L600">      isBoring = false;</span>
+    }
+<span class="nc" id="L602">  }</span>
+
+  public boolean isInteresting () {
+<span class="fc" id="L605">    return isInteresting;</span>
+  }
+
+  public void setBoring (boolean b) {
+<span class="nc" id="L609">    isBoring = b;</span>
+
+<span class="nc bnc" id="L611" title="All 2 branches missed.">    if (b){</span>
+<span class="nc" id="L612">      isInteresting = false;</span>
+    }
+<span class="nc" id="L614">  }</span>
+
+  public boolean isBoring () {
+<span class="fc" id="L617">    return isBoring;</span>
+  }
+
+  public boolean isInitState () {
+<span class="nc bnc" id="L621" title="All 2 branches missed.">    return (id == StateSet.UNKNOWN_ID);</span>
+  }
+
+  public int getThreadCount () {
+<span class="fc" id="L625">    return ks.threads.length();</span>
+  }
+
+  public UncaughtException getUncaughtException () {
+<span class="nc" id="L629">    return uncaughtException;</span>
+  }
+
+  public void activateGC () {
+<span class="fc" id="L633">    GCNeeded = true;</span>
+<span class="fc" id="L634">  }</span>
+
+  public boolean hasRestorer (Object key){
+<span class="fc bfc" id="L637" title="All 2 branches covered.">    if (restorers != null){</span>
+<span class="fc" id="L638">      return restorers.containsKey(key);</span>
+    }
+    
+<span class="fc" id="L641">    return false;</span>
+  }
+  
+  public ClosedMemento getRestorer( Object key){
+<span class="nc bnc" id="L645" title="All 2 branches missed.">    if (restorers != null){</span>
+<span class="nc" id="L646">      return restorers.get(key);</span>
+    }
+    
+<span class="nc" id="L649">    return null;    </span>
+  }
+  
+  /**
+   * call the provided restorer each time we get back to this state
+   * 
+   * @param key usually the object this restorer encapsulates
+   * @param restorer the ClosedMemento that restores the state of the object
+   * it encapsulates once we backtrack/restore this program state
+   * 
+   * Note that restorers are called in the order of registration, but in
+   * general it is not a good idea to depend on order since restorers can
+   * be set from different locations (listeners, peers, instructions)
+   */
+  public void putRestorer (Object key, ClosedMemento restorer){
+<span class="pc bpc" id="L664" title="1 of 2 branches missed.">    if (restorers == null){</span>
+<span class="fc" id="L665">      restorers = new LinkedHashMap&lt;Object,ClosedMemento&gt;();</span>
+    }
+    
+    // we only support one restorer per target for now
+<span class="fc" id="L669">    restorers.put(key,restorer);</span>
+<span class="fc" id="L670">  }</span>
+  
+  public boolean gcIfNeeded () {
+<span class="fc" id="L673">    boolean needed = false;</span>
+<span class="fc bfc" id="L674" title="All 2 branches covered.">    if (GCNeeded) {</span>
+<span class="fc" id="L675">      ks.gc();</span>
+<span class="fc" id="L676">      GCNeeded = false;</span>
+<span class="fc" id="L677">      needed = true;</span>
+    }
+
+<span class="fc" id="L680">    nAlloc = 0;</span>
+<span class="fc" id="L681">    return needed;</span>
+  }
+
+  /**
+   * check if number of allocations since last GC exceed the maxAllocGC
+   * threshold, perform on-the-fly GC if yes. This is aimed at avoiding a lot
+   * of short-living garbage in long transitions, which slows down the heap
+   * exponentially
+   */
+  public void checkGC () {
+<span class="nc bnc" id="L691" title="All 2 branches missed.">    if (nAlloc++ &gt; maxAllocGC){</span>
+<span class="nc" id="L692">      gcIfNeeded();</span>
+    }
+<span class="nc" id="L694">  }</span>
+
+
+  void dumpThreadCG (ThreadChoiceGenerator cg) {
+<span class="nc" id="L698">    PrintWriter pw = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L699">    cg.printOn(pw);</span>
+<span class="nc" id="L700">    pw.flush();</span>
+<span class="nc" id="L701">  }</span>
+
+  /**
+   * reset the SystemState and initialize the next CG. This gets called
+   * *before* the restorer computes the KernelState snapshot, i.e. it is *not*
+   * allowed to change anything in the program state. The reason for splitting
+   * CG initialization from transition execution is to avoid KernelState storage
+   * in case the initialization does not produce a next choice and we have to
+   * backtrack.
+   *
+   * @see VM.forward()
+   * 
+   * @return 'true' if there is a next choice, i.e. a next transition to enter.
+   * 'false' if there is no next choice and the system has to backtrack
+   */
+  public boolean initializeNextTransition(VM vm) {
+
+    // set this before any choiceGeneratorSet or choiceGeneratorAdvanced
+    // notification (which can override it)
+<span class="pc bpc" id="L720" title="1 of 2 branches missed.">    if (!retainAttributes){</span>
+<span class="fc" id="L721">      isIgnored = false;</span>
+<span class="fc" id="L722">      isForced = false;</span>
+<span class="fc" id="L723">      isInteresting = false;</span>
+<span class="fc" id="L724">      isBoring = false;</span>
+    }
+
+<span class="fc" id="L727">    restorers = null;</span>
+    
+    // 'nextCg' got set at the end of the previous transition (or a preceding
+    // choiceGeneratorSet() notification).
+    // Be aware of that 'nextCg' is only the *last* CG that was registered, i.e.
+    // there can be any number of CGs between the previous 'curCg' and 'nextCg'
+    // that were registered for the same insn.
+<span class="fc bfc" id="L734" title="All 2 branches covered.">    while (nextCg != null) {</span>
+<span class="fc" id="L735">      curCg = nextCg;</span>
+<span class="fc" id="L736">      nextCg = null;</span>
+
+      // these are hooks that can be used to do context specific CG initialization
+<span class="fc" id="L739">      curCg.setCurrent();</span>
+<span class="fc" id="L740">      notifyChoiceGeneratorSet(vm, curCg);</span>
+    }
+
+<span class="pc bpc" id="L743" title="2 of 4 branches missed.">    assert (curCg != null) : &quot;transition without choice generator&quot;;</span>
+
+<span class="fc" id="L745">    return advanceCurCg(vm);</span>
+  }
+
+  /**
+   * enter all instructions that constitute the next transition.
+   *
+   * Note this gets called *after* storing the KernelState, i.e. is allowed to
+   * modify thread states and fields
+   *
+   * @see VM.forward()
+   */
+  public void executeNextTransition (VM vm){
+     // do we have a thread context switch? (this sets execThread)
+<span class="fc" id="L758">    setExecThread( vm);</span>
+
+<span class="pc bpc" id="L760" title="2 of 4 branches missed.">    assert execThread.isRunnable() : &quot;next transition thread not runnable: &quot; + execThread.getStateDescription();</span>
+
+<span class="fc" id="L762">    trail = new Transition(curCg, execThread);</span>
+<span class="fc" id="L763">    entryAtomicLevel = atomicLevel; // store before we start to enter</span>
+
+<span class="fc" id="L765">    execThread.executeTransition(this);    </span>
+<span class="fc" id="L766">  }</span>
+
+  /**
+   * check if we can extend the current transition without state storing/matching
+   * This is useful for non-cascaded single choice CGs that do not cause
+   * rescheduling. Such CGs are never backtracked to anyways (they are processed
+   * on their first advance).
+   * 
+   * NOTE: this is on top of CG type specific optimizations that are controlled
+   * by cg.break_single_choice (unset by default). If the respective CG creator
+   * is single choice aware it might not create / register a CG in the first
+   * place and we never get here. This is only called if somebody did create
+   * and register a CG
+   * 
+   * note also that we don't eliminate BreakGenerators since their only purpose
+   * in life is to explicitly cause transition breaks. We don't want to override
+   * the override here.
+   */
+  protected boolean extendTransition (){
+<span class="fc" id="L785">    ChoiceGenerator&lt;?&gt; ncg = nextCg;</span>
+<span class="fc bfc" id="L786" title="All 2 branches covered.">    if (ncg != null){</span>
+<span class="pc bpc" id="L787" title="1 of 4 branches missed.">      if (CheckExtendTransition.isMarked(ncg) ||</span>
+<span class="pc bpc" id="L788" title="1 of 2 branches missed.">              ((extendTransitions != null) &amp;&amp; extendTransitions.matches(ncg.getClass()))){</span>
+<span class="pc bpc" id="L789" title="2 of 4 branches missed.">        if (ncg.getTotalNumberOfChoices() == 1 &amp;&amp; !ncg.isCascaded()){</span>
+<span class="pc bpc" id="L790" title="1 of 2 branches missed.">          if (ncg instanceof ThreadChoiceGenerator){</span>
+<span class="nc bnc" id="L791" title="All 4 branches missed.">            if ((ncg instanceof BreakGenerator) || !((ThreadChoiceGenerator) ncg).contains(execThread)){</span>
+<span class="nc" id="L792">              return false;</span>
+            }
+          }
+
+<span class="fc" id="L796">          initializeNextTransition(execThread.getVM());</span>
+<span class="fc" id="L797">          return true;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L802">    return false;</span>
+  }
+  
+  protected void setExecThread( VM vm){
+<span class="fc" id="L806">    ThreadChoiceGenerator tcg = getCurrentSchedulingPoint();</span>
+<span class="fc bfc" id="L807" title="All 2 branches covered.">    if (tcg != null){</span>
+<span class="fc" id="L808">      ThreadInfo tiNext = tcg.getNextChoice();</span>
+<span class="fc bfc" id="L809" title="All 2 branches covered.">      if (tiNext != execThread) {</span>
+<span class="fc" id="L810">        vm.notifyThreadScheduled(tiNext);</span>
+<span class="fc" id="L811">        execThread = tiNext;</span>
+      }
+    }
+
+<span class="fc bfc" id="L815" title="All 2 branches covered.">    if (execThread.isTimeoutWaiting()) {</span>
+<span class="fc" id="L816">      execThread.setTimedOut();</span>
+    }
+<span class="fc" id="L818">  }</span>
+
+
+  // the number of advanced choice generators in this step
+  protected int nAdvancedCGs;
+
+  protected void advance( VM vm, ChoiceGenerator&lt;?&gt; cg){
+    while (true) {
+<span class="pc bpc" id="L826" title="1 of 2 branches missed.">      if (cg.hasMoreChoices()){</span>
+<span class="fc" id="L827">        cg.advance();</span>
+<span class="fc" id="L828">        isIgnored = false;</span>
+<span class="fc" id="L829">        vm.notifyChoiceGeneratorAdvanced(cg);</span>
+        
+<span class="pc bpc" id="L831" title="1 of 2 branches missed.">        if (!isIgnored){</span>
+          // this seems redundant, but the CG or the listener might actually skip choices,
+          // in which case we can't execute the next transition.
+          // NOTE - this causes backtracking
+          // &lt;2do&gt; it's debatable if we should treat this as a processed CG
+<span class="pc bpc" id="L836" title="1 of 2 branches missed.">          if (cg.getNextChoice() != null){</span>
+<span class="fc" id="L837">            nAdvancedCGs++;</span>
+          }
+          break;
+        }
+        
+      } else {
+<span class="nc" id="L843">        vm.notifyChoiceGeneratorProcessed(cg);</span>
+<span class="nc" id="L844">        break;</span>
+      }
+    }
+<span class="fc" id="L847">  }</span>
+
+  protected void advanceAllCascadedParents( VM vm, ChoiceGenerator&lt;?&gt; cg){
+<span class="fc" id="L850">    ChoiceGenerator&lt;?&gt; parent = cg.getCascadedParent();</span>
+<span class="fc bfc" id="L851" title="All 2 branches covered.">    if (parent != null){</span>
+<span class="fc" id="L852">      advanceAllCascadedParents(vm, parent);</span>
+    }
+<span class="fc" id="L854">    advance(vm, cg);</span>
+<span class="fc" id="L855">  }</span>
+
+  protected boolean advanceCascadedParent (VM vm, ChoiceGenerator&lt;?&gt; cg){
+<span class="fc bfc" id="L858" title="All 2 branches covered.">    if (cg.hasMoreChoices()){</span>
+<span class="fc" id="L859">      advance(vm,cg);</span>
+<span class="fc" id="L860">      return true;</span>
+
+    } else {
+<span class="fc" id="L863">      vm.notifyChoiceGeneratorProcessed(cg);</span>
+
+<span class="fc" id="L865">      ChoiceGenerator&lt;?&gt; parent = cg.getCascadedParent();</span>
+<span class="fc bfc" id="L866" title="All 2 branches covered.">      if (parent != null){</span>
+<span class="fc bfc" id="L867" title="All 2 branches covered.">        if (advanceCascadedParent(vm,parent)){</span>
+<span class="fc" id="L868">          cg.reset();</span>
+<span class="fc" id="L869">          advance(vm,cg);</span>
+<span class="fc" id="L870">          return true;</span>
+        }
+      }
+<span class="fc" id="L873">      return false;</span>
+    }
+  }
+
+  protected boolean advanceCurCg (VM vm){
+<span class="fc" id="L878">    nAdvancedCGs = 0;</span>
+
+<span class="fc" id="L880">    ChoiceGenerator&lt;?&gt; cg = curCg;</span>
+<span class="fc" id="L881">    ChoiceGenerator&lt;?&gt; parent = cg.getCascadedParent();</span>
+
+<span class="fc bfc" id="L883" title="All 2 branches covered.">    if (cg.hasMoreChoices()){</span>
+      // check if this is the first time, for which we also have to advance our parents
+<span class="fc bfc" id="L885" title="All 4 branches covered.">      if (parent != null &amp;&amp; parent.getProcessedNumberOfChoices() == 0){</span>
+<span class="fc" id="L886">        advanceAllCascadedParents(vm,parent);</span>
+      }
+<span class="fc" id="L888">      advance(vm, cg);</span>
+
+    } else { // this one is done, but how about our parents
+<span class="fc" id="L891">      vm.notifyChoiceGeneratorProcessed(cg);</span>
+
+<span class="fc bfc" id="L893" title="All 2 branches covered.">      if (parent != null){</span>
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        if (advanceCascadedParent(vm,parent)){</span>
+<span class="fc" id="L895">          cg.reset();</span>
+<span class="fc" id="L896">          advance(vm,cg);</span>
+        }
+      }
+    }
+
+<span class="fc bfc" id="L901" title="All 2 branches covered.">    return (nAdvancedCGs &gt; 0);</span>
+  }
+
+
+
+  protected void notifyChoiceGeneratorSet (VM vm, ChoiceGenerator&lt;?&gt; cg){
+<span class="fc" id="L907">    ChoiceGenerator&lt;?&gt; parent = cg.getCascadedParent();</span>
+<span class="fc bfc" id="L908" title="All 2 branches covered.">    if (parent != null) {</span>
+<span class="fc" id="L909">      notifyChoiceGeneratorSet(vm, parent);</span>
+    }
+<span class="fc" id="L911">    vm.notifyChoiceGeneratorSet(cg); // notify top down</span>
+<span class="fc" id="L912">  }</span>
+
+
+  // this is called on every executeInstruction from the running thread
+  public boolean breakTransition () {
+<span class="fc bfc" id="L917" title="All 4 branches covered.">    return ((nextCg != null) || isIgnored);</span>
+  }
+
+  void recordExecutionStep (Instruction pc) {
+    // this can require a lot of memory, so we should only store
+    // executed insns if we have to
+<span class="pc bpc" id="L923" title="1 of 2 branches missed.">    if (recordSteps) {</span>
+<span class="nc" id="L924">      Step step = new Step(pc);</span>
+<span class="nc" id="L925">      trail.addStep( step);</span>
+<span class="nc" id="L926">    } else {</span>
+<span class="fc" id="L927">      trail.incStepCount();</span>
+    }
+<span class="fc" id="L929">  }</span>
+
+  // the three primitive ops used from within VM.forward()
+
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

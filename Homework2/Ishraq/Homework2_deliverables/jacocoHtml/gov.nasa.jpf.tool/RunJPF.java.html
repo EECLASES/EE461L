@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RunJPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.tool</a> &gt; <span class="el_source">RunJPF.java</span></div><h1>RunJPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.tool;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFShell;
+import gov.nasa.jpf.util.JPFSiteUtils;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
+import java.util.Properties;
+
+/**
+ * This class is a wrapper for loading JPF or a JPFShell through a classloader
+ * that got initialized from a Config object (i.e. 'native_classpath').
+ *
+ * This is the main-class entry in the executable RunJPF.jar, which does not
+ * require any JPF specific classpath settings, provided the site.properties
+ * is configured correctly
+ *
+ * NOTE this class is not allowed to use any types that would require
+ * loading JPF classes during class resolution - this would result in
+ * NoClassDefFoundErrors if the respective class is not in RunJPF.jar
+ */
+<span class="nc" id="L43">public class RunJPF extends Run {</span>
+
+  public static final int HELP         = 0x1;
+  public static final int SHOW         = 0x2;
+  public static final int LOG          = 0x4;
+  public static final int BUILD_INFO   = 0x8;
+  public static final int ADD_PROJECT  = 0x10;
+  public static final int VERSION      = 0x20;
+  public static final int DELAY_START  = 0x40;
+  public static final int DELAY_EXIT   = 0x80;
+
+  static final String JPF_CLASSNAME = &quot;gov.nasa.jpf.JPF&quot;;
+
+  static void delay (String msg) {
+<span class="nc" id="L57">    System.out.println(msg);</span>
+    try {
+<span class="nc" id="L59">      System.in.read();</span>
+<span class="nc" id="L60">    } catch (IOException iox) {</span>
+      // we don't care
+<span class="nc" id="L62">    }    </span>
+<span class="nc" id="L63">  }</span>
+  
+  public static void main (String[] args) {
+    try {
+<span class="nc" id="L67">      int options = getOptions(args);</span>
+
+<span class="nc bnc" id="L69" title="All 4 branches missed.">      if (args.length == 0 || isOptionEnabled(HELP, options)) {</span>
+<span class="nc" id="L70">        showUsage();</span>
+<span class="nc" id="L71">        return;</span>
+      }
+
+<span class="nc bnc" id="L74" title="All 2 branches missed.">      if (isOptionEnabled(ADD_PROJECT, options)){</span>
+<span class="nc" id="L75">        addProject(args);</span>
+<span class="nc" id="L76">        return;</span>
+      }
+      
+<span class="nc bnc" id="L79" title="All 2 branches missed.">      if (isOptionEnabled(DELAY_START, options)) {</span>
+<span class="nc" id="L80">        delay(&quot;press any key to start&quot;);</span>
+      }
+      
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      if (isOptionEnabled(LOG, options)) {</span>
+<span class="nc" id="L84">        Config.enableLogging(true);</span>
+      }
+
+<span class="nc" id="L87">      Config conf = new Config(args);</span>
+
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (isOptionEnabled(SHOW, options)) {</span>
+<span class="nc" id="L90">        conf.printEntries();</span>
+      }
+
+<span class="nc" id="L93">      ClassLoader cl = conf.initClassLoader(RunJPF.class.getClassLoader());</span>
+
+<span class="nc bnc" id="L95" title="All 2 branches missed.">      if (isOptionEnabled(VERSION, options)) {</span>
+<span class="nc" id="L96">        showVersion(cl);</span>
+      }
+
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      if (isOptionEnabled(BUILD_INFO, options)) {</span>
+<span class="nc" id="L100">        showBuild(cl);</span>
+      }
+
+      // using JPFShell is Ok since it is just a simple non-derived interface
+      // note this uses a &lt;init&gt;(Config) ctor in the shell class if there is one, i.e. there is no need for a separate
+      // start(Config,..) or re-loading the config itself
+<span class="nc" id="L106">      JPFShell shell = conf.getInstance(&quot;shell&quot;, JPFShell.class);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">      if (shell != null) {</span>
+<span class="nc" id="L108">        shell.start( removeConfigArgs(args)); // responsible for exception handling itself</span>
+
+      } else {
+        // we have to load JPF explicitly through the URLClassLoader, and
+        // call its start() via reflection - interfaces would only work if
+        // we instantiate a JPF object here, which would force us to duplicate all
+        // the logging and event handling that preceedes JPF instantiation
+<span class="nc" id="L115">        Class&lt;?&gt; jpfCls = cl.loadClass(JPF_CLASSNAME);</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (!call( jpfCls, &quot;start&quot;, new Object[] {conf,args})){</span>
+<span class="nc" id="L117">          error(&quot;cannot find 'public static start(Config,String[])' in &quot; + JPF_CLASSNAME);</span>
+        }
+      }
+      
+<span class="nc bnc" id="L121" title="All 2 branches missed.">      if (isOptionEnabled(DELAY_EXIT, options)) {</span>
+<span class="nc" id="L122">        delay(&quot;press any key to exit&quot;);</span>
+      }
+
+      
+<span class="nc" id="L126">    } catch (NoClassDefFoundError ncfx){</span>
+<span class="nc" id="L127">      ncfx.printStackTrace();</span>
+<span class="nc" id="L128">    } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L129">      error(&quot;cannot find &quot; + JPF_CLASSNAME);</span>
+<span class="nc" id="L130">    } catch (InvocationTargetException ix){</span>
+      // should already be handled by JPF
+<span class="nc" id="L132">      ix.getCause().printStackTrace();</span>
+<span class="nc" id="L133">    }</span>
+    
+<span class="nc" id="L135">  }</span>
+
+  public static int getOptions (String[] args){
+<span class="nc" id="L138">    int mask = 0;</span>
+
+<span class="nc bnc" id="L140" title="All 2 branches missed.">    if (args != null){</span>
+
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L143">        String a = args[i];</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (&quot;-help&quot;.equals(a)){</span>
+<span class="nc" id="L145">          args[i] = null;</span>
+<span class="nc" id="L146">          mask |= HELP;</span>
+
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        } else if (&quot;-show&quot;.equals(a)) {</span>
+<span class="nc" id="L149">          args[i] = null;</span>
+<span class="nc" id="L150">          mask |= SHOW;</span>
+
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        } else if (&quot;-log&quot;.equals(a)){</span>
+<span class="nc" id="L153">          args[i] = null;</span>
+<span class="nc" id="L154">          mask |= LOG;</span>
+
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        } else if (&quot;-buildinfo&quot;.equals(a)){</span>
+<span class="nc" id="L157">          args[i] = null;</span>
+<span class="nc" id="L158">          mask |= BUILD_INFO;</span>
+          
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        } else if (&quot;-addproject&quot;.equals(a)){</span>
+<span class="nc" id="L161">          args[i] = null;</span>
+<span class="nc" id="L162">          mask |= ADD_PROJECT;</span>
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        } else if (&quot;-delay-start&quot;.equals(a)) {</span>
+<span class="nc" id="L165">          args[i] = null;</span>
+<span class="nc" id="L166">          mask |= DELAY_START;</span>
+          
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        } else if (&quot;-delay-exit&quot;.equals(a)) {</span>
+<span class="nc" id="L169">          args[i] = null;</span>
+<span class="nc" id="L170">          mask |= DELAY_EXIT;</span>
+          
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        } else if (&quot;-version&quot;.equals(a)){</span>
+<span class="nc" id="L173">          args[i] = null;</span>
+<span class="nc" id="L174">          mask |= VERSION;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L179">    return mask;</span>
+  }
+
+  public static boolean isOptionEnabled (int option, int mask){
+<span class="nc bnc" id="L183" title="All 2 branches missed.">    return ((mask &amp; option) != 0);</span>
+  }
+
+  public static void showUsage() {
+<span class="nc" id="L187">    System.out.println(&quot;Usage: \&quot;java [&lt;vm-option&gt;..] -jar ...RunJPF.jar [&lt;jpf-option&gt;..] [&lt;app&gt; [&lt;app-arg&gt;..]]&quot;);</span>
+<span class="nc" id="L188">    System.out.println(&quot;  &lt;jpf-option&gt; : -help : print usage information and exit&quot;);</span>
+<span class="nc" id="L189">    System.out.println(&quot;               | -version : print JPF version information&quot;);    </span>
+<span class="nc" id="L190">    System.out.println(&quot;               | -buildinfo : print build and runtime information&quot;);</span>
+<span class="nc" id="L191">    System.out.println(&quot;               | -addproject [init] [&lt;pathname&gt;] : add project to site properties and exit&quot;);    </span>
+<span class="nc" id="L192">    System.out.println(&quot;               | -log : print configuration initialization steps&quot;);</span>
+<span class="nc" id="L193">    System.out.println(&quot;               | -show : print configuration dictionary contents&quot;);</span>
+<span class="nc" id="L194">    System.out.println(&quot;               | +&lt;key&gt;=&lt;value&gt;  : add or override key/value pair to config dictionary&quot;);</span>
+<span class="nc" id="L195">    System.out.println(&quot;  &lt;app&gt;        : *.jpf application properties file pathname | fully qualified application class name&quot;);</span>
+<span class="nc" id="L196">    System.out.println(&quot;  &lt;app-arg&gt;    : arguments passed into main() method of application class&quot;);</span>
+<span class="nc" id="L197">  }</span>
+  
+  public static void addProject(String[] args){
+<span class="nc" id="L200">    boolean init = false;</span>
+<span class="nc" id="L201">    int i=0;</span>
+<span class="nc" id="L202">    String sitePathName = null;</span>
+    
+    // check if the first non-null arg is 'init', which means this project
+    // should be added to the 'extensions' list
+<span class="nc bnc" id="L206" title="All 2 branches missed.">    for(; i&lt;args.length; i++){</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">      if (args[i] != null){</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">        if (&quot;init&quot;.equals(args[i])){</span>
+<span class="nc" id="L209">          init = true;</span>
+<span class="nc" id="L210">          continue;</span>
+        } else {
+<span class="nc" id="L212">          sitePathName = args[i];</span>
+        }
+<span class="nc" id="L214">        break;</span>
+      }
+    }
+    
+<span class="nc bnc" id="L218" title="All 2 branches missed.">    File siteProps = (sitePathName == null) ? JPFSiteUtils.getStandardSiteProperties() : new File(sitePathName);</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">    if (siteProps == null) {</span>
+<span class="nc" id="L220">      siteProps = new File(JPFSiteUtils.getGlobalSitePropertiesPath());</span>
+    }
+    
+<span class="nc" id="L223">    File curDir = new File( System.getProperty(&quot;user.dir&quot;));</span>
+<span class="nc" id="L224">    String pid = JPFSiteUtils.getCurrentProjectId();</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">    if (pid == null){</span>
+<span class="nc" id="L226">      error(&quot;current dir not a valid JPF project: &quot; + curDir);</span>
+    }
+    
+<span class="nc bnc" id="L229" title="All 2 branches missed.">    if (&quot;jpf-core&quot;.equals(pid)){ // jpf-core always needs to be in the extensions list</span>
+<span class="nc" id="L230">      init = true;</span>
+    }
+    
+<span class="nc bnc" id="L233" title="All 2 branches missed.">    if (JPFSiteUtils.addProject( siteProps, pid, curDir, init)){</span>
+<span class="nc" id="L234">      System.out.println(&quot;added project '&quot; + pid + &quot;' to site properties at: &quot; + siteProps);</span>
+    } else {
+<span class="nc" id="L236">      error(&quot;failed to add project: '&quot; + pid + &quot;' to site properties at: &quot; + siteProps);</span>
+    }
+<span class="nc" id="L238">  }</span>
+
+  public static void showVersion (ClassLoader cl){
+    try {
+<span class="nc" id="L242">      InputStream is = cl.getResourceAsStream(&quot;gov/nasa/jpf/.version&quot;);</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">      if (is != null){</span>
+<span class="nc" id="L244">        System.out.print(&quot;JPF version: &quot;);</span>
+        
+<span class="nc" id="L246">        int len = is.available();</span>
+<span class="nc" id="L247">        byte[] data = new byte[len];</span>
+<span class="nc" id="L248">        is.read(data);</span>
+<span class="nc" id="L249">        is.close();</span>
+<span class="nc" id="L250">        String version = new String(data);</span>
+<span class="nc" id="L251">        System.out.println(version);</span>
+        
+<span class="nc" id="L253">      } else {</span>
+<span class="nc" id="L254">        System.out.println(&quot;no JPF version information available&quot;);</span>
+      }
+      
+
+<span class="nc" id="L258">    } catch (Throwable t){</span>
+<span class="nc" id="L259">      System.err.println(&quot;error reading version information: &quot; + t.getMessage());</span>
+<span class="nc" id="L260">    }    </span>
+<span class="nc" id="L261">  }</span>
+  
+  // print out the build.properties settings
+  public static void showBuild(ClassLoader cl) {
+    try {
+<span class="nc" id="L266">      InputStream is = cl.getResourceAsStream(&quot;gov/nasa/jpf/build.properties&quot;);</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">      if (is != null){</span>
+<span class="nc" id="L268">        System.out.println(&quot;JPF build information:&quot;);</span>
+
+<span class="nc" id="L270">        Properties buildProperties = new Properties();</span>
+<span class="nc" id="L271">        buildProperties.load(is);</span>
+
+<span class="nc bnc" id="L273" title="All 2 branches missed.">        for (Map.Entry&lt;Object, Object&gt; e : buildProperties.entrySet()) {</span>
+<span class="nc" id="L274">          System.out.print('\t');</span>
+<span class="nc" id="L275">          System.out.print(e.getKey());</span>
+<span class="nc" id="L276">          System.out.print(&quot; = &quot;);</span>
+<span class="nc" id="L277">          System.out.println(e.getValue());</span>
+<span class="nc" id="L278">        }</span>
+
+<span class="nc" id="L280">        is.close();</span>
+
+<span class="nc" id="L282">      } else {</span>
+<span class="nc" id="L283">        System.out.println(&quot;no JPF build information available&quot;);</span>
+      }
+
+<span class="nc" id="L286">    } catch (Throwable t){</span>
+<span class="nc" id="L287">      System.err.println(&quot;error reading build information: &quot; + t.getMessage());</span>
+<span class="nc" id="L288">    }</span>
+<span class="nc" id="L289">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

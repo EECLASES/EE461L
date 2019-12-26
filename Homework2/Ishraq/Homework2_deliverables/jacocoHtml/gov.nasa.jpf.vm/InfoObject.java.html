@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InfoObject.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">InfoObject.java</span></div><h1>InfoObject.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.ObjectList;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+
+/**
+ * common root for ClassInfo, MethodInfo, FieldInfo (and maybe more to follow)
+ * 
+ * so far, it's used to factorize the annotation support, but we can also
+ * move the attributes up here
+ * 
+ * Note this is used for both declaration- and type- annotations since there is
+ * a cross-over (type annotations of classes/interfaces are visible through the
+ * reflection API that is otherwise just reserved for declaration annotations)
+ * 
+ * 2do - there are 3 annotation positions that are valid for both type and declaration
+ * annotations: class/interface, field and formal method parameters. Of these,
+ * only class/interface type annotations can be queried at runtime, i.e. are
+ * treated similarly to declaration annotations. It is not clear if this is a
+ * Java 8 implementation artifact or intentional
+ * 
+ * Other than annotating classes/interfaces, type and declaration annotations
+ * are kept separate and only the latter ones can be queried from Java, hence
+ * we provide a query API that is only accessible from instructions,
+ * native peers and listeners. Type annotations are used
+ */
+<span class="fc" id="L48">public abstract class InfoObject implements Cloneable {</span>
+
+<span class="fc" id="L50">  static AnnotationInfo[] NO_ANNOTATIONS = new AnnotationInfo[0];</span>
+<span class="fc" id="L51">  static AbstractTypeAnnotationInfo[] NO_TYPE_ANNOTATIONS = new AbstractTypeAnnotationInfo[0];</span>
+  
+  // the number of annotations per class/method/field is usually
+  // small enough so that simple arrays are more efficient than HashMaps
+<span class="fc" id="L55">  protected AnnotationInfo[] annotations = NO_ANNOTATIONS;</span>
+
+<span class="fc" id="L57">  protected AbstractTypeAnnotationInfo[] typeAnnotations = NO_TYPE_ANNOTATIONS;</span>
+  
+  /** 
+   * user defined attribute objects.
+   * Note - this is NOT automatically state restored upon backtracking,
+   * subclasses have to do this on their own if required
+   */
+  protected Object attr;
+  
+  
+  public void setAnnotations (AnnotationInfo[] annotations){
+<span class="nc" id="L68">    this.annotations = annotations;</span>
+<span class="nc" id="L69">  }</span>
+  
+  public void addAnnotations (AnnotationInfo[] annotations){
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">    if (annotations == null){</span>
+<span class="nc" id="L73">      this.annotations = annotations;</span>
+    } else {
+<span class="fc" id="L75">      AnnotationInfo[] newAi = new AnnotationInfo[this.annotations.length + annotations.length];</span>
+<span class="fc" id="L76">      System.arraycopy(this.annotations,0,newAi, 0, this.annotations.length);</span>
+<span class="fc" id="L77">      System.arraycopy(annotations, 0, newAi, this.annotations.length, annotations.length);</span>
+<span class="fc" id="L78">      this.annotations = newAi;</span>
+    }
+<span class="fc" id="L80">  }</span>
+  
+  public void addAnnotation (AnnotationInfo newAnnotation){
+<span class="nc" id="L83">    AnnotationInfo[] ai = annotations;</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">    if (ai == null){</span>
+<span class="nc" id="L85">      ai = new AnnotationInfo[1];</span>
+<span class="nc" id="L86">      ai[0] = newAnnotation;</span>
+
+    } else {
+<span class="nc" id="L89">      int len = annotations.length;</span>
+<span class="nc" id="L90">      ai = new AnnotationInfo[len+1];</span>
+<span class="nc" id="L91">      System.arraycopy(annotations, 0, ai, 0, len);</span>
+<span class="nc" id="L92">      ai[len] = newAnnotation;</span>
+    }
+
+<span class="nc" id="L95">    annotations = ai;</span>
+<span class="nc" id="L96">  }</span>
+
+  // to be overridden by ClassInfo because of superclass inhertited annotations
+  public boolean hasAnnotations(){
+<span class="nc bnc" id="L100" title="All 2 branches missed.">    return (annotations != NO_ANNOTATIONS);</span>
+  }
+  
+  // to be overridden by ClassInfo because of superclass inhertited annotations
+  public AnnotationInfo[] getAnnotations() {
+<span class="fc" id="L105">    return annotations;</span>
+  }
+      
+  // to be overridden by ClassInfo because of superclass inhertited annotations
+  public AnnotationInfo getAnnotation (String name){    
+<span class="fc" id="L110">    AnnotationInfo[] ai = annotations;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">    if (ai != NO_ANNOTATIONS){</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">      for (int i=0; i&lt;ai.length; i++){</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (ai[i].getName().equals(name)){</span>
+<span class="fc" id="L114">          return ai[i];</span>
+        }
+      }
+    }
+<span class="fc" id="L118">    return null;</span>
+  }
+  
+  public boolean hasAnnotation (String name){
+<span class="fc bfc" id="L122" title="All 2 branches covered.">    return getAnnotation(name) != null;    </span>
+  }
+  
+  public AnnotationInfo[] getDeclaredAnnotations(){
+<span class="fc" id="L126">    return annotations;</span>
+  }
+
+  //--- type annotations
+  
+  public void setTypeAnnotations (AbstractTypeAnnotationInfo[] typeAnnotations){
+<span class="nc" id="L132">    this.typeAnnotations = typeAnnotations;</span>
+<span class="nc" id="L133">  }</span>
+
+  public void addTypeAnnotations (AbstractTypeAnnotationInfo[] tas){
+<span class="fc bfc" id="L136" title="All 2 branches covered.">    if (typeAnnotations == NO_TYPE_ANNOTATIONS){</span>
+<span class="fc" id="L137">      typeAnnotations = tas;</span>
+      
+    } else {
+<span class="fc" id="L140">      int oldLen = typeAnnotations.length;</span>
+<span class="fc" id="L141">      AbstractTypeAnnotationInfo[] newTA = new AbstractTypeAnnotationInfo[oldLen + tas.length];</span>
+<span class="fc" id="L142">      System.arraycopy(typeAnnotations, 0, newTA, 0, oldLen);</span>
+<span class="fc" id="L143">      System.arraycopy(tas, 0, newTA, oldLen, tas.length);</span>
+<span class="fc" id="L144">      typeAnnotations = newTA;</span>
+    }
+<span class="fc" id="L146">  }</span>
+  
+  public void addTypeAnnotation (AbstractTypeAnnotationInfo newAnnotation){
+<span class="fc" id="L149">    AbstractTypeAnnotationInfo[] ai = typeAnnotations;</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">    if (ai == null){</span>
+<span class="nc" id="L151">      ai = new AbstractTypeAnnotationInfo[1];</span>
+<span class="nc" id="L152">      ai[0] = newAnnotation;</span>
+
+    } else {
+<span class="fc" id="L155">      int len = annotations.length;</span>
+<span class="fc" id="L156">      ai = new AbstractTypeAnnotationInfo[len+1];</span>
+<span class="fc" id="L157">      System.arraycopy(annotations, 0, ai, 0, len);</span>
+<span class="fc" id="L158">      ai[len] = newAnnotation;</span>
+    }
+
+<span class="fc" id="L161">    typeAnnotations = ai;</span>
+<span class="fc" id="L162">  }</span>
+
+  
+  public AbstractTypeAnnotationInfo[] getTypeAnnotations() {
+<span class="fc" id="L166">    return typeAnnotations;</span>
+  }
+  
+  public boolean hasTypeAnnotations(){
+<span class="nc bnc" id="L170" title="All 2 branches missed.">    return (typeAnnotations != NO_TYPE_ANNOTATIONS);    </span>
+  }
+  
+  public boolean hasTypeAnnotation (String name){
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    return getTypeAnnotation(name) != null;    </span>
+  }
+  
+  public AbstractTypeAnnotationInfo getTypeAnnotation (String annoClsName){    
+<span class="nc" id="L178">    AbstractTypeAnnotationInfo[] ai = typeAnnotations;</span>
+<span class="nc bnc" id="L179" title="All 2 branches missed.">    if (ai != NO_TYPE_ANNOTATIONS){</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">      for (int i=0; i&lt;ai.length; i++){</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        if (ai[i].getName().equals(annoClsName)){</span>
+<span class="nc" id="L182">          return ai[i];</span>
+        }
+      }
+    }
+<span class="nc" id="L186">    return null;</span>
+  }
+
+  public &lt;T extends AbstractTypeAnnotationInfo&gt; List&lt;T&gt; getTargetTypeAnnotations (Class&lt;T&gt; targetType){
+<span class="fc" id="L190">    List&lt;T&gt; list = null;</span>
+    
+<span class="fc" id="L192">    AbstractTypeAnnotationInfo[] ais = typeAnnotations;</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">    if (ais != NO_TYPE_ANNOTATIONS){</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">      for (AbstractTypeAnnotationInfo ai : ais){</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (targetType.isAssignableFrom(ai.getClass())){</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">          if (list == null){</span>
+<span class="fc" id="L197">            list = new ArrayList();</span>
+          }
+<span class="fc" id="L199">          list.add((T)ai);</span>
+        }
+      }
+    }
+    
+<span class="fc bfc" id="L204" title="All 2 branches covered.">    if (list != null){</span>
+<span class="fc" id="L205">      return list;</span>
+    } else {
+<span class="fc" id="L207">      return Collections.emptyList();</span>
+    }
+  }
+  
+  //--- the generic attribute API
+
+  public boolean hasAttr () {
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    return (attr != null);</span>
+  }
+
+  public boolean hasAttr (Class&lt;?&gt; attrType){
+<span class="fc" id="L218">    return ObjectList.containsType(attr, attrType);</span>
+  }
+
+  public boolean hasAttrValue (Object a){
+<span class="nc" id="L222">    return ObjectList.contains(attr, a);</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getAttr(){
+<span class="nc" id="L230">    return attr;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setAttr (Object a){
+<span class="fc" id="L240">    attr = a;    </span>
+<span class="fc" id="L241">  }</span>
+
+  public void addAttr (Object a){
+<span class="fc" id="L244">    attr = ObjectList.add(attr, a);</span>
+<span class="fc" id="L245">  }</span>
+
+  public void removeAttr (Object a){
+<span class="nc" id="L248">    attr = ObjectList.remove(attr, a);</span>
+<span class="nc" id="L249">  }</span>
+
+  public void replaceAttr (Object oldAttr, Object newAttr){
+<span class="nc" id="L252">    attr = ObjectList.replace(attr, oldAttr, newAttr);</span>
+<span class="nc" id="L253">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getAttr (Class&lt;T&gt; attrType) {
+<span class="fc" id="L260">    return ObjectList.getFirst(attr, attrType);</span>
+  }
+
+  public &lt;T&gt; T getNextAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L264">    return ObjectList.getNext(attr, attrType, prev);</span>
+  }
+
+  public ObjectList.Iterator attrIterator(){
+<span class="nc" id="L268">    return ObjectList.iterator(attr);</span>
+  }
+  
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; attrIterator(Class&lt;T&gt; attrType){
+<span class="nc" id="L272">    return ObjectList.typedIterator(attr, attrType);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

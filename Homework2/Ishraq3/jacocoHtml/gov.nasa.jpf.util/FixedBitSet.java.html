@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FixedBitSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">FixedBitSet.java</span></div><h1>FixedBitSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.JPFException;
+import java.util.NoSuchElementException;
+
+/**
+ * BitSet like interface for fixed size bit sets
+ * 
+ * We keep this as an interface so that we can have java.util.BitSet
+ * subclasses as implementations
+ */
+public interface FixedBitSet extends Cloneable, IntSet {
+
+  void set (int i);
+  void set (int i, boolean val);
+  boolean get (int i);
+  void clear (int i);
+  
+  int nextClearBit (int fromIndex);
+  int nextSetBit (int fromIndex);
+
+  boolean isEmpty();
+  int size();
+  
+  int cardinality();
+  int length();
+  int capacity();
+  
+  void clear();
+  
+  void hash (HashData hd);
+  
+  FixedBitSet clone();
+}
+
+/**
+ * this is the base class for our non java.util.BitSet based FixedBitSet implementations
+ */
+<span class="fc" id="L57">abstract class AbstractFixedBitSet implements FixedBitSet {</span>
+  
+<span class="fc" id="L59">  class SetBitIterator implements IntIterator {</span>
+<span class="fc" id="L60">    int cur = 0;</span>
+    int nBits;
+    
+    @Override
+    public void remove() {
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      if (cur &gt;0){</span>
+<span class="nc" id="L66">        clear(cur-1);</span>
+      }
+<span class="nc" id="L68">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">      return nBits &lt; cardinality;</span>
+    }
+
+    @Override
+    public int next() {
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">      if (nBits &lt; cardinality){</span>
+<span class="fc" id="L78">        int idx = nextSetBit(cur);</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (idx &gt;= 0){</span>
+<span class="fc" id="L80">          nBits++;</span>
+<span class="fc" id="L81">          cur = idx+1;</span>
+        }
+<span class="fc" id="L83">        return idx;</span>
+        
+      } else {
+<span class="nc" id="L86">        throw new NoSuchElementException();</span>
+      }
+    }
+  }
+
+  
+  protected int cardinality;
+  
+  @Override
+  public AbstractFixedBitSet clone(){
+    try {
+<span class="fc" id="L97">      return (AbstractFixedBitSet) super.clone();</span>
+<span class="nc" id="L98">    } catch (CloneNotSupportedException ex) {</span>
+<span class="nc" id="L99">      throw new JPFException(&quot;BitSet64 clone failed&quot;);</span>
+    }  
+  }
+  
+  @Override
+  public void set (int i, boolean val){
+<span class="fc bfc" id="L105" title="All 2 branches covered.">    if (val) {</span>
+<span class="fc" id="L106">      set(i);</span>
+    } else {
+<span class="fc" id="L108">      clear(i);</span>
+    }
+<span class="fc" id="L110">  }</span>
+
+  @Override
+  public int cardinality() {
+<span class="fc" id="L114">    return cardinality;</span>
+  }
+
+  @Override
+  public boolean isEmpty() {
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">    return (cardinality == 0);</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc" id="L124">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L125">    sb.append('{');</span>
+
+<span class="nc" id="L127">    boolean first = true;</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">    for (int i=nextSetBit(0); i&gt;= 0; i = nextSetBit(i+1)){</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      if (!first){</span>
+<span class="nc" id="L130">        sb.append(',');</span>
+      } else {
+<span class="nc" id="L132">        first = false;</span>
+      }
+<span class="nc" id="L134">      sb.append(i);</span>
+    }
+
+<span class="nc" id="L137">    sb.append('}');</span>
+
+<span class="nc" id="L139">    return sb.toString();</span>
+  }
+
+  //--- IntSet interface
+  
+    
+  @Override
+  public boolean add(int i) {
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">    if (get(i)) {</span>
+<span class="nc" id="L148">      return false;</span>
+    } else {
+<span class="fc" id="L150">      set(i);</span>
+<span class="fc" id="L151">      return true;</span>
+    }
+  }
+
+  @Override
+  public boolean remove(int i) {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">    if (get(i)) {</span>
+<span class="nc" id="L158">      clear(i);</span>
+<span class="nc" id="L159">      return true;</span>
+    } else {
+<span class="nc" id="L161">      return false;</span>
+    }
+  }
+
+  @Override
+  public boolean contains(int i) {
+<span class="fc" id="L167">    return get(i);</span>
+  }
+
+  @Override
+  public IntIterator intIterator() {
+<span class="fc" id="L172">    return new SetBitIterator();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

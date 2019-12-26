@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InstanceInvocation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">InstanceInvocation.java</span></div><h1>InstanceInvocation.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+import gov.nasa.jpf.vm.bytecode.InstanceInvokeInstruction;
+
+/**
+ * base class for INVOKEVIRTUAL, INVOKESPECIAL and INVOLEINTERFACE
+ */
+public abstract class InstanceInvocation extends JVMInvokeInstruction implements InstanceInvokeInstruction {
+
+<span class="nc" id="L33">  protected InstanceInvocation() {}</span>
+
+  protected InstanceInvocation (String clsDescriptor, String methodName, String signature){
+<span class="fc" id="L36">    super(clsDescriptor, methodName, signature);</span>
+<span class="fc" id="L37">  }</span>
+
+  @Override
+  public int getArgSize () {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">    if (argSize &lt; 0) {</span>
+<span class="fc" id="L42">      argSize = Types.getArgumentsSize(signature) + 1; // 'this'</span>
+    }
+
+<span class="fc" id="L45">    return argSize;</span>
+  }
+  
+  @Override
+  public int getCalleeThis (ThreadInfo ti) {
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    if (!ti.isPostExec()){</span>
+      // we have to dig out the 'this' reference from the callers stack
+<span class="fc" id="L52">      return ti.getCalleeThis( getArgSize());</span>
+    } else {
+      // enter() cached it
+<span class="fc" id="L55">      return lastObj;</span>
+    }
+  }
+
+  @Override
+  public int getObjectSlot (StackFrame frame){
+<span class="fc" id="L61">    int top = frame.getTopPos();</span>
+<span class="fc" id="L62">    int argSize = getArgSize();</span>
+    
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">    if (argSize == 1){ // object ref is on top</span>
+<span class="fc" id="L65">      return top;</span>
+      
+    } else {
+<span class="nc" id="L68">      return top - argSize -1;</span>
+    }
+  }
+  
+  public ElementInfo getThisElementInfo (ThreadInfo ti) {
+<span class="nc" id="L73">    int thisRef = getCalleeThis(ti);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">    if (thisRef != MJIEnv.NULL) {</span>
+<span class="nc" id="L75">      return ti.getElementInfo(thisRef);</span>
+    } else {
+<span class="nc" id="L77">      return null;</span>
+    }
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L83">	  insVisitor.visit(this);</span>
+<span class="nc" id="L84">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GenPeer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.tool</a> &gt; <span class="el_source">GenPeer.java</span></div><h1>GenPeer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.tool;
+
+import gov.nasa.jpf.vm.Types;
+
+import java.io.PrintWriter;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+
+
+/**
+ * tool to automatically generate the framework of a native peer MJI class,
+ * given it's model class. GenPeer collects all the native methods from the 
+ * model class, and creates the corresponding native peer methods
+ */
+<span class="nc" id="L33">public class GenPeer {</span>
+  static final String SYS_PKG = &quot;gov.nasa.jpf.vm&quot;;
+  static final String MJI_ENV = &quot;gov.nasa.jpf.vm.MJIEnv&quot;;
+  static final String NATIVEPEER = &quot;gov.nasa.jpf.vm.NativePeer&quot;;
+  static final String MJI_ANNOTATION = &quot;gov.nasa.jpf.annotation.MJI&quot;;
+  static final String INDENT = &quot;  &quot;;
+  static final String SUPERCLASS = &quot;NativePeer&quot;;
+  static final String MJI_ANN = &quot;@MJI&quot;;
+  static final String METHOD_PREFIX = &quot;public&quot;;
+  static final String ENV_ARG = &quot;MJIEnv env&quot;;
+  static final String OBJ_ARG = &quot;int objRef&quot;;
+  static final String CLS_ARG = &quot;int clsObjRef&quot;;
+  static final String REF_TYPE = &quot;int&quot;;
+  static final String NULL = &quot;MJIEnv.NULL&quot;;
+
+  static String       clsName;
+  static String[]     mths;
+
+  // our options
+  static boolean isSystemPkg;
+  static boolean allMethods;
+  static boolean mangleNames;
+  static boolean clinit;
+
+  public static void main (String[] args) {
+<span class="nc bnc" id="L58" title="All 4 branches missed.">    if ((args.length == 0) || !readOptions(args)) {</span>
+<span class="nc" id="L59">      showUsage();</span>
+
+<span class="nc" id="L61">      return;</span>
+    }
+
+<span class="nc" id="L64">    PrintWriter pw = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L65">    Class&lt;?&gt;       cls = getClass(clsName);</span>
+
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (cls != null) {</span>
+<span class="nc" id="L68">      printNativePeer(cls, pw);</span>
+    }
+<span class="nc" id="L70">  }</span>
+
+  static Class&lt;?&gt; getClass (String cname) {
+<span class="nc" id="L73">    Class&lt;?&gt; clazz = null;</span>
+
+    try {
+<span class="nc" id="L76">      clazz = Class.forName(cname);</span>
+<span class="nc" id="L77">    } catch (ClassNotFoundException cnfx) {</span>
+<span class="nc" id="L78">      System.err.println(&quot;target class not found: &quot; + cname);</span>
+<span class="nc" id="L79">    } catch (Throwable x) {</span>
+<span class="nc" id="L80">      x.printStackTrace();</span>
+<span class="nc" id="L81">    }</span>
+
+<span class="nc" id="L83">    return clazz;</span>
+  }
+
+  static boolean isMJICandidate (Method m) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">    if (allMethods) {</span>
+<span class="nc" id="L88">      return true;</span>
+    }
+
+<span class="nc bnc" id="L91" title="All 2 branches missed.">    if (mths != null) {</span>
+<span class="nc" id="L92">      String name = m.getName();</span>
+
+<span class="nc bnc" id="L94" title="All 2 branches missed.">      for (int i = 0; i &lt; mths.length; i++) {</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">        if (name.equals(mths[i])) {</span>
+<span class="nc" id="L96">          return true;</span>
+        }
+      }
+<span class="nc" id="L99">    } else {</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">      if ((m.getModifiers() &amp; Modifier.NATIVE) != 0) {</span>
+<span class="nc" id="L101">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L105">    return false;</span>
+  }
+
+  static void getMangledName (Method m) {
+<span class="nc" id="L109">    StringBuilder sb = new StringBuilder(50);</span>
+
+<span class="nc" id="L111">    sb.append(m.getName());</span>
+<span class="nc" id="L112">    sb.append(&quot;__&quot;);</span>
+<span class="nc" id="L113">  }</span>
+
+  static boolean isPrimitiveType (String t) {
+<span class="nc bnc" id="L116" title="All 6 branches missed.">    return (&quot;int&quot;.equals(t) || &quot;long&quot;.equals(t) || &quot;boolean&quot;.equals(t) || </span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">           &quot;void&quot;.equals(t) || // not really, but useful for returnTypes</span>
+<span class="nc bnc" id="L118" title="All 6 branches missed.">           &quot;byte&quot;.equals(t) || &quot;char&quot;.equals(t) || &quot;short&quot;.equals(t) || </span>
+<span class="nc bnc" id="L119" title="All 4 branches missed.">           &quot;float&quot;.equals(t) || &quot;double&quot;.equals(t));</span>
+  }
+
+  static void printClinit (PrintWriter pw) {
+<span class="nc" id="L123">    pw.print(INDENT);</span>
+<span class="nc" id="L124">    pw.print(METHOD_PREFIX);</span>
+<span class="nc" id="L125">    pw.print(&quot; void $clinit (&quot;);</span>
+<span class="nc" id="L126">    pw.print(ENV_ARG);</span>
+<span class="nc" id="L127">    pw.print(&quot;, &quot;);</span>
+<span class="nc" id="L128">    pw.print(CLS_ARG);</span>
+<span class="nc" id="L129">    pw.println(&quot;) {&quot;);</span>
+<span class="nc" id="L130">    pw.print(INDENT);</span>
+<span class="nc" id="L131">    pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L132">  }</span>
+
+  static void printFooter (Class&lt;?&gt; cls, PrintWriter pw) {
+<span class="nc" id="L135">    pw.println(&quot;}&quot;);</span>
+<span class="nc" id="L136">  }</span>
+
+  static void printHeader (Class&lt;?&gt; cls, PrintWriter pw) {
+<span class="nc bnc" id="L139" title="All 2 branches missed.">    if (isSystemPkg) {</span>
+<span class="nc" id="L140">      pw.print(&quot;package &quot;);</span>
+<span class="nc" id="L141">      pw.print(SYS_PKG);</span>
+<span class="nc" id="L142">      pw.println(';');</span>
+<span class="nc" id="L143">      pw.println();</span>
+    }
+
+<span class="nc" id="L146">    pw.print(&quot;import &quot;);</span>
+<span class="nc" id="L147">    pw.print(MJI_ENV);</span>
+<span class="nc" id="L148">    pw.println(&quot;;&quot;);</span>
+<span class="nc" id="L149">    pw.print(&quot;import &quot;);</span>
+<span class="nc" id="L150">    pw.print(NATIVEPEER);</span>
+<span class="nc" id="L151">    pw.println(&quot;;&quot;);</span>
+<span class="nc" id="L152">    pw.print(&quot;import &quot;);</span>
+<span class="nc" id="L153">    pw.print(MJI_ANNOTATION);</span>
+<span class="nc" id="L154">    pw.println(&quot;;&quot;);</span>
+<span class="nc" id="L155">    pw.println();</span>
+
+<span class="nc" id="L157">    String cname = cls.getName().replace('.', '_');</span>
+
+<span class="nc" id="L159">    pw.print(&quot;public class &quot;);</span>
+<span class="nc" id="L160">    pw.print(&quot;JPF_&quot;);</span>
+<span class="nc" id="L161">    pw.print(cname);</span>
+<span class="nc" id="L162">    pw.print(&quot; extends &quot;);</span>
+<span class="nc" id="L163">    pw.print(SUPERCLASS);</span>
+<span class="nc" id="L164">    pw.println(&quot; {&quot;);</span>
+<span class="nc" id="L165">  }</span>
+
+  static void printMethodBody (String rt, String t, PrintWriter pw) {
+<span class="nc bnc" id="L168" title="All 2 branches missed.">    if (!&quot;void&quot;.equals(rt)) {</span>
+<span class="nc" id="L169">      pw.print(INDENT);</span>
+<span class="nc" id="L170">      pw.print(INDENT);</span>
+<span class="nc" id="L171">      pw.print(rt);</span>
+
+<span class="nc bnc" id="L173" title="All 4 branches missed.">      if ((rt == REF_TYPE) &amp;&amp; (rt != t)) {</span>
+<span class="nc" id="L174">        pw.print(&quot; r&quot;);</span>
+<span class="nc" id="L175">        pw.print(t);</span>
+<span class="nc" id="L176">        pw.print(&quot; = &quot;);</span>
+<span class="nc" id="L177">        pw.print(NULL);</span>
+<span class="nc" id="L178">        pw.println(&quot;;&quot;);</span>
+
+<span class="nc" id="L180">        pw.print(INDENT);</span>
+<span class="nc" id="L181">        pw.print(INDENT);</span>
+<span class="nc" id="L182">        pw.print(&quot;return r&quot;);</span>
+<span class="nc" id="L183">        pw.print(t);</span>
+<span class="nc" id="L184">        pw.println(&quot;;&quot;);</span>
+      } else {
+<span class="nc" id="L186">        pw.print(&quot; v = (&quot;);</span>
+<span class="nc" id="L187">        pw.print(rt);</span>
+<span class="nc" id="L188">        pw.println(&quot;)0;&quot;);</span>
+
+<span class="nc" id="L190">        pw.print(INDENT);</span>
+<span class="nc" id="L191">        pw.print(INDENT);</span>
+<span class="nc" id="L192">        pw.println(&quot;return v;&quot;);</span>
+      }
+    }
+<span class="nc" id="L195">  }</span>
+
+  static void printMethodName (Method m, PrintWriter pw) {
+<span class="nc" id="L198">    String name = null;</span>
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">    if (mangleNames) {</span>
+<span class="nc" id="L201">      name = Types.getJNIMangledMethodName(m);</span>
+    } else {
+<span class="nc" id="L203">      name = m.getName();</span>
+    }
+
+<span class="nc" id="L206">    pw.print(name);</span>
+<span class="nc" id="L207">  }</span>
+
+  static void printMJIAnnotation(PrintWriter pw) {
+<span class="nc" id="L210">    pw.print(INDENT);</span>
+<span class="nc" id="L211">    pw.println(MJI_ANN);</span>
+<span class="nc" id="L212">  }</span>
+
+  static void printMethodStub (String condPrefix, Method m, PrintWriter pw) {
+<span class="nc" id="L215">    String t = null;</span>
+    String rt;
+
+<span class="nc" id="L218">    printMJIAnnotation(pw);</span>
+
+<span class="nc" id="L220">    pw.print(INDENT);</span>
+<span class="nc" id="L221">    pw.print(METHOD_PREFIX);</span>
+<span class="nc" id="L222">    pw.print(' ');</span>
+
+<span class="nc bnc" id="L224" title="All 2 branches missed.">    if (condPrefix == null) {</span>
+<span class="nc" id="L225">      t = rt = stripType(m.getReturnType().getName());</span>
+
+<span class="nc bnc" id="L227" title="All 2 branches missed.">      if (!isPrimitiveType(rt)) {</span>
+<span class="nc" id="L228">        rt = REF_TYPE;</span>
+      }
+    } else {
+<span class="nc" id="L231">      rt = &quot;boolean&quot;;</span>
+    }
+
+<span class="nc" id="L234">    pw.print(rt);</span>
+
+<span class="nc" id="L236">    pw.print(' ');</span>
+
+<span class="nc bnc" id="L238" title="All 2 branches missed.">    if (condPrefix != null) {</span>
+<span class="nc" id="L239">      pw.print(condPrefix);</span>
+    }
+
+<span class="nc" id="L242">    printMethodName(m, pw);</span>
+<span class="nc" id="L243">    pw.print(&quot; (&quot;);</span>
+
+<span class="nc" id="L245">    printStdArgs(m, pw);</span>
+<span class="nc" id="L246">    printTargetArgs(m, pw);</span>
+
+<span class="nc" id="L248">    pw.println(&quot;) {&quot;);</span>
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    if (condPrefix == null) {</span>
+<span class="nc" id="L251">      printMethodBody(rt, stripType(null, t), pw);</span>
+    } else {
+<span class="nc" id="L253">      pw.print(INDENT);</span>
+<span class="nc" id="L254">      pw.print(INDENT);</span>
+<span class="nc" id="L255">      pw.println(&quot;return true;&quot;);</span>
+    }
+
+<span class="nc" id="L258">    pw.print(INDENT);</span>
+<span class="nc" id="L259">    pw.println('}');</span>
+<span class="nc" id="L260">  }</span>
+
+  static void printNativePeer (Class&lt;?&gt; cls, PrintWriter pw) {
+<span class="nc" id="L263">    Method[] mths = cls.getDeclaredMethods();</span>
+
+<span class="nc" id="L265">    printHeader(cls, pw);</span>
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">    if (clinit) {</span>
+<span class="nc" id="L268">      printClinit(pw);</span>
+    }
+
+<span class="nc bnc" id="L271" title="All 2 branches missed.">    for (int i = 0; i &lt; mths.length; i++) {</span>
+<span class="nc" id="L272">      Method m = mths[i];</span>
+
+<span class="nc bnc" id="L274" title="All 2 branches missed.">      if (isMJICandidate(m)) {</span>
+<span class="nc" id="L275">        pw.println();</span>
+<span class="nc" id="L276">        printMethodStub(null, m, pw);</span>
+      }
+    }
+
+<span class="nc" id="L280">    printFooter(cls, pw);</span>
+<span class="nc" id="L281">  }</span>
+
+  static void printStdArgs (Method m, PrintWriter pw) {
+<span class="nc" id="L284">    pw.print(ENV_ARG);</span>
+<span class="nc" id="L285">    pw.print(&quot;, &quot;);</span>
+
+<span class="nc bnc" id="L287" title="All 2 branches missed.">    if ((m.getModifiers() &amp; Modifier.STATIC) != 0) {</span>
+<span class="nc" id="L288">      pw.print(CLS_ARG);</span>
+    } else {
+<span class="nc" id="L290">      pw.print(OBJ_ARG);</span>
+    }
+<span class="nc" id="L292">  }</span>
+
+  static void printTargetArgs (Method m, PrintWriter pw) {
+<span class="nc" id="L295">    Class&lt;?&gt;[] pt = m.getParameterTypes();</span>
+
+<span class="nc bnc" id="L297" title="All 2 branches missed.">    for (int i = 0; i &lt; pt.length; i++) {</span>
+<span class="nc" id="L298">      String  t = stripType(pt[i].getName());</span>
+<span class="nc" id="L299">      boolean isPrim = isPrimitiveType(t);</span>
+
+<span class="nc" id="L301">      pw.print(&quot;, &quot;);</span>
+
+<span class="nc bnc" id="L303" title="All 2 branches missed.">      if (isPrim) {</span>
+<span class="nc" id="L304">        pw.print(t);</span>
+<span class="nc" id="L305">        pw.print(&quot; v&quot;);</span>
+<span class="nc" id="L306">        pw.print(i);</span>
+      } else {
+<span class="nc" id="L308">        pw.print(REF_TYPE);</span>
+<span class="nc" id="L309">        pw.print(&quot; r&quot;);</span>
+<span class="nc" id="L310">        pw.print(stripType(null, t));</span>
+<span class="nc" id="L311">        pw.print(i);</span>
+      }
+    }
+<span class="nc" id="L314">  }</span>
+
+  static String[] readNames (String[] args, int i) {
+<span class="nc" id="L317">    ArrayList&lt;String&gt; a = null;</span>
+
+<span class="nc bnc" id="L319" title="All 4 branches missed.">    for (; (i &lt; args.length) &amp;&amp; (args[i].charAt(0) != '-'); i++) {</span>
+<span class="nc bnc" id="L320" title="All 2 branches missed.">      if (a == null) {</span>
+<span class="nc" id="L321">        a = new ArrayList&lt;String&gt;();</span>
+      }
+
+<span class="nc" id="L324">      a.add(args[i]);</span>
+    }
+
+<span class="nc bnc" id="L327" title="All 2 branches missed.">    if (a != null) {</span>
+<span class="nc" id="L328">      String[] names = new String[a.size()];</span>
+<span class="nc" id="L329">      a.toArray(names);</span>
+
+<span class="nc" id="L331">      return names;</span>
+    }
+
+<span class="nc" id="L334">    return null;</span>
+  }
+
+  static boolean readOptions (String[] args) {
+<span class="nc bnc" id="L338" title="All 2 branches missed.">    for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="nc" id="L339">      String arg = args[i];</span>
+
+<span class="nc bnc" id="L341" title="All 2 branches missed.">      if (&quot;-s&quot;.equals(arg)) {</span>
+<span class="nc" id="L342">        isSystemPkg = true;</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">      } else if (&quot;-m&quot;.equals(arg)) {</span>
+<span class="nc" id="L344">        mangleNames = true;</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">      } else if (&quot;-a&quot;.equals(arg)) {</span>
+<span class="nc" id="L346">        allMethods = true;</span>
+<span class="nc bnc" id="L347" title="All 2 branches missed.">      } else if (&quot;-ci&quot;.equals(arg)) {</span>
+<span class="nc" id="L348">        clinit = true;</span>
+<span class="nc bnc" id="L349" title="All 2 branches missed.">      } else if (arg.charAt(0) != '-') {</span>
+        // rather simple
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if (clsName == null) {</span>
+<span class="nc" id="L352">          clsName = arg;</span>
+        } else {
+<span class="nc" id="L354">          mths = readNames(args, i);</span>
+<span class="nc" id="L355">          i += mths.length;</span>
+        }
+      } else {
+<span class="nc" id="L358">        System.err.println(&quot;unknown option: &quot; + arg);</span>
+<span class="nc" id="L359">        showUsage();</span>
+
+<span class="nc" id="L361">        return false;</span>
+      }
+    }
+
+<span class="nc bnc" id="L365" title="All 2 branches missed.">    return (clsName != null);</span>
+  }
+
+  static void showUsage () {
+<span class="nc" id="L369">    System.out.println(</span>
+          &quot;usage:   'GenPeer [&lt;option&gt;..] &lt;className&gt; [&lt;method&gt;..]'&quot;);
+<span class="nc" id="L371">    System.out.println(&quot;options:  -s  : system peer class (gov.nasa.jpf.vm)&quot;);</span>
+<span class="nc" id="L372">    System.out.println(&quot;          -ci : create &lt;clinit&gt; MJI method&quot;);</span>
+<span class="nc" id="L373">    System.out.println(&quot;          -m  : create mangled method names&quot;);</span>
+<span class="nc" id="L374">    System.out.println(&quot;          -a  : create MJI methods for all target class methods&quot;);</span>
+<span class="nc" id="L375">  }</span>
+
+  static String stripType (String s) {
+<span class="nc" id="L378">    return stripType(&quot;java.lang&quot;, s);</span>
+  }
+
+  static String stripType (String prefix, String s) {
+<span class="nc" id="L382">    int i = s.lastIndexOf('.') + 1;</span>
+<span class="nc" id="L383">    int l = s.length() - 1;</span>
+
+<span class="nc bnc" id="L385" title="All 2 branches missed.">    if (s.charAt(l) == ';') {</span>
+<span class="nc" id="L386">      s = s.substring(0, l);</span>
+    }
+
+<span class="nc bnc" id="L389" title="All 2 branches missed.">    if (prefix == null) {</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">      if (i == 0) {</span>
+<span class="nc" id="L391">        return s;</span>
+      } else {
+<span class="nc" id="L393">        return s.substring(i);</span>
+      }
+    } else {
+<span class="nc bnc" id="L396" title="All 4 branches missed.">      if (s.startsWith(prefix) &amp;&amp; (prefix.length() + 1 == i)) {</span>
+<span class="nc" id="L397">        return s.substring(i);</span>
+      } else {
+<span class="nc" id="L399">        return s;</span>
+      }
+    }
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

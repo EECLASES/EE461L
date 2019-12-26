@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GlobalSharednessPolicy.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">GlobalSharednessPolicy.java</span></div><h1>GlobalSharednessPolicy.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.SparseObjVector;
+
+/**
+ * a SharedObjectPolicy that uses search global ThreadInfoSets and FieldLockInfos,
+ * i.e. we remember thread access of all previously executed paths.
+ * 
+ * Use this policy for bug finding modes that don't have to create replay-able traces.
+ * 
+ * Note that this policy requires search global object ids (SGOID), i.e. only works
+ * with Heap implementations providing SGOIDs
+ */
+
+public class GlobalSharednessPolicy extends GenericSharednessPolicy {
+  // our global caches
+<span class="fc" id="L35">  protected SparseObjVector&lt;ThreadInfoSet&gt; globalTisCache = new SparseObjVector&lt;ThreadInfoSet&gt;(1024);</span>
+<span class="fc" id="L36">  protected SparseObjVector&lt;FieldLockInfo&gt; globalFliCache = new SparseObjVector&lt;FieldLockInfo&gt;(1024);</span>
+  
+
+  public GlobalSharednessPolicy (Config config){
+<span class="fc" id="L40">    super(config);</span>
+<span class="fc" id="L41">  }</span>
+  
+  protected ThreadInfoSet getRegisteredThreadInfoSet (int key, ThreadInfo allocThread) {
+<span class="fc" id="L44">    ThreadInfoSet tis = globalTisCache.get(key);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    if (tis == null) {</span>
+<span class="fc" id="L46">      tis = new TidSet(allocThread);</span>
+<span class="fc" id="L47">      globalTisCache.set(key, tis);</span>
+    }
+    
+<span class="fc" id="L50">    return tis;    </span>
+  }
+  
+  protected FieldLockInfo getRegisteredFieldLockInfo (int key, ThreadInfo ti){
+<span class="fc" id="L54">    FieldLockInfo fli = globalFliCache.get(key);</span>
+    
+<span class="fc bfc" id="L56" title="All 2 branches covered.">    if (fli == null){</span>
+<span class="fc" id="L57">      int[] lockRefs = ti.getLockedObjectReferences();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">      if (lockRefs.length == 0) {</span>
+<span class="fc" id="L59">        fli = FieldLockInfo.getEmptyFieldLockInfo();</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">      } else if (lockRefs.length == 1){</span>
+<span class="fc" id="L61">        fli = new SingleLockThresholdFli(ti, lockRefs[0], lockThreshold);</span>
+      } else {
+<span class="nc" id="L63">        fli = new PersistentLockSetThresholdFli(ti, lockRefs, lockThreshold);</span>
+      }
+      
+<span class="fc" id="L66">      globalFliCache.set(key, fli);</span>
+    }
+    
+<span class="fc" id="L69">    return fli;</span>
+  }
+  
+  @Override
+  protected boolean checkOtherRunnables (ThreadInfo ti){
+    // this is a search global policy we don't care if other threads are runnable or already terminated
+<span class="fc" id="L75">    return true;</span>
+  }
+  
+  @Override
+  public void initializeObjectSharedness (ThreadInfo allocThread, DynamicElementInfo ei) {
+<span class="fc" id="L80">    ThreadInfoSet tis = getRegisteredThreadInfoSet(ei.getObjectRef(), allocThread);</span>
+<span class="fc" id="L81">    ei.setReferencingThreads( tis);</span>
+<span class="fc" id="L82">  }</span>
+
+  @Override
+  public void initializeClassSharedness (ThreadInfo allocThread, StaticElementInfo ei) {
+    ThreadInfoSet tis;
+<span class="fc" id="L87">    int ref = ei.getClassObjectRef();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">    if (ref == MJIEnv.NULL) { // startup class, we don't have a class object yet</span>
+      // note that we don't have to store this in our globalCache since we can never
+      // backtrack to a point where the startup classes were not initialized yet.
+      // &lt;2do&gt; is this true for MultiProcessVM ?
+<span class="fc" id="L92">      tis = new TidSet(allocThread);</span>
+    } else {
+<span class="fc" id="L94">      tis = getRegisteredThreadInfoSet(ref, allocThread);</span>
+    }
+    
+<span class="fc" id="L97">    ei.setReferencingThreads(tis);</span>
+<span class="fc" id="L98">    ei.setExposed(); // static fields are per se exposed</span>
+<span class="fc" id="L99">  }</span>
+
+  @Override
+  protected FieldLockInfo createFieldLockInfo (ThreadInfo ti, ElementInfo ei, FieldInfo fi) {
+    int id;
+    
+<span class="fc bfc" id="L105" title="All 2 branches covered.">    if (ei instanceof StaticElementInfo){</span>
+<span class="fc" id="L106">      id = ((StaticElementInfo)ei).getClassObjectRef();</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">      if (id == MJIEnv.NULL){</span>
+<span class="nc" id="L108">        return null;</span>
+      }
+    } else {
+<span class="fc" id="L111">      id = ei.getObjectRef();</span>
+    }
+    
+<span class="fc" id="L114">    return getRegisteredFieldLockInfo( id, ti);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

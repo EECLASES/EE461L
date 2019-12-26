@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AvailableBufferedInputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">AvailableBufferedInputStream.java</span></div><h1>AvailableBufferedInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+
+public class AvailableBufferedInputStream extends InputStream
+{
+   private static final boolean CLEAN               = false;
+           static final int     DEFAULT_BUFFER_SIZE = 16 * 1024;        // Not private for testing purposes
+   
+   private final InputStream m_input;
+   private final byte        m_buffer[];
+   private       int         m_read;
+   private       int         m_end;
+   
+   public AvailableBufferedInputStream(InputStream input)
+   {
+<span class="fc" id="L37">      this(input, DEFAULT_BUFFER_SIZE);</span>
+<span class="fc" id="L38">   }</span>
+   
+   public AvailableBufferedInputStream(InputStream input, int bufferSize)
+<span class="fc" id="L41">   {</span>
+<span class="fc" id="L42">      m_input  = input;</span>
+<span class="fc" id="L43">      m_buffer = new byte[bufferSize];</span>
+      
+<span class="fc bfc" id="L45" title="All 2 branches covered.">      if (input == null)</span>
+<span class="fc" id="L46">         throw new NullPointerException(&quot;input == null&quot;);</span>
+<span class="fc" id="L47">   }</span>
+   
+   public int getBufferSize()
+   {
+<span class="fc" id="L51">      return(m_buffer.length);</span>
+   }
+   
+   @Override
+  public int read() throws IOException
+   {
+<span class="fc bfc" id="L57" title="All 2 branches covered.">      if (m_read &gt;= m_end)</span>
+      {
+<span class="fc" id="L59">         fill();</span>
+      
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">         if (m_read &gt;= m_end)</span>
+<span class="fc" id="L62">            return(m_input.read());</span>
+      }
+      
+<span class="fc" id="L65">      return(m_buffer[m_read++] &amp; 0x00FF);</span>
+   }
+
+   @Override
+  public int read(byte buffer[], int offset, int length) throws IOException
+   {
+<span class="fc bfc" id="L71" title="All 2 branches covered.">      if (m_read &gt;= m_end)</span>
+      {
+<span class="fc" id="L73">         fill();</span>
+         
+<span class="fc bfc" id="L75" title="All 2 branches covered.">         if (m_read &gt;= m_end)</span>
+<span class="fc" id="L76">            return(m_input.read(buffer, offset, length));</span>
+      }
+      
+<span class="fc" id="L79">      length  = Math.min(length, m_end - m_read);</span>
+<span class="fc" id="L80">      System.arraycopy(m_buffer, m_read, buffer, offset, length);</span>
+<span class="fc" id="L81">      m_read += length;</span>
+         
+<span class="fc" id="L83">      return(length);</span>
+   }
+
+   public int peek() throws IOException   // Returns -1 if there is nothing to read.
+   {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">      if (m_read &gt;= m_end)</span>
+      {
+<span class="fc" id="L90">         fill();</span>
+         
+<span class="fc bfc" id="L92" title="All 2 branches covered.">         if (m_read &gt;= m_end)</span>
+<span class="fc" id="L93">            return(-1);</span>
+      }
+      
+<span class="fc" id="L96">      return(m_buffer[m_read] &amp; 0x00FF);</span>
+   }
+
+   @Override
+  public int available() throws IOException
+   {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">      if (m_read &gt;= m_end)</span>
+<span class="fc" id="L103">         fill();</span>
+      
+<span class="fc" id="L105">      return(m_end - m_read);</span>
+   }
+   
+   public void unread(int data) throws IOException
+   {
+<span class="fc bfc" id="L110" title="All 2 branches covered.">      if (m_read &lt;= 0)</span>
+      {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">         if (m_end &gt;= m_buffer.length)</span>
+<span class="fc" id="L113">            throw new IOException(&quot;Internal buffer overflow&quot;);</span>
+         
+<span class="fc" id="L115">         System.arraycopy(m_buffer, m_read, m_buffer, m_buffer.length - m_end, m_end);</span>
+<span class="fc" id="L116">         m_read = m_buffer.length - m_end;</span>
+<span class="fc" id="L117">         m_end  = m_buffer.length;</span>
+      }
+      
+<span class="fc" id="L120">      m_buffer[--m_read] = (byte) data;</span>
+<span class="fc" id="L121">   }</span>
+   
+   private void fill() throws IOException
+   {
+      if (CLEAN)
+         Arrays.fill(m_buffer, 0, m_buffer.length, (byte) 0);
+
+<span class="fc" id="L128">      m_read = 0;</span>
+<span class="fc" id="L129">      m_end  = m_input.available();</span>
+<span class="fc" id="L130">      m_end  = Math.max(m_end, 0);</span>
+
+<span class="fc bfc" id="L132" title="All 2 branches covered.">      if (m_end &lt;= 0)                              // m_input.read(m_buffer, 0, 0) can be expensive.  Don't waste time.</span>
+<span class="fc" id="L133">         return;</span>
+
+<span class="fc" id="L135">      m_end  = Math.min(m_end, m_buffer.length);</span>
+<span class="fc" id="L136">      m_end  = m_input.read(m_buffer, 0, m_end);</span>
+<span class="fc" id="L137">      m_end  = Math.max(m_end, 0);                 // Defend against a bug where m_input.available() returning &gt; 0 and m_input.read() returning -1</span>
+<span class="fc" id="L138">   }</span>
+
+   @Override
+  public String toString()  // For debugging purposes
+   {
+<span class="fc" id="L143">      return(new String(m_buffer, m_read, m_end - m_read));</span>
+   }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

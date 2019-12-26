@@ -1,0 +1,1097 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMByteCodePrinter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMByteCodePrinter.java</span></div><h1>JVMByteCodePrinter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import java.io.PrintWriter;
+
+/**
+ * utility class that prints out bytecode in readable form
+ */
+public class JVMByteCodePrinter implements JVMByteCodeReader {
+
+  PrintWriter pw;
+  ClassFile cf; // need this to get the constpool entries
+
+  String prefix;
+
+<span class="nc" id="L33">  public JVMByteCodePrinter (PrintWriter pw, ClassFile cf, String prefix){</span>
+<span class="nc" id="L34">    this.pw = pw;</span>
+<span class="nc" id="L35">    this.cf = cf;</span>
+<span class="nc" id="L36">    this.prefix = prefix;</span>
+<span class="nc" id="L37">  }</span>
+
+  @Override
+  public void aconst_null() {
+<span class="nc" id="L41">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aconst_null&quot;);</span>
+<span class="nc" id="L42">  }</span>
+
+  @Override
+  public void aload(int localVarIndex) {
+<span class="nc" id="L46">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;aload&quot;, localVarIndex);</span>
+<span class="nc" id="L47">  }</span>
+
+  @Override
+  public void aload_0() {
+<span class="nc" id="L51">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aload_0&quot;);</span>
+<span class="nc" id="L52">  }</span>
+
+  @Override
+  public void aload_1() {
+<span class="nc" id="L56">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aload_1&quot;);</span>
+<span class="nc" id="L57">  }</span>
+
+  @Override
+  public void aload_2() {
+<span class="nc" id="L61">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aload_2&quot;);</span>
+<span class="nc" id="L62">  }</span>
+
+  @Override
+  public void aload_3() {
+<span class="nc" id="L66">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aload_3&quot;);</span>
+<span class="nc" id="L67">  }</span>
+
+  @Override
+  public void aaload() {
+<span class="nc" id="L71">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aaload&quot;);</span>
+<span class="nc" id="L72">  }</span>
+
+  @Override
+  public void astore(int localVarIndex) {
+<span class="nc" id="L76">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;astore&quot;, localVarIndex);</span>
+<span class="nc" id="L77">  }</span>
+
+  @Override
+  public void astore_0() {
+<span class="nc" id="L81">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;astore_0&quot;);</span>
+<span class="nc" id="L82">  }</span>
+
+  @Override
+  public void astore_1() {
+<span class="nc" id="L86">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;astore_1&quot;);</span>
+<span class="nc" id="L87">  }</span>
+
+  @Override
+  public void astore_2() {
+<span class="nc" id="L91">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;astore_2&quot;);</span>
+<span class="nc" id="L92">  }</span>
+
+  @Override
+  public void astore_3() {
+<span class="nc" id="L96">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;astore_3&quot;);</span>
+<span class="nc" id="L97">  }</span>
+
+  @Override
+  public void aastore() {
+<span class="nc" id="L101">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;aastore&quot;);</span>
+<span class="nc" id="L102">  }</span>
+
+  @Override
+  public void areturn() {
+<span class="nc" id="L106">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;areturn&quot;);</span>
+<span class="nc" id="L107">  }</span>
+
+  @Override
+  public void anewarray(int cpClassIndex) {
+<span class="nc" id="L111">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;anewarray&quot;, cpClassIndex, cf.classNameAt(cpClassIndex));</span>
+<span class="nc" id="L112">  }</span>
+
+  @Override
+  public void arraylength() {
+<span class="nc" id="L116">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;arraylength&quot;);</span>
+<span class="nc" id="L117">  }</span>
+
+  @Override
+  public void athrow() {
+<span class="nc" id="L121">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;athrow&quot;);</span>
+<span class="nc" id="L122">  }</span>
+
+  @Override
+  public void baload() {
+<span class="nc" id="L126">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;baload&quot;);</span>
+<span class="nc" id="L127">  }</span>
+
+  @Override
+  public void bastore() {
+<span class="nc" id="L131">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;bastore&quot;);</span>
+<span class="nc" id="L132">  }</span>
+
+  @Override
+  public void bipush(int b) {
+<span class="nc" id="L136">    pw.printf(&quot;%s%3d: %s %d\n&quot;, prefix, cf.getPc(), &quot;bipush&quot;, b);</span>
+<span class="nc" id="L137">  }</span>
+
+  @Override
+  public void caload() {
+<span class="nc" id="L141">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;caload&quot;);</span>
+<span class="nc" id="L142">  }</span>
+
+  @Override
+  public void castore() {
+<span class="nc" id="L146">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;castore&quot;);</span>
+<span class="nc" id="L147">  }</span>
+
+  @Override
+  public void checkcast(int cpClassIndex) {
+<span class="nc" id="L151">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;checkcast&quot;, cpClassIndex, cf.classNameAt(cpClassIndex));</span>
+<span class="nc" id="L152">  }</span>
+
+  @Override
+  public void d2f() {
+<span class="nc" id="L156">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;d2f&quot;);</span>
+<span class="nc" id="L157">  }</span>
+
+  @Override
+  public void d2i() {
+<span class="nc" id="L161">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;d2i&quot;);</span>
+<span class="nc" id="L162">  }</span>
+
+  @Override
+  public void d2l() {
+<span class="nc" id="L166">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;d2l&quot;);</span>
+<span class="nc" id="L167">  }</span>
+
+  @Override
+  public void dadd() {
+<span class="nc" id="L171">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dadd&quot;);</span>
+<span class="nc" id="L172">  }</span>
+
+  @Override
+  public void daload() {
+<span class="nc" id="L176">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;daload&quot;);</span>
+<span class="nc" id="L177">  }</span>
+
+  @Override
+  public void dastore() {
+<span class="nc" id="L181">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dastore&quot;);</span>
+<span class="nc" id="L182">  }</span>
+
+  @Override
+  public void dcmpg() {
+<span class="nc" id="L186">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dcmpg&quot;);</span>
+<span class="nc" id="L187">  }</span>
+
+  @Override
+  public void dcmpl() {
+<span class="nc" id="L191">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dcmpl&quot;);</span>
+<span class="nc" id="L192">  }</span>
+
+  @Override
+  public void dconst_0() {
+<span class="nc" id="L196">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dconst_0&quot;);</span>
+<span class="nc" id="L197">  }</span>
+
+  @Override
+  public void dconst_1() {
+<span class="nc" id="L201">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dcont_1&quot;);</span>
+<span class="nc" id="L202">  }</span>
+
+  @Override
+  public void ddiv() {
+<span class="nc" id="L206">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ddiv&quot;);</span>
+<span class="nc" id="L207">  }</span>
+
+  @Override
+  public void dload(int localVarIndex) {
+<span class="nc" id="L211">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;dload&quot;, localVarIndex);</span>
+<span class="nc" id="L212">  }</span>
+
+  @Override
+  public void dload_0() {
+<span class="nc" id="L216">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dload_0&quot;);</span>
+<span class="nc" id="L217">  }</span>
+
+  @Override
+  public void dload_1() {
+<span class="nc" id="L221">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dload_1&quot;);</span>
+<span class="nc" id="L222">  }</span>
+
+  @Override
+  public void dload_2() {
+<span class="nc" id="L226">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dload_2&quot;);</span>
+<span class="nc" id="L227">  }</span>
+
+  @Override
+  public void dload_3() {
+<span class="nc" id="L231">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dload_3&quot;);</span>
+<span class="nc" id="L232">  }</span>
+
+  @Override
+  public void dmul() {
+<span class="nc" id="L236">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dmul&quot;);</span>
+<span class="nc" id="L237">  }</span>
+
+  @Override
+  public void dneg() {
+<span class="nc" id="L241">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dneg&quot;);</span>
+<span class="nc" id="L242">  }</span>
+
+  @Override
+  public void drem() {
+<span class="nc" id="L246">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;drem&quot;);</span>
+<span class="nc" id="L247">  }</span>
+
+  @Override
+  public void dreturn() {
+<span class="nc" id="L251">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dreturn&quot;);</span>
+<span class="nc" id="L252">  }</span>
+
+  @Override
+  public void dstore(int localVarIndex) {
+<span class="nc" id="L256">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;dstore&quot;, localVarIndex);</span>
+<span class="nc" id="L257">  }</span>
+
+  @Override
+  public void dstore_0() {
+<span class="nc" id="L261">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dstore_0&quot;);</span>
+<span class="nc" id="L262">  }</span>
+
+  @Override
+  public void dstore_1() {
+<span class="nc" id="L266">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dstore_1&quot;);</span>
+<span class="nc" id="L267">  }</span>
+
+  @Override
+  public void dstore_2() {
+<span class="nc" id="L271">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dstore_2&quot;);</span>
+<span class="nc" id="L272">  }</span>
+
+  @Override
+  public void dstore_3() {
+<span class="nc" id="L276">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dstore_3&quot;);</span>
+<span class="nc" id="L277">  }</span>
+
+  @Override
+  public void dsub() {
+<span class="nc" id="L281">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dsub&quot;);</span>
+<span class="nc" id="L282">  }</span>
+
+  @Override
+  public void dup() {
+<span class="nc" id="L286">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup&quot;);</span>
+<span class="nc" id="L287">  }</span>
+
+  @Override
+  public void dup_x1() {
+<span class="nc" id="L291">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup_x1&quot;);</span>
+<span class="nc" id="L292">  }</span>
+
+  @Override
+  public void dup_x2() {
+<span class="nc" id="L296">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup_x2&quot;);</span>
+<span class="nc" id="L297">  }</span>
+
+  @Override
+  public void dup2() {
+<span class="nc" id="L301">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup2&quot;);</span>
+<span class="nc" id="L302">  }</span>
+
+  @Override
+  public void dup2_x1() {
+<span class="nc" id="L306">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup2_x1&quot;);</span>
+<span class="nc" id="L307">  }</span>
+
+  @Override
+  public void dup2_x2() {
+<span class="nc" id="L311">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;dup2_x2&quot;);</span>
+<span class="nc" id="L312">  }</span>
+
+  @Override
+  public void f2d() {
+<span class="nc" id="L316">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;f2d&quot;);</span>
+<span class="nc" id="L317">  }</span>
+
+  @Override
+  public void f2i() {
+<span class="nc" id="L321">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;f2i&quot;);</span>
+<span class="nc" id="L322">  }</span>
+
+  @Override
+  public void f2l() {
+<span class="nc" id="L326">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;f2l&quot;);</span>
+<span class="nc" id="L327">  }</span>
+
+  @Override
+  public void fadd() {
+<span class="nc" id="L331">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fadd&quot;);</span>
+<span class="nc" id="L332">  }</span>
+
+  @Override
+  public void faload() {
+<span class="nc" id="L336">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;faload&quot;);</span>
+<span class="nc" id="L337">  }</span>
+
+  @Override
+  public void fastore() {
+<span class="nc" id="L341">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fastore&quot;);</span>
+<span class="nc" id="L342">  }</span>
+
+  @Override
+  public void fcmpg() {
+<span class="nc" id="L346">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fcmpg&quot;);</span>
+<span class="nc" id="L347">  }</span>
+
+  @Override
+  public void fcmpl() {
+<span class="nc" id="L351">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fcmpl&quot;);</span>
+<span class="nc" id="L352">  }</span>
+
+  @Override
+  public void fconst_0() {
+<span class="nc" id="L356">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fconst_0&quot;);</span>
+<span class="nc" id="L357">  }</span>
+
+  @Override
+  public void fconst_1() {
+<span class="nc" id="L361">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fconst_1&quot;);</span>
+<span class="nc" id="L362">  }</span>
+
+  @Override
+  public void fconst_2() {
+<span class="nc" id="L366">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fconst_2&quot;);</span>
+<span class="nc" id="L367">  }</span>
+
+  @Override
+  public void fdiv() {
+<span class="nc" id="L371">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fdiv&quot;);</span>
+<span class="nc" id="L372">  }</span>
+
+  @Override
+  public void fload(int localVarIndex) {
+<span class="nc" id="L376">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;fload&quot;, localVarIndex);</span>
+<span class="nc" id="L377">  }</span>
+
+  @Override
+  public void fload_0() {
+<span class="nc" id="L381">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fload_0&quot;);</span>
+<span class="nc" id="L382">  }</span>
+
+  @Override
+  public void fload_1() {
+<span class="nc" id="L386">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fload_1&quot;);</span>
+<span class="nc" id="L387">  }</span>
+
+  @Override
+  public void fload_2() {
+<span class="nc" id="L391">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fload_2&quot;);</span>
+<span class="nc" id="L392">  }</span>
+
+  @Override
+  public void fload_3() {
+<span class="nc" id="L396">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fload_3&quot;);</span>
+<span class="nc" id="L397">  }</span>
+
+  @Override
+  public void fmul() {
+<span class="nc" id="L401">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fmul&quot;);</span>
+<span class="nc" id="L402">  }</span>
+
+  @Override
+  public void fneg() {
+<span class="nc" id="L406">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fneg&quot;);</span>
+<span class="nc" id="L407">  }</span>
+
+  @Override
+  public void frem() {
+<span class="nc" id="L411">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;frem&quot;);</span>
+<span class="nc" id="L412">  }</span>
+
+  @Override
+  public void freturn() {
+<span class="nc" id="L416">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;freturn&quot;);</span>
+<span class="nc" id="L417">  }</span>
+
+  @Override
+  public void fstore(int localVarIndex) {
+<span class="nc" id="L421">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;fstore&quot;, localVarIndex);</span>
+<span class="nc" id="L422">  }</span>
+
+  @Override
+  public void fstore_0() {
+<span class="nc" id="L426">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fstore_0&quot;);</span>
+<span class="nc" id="L427">  }</span>
+
+  @Override
+  public void fstore_1() {
+<span class="nc" id="L431">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fstore_1&quot;);</span>
+<span class="nc" id="L432">  }</span>
+
+  @Override
+  public void fstore_2() {
+<span class="nc" id="L436">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fstore_2&quot;);</span>
+<span class="nc" id="L437">  }</span>
+
+  @Override
+  public void fstore_3() {
+<span class="nc" id="L441">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fstore_3&quot;);</span>
+<span class="nc" id="L442">  }</span>
+
+  @Override
+  public void fsub() {
+<span class="nc" id="L446">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;fsub&quot;);</span>
+<span class="nc" id="L447">  }</span>
+
+  @Override
+  public void getfield(int cpFieldRefIndex) {
+<span class="nc" id="L451">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;getfield&quot;, cpFieldRefIndex,</span>
+<span class="nc" id="L452">            cf.fieldClassNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L453">            cf.fieldNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L454">            cf.fieldDescriptorAt(cpFieldRefIndex));</span>
+<span class="nc" id="L455">  }</span>
+
+  @Override
+  public void getstatic(int cpFieldRefIndex) {
+<span class="nc" id="L459">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;getstatic&quot;, cpFieldRefIndex,</span>
+<span class="nc" id="L460">            cf.fieldClassNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L461">            cf.fieldNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L462">            cf.fieldDescriptorAt(cpFieldRefIndex));</span>
+<span class="nc" id="L463">  }</span>
+
+  @Override
+  public void goto_(int pcOffset) {
+<span class="nc" id="L467">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;goto&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L468">  }</span>
+
+  @Override
+  public void goto_w(int pcOffset) {
+<span class="nc" id="L472">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;goto_w&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L473">  }</span>
+
+  @Override
+  public void i2b() {
+<span class="nc" id="L477">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2b&quot;);</span>
+<span class="nc" id="L478">  }</span>
+
+  @Override
+  public void i2c() {
+<span class="nc" id="L482">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2c&quot;);</span>
+<span class="nc" id="L483">  }</span>
+
+  @Override
+  public void i2d() {
+<span class="nc" id="L487">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2d&quot;);</span>
+<span class="nc" id="L488">  }</span>
+
+  @Override
+  public void i2f() {
+<span class="nc" id="L492">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2f&quot;);</span>
+<span class="nc" id="L493">  }</span>
+
+  @Override
+  public void i2l() {
+<span class="nc" id="L497">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2l&quot;);</span>
+<span class="nc" id="L498">  }</span>
+
+  @Override
+  public void i2s() {
+<span class="nc" id="L502">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;i2s&quot;);</span>
+<span class="nc" id="L503">  }</span>
+
+  @Override
+  public void iadd() {
+<span class="nc" id="L507">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iadd&quot;);</span>
+<span class="nc" id="L508">  }</span>
+
+  @Override
+  public void iaload() {
+<span class="nc" id="L512">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iaload&quot;);</span>
+<span class="nc" id="L513">  }</span>
+
+  @Override
+  public void iand() {
+<span class="nc" id="L517">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iand&quot;);</span>
+<span class="nc" id="L518">  }</span>
+
+  @Override
+  public void iastore() {
+<span class="nc" id="L522">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iastore&quot;);</span>
+<span class="nc" id="L523">  }</span>
+
+  @Override
+  public void iconst_m1() {
+<span class="nc" id="L527">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_m1&quot;);</span>
+<span class="nc" id="L528">  }</span>
+
+  @Override
+  public void iconst_0() {
+<span class="nc" id="L532">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_0&quot;);</span>
+<span class="nc" id="L533">  }</span>
+
+  @Override
+  public void iconst_1() {
+<span class="nc" id="L537">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_1&quot;);</span>
+<span class="nc" id="L538">  }</span>
+
+  @Override
+  public void iconst_2() {
+<span class="nc" id="L542">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_2&quot;);</span>
+<span class="nc" id="L543">  }</span>
+
+  @Override
+  public void iconst_3() {
+<span class="nc" id="L547">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_3&quot;);</span>
+<span class="nc" id="L548">  }</span>
+
+  @Override
+  public void iconst_4() {
+<span class="nc" id="L552">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_4&quot;);</span>
+<span class="nc" id="L553">  }</span>
+
+  @Override
+  public void iconst_5() {
+<span class="nc" id="L557">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iconst_5&quot;);</span>
+<span class="nc" id="L558">  }</span>
+
+  @Override
+  public void idiv() {
+<span class="nc" id="L562">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;idiv&quot;);</span>
+<span class="nc" id="L563">  }</span>
+
+  @Override
+  public void if_acmpeq(int pcOffset) {
+<span class="nc" id="L567">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_acmpeq&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L568">  }</span>
+
+  @Override
+  public void if_acmpne(int pcOffset) {
+<span class="nc" id="L572">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_acmpne&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L573">  }</span>
+
+  @Override
+  public void if_icmpeq(int pcOffset) {
+<span class="nc" id="L577">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmpeq&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L578">  }</span>
+
+  @Override
+  public void if_icmpne(int pcOffset) {
+<span class="nc" id="L582">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmpne&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L583">  }</span>
+
+  @Override
+  public void if_icmplt(int pcOffset) {
+<span class="nc" id="L587">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmplt&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L588">  }</span>
+
+  @Override
+  public void if_icmpge(int pcOffset) {
+<span class="nc" id="L592">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmpge&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L593">  }</span>
+
+  @Override
+  public void if_icmpgt(int pcOffset) {
+<span class="nc" id="L597">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmpgt&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L598">  }</span>
+
+  @Override
+  public void if_icmple(int pcOffset) {
+<span class="nc" id="L602">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;if_icmple&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L603">  }</span>
+
+  @Override
+  public void ifeq(int pcOffset) {
+<span class="nc" id="L607">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifeq&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L608">  }</span>
+
+  @Override
+  public void ifne(int pcOffset) {
+<span class="nc" id="L612">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifne&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L613">  }</span>
+
+  @Override
+  public void iflt(int pcOffset) {
+<span class="nc" id="L617">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;iflt&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L618">  }</span>
+
+  @Override
+  public void ifge(int pcOffset) {
+<span class="nc" id="L622">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifge&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L623">  }</span>
+
+  @Override
+  public void ifgt(int pcOffset) {
+<span class="nc" id="L627">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifgt&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L628">  }</span>
+
+  @Override
+  public void ifle(int pcOffset) {
+<span class="nc" id="L632">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifle&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L633">  }</span>
+
+  @Override
+  public void ifnonnull(int pcOffset) {
+<span class="nc" id="L637">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifnonnull&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L638">  }</span>
+
+  @Override
+  public void ifnull(int pcOffset) {
+<span class="nc" id="L642">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;ifnull&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L643">  }</span>
+
+  @Override
+  public void iinc(int localVarIndex, int incConstant) {
+<span class="nc" id="L647">    pw.printf(&quot;%s%3d: %s [%d] %+d\n&quot;, prefix, cf.getPc(), &quot;iinc&quot;, localVarIndex, incConstant);</span>
+<span class="nc" id="L648">  }</span>
+
+  @Override
+  public void iload(int localVarIndex) {
+<span class="nc" id="L652">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;iload&quot;, localVarIndex);</span>
+<span class="nc" id="L653">  }</span>
+
+  @Override
+  public void iload_0() {
+<span class="nc" id="L657">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iload_0&quot;);</span>
+<span class="nc" id="L658">  }</span>
+
+  @Override
+  public void iload_1() {
+<span class="nc" id="L662">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iload_1&quot;);</span>
+<span class="nc" id="L663">  }</span>
+
+  @Override
+  public void iload_2() {
+<span class="nc" id="L667">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iload_2&quot;);</span>
+<span class="nc" id="L668">  }</span>
+
+  @Override
+  public void iload_3() {
+<span class="nc" id="L672">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iload_3&quot;);</span>
+<span class="nc" id="L673">  }</span>
+
+  @Override
+  public void imul() {
+<span class="nc" id="L677">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;imul&quot;);</span>
+<span class="nc" id="L678">  }</span>
+
+  @Override
+  public void ineg() {
+<span class="nc" id="L682">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ineg&quot;);</span>
+<span class="nc" id="L683">  }</span>
+
+  @Override
+  public void instanceof_(int cpClassIndex) {
+<span class="nc" id="L687">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;instanceof&quot;, cpClassIndex, cf.classNameAt(cpClassIndex));</span>
+<span class="nc" id="L688">  }</span>
+
+  @Override
+  public void invokeinterface(int cpInterfaceMethodRefIndex, int count, int zero) {
+<span class="nc" id="L692">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;) %d\n&quot;, prefix, cf.getPc(), &quot;invokeinterface&quot;, cpInterfaceMethodRefIndex,</span>
+<span class="nc" id="L693">            cf.methodClassNameAt(cpInterfaceMethodRefIndex),</span>
+<span class="nc" id="L694">            cf.methodNameAt(cpInterfaceMethodRefIndex),</span>
+<span class="nc" id="L695">            cf.methodDescriptorAt(cpInterfaceMethodRefIndex),</span>
+<span class="nc" id="L696">            count);</span>
+<span class="nc" id="L697">  }</span>
+
+  @Override
+  public void invokespecial(int cpMethodRefIndex) {
+<span class="nc" id="L701">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;invokespecial&quot;, cpMethodRefIndex,</span>
+<span class="nc" id="L702">            cf.methodClassNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L703">            cf.methodNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L704">            cf.methodDescriptorAt(cpMethodRefIndex));</span>
+<span class="nc" id="L705">  }</span>
+
+  @Override
+  public void invokestatic(int cpMethodRefIndex) {
+<span class="nc" id="L709">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;invokestatic&quot;, cpMethodRefIndex,</span>
+<span class="nc" id="L710">            cf.methodClassNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L711">            cf.methodNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L712">            cf.methodDescriptorAt(cpMethodRefIndex));</span>
+<span class="nc" id="L713">  }</span>
+
+  @Override
+  public void invokevirtual(int cpMethodRefIndex) {
+<span class="nc" id="L717">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;invokevirtual&quot;, cpMethodRefIndex,</span>
+<span class="nc" id="L718">            cf.methodClassNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L719">            cf.methodNameAt(cpMethodRefIndex),</span>
+<span class="nc" id="L720">            cf.methodDescriptorAt(cpMethodRefIndex));</span>
+<span class="nc" id="L721">  }</span>
+
+  @Override
+  public void invokedynamic (int cpInvokeDynamicIndex){
+<span class="nc" id="L725">    pw.printf(&quot;%s%3d: %s @%d\n&quot;, prefix, cf.getPc(), &quot;invokedynamic&quot;, cpInvokeDynamicIndex);</span>
+<span class="nc" id="L726">  }</span>
+  
+  @Override
+  public void ior() {
+<span class="nc" id="L730">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ior&quot;);</span>
+<span class="nc" id="L731">  }</span>
+
+  @Override
+  public void irem() {
+<span class="nc" id="L735">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;irem&quot;);</span>
+<span class="nc" id="L736">  }</span>
+
+  @Override
+  public void ireturn() {
+<span class="nc" id="L740">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ireturn&quot;);</span>
+<span class="nc" id="L741">  }</span>
+
+  @Override
+  public void ishl() {
+<span class="nc" id="L745">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ishl&quot;);</span>
+<span class="nc" id="L746">  }</span>
+
+  @Override
+  public void ishr() {
+<span class="nc" id="L750">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ishr&quot;);</span>
+<span class="nc" id="L751">  }</span>
+
+  @Override
+  public void istore(int localVarIndex) {
+<span class="nc" id="L755">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;istore&quot;, localVarIndex);</span>
+<span class="nc" id="L756">  }</span>
+
+  @Override
+  public void istore_0() {
+<span class="nc" id="L760">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;istore_0&quot;);</span>
+<span class="nc" id="L761">  }</span>
+
+  @Override
+  public void istore_1() {
+<span class="nc" id="L765">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;istore_1&quot;);</span>
+<span class="nc" id="L766">  }</span>
+
+  @Override
+  public void istore_2() {
+<span class="nc" id="L770">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;istore_2&quot;);</span>
+<span class="nc" id="L771">  }</span>
+
+  @Override
+  public void istore_3() {
+<span class="nc" id="L775">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;istore_3&quot;);</span>
+<span class="nc" id="L776">  }</span>
+
+  @Override
+  public void isub() {
+<span class="nc" id="L780">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;isub&quot;);</span>
+<span class="nc" id="L781">  }</span>
+
+  @Override
+  public void iushr() {
+<span class="nc" id="L785">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;iushr&quot;);</span>
+<span class="nc" id="L786">  }</span>
+
+  @Override
+  public void ixor() {
+<span class="nc" id="L790">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ixor&quot;);</span>
+<span class="nc" id="L791">  }</span>
+
+  @Override
+  public void jsr(int pcOffset) {
+<span class="nc" id="L795">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;jsr&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L796">  }</span>
+
+  @Override
+  public void jsr_w(int pcOffset) {
+<span class="nc" id="L800">    pw.printf(&quot;%s%3d: %s %+d (%d)\n&quot;, prefix, cf.getPc(), &quot;jsr_w&quot;, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L801">  }</span>
+
+  @Override
+  public void l2d() {
+<span class="nc" id="L805">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;l2d&quot;);</span>
+<span class="nc" id="L806">  }</span>
+
+  @Override
+  public void l2f() {
+<span class="nc" id="L810">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;l2f&quot;);</span>
+<span class="nc" id="L811">  }</span>
+
+  @Override
+  public void l2i() {
+<span class="nc" id="L815">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;l2i&quot;);</span>
+<span class="nc" id="L816">  }</span>
+
+  @Override
+  public void ladd() {
+<span class="nc" id="L820">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ladd&quot;);</span>
+<span class="nc" id="L821">  }</span>
+
+  @Override
+  public void laload() {
+<span class="nc" id="L825">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;laload&quot;);</span>
+<span class="nc" id="L826">  }</span>
+
+  @Override
+  public void land() {
+<span class="nc" id="L830">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;land&quot;);</span>
+<span class="nc" id="L831">  }</span>
+
+  @Override
+  public void lastore() {
+<span class="nc" id="L835">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lastore&quot;);</span>
+<span class="nc" id="L836">  }</span>
+
+  @Override
+  public void lcmp() {
+<span class="nc" id="L840">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lcmp&quot;);</span>
+<span class="nc" id="L841">  }</span>
+
+  @Override
+  public void lconst_0() {
+<span class="nc" id="L845">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lconst_0&quot;);</span>
+<span class="nc" id="L846">  }</span>
+
+  @Override
+  public void lconst_1() {
+<span class="nc" id="L850">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lconst_1&quot;);</span>
+<span class="nc" id="L851">  }</span>
+
+  @Override
+  public void ldc_(int cpIntOrFloatOrStringIndex) {
+<span class="nc" id="L855">    pw.printf(&quot;%s%3d: %s @%d(%s)\n&quot;, prefix, cf.getPc(), &quot;ldc&quot;, cpIntOrFloatOrStringIndex,</span>
+<span class="nc" id="L856">            cf.getCpValue(cpIntOrFloatOrStringIndex));</span>
+<span class="nc" id="L857">  }</span>
+
+  @Override
+  public void ldc_w_(int cpIntOrFloatOrStringIndex) {
+<span class="nc" id="L861">    pw.printf(&quot;%s%3d: %s @%d(%s)\n&quot;, prefix, cf.getPc(), &quot;ldc_w&quot;, cpIntOrFloatOrStringIndex,</span>
+<span class="nc" id="L862">            cf.getCpValue(cpIntOrFloatOrStringIndex));</span>
+<span class="nc" id="L863">  }</span>
+
+  @Override
+  public void ldc2_w(int cpLongOrDoubleIndex) {
+<span class="nc" id="L867">    pw.printf(&quot;%s%3d: %s @%d(%s)\n&quot;, prefix, cf.getPc(), &quot;ldc2_w&quot;, cpLongOrDoubleIndex,</span>
+<span class="nc" id="L868">            cf.getCpValue(cpLongOrDoubleIndex));</span>
+<span class="nc" id="L869">  }</span>
+
+  @Override
+  public void ldiv() {
+<span class="nc" id="L873">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;ldiv&quot;);</span>
+<span class="nc" id="L874">  }</span>
+
+  @Override
+  public void lload(int localVarIndex) {
+<span class="nc" id="L878">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;lload&quot;, localVarIndex);</span>
+<span class="nc" id="L879">  }</span>
+
+  @Override
+  public void lload_0() {
+<span class="nc" id="L883">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lload_0&quot;);</span>
+<span class="nc" id="L884">  }</span>
+
+  @Override
+  public void lload_1() {
+<span class="nc" id="L888">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lload_1&quot;);</span>
+<span class="nc" id="L889">  }</span>
+
+  @Override
+  public void lload_2() {
+<span class="nc" id="L893">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lload_2&quot;);</span>
+<span class="nc" id="L894">  }</span>
+
+  @Override
+  public void lload_3() {
+<span class="nc" id="L898">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lload_3&quot;);</span>
+<span class="nc" id="L899">  }</span>
+
+  @Override
+  public void lmul() {
+<span class="nc" id="L903">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lmul&quot;);</span>
+<span class="nc" id="L904">  }</span>
+
+  @Override
+  public void lneg() {
+<span class="nc" id="L908">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lneg&quot;);</span>
+<span class="nc" id="L909">  }</span>
+
+  @Override
+  public void lookupswitch(int defaultPcOffset, int nEntries) {
+<span class="nc" id="L913">    pw.printf(&quot;%s%3d: %s default:%+d\n&quot;, prefix, cf.getPc(), &quot;lookupswitch&quot;, defaultPcOffset);</span>
+<span class="nc" id="L914">    cf.parseLookupSwitchEntries(this, nEntries);</span>
+<span class="nc" id="L915">  }</span>
+  @Override
+  public void lookupswitchEntry(int index, int match, int pcOffset){
+<span class="nc" id="L918">    pw.printf(&quot;%s      %d : %+d (%d)\n&quot;, prefix, match, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L919">  }</span>
+
+
+  @Override
+  public void lor() {
+<span class="nc" id="L924">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lor&quot;);</span>
+<span class="nc" id="L925">  }</span>
+
+  @Override
+  public void lrem() {
+<span class="nc" id="L929">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lrem&quot;);</span>
+<span class="nc" id="L930">  }</span>
+
+  @Override
+  public void lreturn() {
+<span class="nc" id="L934">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lreturn&quot;);</span>
+<span class="nc" id="L935">  }</span>
+
+  @Override
+  public void lshl() {
+<span class="nc" id="L939">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lshl&quot;);</span>
+<span class="nc" id="L940">  }</span>
+
+  @Override
+  public void lshr() {
+<span class="nc" id="L944">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lshr&quot;);</span>
+<span class="nc" id="L945">  }</span>
+
+  @Override
+  public void lstore(int localVarIndex) {
+<span class="nc" id="L949">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;lstore&quot;, localVarIndex);</span>
+<span class="nc" id="L950">  }</span>
+
+  @Override
+  public void lstore_0() {
+<span class="nc" id="L954">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lstore_0&quot;);</span>
+<span class="nc" id="L955">  }</span>
+
+  @Override
+  public void lstore_1() {
+<span class="nc" id="L959">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lstore_1&quot;);</span>
+<span class="nc" id="L960">  }</span>
+
+  @Override
+  public void lstore_2() {
+<span class="nc" id="L964">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lstore_2&quot;);</span>
+<span class="nc" id="L965">  }</span>
+
+  @Override
+  public void lstore_3() {
+<span class="nc" id="L969">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lstore_3&quot;);</span>
+<span class="nc" id="L970">  }</span>
+
+  @Override
+  public void lsub() {
+<span class="nc" id="L974">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lsub&quot;);</span>
+<span class="nc" id="L975">  }</span>
+
+  @Override
+  public void lushr() {
+<span class="nc" id="L979">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lushr&quot;);</span>
+<span class="nc" id="L980">  }</span>
+
+  @Override
+  public void lxor() {
+<span class="nc" id="L984">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;lxor&quot;);</span>
+<span class="nc" id="L985">  }</span>
+
+  @Override
+  public void monitorenter() {
+<span class="nc" id="L989">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;monitorenter&quot;);</span>
+<span class="nc" id="L990">  }</span>
+
+  @Override
+  public void monitorexit() {
+<span class="nc" id="L994">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;monitorexit&quot;);</span>
+<span class="nc" id="L995">  }</span>
+
+  @Override
+  public void multianewarray(int cpClassIndex, int dimensions) {
+<span class="nc" id="L999">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;) dim: %d\n&quot;, prefix, cf.getPc(), &quot;multianewarray&quot;,</span>
+<span class="nc" id="L1000">            cpClassIndex, cf.classNameAt(cpClassIndex), dimensions);</span>
+<span class="nc" id="L1001">  }</span>
+
+  @Override
+  public void new_(int cpClassIndex) {
+<span class="nc" id="L1005">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;new&quot;,</span>
+<span class="nc" id="L1006">            cpClassIndex, cf.classNameAt(cpClassIndex));</span>
+<span class="nc" id="L1007">  }</span>
+
+  @Override
+  public void newarray(int typeCode) {
+<span class="nc" id="L1011">    pw.printf(&quot;%s%3d: %s %s[]\n&quot;, prefix, cf.getPc(), &quot;newarray&quot;, cf.getTypeName(typeCode));</span>
+<span class="nc" id="L1012">  }</span>
+
+  @Override
+  public void nop() {
+<span class="nc" id="L1016">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;nop&quot;);</span>
+<span class="nc" id="L1017">  }</span>
+
+  @Override
+  public void pop() {
+<span class="nc" id="L1021">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;pop&quot;);</span>
+<span class="nc" id="L1022">  }</span>
+
+  @Override
+  public void pop2() {
+<span class="nc" id="L1026">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;pop2&quot;);</span>
+<span class="nc" id="L1027">  }</span>
+
+  @Override
+  public void putfield(int cpFieldRefIndex) {
+<span class="nc" id="L1031">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;putfield&quot;, cpFieldRefIndex,</span>
+<span class="nc" id="L1032">            cf.fieldClassNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L1033">            cf.fieldNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L1034">            cf.fieldDescriptorAt(cpFieldRefIndex));</span>
+<span class="nc" id="L1035">  }</span>
+
+  @Override
+  public void putstatic(int cpFieldRefIndex) {
+<span class="nc" id="L1039">    pw.printf(&quot;%s%3d: %s @%d(\&quot;%s\&quot;,\&quot;%s\&quot;,\&quot;%s\&quot;)\n&quot;, prefix, cf.getPc(), &quot;putstatic&quot;, cpFieldRefIndex,</span>
+<span class="nc" id="L1040">            cf.fieldClassNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L1041">            cf.fieldNameAt(cpFieldRefIndex),</span>
+<span class="nc" id="L1042">            cf.fieldDescriptorAt(cpFieldRefIndex));</span>
+<span class="nc" id="L1043">  }</span>
+
+  @Override
+  public void ret(int localVarIndex) {
+<span class="nc" id="L1047">    pw.printf(&quot;%s%3d: %s [%d]\n&quot;, prefix, cf.getPc(), &quot;ret&quot;, localVarIndex);</span>
+<span class="nc" id="L1048">  }</span>
+
+  @Override
+  public void return_() {
+<span class="nc" id="L1052">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;return&quot;);</span>
+<span class="nc" id="L1053">  }</span>
+
+  @Override
+  public void saload() {
+<span class="nc" id="L1057">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;saload&quot;);</span>
+<span class="nc" id="L1058">  }</span>
+
+  @Override
+  public void sastore() {
+<span class="nc" id="L1062">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;sastore&quot;);</span>
+<span class="nc" id="L1063">  }</span>
+
+  @Override
+  public void sipush(int val) {
+<span class="nc" id="L1067">    pw.printf(&quot;%s%3d: %s %d\n&quot;, prefix, cf.getPc(), &quot;sipush&quot;, val);</span>
+<span class="nc" id="L1068">  }</span>
+
+  @Override
+  public void swap() {
+<span class="nc" id="L1072">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;swap&quot;);</span>
+<span class="nc" id="L1073">  }</span>
+
+  @Override
+  public void tableswitch(int defaultPcOffset, int low, int high) {
+<span class="nc" id="L1077">    pw.printf(&quot;%s%3d: %s [%d..%d] default: %+d\n&quot;, prefix, cf.getPc(), &quot;tableswitch&quot;, low, high, defaultPcOffset);</span>
+<span class="nc" id="L1078">    cf.parseTableSwitchEntries(this, low, high);</span>
+<span class="nc" id="L1079">  }</span>
+  @Override
+  public void tableswitchEntry(int val, int pcOffset){
+<span class="nc" id="L1082">    pw.printf(&quot;%s      %d: %+d (%d)\n&quot;, prefix, val, pcOffset, (cf.getPc() + pcOffset));</span>
+<span class="nc" id="L1083">  }</span>
+
+  @Override
+  public void wide() {
+<span class="nc" id="L1087">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;wide&quot;);</span>
+<span class="nc" id="L1088">  }</span>
+
+  @Override
+  public void unknown(int bytecode) {
+<span class="nc" id="L1092">    pw.printf(&quot;%s%3d: %s\n&quot;, prefix, cf.getPc(), &quot;&quot;);</span>
+<span class="nc" id="L1093">  }</span>
+
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

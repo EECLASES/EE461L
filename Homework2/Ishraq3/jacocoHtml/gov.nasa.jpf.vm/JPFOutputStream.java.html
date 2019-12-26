@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPFOutputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">JPFOutputStream.java</span></div><h1>JPFOutputStream.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+
+import gov.nasa.jpf.util.FinalBitSet;
+import gov.nasa.jpf.util.PrintUtils;
+
+/**
+ * stream to write program state info in a readable and diff-able format.
+ * This is mostly intended for debugging, but could also at some point be
+ * used to restore such states.
+ * 
+ * Currently supports heap objects, classes (static fields), threads and stack frames
+ */
+public class JPFOutputStream extends OutputStream {
+  
+  PrintStream ps;
+  
+<span class="nc" id="L38">  boolean useSid = false;</span>
+<span class="nc" id="L39">  int maxElements = -1;</span>
+  
+<span class="nc" id="L41">  public JPFOutputStream (OutputStream os){</span>
+<span class="nc" id="L42">    ps = new PrintStream(os);</span>
+<span class="nc" id="L43">  }</span>
+  
+<span class="nc" id="L45">  public JPFOutputStream (PrintStream ps){</span>
+<span class="nc" id="L46">    this.ps = ps;</span>
+<span class="nc" id="L47">  }</span>
+  
+  public JPFOutputStream (){
+<span class="nc" id="L50">    this(System.out);</span>
+<span class="nc" id="L51">  }</span>
+  
+  @Override
+  public void close(){
+<span class="nc" id="L55">    ps.flush();</span>
+    
+<span class="nc bnc" id="L57" title="All 4 branches missed.">    if (ps != System.err &amp;&amp; ps != System.out){</span>
+<span class="nc" id="L58">      ps.close();</span>
+    }
+<span class="nc" id="L60">  }</span>
+  
+  public void printCommentLine(String msg){
+<span class="nc" id="L63">    ps.print(&quot;// &quot;);</span>
+<span class="nc" id="L64">    ps.println(msg);</span>
+<span class="nc" id="L65">  }</span>
+  
+  public void print (ElementInfo ei, FieldInfo fi, boolean isFiltered){
+<span class="nc" id="L68">    ps.print(fi.getName());</span>
+<span class="nc" id="L69">    ps.print(':');</span>
+
+<span class="nc bnc" id="L71" title="All 2 branches missed.">    if (isFiltered){</span>
+<span class="nc" id="L72">      ps.print(&quot;X&quot;);</span>
+      
+    } else {
+<span class="nc bnc" id="L75" title="All 10 branches missed.">      switch (fi.getTypeCode()) {</span>
+      case Types.T_BOOLEAN:
+<span class="nc" id="L77">        ps.print(ei.getBooleanField(fi));</span>
+<span class="nc" id="L78">        break;</span>
+      case Types.T_BYTE:
+<span class="nc" id="L80">        ps.print(ei.getByteField(fi));</span>
+<span class="nc" id="L81">        break;</span>
+      case Types.T_CHAR:
+<span class="nc" id="L83">        PrintUtils.printCharLiteral(ps, ei.getCharField(fi));</span>
+<span class="nc" id="L84">        break;</span>
+      case Types.T_SHORT:
+<span class="nc" id="L86">        ps.print(ei.getShortField(fi));</span>
+<span class="nc" id="L87">        break;</span>
+      case Types.T_INT:
+<span class="nc" id="L89">        ps.print(ei.getIntField(fi));</span>
+<span class="nc" id="L90">        break;</span>
+      case Types.T_LONG:
+<span class="nc" id="L92">        ps.print(ei.getLongField(fi));</span>
+<span class="nc" id="L93">        break;</span>
+      case Types.T_FLOAT:
+<span class="nc" id="L95">        ps.print(ei.getFloatField(fi));</span>
+<span class="nc" id="L96">        break;</span>
+      case Types.T_DOUBLE:
+<span class="nc" id="L98">        ps.print(ei.getDoubleField(fi));</span>
+<span class="nc" id="L99">        break;</span>
+
+      case Types.T_REFERENCE:
+      case Types.T_ARRAY:
+<span class="nc" id="L103">        PrintUtils.printReference(ps, ei.getReferenceField(fi));</span>
+        break;
+      }
+    }
+<span class="nc" id="L107">  }</span>
+  
+  protected void printFields (ElementInfo ei, FieldInfo[] fields, FinalBitSet filterMask){
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    if (fields != null){</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">      for (int i = 0; i &lt; fields.length; i++) {</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (i &gt; 0) {</span>
+<span class="nc" id="L113">          ps.print(',');</span>
+        }
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        print(ei, fields[i], (filterMask != null &amp;&amp; filterMask.get(i)));</span>
+      }
+    }
+<span class="nc" id="L118">  }</span>
+  
+  public void print (ElementInfo ei, FinalBitSet filterMask){
+<span class="nc" id="L121">    boolean isObject = ei.isObject();</span>
+<span class="nc" id="L122">    ClassInfo ci = ei.getClassInfo();</span>
+    
+<span class="nc bnc" id="L124" title="All 2 branches missed.">    int ref = (useSid) ? ei.getSid() : ei.getObjectRef();</span>
+<span class="nc" id="L125">    ps.printf(&quot;@%x &quot;, ref);</span>
+    
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    if (isObject){</span>
+<span class="nc" id="L128">      ps.print(&quot;object &quot;);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      if (ei.isArray()){</span>
+<span class="nc" id="L130">        ps.print( Types.getTypeName(ci.getName()));</span>
+      } else {
+<span class="nc" id="L132">        ps.print(ci.getName());</span>
+      }
+    } else {
+<span class="nc" id="L135">      ps.print(&quot;class &quot;);</span>
+<span class="nc" id="L136">      ps.print(ci.getName());</span>
+    }
+    
+<span class="nc" id="L139">    ps.print(':');</span>
+    
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (isObject){</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">      if (ei.isArray()){</span>
+<span class="nc" id="L143">        ps.print('[');</span>
+<span class="nc" id="L144">        ei.getArrayFields().printElements(ps, maxElements);</span>
+<span class="nc" id="L145">        ps.print(']');</span>
+            
+      } else {
+<span class="nc" id="L148">        ps.print('{');</span>
+<span class="nc" id="L149">        printFields(ei, ci.getInstanceFields(), filterMask);</span>
+<span class="nc" id="L150">        ps.print('}');</span>
+      }
+      
+    } else {
+<span class="nc" id="L154">      ps.print('{');</span>
+<span class="nc" id="L155">      printFields( ei, ci.getDeclaredStaticFields(), filterMask);        </span>
+<span class="nc" id="L156">      ps.print('}');</span>
+    }
+<span class="nc" id="L158">  }</span>
+  
+  public void print (ThreadInfo ti){
+<span class="nc" id="L161">    PrintUtils.printReference(ps, ti.getThreadObjectRef());</span>
+<span class="nc" id="L162">    ps.print(' ');</span>
+<span class="nc" id="L163">    ps.print(ti.getStateDescription());</span>
+<span class="nc" id="L164">  }</span>
+  
+  public void print (StackFrame frame){
+<span class="nc" id="L167">    MethodInfo mi = frame.getMethodInfo();</span>
+  
+<span class="nc" id="L169">    ps.print('@');</span>
+<span class="nc" id="L170">    ps.print(frame.getDepth());</span>
+    
+<span class="nc" id="L172">    ps.print(&quot; frame &quot;);</span>
+<span class="nc" id="L173">    ps.print( mi.getFullName());</span>
+<span class="nc" id="L174">    ps.print( &quot;:{&quot; );</span>
+    
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    if (!mi.isStatic()){</span>
+<span class="nc" id="L177">      ps.print(&quot;this:&quot;);</span>
+<span class="nc" id="L178">      PrintUtils.printReference(ps, frame.getThis());</span>
+<span class="nc" id="L179">      ps.print(',');</span>
+    }
+    
+<span class="nc" id="L182">    ps.print(&quot;pc:&quot;);</span>
+<span class="nc" id="L183">    ps.print(frame.getPC().getInstructionIndex());</span>
+    
+<span class="nc" id="L185">    ps.print(&quot;,slots:[&quot;);</span>
+<span class="nc" id="L186">    frame.printSlots(ps);</span>
+<span class="nc" id="L187">    ps.print(']');</span>
+    
+<span class="nc" id="L189">    ps.print('}');</span>
+<span class="nc" id="L190">  }</span>
+  
+  public void println(){
+<span class="nc" id="L193">    ps.println();</span>
+<span class="nc" id="L194">  }</span>
+  
+  public void print (NativeStateHolder nsh){
+<span class="nc" id="L197">    ps.print(nsh);</span>
+<span class="nc" id="L198">    ps.print(&quot;:&quot;);</span>
+<span class="nc" id="L199">    ps.print(nsh.getHash());</span>
+<span class="nc" id="L200">  }</span>
+  
+  @Override
+  public void write(int b) throws IOException {
+<span class="nc" id="L204">    ps.write(b);</span>
+<span class="nc" id="L205">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

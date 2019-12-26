@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventTree.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.event</a> &gt; <span class="el_source">EventTree.java</span></div><h1>EventTree.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.event;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * an abstract class that creates Event trees
+ * 
+ * While there is no need to provide specialized Event types or additional event 
+ * constructors, concrete subclasses have to provide a createRoot() implementation.
+ * 
+ * A typical implementation looks like this
+ *
+ *   class MyTree extends EventTree {
+ *     @Override
+ *     public Event createRoot() {
+ *       return sequence(
+ *               event(&quot;a&quot;),
+ *               alternatives(
+ *                       event(&quot;1&quot;),
+ *                       iteration(2,
+ *                               event(&quot;x&quot;)
+ *                       )
+ *               ),
+ *               event(&quot;b&quot;)
+ *       );
+ *     }
+ *   }
+ *
+ *   or alternatively
+ *   class MyTree extends EventTree {
+ *     MyTree(){
+ *       root = sequence(
+ *                 event(&quot;a&quot;),
+ *                    alternative(
+ *                       event(&quot;1),
+ *                       event(&quot;2&quot;)
+ *                 )
+ *              );
+ *     }
+ *   }
+ *
+ *   or alternatively as an anonymous class
+ *
+ *     EventTree myTree = new EventTree(
+ *         sequence(
+ *             event(&quot;a&quot;),
+ *             alternatives(
+ *                 event(&quot;1&quot;),
+ *                 iteration(2,
+ *                     event(&quot;x&quot;)
+ *                 )
+ *             ),
+ *             event(&quot;b&quot;)
+ *         )
+ *     );
+ *
+ */
+public class EventTree implements EventConstructor {
+  
+  public static final String CONFIG_KEY = &quot;event.tree.class&quot;;
+  
+  protected Event root;
+
+  /**
+   * this is our purpose in life, which has to be provided by concrete subclasses 
+   */
+  public Event createRoot() {
+    // nothing here, needs to be overridden by subclass to populate tree
+<span class="nc" id="L88">    return null;</span>
+  }
+
+<span class="fc" id="L91">  protected EventTree () {</span>
+<span class="fc" id="L92">    root = createRoot();</span>
+<span class="fc" id="L93">  }</span>
+
+<span class="fc" id="L95">  protected EventTree (Event root){</span>
+<span class="fc" id="L96">    this.root = root;</span>
+<span class="fc" id="L97">  }</span>
+  
+  public Event getRoot(){
+<span class="fc" id="L100">    return root;</span>
+  }
+    
+  //--- inspection and debugging
+
+<span class="fc" id="L105">  static final List&lt;Event&gt; NO_EVENTS = new ArrayList&lt;Event&gt;(0);</span>
+  
+  public List&lt;Event&gt; visibleEndEvents(){
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L109">      return root.visibleEndEvents();</span>
+    } else {
+<span class="nc" id="L111">      return NO_EVENTS;</span>
+    }
+  }
+  
+  public void printPaths(){
+<span class="fc bfc" id="L116" title="All 2 branches covered.">    for (Event es : visibleEndEvents()){</span>
+<span class="fc" id="L117">      es.printPath(System.out);</span>
+<span class="fc" id="L118">      System.out.println('.');</span>
+<span class="fc" id="L119">    }</span>
+<span class="fc" id="L120">  }</span>
+
+  public void printTree (){
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L124">      root.printTree(System.out, 0);</span>
+    }
+<span class="fc" id="L126">  }</span>
+
+  /**
+   * this should be overridden in case we want to check if this is an expected trace
+   * The generic form can only check if this is a valid end event.
+   * 
+   * To check for a whole trace, implementors should keep some sort of expected event specs
+   */
+  public boolean checkPath (Event lastEvent){
+<span class="nc bnc" id="L135" title="All 2 branches missed.">    for (Event ee : root.visibleEndEvents()){</span>
+<span class="nc bnc" id="L136" title="All 2 branches missed.">      if (ee.equals(lastEvent)){</span>
+<span class="nc" id="L137">        return true;</span>
+      }
+<span class="nc" id="L139">    }</span>
+    
+<span class="nc" id="L141">    return false;</span>
+  }
+  
+  public boolean checkPath (Event lastEvent, String[] pathSpecs) {
+<span class="fc" id="L145">    String trace = lastEvent.getPathString(null);</span>
+
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">    for (int i = 0; i &lt; pathSpecs.length; i++) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">      if (trace.equals(pathSpecs[i])) {</span>
+<span class="fc" id="L149">        pathSpecs[i] = null;</span>
+<span class="fc" id="L150">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L154">    return false; // unexpected trace</span>
+  }
+  
+  /**
+   * override this if the concrete model keeps track of coverage
+   * 
+   * @return [0.0..1.0]
+   */
+  public float getPathCoverage (){
+<span class="nc" id="L163">    throw new UnsupportedOperationException(&quot;path coverage not supported by generic EventTree&quot;);</span>
+  }
+  
+  /**
+   * override this if the concrete model can keep track of coverage
+   * call at the end of execution
+   */
+  public boolean isCompletelyCovered (){
+<span class="nc" id="L171">    throw new UnsupportedOperationException(&quot;path coverage not supported by generic EventTree&quot;);</span>
+  }
+  
+  /**
+   * extend this tree with a new path 
+   */
+  public void addPath (Event... path){
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L179">      root.addPath(path.length, path);</span>
+    } else {
+<span class="nc" id="L181">      root = sequence(path);</span>
+    }
+<span class="fc" id="L183">  }</span>
+  
+  public Event interleave (Event... otherTrees){
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L187">      return root.interleave( otherTrees);</span>
+      
+    } else {
+<span class="nc bnc" id="L190" title="All 4 branches missed.">      if (otherTrees == null || otherTrees.length == 0){</span>
+<span class="nc" id="L191">        return root;</span>
+        
+      } else {
+<span class="nc" id="L194">        Event first = null;</span>
+<span class="nc" id="L195">        List&lt;Event&gt; rest = new ArrayList&lt;Event&gt;();</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (int i=0; i&lt; otherTrees.length; i++){</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">          if (otherTrees[i] != null){</span>
+<span class="nc bnc" id="L198" title="All 2 branches missed.">            if (first == null){</span>
+<span class="nc" id="L199">              first = otherTrees[i];</span>
+            } else {
+<span class="nc" id="L201">              rest.add( otherTrees[i]);</span>
+            }
+          }
+        }
+        
+<span class="nc bnc" id="L206" title="All 2 branches missed.">        if (first != null){</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">          if (rest.isEmpty()){</span>
+<span class="nc" id="L208">            return first;</span>
+          } else {
+<span class="nc" id="L210">            Event[] ot = new Event[rest.size()];</span>
+<span class="nc" id="L211">            rest.toArray(ot);</span>
+<span class="nc" id="L212">            return first.interleave(ot);</span>
+          }
+          
+        } else {      // nothing to interleave at all
+<span class="nc" id="L216">          return null;</span>
+        }
+      }
+    }
+  }
+
+  public EventTree interleave (EventTree... otherTrees){
+<span class="fc" id="L223">    Event[] otherRoots = new Event[otherTrees.length];</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">    for (int i=0; i&lt;otherRoots.length; i++){</span>
+<span class="fc" id="L225">      otherRoots[i] = otherTrees[i].root;</span>
+    }
+<span class="fc" id="L227">    return new EventTree( interleave( otherRoots));</span>
+  }  
+  
+  public Event removeSource (Object source){
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L232">      return root.removeSource(source);</span>
+      
+    } else { // nothing to remove from
+<span class="nc" id="L235">      return null;</span>
+    }
+  }
+  
+  public int getMaxDepth(){
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">    if (root != null){</span>
+<span class="fc" id="L241">      return root.getMaxDepth();</span>
+    } else {
+<span class="nc" id="L243">      return 0;</span>
+    }
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

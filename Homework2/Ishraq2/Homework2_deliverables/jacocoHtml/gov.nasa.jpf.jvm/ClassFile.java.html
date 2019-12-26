@@ -1,0 +1,2807 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassFile.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">ClassFile.java</span></div><h1>ClassFile.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import java.io.File;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.BailOut;
+import gov.nasa.jpf.util.BinaryClassSource;
+import gov.nasa.jpf.vm.ClassParseException;
+
+/**
+ * class to read and dissect Java classfile contents (as specified by the Java VM
+ * spec  http://java.sun.com/docs/books/jvms/second_edition/html/ClassFile.doc.html#16628
+ */
+public class ClassFile extends BinaryClassSource {
+
+  public static final int CONSTANT_UTF8 = 1;
+  public static final int CONSTANT_INTEGER = 3;
+  public static final int CONSTANT_FLOAT = 4;
+  public static final int CONSTANT_LONG = 5;
+  public static final int CONSTANT_DOUBLE = 6;
+  public static final int CONSTANT_CLASS = 7;
+  public static final int CONSTANT_STRING = 8;
+  public static final int FIELD_REF = 9;
+  public static final int METHOD_REF = 10;
+  public static final int INTERFACE_METHOD_REF = 11;
+  public static final int NAME_AND_TYPE = 12;
+  public static final int METHOD_HANDLE = 15;
+  public static final int METHOD_TYPE = 16;
+  public static final int INVOKE_DYNAMIC = 18;
+
+  public static final int REF_GETFIELD = 1;
+  public static final int REF_GETSTATIC = 2;
+  public static final int REF_PUTFIELD = 3;
+  public static final int REF_PUTSTATIC = 4;
+  public static final int REF_INVOKEVIRTUAL = 5;
+  public static final int REF_INVOKESTATIC = 6;
+  public static final int REF_INVOKESPECIAL = 7;
+  public static final int REF_NEW_INVOKESPECIAL = 8;
+  public static final int REF_INVOKEINTERFACE = 9;
+
+  // used to store types in cpValue[]
+<span class="fc" id="L60">  public static enum CpInfo {</span>
+<span class="fc" id="L61">    Unused_0,                 // 0</span>
+<span class="fc" id="L62">    ConstantUtf8,             // 1</span>
+<span class="fc" id="L63">    Unused_2,                 // 2</span>
+<span class="fc" id="L64">    ConstantInteger,          // 3</span>
+<span class="fc" id="L65">    ConstantFloat,            // 4</span>
+<span class="fc" id="L66">    ConstantLong,             // 5</span>
+<span class="fc" id="L67">    ConstantDouble,           // 6</span>
+<span class="fc" id="L68">    ConstantClass,            // 7</span>
+<span class="fc" id="L69">    ConstantString,           // 8</span>
+<span class="fc" id="L70">    FieldRef,                 // 9</span>
+<span class="fc" id="L71">    MethodRef,                // 10</span>
+<span class="fc" id="L72">    InterfaceMethodRef,       // 11</span>
+<span class="fc" id="L73">    NameAndType,              // 12</span>
+<span class="fc" id="L74">    Unused_13,</span>
+<span class="fc" id="L75">    Unused_14,</span>
+<span class="fc" id="L76">    MethodHandle,             // 15</span>
+<span class="fc" id="L77">    MethodType,               // 16</span>
+<span class="fc" id="L78">    Unused_17,</span>
+<span class="fc" id="L79">    InvokeDynamic             // 18</span>
+  }
+
+  // &lt;2do&gt; this is going away
+  String requestedTypeName; // the type name that caused this classfile to be loaded
+
+  // the const pool
+  int[] cpPos;     // cpPos[i] holds data start index for cp_entry i (0 is unused)
+  Object[] cpValue; // cpValue[i] hold the String/Integer/Float/Double associated with corresponding cp_entries
+  
+  //--- ctors
+  public ClassFile (byte[] data, int offset){
+<span class="nc" id="L91">    super(data,offset);</span>
+<span class="nc" id="L92">  }</span>
+
+  public ClassFile (byte[] data){
+<span class="fc" id="L95">    super(data,0);</span>
+<span class="fc" id="L96">  }</span>
+
+  public ClassFile (String typeName, byte[] data){
+<span class="nc" id="L99">    super(data,0);</span>
+    
+<span class="nc" id="L101">    this.requestedTypeName = typeName;</span>
+<span class="nc" id="L102">  }</span>
+  
+  public ClassFile (String typeName, byte[] data, int offset){
+<span class="nc" id="L105">    super(data, offset);</span>
+    
+<span class="nc" id="L107">    this.requestedTypeName = typeName;</span>
+<span class="nc" id="L108">  }</span>
+
+  public ClassFile (File file) throws ClassParseException {
+<span class="fc" id="L111">    super(file);</span>
+<span class="fc" id="L112">  }</span>
+
+  public ClassFile (String pathName)  throws ClassParseException {
+<span class="nc" id="L115">    super( new File(pathName));</span>
+<span class="nc" id="L116">  }</span>
+
+
+
+  
+  /**
+   * set classfile data.  This is mainly provided to allow
+   * on-the-fly classfile instrumentation with 3rd party libraries
+   * 
+   * BEWARE - like getData(), this method can cause parsing to fail if the
+   * provided data does not conform to the VM specs. In particular, this
+   * method should ONLY be called before executing parse(ClassFileReader) and
+   * will otherwise throw a JPFException
+   */
+  public void setData(byte[] newData){
+<span class="nc bnc" id="L131" title="All 2 branches missed.">    if (cpPos != null){</span>
+<span class="nc" id="L132">      throw new JPFException(&quot;concurrent modification of ClassFile data&quot;);</span>
+    }
+    
+<span class="nc" id="L135">    data = newData;</span>
+<span class="nc" id="L136">  }</span>
+  
+  /**
+   * return the typename this classfile gets loaded for
+   * &lt;2do&gt; this is going away
+   */
+  public String getRequestedTypeName(){
+<span class="nc" id="L143">    return requestedTypeName;</span>
+  }
+
+
+  //--- general attributes
+  public static final String SYNTHETIC_ATTR = &quot;Synthetic&quot;;
+  public static final String DEPRECATED_ATTR = &quot;Deprecated&quot;;
+  public static final String SIGNATURE_ATTR = &quot;Signature&quot;;
+  public static final String RUNTIME_INVISIBLE_ANNOTATIONS_ATTR = &quot;RuntimeInvisibleAnnotations&quot;;
+  public static final String RUNTIME_VISIBLE_ANNOTATIONS_ATTR = &quot;RuntimeVisibleAnnotations&quot;;
+  public static final String RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR = &quot;RuntimeVisibleTypeAnnotations&quot;;
+
+  //--- standard field attributes
+  public static final String CONST_VALUE_ATTR = &quot;ConstantValue&quot;;
+
+<span class="fc" id="L158">  protected final static String[] stdFieldAttrs = {</span>
+    CONST_VALUE_ATTR, SYNTHETIC_ATTR, DEPRECATED_ATTR, SIGNATURE_ATTR,
+    RUNTIME_INVISIBLE_ANNOTATIONS_ATTR, RUNTIME_VISIBLE_ANNOTATIONS_ATTR, RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR };
+
+
+  //--- standard method attributes
+  public static final String CODE_ATTR = &quot;Code&quot;;
+  public static final String EXCEPTIONS_ATTR = &quot;Exceptions&quot;;
+  public static final String RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS_ATTR = &quot;RuntimeInvisibleParameterAnnotations&quot;;
+  public static final String RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS_ATTR = &quot;RuntimeVisibleParameterAnnotations&quot;;
+  public static final String ANNOTATIONDEFAULT_ATTR = &quot;AnnotationDefault&quot;;
+
+<span class="fc" id="L170">  protected final static String[] stdMethodAttrs = { </span>
+    CODE_ATTR, EXCEPTIONS_ATTR, SYNTHETIC_ATTR, DEPRECATED_ATTR, SIGNATURE_ATTR,
+    RUNTIME_INVISIBLE_ANNOTATIONS_ATTR, RUNTIME_VISIBLE_ANNOTATIONS_ATTR,
+    RUNTIME_INVISIBLE_PARAMETER_ANNOTATIONS_ATTR,
+    RUNTIME_VISIBLE_PARAMETER_ANNOTATIONS_ATTR,
+    RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR,
+    ANNOTATIONDEFAULT_ATTR
+  };
+
+
+  //--- standard code attributes
+  public static final String LINE_NUMBER_TABLE_ATTR = &quot;LineNumberTable&quot;;
+  public static final String LOCAL_VAR_TABLE_ATTR = &quot;LocalVariableTable&quot;;
+
+<span class="fc" id="L184">  protected final static String[] stdCodeAttrs = { LINE_NUMBER_TABLE_ATTR, LOCAL_VAR_TABLE_ATTR, RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR };</span>
+
+
+  //--- standard class attributes
+  public static final String  SOURCE_FILE_ATTR = &quot;SourceFile&quot;;
+  public static final String  INNER_CLASSES_ATTR = &quot;InnerClasses&quot;;
+  public static final String  ENCLOSING_METHOD_ATTR = &quot;EnclosingMethod&quot;;
+  public static final String  BOOTSTRAP_METHOD_ATTR = &quot;BootstrapMethods&quot;;
+  
+<span class="fc" id="L193">  protected final static String[] stdClassAttrs = {</span>
+    SOURCE_FILE_ATTR, DEPRECATED_ATTR, INNER_CLASSES_ATTR, DEPRECATED_ATTR, SIGNATURE_ATTR,
+    RUNTIME_INVISIBLE_ANNOTATIONS_ATTR, RUNTIME_VISIBLE_ANNOTATIONS_ATTR, RUNTIME_VISIBLE_TYPE_ANNOTATIONS_ATTR,
+    ENCLOSING_METHOD_ATTR, BOOTSTRAP_METHOD_ATTR };
+
+
+  protected String internStdAttrName(int cpIdx, String name, String[] stdNames){
+<span class="fc bfc" id="L200" title="All 2 branches covered.">    for (int i=0; i&lt;stdNames.length; i++){</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">      if (stdNames[i] == name) return name;</span>
+    }
+<span class="fc bfc" id="L203" title="All 2 branches covered.">    for (int i=0; i&lt;stdNames.length; i++){</span>
+<span class="fc" id="L204">      String stdName = stdNames[i];</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">      if (stdName.equals(name)){</span>
+<span class="fc" id="L206">        cpValue[cpIdx] = stdName;</span>
+<span class="fc" id="L207">        return stdName;</span>
+      }
+    }
+<span class="fc" id="L210">    return name;</span>
+  }
+
+
+  //--- constpool access
+
+  //--- the primitive info cpValue
+  public String utf8At(int utf8InfoIdx){
+    //assert data[cpPos[utf8InfoIdx]] == 1 : &quot;not a utf8_info tag&quot;;
+<span class="fc" id="L219">    return (String) cpValue[utf8InfoIdx];</span>
+  }
+
+  public int intAt(int intInfoIdx){
+    //assert data[cpPos[intInfoIdx]] == 3 : &quot;not a int_info tag&quot;;
+<span class="nc" id="L224">    return (Integer) cpValue[intInfoIdx];</span>
+  }
+
+  public float floatAt(int floatInfoIdx){
+    //assert data[cpPos[floatInfoIdx]] == 4 : &quot;not a float_info tag&quot;;
+<span class="nc" id="L229">    return (Float) cpValue[floatInfoIdx];</span>
+  }
+
+  public long longAt(int longInfoIdx){
+    //assert data[cpPos[longInfoIdx]] == 5 : &quot;not a long_info tag&quot;;
+<span class="nc" id="L234">    return (Long) cpValue[longInfoIdx];</span>
+  }
+
+  public double doubleAt(int doubleInfoIdx){
+    //assert data[cpPos[doubleInfoIdx]] == 6 : &quot;not a double_info tag&quot;;
+<span class="nc" id="L239">    return (Double) cpValue[doubleInfoIdx];</span>
+  }
+
+  //--- those two are delegated but resolved
+  public String classNameAt(int classInfoIdx){
+    //assert data[cpPos[classInfoIdx]] == 7 : &quot;not a Class_info tag&quot;;
+<span class="fc" id="L245">    return (String) cpValue[classInfoIdx];</span>
+  }
+
+  public String stringAt(int stringInfoIdx){
+    //assert data[cpPos[stringInfoIdx]] == 8 : &quot;not a String_info tag&quot;;
+<span class="nc" id="L250">    return (String) cpValue[stringInfoIdx];</span>
+  }
+
+  //--- composite infos
+
+  // the generic ones (if we don't care what kind of reference type this is)
+  public String refClassNameAt(int cpIdx){
+<span class="nc" id="L257">    return (String) cpValue[ u2(cpPos[cpIdx]+1)];</span>
+  }
+  public String refNameAt(int cpIdx){
+<span class="nc" id="L260">    return utf8At( u2( cpPos[ u2(cpPos[cpIdx]+3)]+1));</span>
+  }
+  public String refDescriptorAt(int cpIdx){
+<span class="nc" id="L263">    return utf8At( u2( cpPos[ u2(cpPos[cpIdx]+3)]+3));</span>
+  }
+
+  public int mhRefTypeAt (int methodHandleInfoIdx){
+<span class="fc" id="L267">    return u1(cpPos[methodHandleInfoIdx]+1);</span>
+  }
+  public int mhMethodRefIndexAt  (int methodHandleInfoIdx){
+<span class="fc" id="L270">    return u2(cpPos[methodHandleInfoIdx]+2);</span>
+  }
+  
+  // those could check ref types
+  public String fieldClassNameAt(int fieldRefInfoIdx){
+    //assert data[cpPos[fieldRefInfoIdx]] == 9 : &quot;not a Fieldref_info tag&quot;;
+<span class="fc" id="L276">    return (String) cpValue[ u2(cpPos[fieldRefInfoIdx]+1)];</span>
+  }
+  public String fieldNameAt(int fieldRefInfoIdx){
+<span class="fc" id="L279">    return utf8At( u2( cpPos[ u2(cpPos[fieldRefInfoIdx]+3)]+1));</span>
+  }
+  public String fieldDescriptorAt(int fieldRefInfoIdx){
+<span class="fc" id="L282">    return utf8At( u2( cpPos[ u2(cpPos[fieldRefInfoIdx]+3)]+3));</span>
+  }
+
+  public String methodClassNameAt(int methodRefInfoIdx){
+<span class="fc" id="L286">    return (String) cpValue[ u2(cpPos[methodRefInfoIdx]+1)];</span>
+  }
+  public String methodNameAt(int methodRefInfoIdx){
+<span class="fc" id="L289">    return utf8At( u2( cpPos[ u2(cpPos[methodRefInfoIdx]+3)]+1));</span>
+  }
+  public String methodDescriptorAt(int methodRefInfoIdx){
+<span class="fc" id="L292">    return utf8At( u2( cpPos[ u2(cpPos[methodRefInfoIdx]+3)]+3));</span>
+  }
+
+  public String methodTypeDescriptorAt (int methodTypeInfoIdx){
+<span class="fc" id="L296">    return utf8At( u2(cpPos[methodTypeInfoIdx]+1));</span>
+  }
+  
+  public String interfaceMethodClassNameAt(int ifcMethodRefInfoIdx){
+<span class="fc" id="L300">    return (String) cpValue[ u2(cpPos[ifcMethodRefInfoIdx]+1)];</span>
+  }
+  public String interfaceMethodNameAt(int ifcMethodRefInfoIdx){
+<span class="fc" id="L303">    return utf8At( u2( cpPos[ u2(cpPos[ifcMethodRefInfoIdx]+3)]+1));</span>
+  }
+  public String interfaceMethodDescriptorAt(int ifcMethodRefInfoIdx){
+<span class="fc" id="L306">    return utf8At( u2( cpPos[ u2(cpPos[ifcMethodRefInfoIdx]+3)]+3));</span>
+  }
+  
+  public int bootstrapMethodIndex (int cpInvokeDynamicIndex){
+<span class="fc" id="L310">    return u2(cpPos[cpInvokeDynamicIndex]+1);</span>
+  }
+  public String samMethodNameAt(int cpInvokeDynamicIndex) {
+<span class="fc" id="L313">    return utf8At( u2( cpPos[ u2(cpPos[cpInvokeDynamicIndex]+3)]+1)); </span>
+  }
+  public String callSiteDescriptor(int cpInvokeDynamicIndex) {
+<span class="fc" id="L316">    return utf8At( u2( cpPos[ u2(cpPos[cpInvokeDynamicIndex]+3)]+3)); </span>
+  }
+  
+  public String getRefTypeName (int refCode){
+<span class="nc bnc" id="L320" title="All 10 branches missed.">    switch (refCode){</span>
+<span class="nc" id="L321">      case REF_GETFIELD:      return &quot;getfield&quot;;</span>
+<span class="nc" id="L322">      case REF_GETSTATIC:     return &quot;getstatic&quot;;</span>
+<span class="nc" id="L323">      case REF_PUTFIELD:      return &quot;putfield&quot;;</span>
+<span class="nc" id="L324">      case REF_PUTSTATIC:     return &quot;putstatic&quot;;</span>
+<span class="nc" id="L325">      case REF_INVOKEVIRTUAL: return &quot;invokevirtual&quot;;</span>
+<span class="nc" id="L326">      case REF_INVOKESTATIC:  return &quot;invokestatic&quot;;</span>
+<span class="nc" id="L327">      case REF_INVOKESPECIAL: return &quot;invokespecial&quot;;</span>
+<span class="nc" id="L328">      case REF_NEW_INVOKESPECIAL: return &quot;new-invokespecial&quot;;</span>
+<span class="nc" id="L329">      case REF_INVOKEINTERFACE: return &quot;invokeinterface&quot;;</span>
+      default:
+<span class="nc" id="L331">        return &quot;&lt;unknown&gt;&quot;;</span>
+    }
+  }
+  
+  public String getTypeName (int typeCode){
+<span class="nc bnc" id="L336" title="All 9 branches missed.">    switch(typeCode){</span>
+<span class="nc" id="L337">      case 4: return &quot;boolean&quot;;</span>
+<span class="nc" id="L338">      case 5: return &quot;char&quot;;</span>
+<span class="nc" id="L339">      case 6: return &quot;float&quot;;</span>
+<span class="nc" id="L340">      case 7: return &quot;double&quot;;</span>
+<span class="nc" id="L341">      case 8: return &quot;byte&quot;;</span>
+<span class="nc" id="L342">      case 9: return &quot;short&quot;;</span>
+<span class="nc" id="L343">      case 10: return &quot;int&quot;;</span>
+<span class="nc" id="L344">      case 11: return &quot;long&quot;;</span>
+      default:
+<span class="nc" id="L346">        return &quot;&lt;unknown&gt;&quot;;</span>
+    }
+  }
+
+  @Override
+  public int getPos(){
+<span class="nc" id="L352">    return pos;</span>
+  }
+
+  public int getPc(){
+<span class="nc" id="L356">    return pc;</span>
+  }
+
+  //--- traverse/analyze the const pool (this is rather exotic)
+
+  public int getNumberOfCpEntries(){
+<span class="nc" id="L362">    return cpValue.length;</span>
+  }
+
+  public Object getCpValue (int i){
+<span class="fc" id="L366">    return cpValue[i];</span>
+  }
+
+  public int getCpTag (int i){
+<span class="fc" id="L370">    return data[cpPos[i]];</span>
+  }
+
+  /**
+   * the result can be used as input for u2(dataIndex)
+   *
+   * NOTE - this returns -1 for the dreaded unused extra entries associated
+   * with ConstantDouble and ConstantLong
+   */
+  public int getDataPosOfCpEntry (int i){
+<span class="nc" id="L380">    return cpPos[i];</span>
+  }
+
+  //--- standard attributes
+
+  public Object getConstValueAttribute(int dataPos){
+<span class="nc" id="L386">    int cpIdx = u2(dataPos);</span>
+<span class="nc" id="L387">    Object v = cpValue[cpIdx];</span>
+<span class="nc" id="L388">    return v;</span>
+  }
+
+  public String getSourceFileAttribute(int dataPos){
+    // SourceFile_attribute { u2 attr_name_idx; u4 attr_length; u2 sourcefile_idx&lt;utf8&gt;; }
+
+<span class="nc" id="L394">    int cpIdx = u2(dataPos + 6);</span>
+<span class="nc" id="L395">    Object v = cpValue[cpIdx];</span>
+<span class="nc" id="L396">    return (String)v;</span>
+  }
+
+  
+  //--- low level readers
+
+  public final int u1(int dataIdx){
+<span class="fc" id="L403">    return data[dataIdx] &amp; 0xff;</span>
+  }
+
+  public final int u2(int dataIdx){
+<span class="fc" id="L407">    return ((data[dataIdx]&amp;0xff) &lt;&lt; 8) | (data[dataIdx+1]&amp;0xff);</span>
+  }
+
+  public final int i1(int dataIdx) {
+<span class="nc" id="L411">    return data[dataIdx++];</span>
+  }
+
+  public final int i2(int dataIdx) {
+<span class="nc" id="L415">    int idx = dataIdx;</span>
+<span class="nc" id="L416">    return (data[idx++] &lt;&lt; 8) | (data[idx]&amp;0xff);</span>
+  }
+
+  public final int readU2(){
+<span class="fc" id="L420">    int idx = pos;</span>
+<span class="fc" id="L421">    pos += 2;</span>
+<span class="fc" id="L422">    return ((data[idx++]&amp;0xff) &lt;&lt; 8) | (data[idx]&amp;0xff);</span>
+  }
+
+  public final int readI2() {
+<span class="fc" id="L426">    int idx = pos;</span>
+<span class="fc" id="L427">    pos += 2;</span>
+<span class="fc" id="L428">    return (data[idx++] &lt;&lt; 8) | (data[idx]&amp;0xff);</span>
+  }
+
+  public final int readI4(){
+<span class="fc" id="L432">    int idx = pos;</span>
+<span class="fc" id="L433">    pos += 4;</span>
+<span class="fc" id="L434">    byte[] data = this.data;</span>
+
+<span class="fc" id="L436">    return (data[idx++] &lt;&lt;24) | ((data[idx++]&amp;0xff) &lt;&lt; 16) | ((data[idx++]&amp;0xff) &lt;&lt; 8) | (data[idx]&amp;0xff);</span>
+  }
+
+  
+  //--- reader notifications
+  private void setClass(ClassFileReader reader, String clsName, String superClsName, int flags, int cpCount) throws ClassParseException {
+<span class="fc" id="L442">    int p = pos;</span>
+<span class="fc" id="L443">    reader.setClass( this, clsName, superClsName, flags, cpCount);</span>
+<span class="fc" id="L444">    pos = p;</span>
+<span class="fc" id="L445">  }</span>
+
+  private void setInterfaceCount(ClassFileReader reader, int ifcCount){
+<span class="fc" id="L448">    int p = pos;</span>
+<span class="fc" id="L449">    reader.setInterfaceCount( this, ifcCount);</span>
+<span class="fc" id="L450">    pos = p;</span>
+<span class="fc" id="L451">  }</span>
+  private void setInterface(ClassFileReader reader, int ifcIndex, String ifcName){
+<span class="fc" id="L453">    int p = pos;</span>
+<span class="fc" id="L454">    reader.setInterface( this, ifcIndex, ifcName);</span>
+<span class="fc" id="L455">    pos = p;</span>
+<span class="fc" id="L456">  }</span>
+  private void setInterfacesDone(ClassFileReader reader){
+<span class="fc" id="L458">    int p = pos;</span>
+<span class="fc" id="L459">    reader.setInterfacesDone( this);</span>
+<span class="fc" id="L460">    pos = p;</span>
+<span class="fc" id="L461">  }</span>
+
+
+  private void setFieldCount(ClassFileReader reader, int fieldCount){
+<span class="fc" id="L465">    int p = pos;</span>
+<span class="fc" id="L466">    reader.setFieldCount( this, fieldCount);</span>
+<span class="fc" id="L467">    pos = p;</span>
+
+<span class="fc" id="L469">  }</span>
+  private void setField(ClassFileReader reader, int fieldIndex, int accessFlags, String name, String descriptor){
+<span class="fc" id="L471">    int p = pos;</span>
+<span class="fc" id="L472">    reader.setField( this, fieldIndex, accessFlags, name, descriptor);</span>
+<span class="fc" id="L473">    pos = p;</span>
+<span class="fc" id="L474">  }</span>
+  private void setFieldAttributeCount(ClassFileReader reader, int fieldIndex, int attrCount){
+<span class="fc" id="L476">    int p = pos;</span>
+<span class="fc" id="L477">    reader.setFieldAttributeCount( this, fieldIndex, attrCount);</span>
+<span class="fc" id="L478">    pos = p;</span>
+<span class="fc" id="L479">  }</span>
+  private void setFieldAttribute(ClassFileReader reader, int fieldIndex, int attrIndex, String name, int attrLength){
+<span class="fc" id="L481">    int p = pos + attrLength;</span>
+<span class="fc" id="L482">    reader.setFieldAttribute( this, fieldIndex, attrIndex, name, attrLength);</span>
+<span class="fc" id="L483">    pos = p;</span>
+<span class="fc" id="L484">  }</span>
+  private void setFieldAttributesDone(ClassFileReader reader, int fieldIndex){
+<span class="fc" id="L486">    int p = pos;</span>
+<span class="fc" id="L487">    reader.setFieldAttributesDone( this, fieldIndex);</span>
+<span class="fc" id="L488">    pos = p;</span>
+<span class="fc" id="L489">  }</span>
+  private void setFieldDone(ClassFileReader reader, int fieldIndex){
+<span class="fc" id="L491">    int p = pos;</span>
+<span class="fc" id="L492">    reader.setFieldDone( this, fieldIndex);</span>
+<span class="fc" id="L493">    pos = p;</span>
+<span class="fc" id="L494">  }</span>
+  private void setFieldsDone(ClassFileReader reader){
+<span class="fc" id="L496">    int p = pos;</span>
+<span class="fc" id="L497">    reader.setFieldsDone( this);</span>
+<span class="fc" id="L498">    pos = p;</span>
+<span class="fc" id="L499">  }</span>
+  private void setConstantValue(ClassFileReader reader, Object tag, Object value){
+<span class="fc" id="L501">    int p = pos;</span>
+<span class="fc" id="L502">    reader.setConstantValue( this, tag, value);</span>
+<span class="fc" id="L503">    pos = p;</span>
+<span class="fc" id="L504">  }</span>
+
+  private void setMethodCount(ClassFileReader reader, int methodCount){
+<span class="fc" id="L507">    int p = pos;</span>
+<span class="fc" id="L508">    reader.setMethodCount( this, methodCount);</span>
+<span class="fc" id="L509">    pos = p;</span>
+<span class="fc" id="L510">  }</span>
+  private void setMethod(ClassFileReader reader, int methodIndex, int accessFlags, String name, String descriptor){
+<span class="fc" id="L512">    int p = pos;</span>
+<span class="fc" id="L513">    reader.setMethod( this, methodIndex, accessFlags, name, descriptor);</span>
+<span class="fc" id="L514">    pos = p;</span>
+<span class="fc" id="L515">  }</span>
+  private void setMethodAttributeCount(ClassFileReader reader, int methodIndex, int attrCount){
+<span class="fc" id="L517">    int p = pos;</span>
+<span class="fc" id="L518">    reader.setMethodAttributeCount( this, methodIndex, attrCount);</span>
+<span class="fc" id="L519">    pos = p;</span>
+<span class="fc" id="L520">  }</span>
+  private void setMethodAttribute(ClassFileReader reader, int methodIndex, int attrIndex, String name, int attrLength){
+<span class="fc" id="L522">    int p = pos + attrLength;</span>
+<span class="fc" id="L523">    reader.setMethodAttribute( this, methodIndex, attrIndex, name, attrLength);</span>
+<span class="fc" id="L524">    pos = p;</span>
+<span class="fc" id="L525">  }</span>
+  private void setMethodAttributesDone(ClassFileReader reader, int methodIndex){
+<span class="fc" id="L527">    int p = pos;</span>
+<span class="fc" id="L528">    reader.setMethodAttributesDone( this, methodIndex);</span>
+<span class="fc" id="L529">    pos = p;</span>
+<span class="fc" id="L530">  }</span>
+  private void setMethodDone(ClassFileReader reader, int methodIndex){
+<span class="fc" id="L532">    int p = pos;</span>
+<span class="fc" id="L533">    reader.setMethodDone( this, methodIndex);</span>
+<span class="fc" id="L534">    pos = p;</span>
+<span class="fc" id="L535">  }</span>
+  private void setMethodsDone(ClassFileReader reader){
+<span class="fc" id="L537">    int p = pos;</span>
+<span class="fc" id="L538">    reader.setMethodsDone( this);</span>
+<span class="fc" id="L539">    pos = p;</span>
+<span class="fc" id="L540">  }</span>
+  private void setExceptionCount(ClassFileReader reader, Object tag, int exceptionCount){
+<span class="fc" id="L542">    int p = pos;</span>
+<span class="fc" id="L543">    reader.setExceptionCount( this, tag, exceptionCount);</span>
+<span class="fc" id="L544">    pos = p;</span>
+<span class="fc" id="L545">  }</span>
+  private void setExceptionsDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L547">    int p = pos;</span>
+<span class="fc" id="L548">    reader.setExceptionsDone( this, tag);</span>
+<span class="fc" id="L549">    pos = p;</span>
+<span class="fc" id="L550">  }</span>
+  private void setException(ClassFileReader reader, Object tag, int exceptionIndex, String exceptionType){
+<span class="fc" id="L552">    int p = pos;</span>
+<span class="fc" id="L553">    reader.setException( this, tag, exceptionIndex, exceptionType);</span>
+<span class="fc" id="L554">    pos = p;</span>
+<span class="fc" id="L555">  }</span>
+  private void setCode(ClassFileReader reader, Object tag, int maxStack, int maxLocals, int codeLength){
+<span class="fc" id="L557">    int p = pos + codeLength;</span>
+<span class="fc" id="L558">    reader.setCode( this, tag, maxStack, maxLocals, codeLength);</span>
+<span class="fc" id="L559">    pos = p;</span>
+<span class="fc" id="L560">  }</span>
+  private void setExceptionTableCount(ClassFileReader reader, Object tag, int exceptionTableCount){
+<span class="fc" id="L562">    int p = pos;</span>
+<span class="fc" id="L563">    reader.setExceptionHandlerTableCount( this, tag, exceptionTableCount);</span>
+<span class="fc" id="L564">    pos = p;</span>
+<span class="fc" id="L565">  }</span>
+  private void setExceptionTableEntry(ClassFileReader reader, Object tag, int exceptionIndex,
+          int startPc, int endPc, int handlerPc, String catchType){
+<span class="fc" id="L568">    int p = pos;</span>
+<span class="fc" id="L569">    reader.setExceptionHandler( this, tag, exceptionIndex, startPc, endPc, handlerPc, catchType);</span>
+<span class="fc" id="L570">    pos = p;</span>
+<span class="fc" id="L571">  }</span>
+  private void setExceptionTableDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L573">    int p = pos;</span>
+<span class="fc" id="L574">    reader.setExceptionHandlerTableDone( this, tag);</span>
+<span class="fc" id="L575">    pos = p;</span>
+<span class="fc" id="L576">  }</span>
+
+  private void setCodeAttributeCount(ClassFileReader reader, Object tag, int attrCount){
+<span class="fc" id="L579">    int p = pos;</span>
+<span class="fc" id="L580">    reader.setCodeAttributeCount( this, tag, attrCount);</span>
+<span class="fc" id="L581">    pos = p;</span>
+<span class="fc" id="L582">  }</span>
+  private void setCodeAttribute(ClassFileReader reader, Object tag, int attrIndex, String name, int attrLength){
+<span class="fc" id="L584">    int p = pos + attrLength;</span>
+<span class="fc" id="L585">    reader.setCodeAttribute( this, tag, attrIndex, name, attrLength);</span>
+<span class="fc" id="L586">    pos = p;</span>
+<span class="fc" id="L587">  }</span>
+  private void setCodeAttributesDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L589">    int p = pos;</span>
+<span class="fc" id="L590">    reader.setCodeAttributesDone( this, tag);</span>
+<span class="fc" id="L591">    pos = p;</span>
+<span class="fc" id="L592">  }</span>
+          
+  private void setLineNumberTableCount(ClassFileReader reader, Object tag, int lineNumberCount){
+<span class="fc" id="L595">    int p = pos;</span>
+<span class="fc" id="L596">    reader.setLineNumberTableCount( this, tag, lineNumberCount);</span>
+<span class="fc" id="L597">    pos = p;</span>
+<span class="fc" id="L598">  }</span>
+  private void setLineNumber(ClassFileReader reader, Object tag, int lineIndex, int lineNumber, int startPc){
+<span class="fc" id="L600">    int p = pos;</span>
+<span class="fc" id="L601">    reader.setLineNumber( this, tag, lineIndex, lineNumber, startPc);</span>
+<span class="fc" id="L602">    pos = p;</span>
+<span class="fc" id="L603">  }</span>
+  private void setLineNumberTableDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L605">    int p = pos;</span>
+<span class="fc" id="L606">    reader.setLineNumberTableDone( this, tag);</span>
+<span class="fc" id="L607">    pos = p;</span>
+<span class="fc" id="L608">  }</span>
+
+  private void setLocalVarTableCount(ClassFileReader reader, Object tag, int localVarCount){
+<span class="fc" id="L611">    int p = pos;</span>
+<span class="fc" id="L612">    reader.setLocalVarTableCount( this, tag, localVarCount);</span>
+<span class="fc" id="L613">    pos = p;</span>
+<span class="fc" id="L614">  }</span>
+  private void setLocalVar(ClassFileReader reader, Object tag, int localVarIndex, String varName, String descriptor,
+                      int scopeStartPc, int scopeEndPc, int slotIndex){
+<span class="fc" id="L617">    int p = pos;</span>
+<span class="fc" id="L618">    reader.setLocalVar( this, tag, localVarIndex, varName, descriptor, scopeStartPc, scopeEndPc, slotIndex);</span>
+<span class="fc" id="L619">    pos = p;</span>
+<span class="fc" id="L620">  }</span>
+  private void setLocalVarTableDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L622">    int p = pos;</span>
+<span class="fc" id="L623">    reader.setLocalVarTableDone( this, tag);</span>
+<span class="fc" id="L624">    pos = p;</span>
+<span class="fc" id="L625">  }</span>
+
+
+  private void setClassAttributeCount(ClassFileReader reader, int attrCount){
+<span class="fc" id="L629">    int p = pos;</span>
+<span class="fc" id="L630">    reader.setClassAttributeCount( this, attrCount);</span>
+<span class="fc" id="L631">    pos = p;</span>
+<span class="fc" id="L632">  }</span>
+  private void setClassAttribute(ClassFileReader reader, int attrIndex, String name, int attrLength){
+<span class="fc" id="L634">    int p = pos + attrLength;</span>
+<span class="fc" id="L635">    reader.setClassAttribute( this, attrIndex, name, attrLength);</span>
+<span class="fc" id="L636">    pos = p;</span>
+<span class="fc" id="L637">  }</span>
+  private void setClassAttributesDone(ClassFileReader reader){
+<span class="fc" id="L639">    int p = pos;</span>
+<span class="fc" id="L640">    reader.setClassAttributesDone(this);</span>
+<span class="fc" id="L641">    pos = p;</span>
+<span class="fc" id="L642">  }</span>
+
+  private void setSourceFile(ClassFileReader reader, Object tag, String pathName){
+<span class="fc" id="L645">    int p = pos;</span>
+<span class="fc" id="L646">    reader.setSourceFile( this, tag, pathName);</span>
+<span class="fc" id="L647">    pos = p;</span>
+<span class="fc" id="L648">  }</span>
+  
+  private void setBootstrapMethodCount (ClassFileReader reader, Object tag, int bootstrapMethodCount){
+<span class="fc" id="L651">    int p = pos;</span>
+<span class="fc" id="L652">    reader.setBootstrapMethodCount( this, tag, bootstrapMethodCount);</span>
+<span class="fc" id="L653">    pos = p;    </span>
+<span class="fc" id="L654">  }</span>
+  private void setBootstrapMethod (ClassFileReader reader, Object tag, int idx, 
+                                   int refKind, String cls, String mth, String descriptor, int[] cpArgs){
+<span class="fc" id="L657">    int p = pos;</span>
+<span class="fc" id="L658">    reader.setBootstrapMethod( this, tag, idx, refKind, cls, mth, descriptor, cpArgs);</span>
+<span class="fc" id="L659">    pos = p;    </span>
+<span class="fc" id="L660">  }</span>
+  private void setBootstrapMethodsDone (ClassFileReader reader, Object tag){
+<span class="fc" id="L662">    int p = pos;</span>
+<span class="fc" id="L663">    reader.setBootstrapMethodsDone( this, tag);</span>
+<span class="fc" id="L664">    pos = p;    </span>
+<span class="fc" id="L665">  }</span>
+  
+  private void setInnerClassCount(ClassFileReader reader, Object tag, int innerClsCount){
+<span class="fc" id="L668">    int p = pos;</span>
+<span class="fc" id="L669">    reader.setInnerClassCount( this, tag, innerClsCount);</span>
+<span class="fc" id="L670">    pos = p;</span>
+<span class="fc" id="L671">  }</span>
+  private void setInnerClass(ClassFileReader reader, Object tag, int innerClsIndex, String outerName, String innerName,
+          String innerSimpleName, int accessFlags){
+<span class="fc" id="L674">    int p = pos;</span>
+<span class="fc" id="L675">    reader.setInnerClass( this, tag, innerClsIndex, outerName, innerName, innerSimpleName, accessFlags);</span>
+<span class="fc" id="L676">    pos = p;</span>
+<span class="fc" id="L677">  }</span>
+  private void setEnclosingMethod(ClassFileReader reader, Object tag, String enclosingClass, String enclosedMethod, String descriptor){
+<span class="fc" id="L679">    int p = pos;</span>
+<span class="fc" id="L680">	  reader.setEnclosingMethod( this, tag, enclosingClass, enclosedMethod, descriptor);</span>
+<span class="fc" id="L681">	  pos = p;</span>
+<span class="fc" id="L682">  }</span>
+  private void setInnerClassesDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L684">    int p = pos;</span>
+<span class="fc" id="L685">    reader.setInnerClassesDone(this, tag);</span>
+<span class="fc" id="L686">    pos = p;</span>
+<span class="fc" id="L687">  }</span>
+
+  private void setAnnotationCount(ClassFileReader reader, Object tag, int annotationCount){
+<span class="fc" id="L690">    int p = pos;</span>
+<span class="fc" id="L691">    reader.setAnnotationCount( this, tag, annotationCount);</span>
+<span class="fc" id="L692">    pos = p;</span>
+<span class="fc" id="L693">  }</span>
+  private boolean setAnnotation(ClassFileReader reader, Object tag, int annotationIndex, String annotationType){
+<span class="fc" id="L695">    int p = pos;</span>
+    try {
+<span class="fc" id="L697">      reader.setAnnotation( this, tag, annotationIndex, annotationType);</span>
+<span class="fc" id="L698">      pos = p;</span>
+<span class="fc" id="L699">      return true;</span>
+<span class="fc" id="L700">    } catch (SkipAnnotation sa) {</span>
+<span class="fc" id="L701">      this.skipAnnotation(false);</span>
+<span class="fc" id="L702">      return false;</span>
+    }
+  }
+  
+  /*
+   * This is largely lifted from AnnotationParser.java
+   *   annotation {
+   *     u2 type_index;
+   *     u2 num_element_value_pairs;
+   *     {
+   *       u2 element_name_index;
+   *       element_value value;
+   *     } element_value_pairs[num_element_value_pairs]
+   *   }
+   */
+  private void skipAnnotation(boolean skipTypeIndex) {
+<span class="pc bpc" id="L718" title="1 of 2 branches missed.">    if(skipTypeIndex) { // we may want to skip after reading the type name</span>
+<span class="nc" id="L719">      readU2();</span>
+    }
+<span class="fc" id="L721">    int numKV = readU2();</span>
+<span class="pc bpc" id="L722" title="1 of 2 branches missed.">    for(int i = 0; i &lt; numKV; i++) {</span>
+<span class="nc" id="L723">      readU2(); // skip name</span>
+<span class="nc" id="L724">      skipMemberValue();</span>
+    }
+<span class="fc" id="L726">  }</span>
+
+  /*
+   * Skips an element_value
+   */
+  private void skipMemberValue() {
+<span class="nc" id="L732">    int tag = readUByte();</span>
+<span class="nc bnc" id="L733" title="All 4 branches missed.">    switch(tag) {</span>
+    case 'e': // Enum value
+<span class="nc" id="L735">      pos += 4; // an enum value is a struct of two shorts, for 4 bytes total</span>
+<span class="nc" id="L736">      break;</span>
+    case '@':
+<span class="nc" id="L738">      skipAnnotation(true);</span>
+<span class="nc" id="L739">      break;</span>
+    case '[':
+<span class="nc" id="L741">      skipArray();</span>
+<span class="nc" id="L742">      break;</span>
+    default:
+<span class="nc" id="L744">      pos += 2; // either two bye const val index or two byte class info index</span>
+    }
+<span class="nc" id="L746">  }</span>
+
+  private void skipArray() {
+<span class="nc" id="L749">    int len = readU2();</span>
+<span class="nc bnc" id="L750" title="All 2 branches missed.">    for(int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L751">      skipMemberValue();</span>
+    }
+<span class="nc" id="L753">  }</span>
+
+  private void setAnnotationsDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L756">    int p = pos;</span>
+<span class="fc" id="L757">    reader.setAnnotationsDone(this, tag);</span>
+<span class="fc" id="L758">    pos = p;</span>
+<span class="fc" id="L759">  }</span>
+
+  private void setTypeAnnotationCount(ClassFileReader reader, Object tag, int annotationCount){
+<span class="fc" id="L762">    int p = pos;</span>
+<span class="fc" id="L763">    reader.setTypeAnnotationCount( this, tag, annotationCount);</span>
+<span class="fc" id="L764">    pos = p;</span>
+<span class="fc" id="L765">  }</span>
+  private void setTypeAnnotationsDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L767">    int p = pos;</span>
+<span class="fc" id="L768">    reader.setTypeAnnotationsDone(this, tag);</span>
+<span class="fc" id="L769">    pos = p;</span>
+<span class="fc" id="L770">  }</span>
+
+  
+  private void setAnnotationValueCount(ClassFileReader reader, Object tag, int annotationIndex, int nValuePairs){
+<span class="fc" id="L774">    int p = pos;</span>
+<span class="fc" id="L775">    reader.setAnnotationValueCount( this, tag, annotationIndex, nValuePairs);</span>
+<span class="fc" id="L776">    pos = p;</span>
+<span class="fc" id="L777">  }</span>
+  private void setPrimitiveAnnotationValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, Object val){
+<span class="fc" id="L780">    int p = pos;</span>
+<span class="fc" id="L781">    reader.setPrimitiveAnnotationValue( this, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L782">    pos = p;</span>
+<span class="fc" id="L783">  }</span>
+  private void setStringAnnotationValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String s){
+<span class="fc" id="L786">    int p = pos;</span>
+<span class="fc" id="L787">    reader.setStringAnnotationValue( this, tag, annotationIndex, valueIndex, elementName, arrayIndex, s);</span>
+<span class="fc" id="L788">    pos = p;</span>
+<span class="fc" id="L789">  }</span>
+  private void setClassAnnotationValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String typeName){
+<span class="fc" id="L792">    int p = pos;</span>
+<span class="fc" id="L793">    reader.setClassAnnotationValue( this, tag, annotationIndex, valueIndex, elementName, arrayIndex, typeName);</span>
+<span class="fc" id="L794">    pos = p;</span>
+<span class="fc" id="L795">  }</span>
+  
+  private void setAnnotationFieldValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex, String elementName, int arrayIndex) {
+<span class="fc" id="L798">    int p = pos;</span>
+<span class="fc" id="L799">    reader.setAnnotationFieldValue( this, tag, annotationIndex, valueIndex, elementName, arrayIndex);</span>
+<span class="fc" id="L800">    pos = p;</span>
+<span class="fc" id="L801">  }</span>
+  
+  private void setEnumAnnotationValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int arrayIndex, String enumType, String enumValue){
+<span class="fc" id="L805">    int p = pos;</span>
+<span class="fc" id="L806">    reader.setEnumAnnotationValue( this, tag, annotationIndex, valueIndex, elementName, arrayIndex, enumType, enumValue);</span>
+<span class="fc" id="L807">    pos = p;</span>
+<span class="fc" id="L808">  }</span>
+
+  private void setAnnotationValueElementCount(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName, int elementCount){
+<span class="fc" id="L812">    int p = pos;</span>
+<span class="fc" id="L813">    reader.setAnnotationValueElementCount(this, tag, annotationIndex, valueIndex, elementName, elementCount);</span>
+<span class="fc" id="L814">    pos = p;</span>
+<span class="fc" id="L815">  }</span>
+  private void setAnnotationValueElementsDone(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex,
+          String elementName){
+<span class="fc" id="L818">    int p = pos;</span>
+<span class="fc" id="L819">    reader.setAnnotationValueElementsDone(this, tag, annotationIndex, valueIndex, elementName);</span>
+<span class="fc" id="L820">    pos = p;</span>
+<span class="fc" id="L821">  }</span>
+
+  public void setAnnotationValuesDone(ClassFileReader reader, Object tag, int annotationIndex){
+<span class="fc" id="L824">    int p = pos;</span>
+<span class="fc" id="L825">    reader.setAnnotationValuesDone(this, tag, annotationIndex);</span>
+<span class="fc" id="L826">    pos = p;</span>
+<span class="fc" id="L827">  }</span>
+
+  private void setParameterCount(ClassFileReader reader, Object tag, int parameterCount){
+<span class="fc" id="L830">    int p = pos;</span>
+<span class="fc" id="L831">    reader.setParameterCount(this, tag, parameterCount);</span>
+<span class="fc" id="L832">    pos = p;</span>
+<span class="fc" id="L833">  }</span>
+  private void setParameterAnnotationCount(ClassFileReader reader, Object tag, int paramIndex, int annotationCount){
+<span class="fc" id="L835">    int p = pos;</span>
+<span class="fc" id="L836">    reader.setParameterAnnotationCount(this, tag, paramIndex, annotationCount);</span>
+<span class="fc" id="L837">    pos = p;</span>
+<span class="fc" id="L838">  }</span>
+
+  private boolean setParameterAnnotation(ClassFileReader reader, Object tag, int annotationIndex, String annotationType){
+<span class="fc" id="L841">    int p = pos;</span>
+    try {
+<span class="fc" id="L843">      reader.setParameterAnnotation( this, tag, annotationIndex, annotationType);</span>
+<span class="fc" id="L844">      pos = p;</span>
+<span class="fc" id="L845">      return true;</span>
+<span class="nc" id="L846">    } catch(SkipAnnotation s) {</span>
+<span class="nc" id="L847">      this.skipAnnotation(false);</span>
+<span class="nc" id="L848">      return false;</span>
+    }
+  }
+  private void setParameterAnnotationsDone(ClassFileReader reader, Object tag, int paramIndex){
+<span class="fc" id="L852">    int p = pos;</span>
+<span class="fc" id="L853">    reader.setParameterAnnotationsDone(this, tag, paramIndex);</span>
+<span class="fc" id="L854">    pos = p;</span>
+<span class="fc" id="L855">  }</span>
+  private void setParametersDone(ClassFileReader reader, Object tag){
+<span class="fc" id="L857">    int p = pos;</span>
+<span class="fc" id="L858">    reader.setParametersDone(this, tag);</span>
+<span class="fc" id="L859">    pos = p;</span>
+<span class="fc" id="L860">  }</span>
+
+  public void setSignature(ClassFileReader reader, Object tag, String signature){
+<span class="fc" id="L863">    int p = pos;</span>
+<span class="fc" id="L864">    reader.setSignature(this, tag, signature);</span>
+<span class="fc" id="L865">    pos = p;</span>
+<span class="fc" id="L866">  }</span>
+
+  //--- parsing
+
+  /**
+   * this is the main parsing routine that uses the ClassFileReader interface
+   * to tell clients about the classfile contents
+   *
+   * ClassFile structure: http://java.sun.com/docs/books/jvms/second_edition/html/ClassFile.doc.html#74353
+   *   u4 magic;  // 0xcafebabe
+   *   u2 minor_version;
+   *   u2 major_version;
+   *
+   *   u2 constant_pool_count;
+   *   cp_entry constant_pool[constant_pool_count-1];
+   *   u2 access_flags;
+   *
+   *   u2 this_class;
+   *   u2 super_class;
+   *
+   *   u2 interfaces_count;
+   *   u2 interfaces[interfaces_count];
+   *
+   *   u2 fields_count;
+   *   field_info fields[fields_count];
+   *
+   *   u2 methods_count;
+   *   method_info methods[methods_count];
+   *
+   *   u2 attributes_count;
+   *   attribute_info attributes[attributes_count];
+   */
+  public void parse( ClassFileReader reader)  throws ClassParseException {
+    int cpIdx;
+
+    try {
+      // yeah, cafebabe
+<span class="fc" id="L903">      int magic = readI4();</span>
+<span class="pc bpc" id="L904" title="1 of 2 branches missed.">      if (magic != 0xCAFEBABE) {</span>
+<span class="nc" id="L905">        error(&quot;wrong magic: &quot; + Integer.toHexString(magic));</span>
+      }
+
+      // we don't do much with the version numbers yet
+<span class="fc" id="L909">      int minor = readU2();</span>
+<span class="fc" id="L910">      int major = readU2();</span>
+
+      // get the const pool
+<span class="fc" id="L913">      int cpCount = readU2();</span>
+<span class="fc" id="L914">      cpPos = new int[cpCount];</span>
+<span class="fc" id="L915">      cpValue = new Object[cpCount];</span>
+<span class="fc" id="L916">      parseCp(cpCount);</span>
+
+      // the class essentials
+<span class="fc" id="L919">      int accessFlags = readU2();</span>
+
+<span class="fc" id="L921">      cpIdx = readU2();</span>
+<span class="fc" id="L922">      String clsName = (String) cpValue[cpIdx];</span>
+
+<span class="fc" id="L924">      cpIdx = readU2();</span>
+<span class="fc" id="L925">      String superClsName = (String) cpValue[cpIdx];</span>
+
+
+<span class="fc" id="L928">      setClass(reader, clsName, superClsName, accessFlags, cpCount);</span>
+
+      // interfaces
+<span class="fc" id="L931">      int ifcCount = readU2();</span>
+<span class="fc" id="L932">      parseInterfaces(reader, ifcCount);</span>
+
+      // fields
+<span class="fc" id="L935">      int fieldCount = readU2();</span>
+<span class="fc" id="L936">      parseFields(reader, fieldCount);</span>
+
+      // methods
+<span class="fc" id="L939">      int methodCount = readU2();</span>
+<span class="fc" id="L940">      parseMethods(reader, methodCount);</span>
+
+      // class attributes
+<span class="fc" id="L943">      int classAttrCount = readU2();</span>
+<span class="fc" id="L944">      parseClassAttributes(reader, classAttrCount);</span>
+
+<span class="nc" id="L946">    } catch (BailOut x){</span>
+      // nothing, just a control exception to shortcut the classfile parsing
+<span class="fc" id="L948">    }</span>
+<span class="fc" id="L949">  }</span>
+
+
+  //--- constpool parsing
+
+  public static String readModifiedUTF8String( byte[] data, int pos, int len) throws ClassParseException {
+    
+<span class="fc" id="L956">    int n = 0; // the number of chars in buf</span>
+<span class="fc" id="L957">    char[] buf = new char[len]; // it can't be more, but it can be less chars</span>
+    
+    // \u0001 - \u007f             : single byte chars:  0xxxxxxx
+    // \u0000 and \u0080 - \u07ff  : double byte chars:  110xxxxx, 10xxxxxx
+    // \u0800 - \uffff             : tripple byte chars: 1110xxxx, 10xxxxxx, 10xxxxxx
+    
+<span class="fc" id="L963">    int max = pos+len;</span>
+<span class="fc bfc" id="L964" title="All 2 branches covered.">    for (int i=pos; i&lt;max; i++){</span>
+<span class="fc" id="L965">      int c = data[i] &amp; 0xff;</span>
+<span class="fc bfc" id="L966" title="All 2 branches covered.">      if ((c &amp; 0x80) == 0){ // single byte char  0xxxxxxx</span>
+<span class="fc" id="L967">        buf[n++] = (char)c;</span>
+        
+      } else {
+<span class="pc bpc" id="L970" title="1 of 2 branches missed.">        if ((c &amp; 0x40) != 0){      // 11xxxxxx</span>
+          
+          // for the sake of efficiency, we don't check for the trailing zero bit in the marker,
+          // we just mask it out
+<span class="fc bfc" id="L974" title="All 2 branches covered.">          if ((c &amp; 0x20) == 0) {   // 110xxxxx - double byte char</span>
+<span class="fc" id="L975">            buf[n++] = (char) (((c &amp; 0x1f) &lt;&lt; 6) | (data[++i] &amp; 0x3f));</span>
+            
+          } else {                 // 1110xxxx - tripple byte char
+<span class="fc" id="L978">            buf[n++] = (char) (((c &amp; 0x0f) &lt;&lt; 12) | ((data[++i] &amp; 0x3f) &lt;&lt; 6) | (data[++i] &amp; 0x3f));</span>
+          }
+          
+        } else {
+<span class="nc" id="L982">          throw new ClassParseException(&quot;malformed modified UTF-8 input: &quot;);</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L987">    return new String(buf, 0, n);</span>
+  }
+
+  
+  // the protected methods are called automatically, the public parse..Attr() methods
+  // are called optionally from the corresponding ClassFileReader.set..Attribute() method.
+  // Note that these calls have to provide the ClassFileReader as an argument because
+  // we might actually switch to another reader (e.g. MethodInfos for parseCodeAttr)
+
+  protected void parseCp(int cpCount)  throws ClassParseException {
+<span class="fc" id="L997">    int j = pos;</span>
+
+<span class="fc" id="L999">    byte[] data = this.data;</span>
+<span class="fc" id="L1000">    int[] dataIdx = this.cpPos;</span>
+<span class="fc" id="L1001">    Object[] values = this.cpValue;</span>
+
+    //--- first pass: store data index values and convert non-delegating constant values
+    // cp_entry[0] is traditionally unused
+<span class="fc bfc" id="L1005" title="All 2 branches covered.">    for (int i=1; i&lt;cpCount; i++) {</span>
+<span class="pc bpc" id="L1006" title="3 of 17 branches missed.">      switch (data[j]){</span>
+        case 0:
+<span class="nc" id="L1008">          error(&quot;illegal constpool tag&quot;);</span>
+
+        case CONSTANT_UTF8:  // utf8_info { u1 tag; u2 length; u1 bytes[length]; }
+<span class="fc" id="L1011">          dataIdx[i] = j++;</span>
+<span class="fc" id="L1012">          int len = ((data[j++]&amp;0xff) &lt;&lt;8) | (data[j++]&amp;0xff);</span>
+
+<span class="fc" id="L1014">          String s = readModifiedUTF8String( data, j, len);</span>
+<span class="fc" id="L1015">          values[i] = s;</span>
+
+<span class="fc" id="L1017">          j += len;</span>
+<span class="fc" id="L1018">          break;</span>
+
+        case 2:
+<span class="nc" id="L1021">          error(&quot;illegal constpool tag&quot;);</span>
+
+        case CONSTANT_INTEGER:  // Integer_info { u1 tag; u4 bytes; }
+<span class="fc" id="L1024">          dataIdx[i] = j++;</span>
+
+<span class="fc" id="L1026">          int iVal = (data[j++]&amp;0xff)&lt;&lt;24 | (data[j++]&amp;0xff)&lt;&lt;16 | (data[j++]&amp;0xff)&lt;&lt;8 | (data[j++]&amp;0xff);</span>
+<span class="fc" id="L1027">          values[i] = new Integer(iVal);</span>
+<span class="fc" id="L1028">          break;</span>
+
+        case CONSTANT_FLOAT:  // Float_info  { u1 tag; u4 bytes; }
+<span class="fc" id="L1031">          dataIdx[i] = j++;</span>
+
+<span class="fc" id="L1033">          int iBits = (data[j++]&amp;0xff)&lt;&lt;24 | (data[j++]&amp;0xff)&lt;&lt;16 | (data[j++]&amp;0xff)&lt;&lt;8 | (data[j++]&amp;0xff);</span>
+<span class="fc" id="L1034">          float fVal = Float.intBitsToFloat(iBits);</span>
+<span class="fc" id="L1035">          values[i] = new Float(fVal);</span>
+<span class="fc" id="L1036">          break;</span>
+
+        case CONSTANT_LONG:  // Long_info { u1 tag; u4 high_bytes; u4 low_bytes; }
+<span class="fc" id="L1039">          dataIdx[i] = j++;</span>
+<span class="fc" id="L1040">          long lVal =  (data[j++]&amp;0xffL)&lt;&lt;56 | (data[j++]&amp;0xffL)&lt;&lt;48 | (data[j++]&amp;0xffL)&lt;&lt;40 | (data[j++]&amp;0xffL)&lt;&lt;32</span>
+                    | (data[j++]&amp;0xffL)&lt;&lt;24 | (data[j++]&amp;0xffL)&lt;&lt;16 | (data[j++]&amp;0xffL)&lt;&lt;8 | (data[j++]&amp;0xffL);
+<span class="fc" id="L1042">          values[i] = new Long(lVal);</span>
+
+<span class="fc" id="L1044">          dataIdx[++i] = -1;  // 8 byte cpValue occupy 2 index slots</span>
+<span class="fc" id="L1045">          break;</span>
+
+        case CONSTANT_DOUBLE:  // Double_info  { u1 tag; u4 high_bytes; u4 low_bytes; }
+<span class="fc" id="L1048">          dataIdx[i] = j++;</span>
+
+<span class="fc" id="L1050">          long lBits = (data[j++]&amp;0xffL)&lt;&lt;56 | (data[j++]&amp;0xffL)&lt;&lt;48 | (data[j++]&amp;0xffL)&lt;&lt;40 | (data[j++]&amp;0xffL)&lt;&lt;32</span>
+                    | (data[j++]&amp;0xffL)&lt;&lt;24 | (data[j++]&amp;0xffL)&lt;&lt;16 | (data[j++]&amp;0xffL)&lt;&lt;8 | (data[j++]&amp;0xffL);
+<span class="fc" id="L1052">          double dVal = Double.longBitsToDouble(lBits);</span>
+<span class="fc" id="L1053">          values[i] = new Double(dVal);</span>
+
+<span class="fc" id="L1055">          dataIdx[++i] = -1;  // 8 byte cpValue occupy 2 index slots</span>
+<span class="fc" id="L1056">          break;</span>
+
+        case CONSTANT_CLASS:  // Class_info { u1 tag; u2 name_index&lt;utf8&gt;; }
+<span class="fc" id="L1059">          dataIdx[i] = j;</span>
+<span class="fc" id="L1060">          values[i] = CpInfo.ConstantClass;</span>
+
+<span class="fc" id="L1062">          j += 3;</span>
+<span class="fc" id="L1063">          break;</span>
+
+        case CONSTANT_STRING:  // String_info { u1 tag; u2 string_index&lt;utf8&gt;; }
+<span class="fc" id="L1066">          dataIdx[i] = j;</span>
+<span class="fc" id="L1067">          values[i] = CpInfo.ConstantString;</span>
+
+<span class="fc" id="L1069">          j += 3;</span>
+<span class="fc" id="L1070">          break;</span>
+
+        case FIELD_REF:  // Fieldref_info { u1 tag; u2 class_index; u2 name_and_type_index; }
+<span class="fc" id="L1073">          dataIdx[i] = j;</span>
+<span class="fc" id="L1074">          values[i] = CpInfo.FieldRef;</span>
+<span class="fc" id="L1075">          j += 5;</span>
+<span class="fc" id="L1076">          break;</span>
+
+        case METHOD_REF: // Methodref_info  { u1 tag; u2 class_index; u2 name_and_type_index; }
+<span class="fc" id="L1079">          dataIdx[i] = j;</span>
+<span class="fc" id="L1080">          values[i] = CpInfo.MethodRef;</span>
+<span class="fc" id="L1081">          j += 5;</span>
+<span class="fc" id="L1082">          break;</span>
+
+        case INTERFACE_METHOD_REF: // InterfaceMethodref_info { u1 tag; u2 class_index; u2 name_and_type_index; }
+<span class="fc" id="L1085">          dataIdx[i] = j;</span>
+<span class="fc" id="L1086">          values[i] = CpInfo.InterfaceMethodRef;</span>
+<span class="fc" id="L1087">          j += 5;</span>
+<span class="fc" id="L1088">          break;</span>
+
+        case NAME_AND_TYPE: // NameAndType_info { u1 tag; u2 name_index&lt;utf8&gt;; u2 descriptor_index&lt;utf8&gt;; }
+<span class="fc" id="L1091">          dataIdx[i] = j;</span>
+<span class="fc" id="L1092">          values[i] = CpInfo.NameAndType;</span>
+
+<span class="fc" id="L1094">          j += 5;</span>
+<span class="fc" id="L1095">          break;</span>
+
+        //--- the Java 8 ones
+          
+        case METHOD_HANDLE: // MethodHandle_info { u1 tag; u1 reference_kind; u2 reference_index&lt;mthref&gt;; }
+<span class="fc" id="L1100">          dataIdx[i] = j;</span>
+<span class="fc" id="L1101">          values[i] = CpInfo.MethodHandle;</span>
+<span class="fc" id="L1102">          j += 4;</span>
+<span class="fc" id="L1103">          break;</span>
+          
+        case METHOD_TYPE:  // MethodType_info { u1 tag;  u2 descriptor_index&lt;utf8&gt;; }
+<span class="fc" id="L1106">          dataIdx[i] = j;</span>
+<span class="fc" id="L1107">          values[i] = CpInfo.MethodType;</span>
+<span class="fc" id="L1108">          j += 3;</span>
+<span class="fc" id="L1109">          break;</span>
+
+        case INVOKE_DYNAMIC: //  InvokeDynamic_info { u1 tag; u2 bootstrap_method_attr_index; u2 name_and_type_index; }
+<span class="fc" id="L1112">          dataIdx[i] = j;</span>
+<span class="fc" id="L1113">          values[i] = CpInfo.InvokeDynamic;</span>
+<span class="fc" id="L1114">          j += 5;</span>
+<span class="fc" id="L1115">          break;</span>
+          
+        default:
+<span class="nc" id="L1118">          error(&quot;illegal constpool tag: &quot; + data[j]);</span>
+      }
+    }
+
+<span class="fc" id="L1122">    pos = j;</span>
+
+    //--- second pass: store values of delegating constant values
+<span class="fc bfc" id="L1125" title="All 2 branches covered.">    for (int i=1; i&lt;cpCount; i++){</span>
+<span class="fc" id="L1126">      Object v = cpValue[i];</span>
+
+      // we store string and class constants as their utf8 string values
+<span class="fc bfc" id="L1129" title="All 4 branches covered.">      if (v == CpInfo.ConstantClass || v == CpInfo.ConstantString){</span>
+<span class="fc" id="L1130">         cpValue[i] = cpValue[u2(cpPos[i]+1)];</span>
+      }
+    }
+<span class="fc" id="L1133">  }</span>
+
+  protected void parseInterfaces(ClassFileReader reader, int ifcCount){
+
+<span class="fc" id="L1137">    setInterfaceCount(reader, ifcCount);</span>
+
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">    for (int i=0; i&lt;ifcCount; i++){</span>
+<span class="fc" id="L1140">      int cpIdx = readU2();</span>
+<span class="fc" id="L1141">      setInterface(reader, i, classNameAt(cpIdx));</span>
+    }
+
+<span class="fc" id="L1144">    setInterfacesDone(reader);</span>
+<span class="fc" id="L1145">  }</span>
+
+  //--- fields
+  protected void parseFields(ClassFileReader reader, int fieldCount) {
+
+<span class="fc" id="L1150">    setFieldCount(reader, fieldCount);</span>
+
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">    for (int i=0; i&lt;fieldCount; i++){</span>
+<span class="fc" id="L1153">      int accessFlags = readU2();</span>
+
+<span class="fc" id="L1155">      int cpIdx = readU2();</span>
+<span class="fc" id="L1156">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1158">      cpIdx = readU2();</span>
+<span class="fc" id="L1159">      String descriptor = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1161">      setField(reader, i, accessFlags, name, descriptor);</span>
+
+<span class="fc" id="L1163">      int attrCount = readU2();</span>
+<span class="fc" id="L1164">      parseFieldAttributes(reader, i, attrCount);</span>
+
+<span class="fc" id="L1166">      setFieldDone(reader, i);</span>
+    }
+
+<span class="fc" id="L1169">    setFieldsDone(reader);</span>
+<span class="fc" id="L1170">  }</span>
+
+  protected void parseFieldAttributes(ClassFileReader reader, int fieldIdx, int attrCount){
+<span class="fc" id="L1173">    setFieldAttributeCount(reader, fieldIdx, attrCount);</span>
+
+<span class="fc bfc" id="L1175" title="All 2 branches covered.">    for (int i=0; i&lt;attrCount; i++){</span>
+<span class="fc" id="L1176">      int cpIdx = readU2();</span>
+<span class="fc" id="L1177">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1179">      name = internStdAttrName(cpIdx, name, stdFieldAttrs);</span>
+
+<span class="fc" id="L1181">      int attrLength = readI4(); // actually U4, but we don't support 2GB attributes</span>
+<span class="fc" id="L1182">      setFieldAttribute(reader, fieldIdx, i, name, attrLength);</span>
+    }
+
+<span class="fc" id="L1185">    setFieldAttributesDone(reader, fieldIdx);</span>
+<span class="fc" id="L1186">  }</span>
+
+  /**
+   * optionally called by reader to obtain a ConstantValue field attribute
+   * 
+   *   ConstantValue {u2 attrName&lt;utf8&gt;; u4 attrLength; u2 constIndex&lt;class|string|int|float|long|double&gt; }
+   * 
+   * pos is at constIndex
+   */
+  public void parseConstValueAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1196">    int cpIdx = readU2();</span>
+<span class="fc" id="L1197">    setConstantValue(reader, tag, cpValue[cpIdx]);</span>
+<span class="fc" id="L1198">  }</span>
+
+
+  //--- methods
+  protected void parseMethods(ClassFileReader reader, int methodCount) {
+
+<span class="fc" id="L1204">    setMethodCount(reader, methodCount);</span>
+
+<span class="fc bfc" id="L1206" title="All 2 branches covered.">    for (int i=0; i&lt;methodCount; i++){</span>
+<span class="fc" id="L1207">      int accessFlags = readU2();</span>
+
+<span class="fc" id="L1209">      int cpIdx = readU2();</span>
+<span class="fc" id="L1210">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1212">      cpIdx = readU2();</span>
+<span class="fc" id="L1213">      String descriptor = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1215">      setMethod(reader, i, accessFlags, name, descriptor);</span>
+
+<span class="fc" id="L1217">      int attrCount = readU2();</span>
+<span class="fc" id="L1218">      parseMethodAttributes(reader, i, attrCount);</span>
+
+<span class="fc" id="L1220">      setMethodDone(reader, i);</span>
+    }
+
+<span class="fc" id="L1223">    setMethodsDone(reader);</span>
+<span class="fc" id="L1224">  }</span>
+
+  protected void parseMethodAttributes(ClassFileReader reader, int methodIdx, int attrCount){
+<span class="fc" id="L1227">    setMethodAttributeCount(reader, methodIdx, attrCount);</span>
+
+<span class="fc bfc" id="L1229" title="All 2 branches covered.">    for (int i=0; i&lt;attrCount; i++){</span>
+<span class="fc" id="L1230">      int cpIdx = readU2();</span>
+<span class="fc" id="L1231">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1233">      name = internStdAttrName(cpIdx, name, stdMethodAttrs);</span>
+
+<span class="fc" id="L1235">      int attrLength = readI4(); // actually U4, but we don't support 2GB attributes</span>
+<span class="fc" id="L1236">      setMethodAttribute(reader, methodIdx, i, name, attrLength);</span>
+    }
+
+<span class="fc" id="L1239">    setMethodAttributesDone(reader, methodIdx);</span>
+<span class="fc" id="L1240">  }</span>
+
+  public void parseExceptionAttr (ClassFileReader reader, Object tag){
+<span class="fc" id="L1243">    int exceptionCount = readU2();</span>
+<span class="fc" id="L1244">    setExceptionCount(reader, tag, exceptionCount);</span>
+
+<span class="fc bfc" id="L1246" title="All 2 branches covered.">    for (int i=0; i&lt;exceptionCount; i++){</span>
+<span class="fc" id="L1247">      int cpIdx = readU2();</span>
+<span class="fc" id="L1248">      String exceptionType = classNameAt(cpIdx);</span>
+<span class="fc" id="L1249">      setException(reader, tag, i, exceptionType);</span>
+    }
+
+<span class="fc" id="L1252">    setExceptionsDone(reader, tag);</span>
+<span class="fc" id="L1253">  }</span>
+
+  /**
+   * (optionally) called by reader from within the setMethodAttribute() notification
+   * This means we have recursive notification since this is a variable length
+   * attribute that has variable length attributes
+   *
+   * Code_attribute { u2 attr_name_index&lt;utf8&gt;; u4 attr_length;
+   *                  u2 max_stack; u2 max_locals;
+   *                  u4 code_length; u1 code[code_length];
+   *                  u2 exception_table_length;
+   *                  { u2 start_pc; u2 end_pc; u2  handler_pc; u2  catch_type&lt;class_entry&gt;;
+   *                  }	exception_table[exception_table_length];
+   *                  u2 attributes_count;
+   *                  attribute_info attributes[attributes_count];  }
+   *
+   * pos is at max_stack
+   */
+  public void parseCodeAttr (ClassFileReader reader, Object tag){
+<span class="fc" id="L1272">    int maxStack = readU2();</span>
+<span class="fc" id="L1273">    int maxLocals = readU2();</span>
+<span class="fc" id="L1274">    int codeLength = readI4();  // no code length &gt; 2GB supported</span>
+<span class="fc" id="L1275">    int codeStartPos = pos;</span>
+
+<span class="fc" id="L1277">    setCode(reader, tag, maxStack, maxLocals, codeLength);</span>
+
+<span class="fc" id="L1279">    int exceptionCount = readU2();</span>
+<span class="fc" id="L1280">    setExceptionTableCount(reader, tag, exceptionCount);</span>
+
+<span class="fc bfc" id="L1282" title="All 2 branches covered.">    for (int i = 0; i &lt; exceptionCount; i++) {</span>
+<span class="fc" id="L1283">      int startPc = readU2();</span>
+<span class="fc" id="L1284">      int endPc = readU2();</span>
+<span class="fc" id="L1285">      int handlerPc = readU2();</span>
+
+<span class="fc" id="L1287">      int cpIdx = readU2();</span>
+<span class="fc" id="L1288">      String catchType = (String) cpValue[cpIdx]; // a Constant_class</span>
+
+<span class="fc" id="L1290">      setExceptionTableEntry(reader, tag, i, startPc, endPc, handlerPc, catchType);</span>
+    }
+<span class="fc" id="L1292">    setExceptionTableDone(reader, tag);</span>
+
+<span class="fc" id="L1294">    int attrCount = readU2();</span>
+<span class="fc" id="L1295">    parseCodeAttrAttributes(reader, tag, attrCount);</span>
+<span class="fc" id="L1296">  }</span>
+
+
+  protected void parseCodeAttrAttributes(ClassFileReader reader, Object tag, int attrCount){
+
+<span class="fc" id="L1301">    setCodeAttributeCount(reader, tag, attrCount);</span>
+
+<span class="fc bfc" id="L1303" title="All 2 branches covered.">    for (int i=0; i&lt;attrCount; i++){</span>
+<span class="fc" id="L1304">      int cpIdx = readU2();</span>
+<span class="fc" id="L1305">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1307">      name = internStdAttrName(cpIdx, name, stdCodeAttrs);</span>
+
+<span class="fc" id="L1309">      int attrLength = readI4(); // actually U4, but we don't support 2GB attributes</span>
+<span class="fc" id="L1310">      setCodeAttribute(reader, tag, i, name, attrLength);</span>
+    }
+
+<span class="fc" id="L1313">    setCodeAttributesDone(reader, tag);</span>
+<span class="fc" id="L1314">  }</span>
+
+  /**
+   * optionally called from ClassFileReader.setCodeAttribute() to parse LineNumberTables
+   *   LineNumberTable { u2 attrName; u4 attrLength;
+   *                     u2 lineCount;
+   *                     { u2 startPc; u2 lineNumber; } [lineCount] };
+   * pos is at lineCount
+   */
+  public void parseLineNumberTableAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1324">    int lineCount = readU2();</span>
+<span class="fc" id="L1325">    setLineNumberTableCount(reader, tag, lineCount);</span>
+    
+<span class="fc bfc" id="L1327" title="All 2 branches covered.">    for (int i=0; i&lt;lineCount; i++){</span>
+<span class="fc" id="L1328">      int startPc = readU2();</span>
+<span class="fc" id="L1329">      int lineNumber = readU2();</span>
+<span class="fc" id="L1330">      setLineNumber(reader, tag, i, lineNumber, startPc);</span>
+    }
+
+<span class="fc" id="L1333">    setLineNumberTableDone(reader, tag);</span>
+<span class="fc" id="L1334">  }</span>
+
+  
+  /**
+   * optionally called from ClassFileReader.setCodeAttribute() to parse LocalVarTables
+   *   LocalVarTableTable { u2 attrName; u4 attrLength;
+   *                        u2 localVarCount;
+   *                        { u2 startPc; u2 lineNumber; } [lineCount] };
+   * pos is at localVarCount
+   */
+  public void parseLocalVarTableAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1345">    int localVarCount = readU2();</span>
+<span class="fc" id="L1346">    setLocalVarTableCount(reader, tag, localVarCount);</span>
+    
+<span class="fc bfc" id="L1348" title="All 2 branches covered.">    for (int i=0; i&lt;localVarCount; i++){</span>
+<span class="fc" id="L1349">      int startPc = readU2();</span>
+<span class="fc" id="L1350">      int length = readU2();</span>
+<span class="fc" id="L1351">      int cpIdx = readU2();</span>
+<span class="fc" id="L1352">      String varName = (String) cpValue[cpIdx];</span>
+<span class="fc" id="L1353">      cpIdx = readU2();</span>
+<span class="fc" id="L1354">      String descriptor = (String)  cpValue[cpIdx];</span>
+<span class="fc" id="L1355">      int slotIndex = readU2();</span>
+      
+<span class="fc" id="L1357">      setLocalVar(reader, tag, i, varName, descriptor, startPc, startPc+length-1, slotIndex );</span>
+    }
+
+<span class="fc" id="L1360">    setLocalVarTableDone(reader, tag);</span>
+<span class="fc" id="L1361">  }</span>
+
+  //--- class
+  protected void parseClassAttributes(ClassFileReader reader, int attrCount){
+
+<span class="fc" id="L1366">    setClassAttributeCount(reader, attrCount);</span>
+
+<span class="fc bfc" id="L1368" title="All 2 branches covered.">    for (int i=0; i&lt;attrCount; i++){</span>
+<span class="fc" id="L1369">      int cpIdx = readU2();</span>
+<span class="fc" id="L1370">      String name = utf8At(cpIdx);</span>
+
+<span class="fc" id="L1372">      name = internStdAttrName(cpIdx, name, stdClassAttrs);</span>
+
+<span class="fc" id="L1374">      int attrLength = readI4(); // actually U4, but we don't support 2GB attributes</span>
+<span class="fc" id="L1375">      setClassAttribute(reader, i, name, attrLength);</span>
+    }
+
+<span class="fc" id="L1378">    setClassAttributesDone(reader);</span>
+<span class="fc" id="L1379">  }</span>
+
+
+  /**
+   * (optionally) called by ClassFileReader from within setClassAttribute() notification
+   *
+   * InnerClass { u2 nameIdx&lt;utf8&gt;; u4 length; u2 sourceFile&lt;utf8&gt;; }
+   */
+  public void parseSourceFileAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1388">    int cpIdx = readU2();</span>
+<span class="fc" id="L1389">    String pathName = utf8At(cpIdx);</span>
+<span class="fc" id="L1390">    setSourceFile(reader, tag, pathName);</span>
+<span class="fc" id="L1391">  }</span>
+
+  /**
+   * (optionally) called by ClassFileReader from within setClassAttribute() notification
+   *
+   * InnerClass { 
+   *    u2 nameIdx&lt;utf8&gt;; 
+   *    u4 length;
+   *    u2 classCount;
+   *    { u2 innerCls&lt;cls&gt;;
+   *      u2 outerCls&lt;cls&gt;;
+   *      u2 innerName&lt;utf8&gt;; 
+   *      u2 innerAccessFlags;
+   *    } classes[classCount] }
+   * }
+   * 
+   * pos is at classCount
+   */
+  public void parseInnerClassesAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1410">    int innerClsCount = readU2();    </span>
+<span class="fc" id="L1411">    setInnerClassCount(reader, tag, innerClsCount);</span>
+
+<span class="fc bfc" id="L1413" title="All 2 branches covered.">    for (int i = 0; i &lt; innerClsCount; i++) {</span>
+<span class="fc" id="L1414">      int cpIdx = readU2();</span>
+<span class="pc bpc" id="L1415" title="1 of 2 branches missed.">      String innerClsName = (cpIdx != 0) ? (String) cpValue[cpIdx] : null;</span>
+<span class="fc" id="L1416">      cpIdx = readU2();</span>
+<span class="fc bfc" id="L1417" title="All 2 branches covered.">      String outerClsName = (cpIdx != 0) ? (String) cpValue[cpIdx] : null;</span>
+<span class="fc" id="L1418">      cpIdx = readU2();</span>
+<span class="fc bfc" id="L1419" title="All 2 branches covered.">      String innerSimpleName = (cpIdx != 0) ? (String) cpValue[cpIdx] : null;</span>
+<span class="fc" id="L1420">      int accessFlags = readU2();</span>
+
+<span class="fc" id="L1422">      setInnerClass(reader, tag, i, outerClsName, innerClsName, innerSimpleName, accessFlags);</span>
+    }
+
+<span class="fc" id="L1425">    setInnerClassesDone(reader, tag);</span>
+<span class="fc" id="L1426">  }</span>
+  
+  /**
+   * EnclosingMethod_attribute {
+   *   u2 attribute_name_index;
+   *   u4 attribute_length;
+   *   u2 class_index     -&gt; Class_info { u1 tag; u2 name_index-&gt;utf8 }
+   *   u2 method_index    -&gt; NameAndType_info { u1 tag; u2 name_index-&gt;utf8; u2 descriptor_index-&gt;utf8 }
+   * }
+   */
+  public void parseEnclosingMethodAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1437">    String enclosedMethod = null;</span>
+<span class="fc" id="L1438">    String descriptor = null;</span>
+    
+<span class="fc" id="L1440">    int cpIdx = readU2(); // start of Class_info</span>
+<span class="fc" id="L1441">    String enclosingClass =  nameAt(cpIdx);</span>
+    
+<span class="fc" id="L1443">    cpIdx = readU2(); // start of NameAndType_info</span>
+    
+    // check if this is inside a method - we also get EnclosingMethod_infos for
+    // classes that are not immediately enclosed
+<span class="fc bfc" id="L1447" title="All 2 branches covered.">    if (cpIdx != 0){</span>
+<span class="fc" id="L1448">      enclosedMethod = nameAt(cpIdx);    </span>
+<span class="fc" id="L1449">      descriptor = descriptorAt(cpIdx);</span>
+    }
+    
+<span class="fc" id="L1452">    setEnclosingMethod(reader, tag, enclosingClass, enclosedMethod, descriptor);</span>
+<span class="fc" id="L1453">  }</span>
+  
+  /**
+   * BootstrapMethods_attribute {
+   *     u2 attribute_name_index;
+   *     u4 attribute_length;
+   *     u2 num_bootstrap_methods;
+   *     {   u2 bootstrap_method_ref; -&gt; MethodHandle
+   *         u2 num_bootstrap_arguments;
+   *         u2 bootstrap_arguments[num_bootstrap_arguments];
+   *     } bootstrap_methods[num_bootstrap_methods];
+   * }
+   * 
+   * pos is at num_bootstrap_methods
+  */
+  public void parseBootstrapMethodAttr (ClassFileReader reader, Object tag){
+<span class="fc" id="L1469">    int nBootstrapMethods = readU2();</span>
+    
+<span class="fc" id="L1471">    setBootstrapMethodCount(reader, tag, nBootstrapMethods);</span>
+    
+<span class="fc bfc" id="L1473" title="All 2 branches covered.">    for (int i=0; i&lt;nBootstrapMethods; i++){</span>
+<span class="fc" id="L1474">      int cpMhIdx = readU2();</span>
+<span class="fc" id="L1475">      int nArgs = readU2();</span>
+<span class="fc" id="L1476">      int[] bmArgs = new int[nArgs];</span>
+<span class="fc bfc" id="L1477" title="All 2 branches covered.">      for (int j=0; j&lt;nArgs; j++){</span>
+<span class="fc" id="L1478">        bmArgs[j] = readU2();</span>
+      }
+      
+      // kind of this method handle
+<span class="fc" id="L1482">      int refKind = mhRefTypeAt(cpMhIdx);</span>
+      
+      // CONSTANT_Methodref_info structure
+<span class="fc" id="L1485">      int mrefIdx = mhMethodRefIndexAt(cpMhIdx);</span>
+      
+<span class="fc" id="L1487">      String clsName = methodClassNameAt(mrefIdx);</span>
+<span class="fc" id="L1488">      String mthName = methodNameAt(mrefIdx);</span>
+<span class="fc" id="L1489">      String descriptor = methodDescriptorAt(mrefIdx);</span>
+      
+<span class="fc" id="L1491">      setBootstrapMethod(reader, tag, i, refKind, clsName, mthName, descriptor, bmArgs);</span>
+    }
+    
+<span class="fc" id="L1494">    setBootstrapMethodsDone( reader, tag);</span>
+<span class="fc" id="L1495">  }</span>
+  
+  String nameAt(int nameTypeInfoIdx) {
+<span class="fc" id="L1498">    return utf8At(u2(cpPos[nameTypeInfoIdx] + 1));</span>
+  }
+  
+  String descriptorAt (int nameTypeInfoIdx){
+<span class="fc" id="L1502">    return utf8At( u2( cpPos[nameTypeInfoIdx]+3));</span>
+  }
+
+// those are as per http://java.sun.com/docs/books/jvms/second_edition/ClassFileFormat-Java5.pdf
+
+  /*
+   *   element_value {
+   *     u1 tag;
+   *     union {
+   *       u2 const_value_index;
+   *       { u2 type_name_index; u2 const_name_index; } enum_const_value;
+   *       u2 class_info_index;
+   *       annotation annotation_value;
+   *       { u2 num_values; element_value values[num_values]; } array_value;
+   *     } value;
+   *   }
+   *   valid tags are primitve type codes B,C,D,F,I,J,S,Z
+   *   plus:   's'=String, 'e'=enum, 'c'=class, '@'=annotation, '['=array
+   */
+  void parseAnnotationValue(ClassFileReader reader, Object tag, int annotationIndex, int valueIndex, String elementName, int arrayIndex){
+    int cpIdx;
+    Object val;
+
+<span class="fc" id="L1525">    int t = readUByte();</span>
+<span class="pc bpc" id="L1526" title="1 of 11 branches missed.">    switch (t){</span>
+      case 'Z':
+        // booleans have to be treated differently since there is no CONSTANT_Boolean, i.e. values are
+        // stored as CONSTANT_Integer in the constpool, i.e. the cpValue doesn't have the right type
+<span class="fc" id="L1530">        cpIdx = readU2();</span>
+<span class="fc" id="L1531">        val = cpValue[cpIdx];</span>
+<span class="fc bfc" id="L1532" title="All 2 branches covered.">        val = Boolean.valueOf((Integer)val == 1);</span>
+<span class="fc" id="L1533">        setPrimitiveAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L1534">        break;        </span>
+
+      case 'B':
+<span class="fc" id="L1537">        cpIdx = readU2();</span>
+<span class="fc" id="L1538">        val = cpValue[cpIdx];</span>
+<span class="fc" id="L1539">        val = Byte.valueOf(((Integer)val).byteValue());</span>
+<span class="fc" id="L1540">        setPrimitiveAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L1541">        break;</span>
+        
+      case 'C':
+<span class="fc" id="L1544">        cpIdx = readU2();</span>
+<span class="fc" id="L1545">        val = cpValue[cpIdx];</span>
+<span class="fc" id="L1546">        val = Character.valueOf((char)((Integer)val).shortValue());</span>
+<span class="fc" id="L1547">        setPrimitiveAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L1548">        break;</span>
+        
+      case 'S':
+<span class="fc" id="L1551">        cpIdx = readU2();</span>
+<span class="fc" id="L1552">        val = cpValue[cpIdx];</span>
+<span class="fc" id="L1553">        val = Short.valueOf(((Integer)val).shortValue());</span>
+<span class="fc" id="L1554">        setPrimitiveAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L1555">        break;</span>
+
+      case 'I':
+      case 'F':
+      case 'D':
+      case 'J':
+<span class="fc" id="L1561">        cpIdx = readU2();</span>
+<span class="fc" id="L1562">        val = cpValue[cpIdx];</span>
+<span class="fc" id="L1563">        setPrimitiveAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, val);</span>
+<span class="fc" id="L1564">        break;</span>
+
+      case 's':
+<span class="fc" id="L1567">        cpIdx = readU2();</span>
+<span class="fc" id="L1568">        String s = (String) cpValue[cpIdx];</span>
+<span class="fc" id="L1569">        setStringAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, s);</span>
+<span class="fc" id="L1570">        break;</span>
+
+      case 'e':
+<span class="fc" id="L1573">        cpIdx = readU2();</span>
+<span class="fc" id="L1574">        String enumTypeName = (String)cpValue[cpIdx];</span>
+<span class="fc" id="L1575">        cpIdx = readU2();</span>
+<span class="fc" id="L1576">        String enumConstName = (String)cpValue[cpIdx];</span>
+<span class="fc" id="L1577">        setEnumAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, enumTypeName, enumConstName);</span>
+<span class="fc" id="L1578">        break;</span>
+
+      case 'c':
+<span class="fc" id="L1581">        cpIdx = readU2();</span>
+<span class="fc" id="L1582">        String className = (String)cpValue[cpIdx];</span>
+<span class="fc" id="L1583">        setClassAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex, className);</span>
+<span class="fc" id="L1584">        break;</span>
+
+      case '@':
+<span class="fc" id="L1587">        parseAnnotation(reader, tag, -1, false);  // getting recursive here</span>
+<span class="fc" id="L1588">        setAnnotationFieldValue(reader, tag, annotationIndex, valueIndex, elementName, arrayIndex);</span>
+<span class="fc" id="L1589">        break;</span>
+
+      case '[':
+<span class="fc" id="L1592">        int arrayLen = readU2();</span>
+<span class="fc" id="L1593">        setAnnotationValueElementCount(reader, tag, annotationIndex, valueIndex, elementName, arrayLen);</span>
+<span class="fc bfc" id="L1594" title="All 2 branches covered.">        for (int i=0; i&lt;arrayLen; i++){</span>
+<span class="fc" id="L1595">          parseAnnotationValue(reader, tag, annotationIndex, valueIndex, elementName, i);</span>
+        }
+<span class="fc" id="L1597">        setAnnotationValueElementsDone(reader, tag, annotationIndex, valueIndex, elementName);</span>
+        break;
+    }
+<span class="fc" id="L1600">  }</span>
+
+  /*
+   *   annotation {
+   *     u2 type_index;
+   *     u2 num_element_value_pairs;
+   *     {
+   *       u2 element_name_index;
+   *       element_value value;
+   *     } element_value_pairs[num_element_value_pairs]
+   *   }
+   */
+  void parseAnnotation (ClassFileReader reader, Object tag, int annotationIndex, boolean isParameterAnnotation){
+<span class="fc" id="L1613">    int cpIdx = readU2();</span>
+<span class="fc" id="L1614">    String annotationType = (String)cpValue[cpIdx];</span>
+    boolean parseValues;
+<span class="fc bfc" id="L1616" title="All 2 branches covered.">    if (isParameterAnnotation){</span>
+<span class="fc" id="L1617">      parseValues = setParameterAnnotation(reader, tag, annotationIndex, annotationType);</span>
+    } else {
+<span class="fc" id="L1619">      parseValues = setAnnotation(reader, tag, annotationIndex, annotationType);</span>
+    }
+<span class="fc bfc" id="L1621" title="All 2 branches covered.">    if(parseValues) {</span>
+<span class="fc" id="L1622">      parseAnnotationValues(reader, tag, annotationIndex);</span>
+    }
+<span class="fc" id="L1624">  }</span>
+
+  void parseAnnotationValues (ClassFileReader reader, Object tag, int annotationIndex){
+<span class="fc" id="L1627">    int nValuePairs = readU2();</span>
+<span class="fc" id="L1628">    setAnnotationValueCount(reader, tag, annotationIndex, nValuePairs);</span>
+
+<span class="fc bfc" id="L1630" title="All 2 branches covered.">    for (int i=0; i&lt;nValuePairs; i++){</span>
+<span class="fc" id="L1631">      int cpIdx = readU2();</span>
+<span class="fc" id="L1632">      String elementName = (String)cpValue[cpIdx];</span>
+<span class="fc" id="L1633">      parseAnnotationValue(reader, tag, annotationIndex, i, elementName, -1);</span>
+    }
+
+<span class="fc" id="L1636">    setAnnotationValuesDone(reader, tag, annotationIndex);</span>
+<span class="fc" id="L1637">  }</span>
+  
+  /*
+   * class, field, method annotation attributes (only one per target)
+   *
+   *  Runtime[In]VisibleAnnotations_attribute {
+   *     u2 attribute_name_index;
+   *     u4 attribute_length;
+   *     u2 num_annotations;        &lt;&lt; pos
+   *     annotation annotations[num_annotations];
+   *   }
+   */
+  public void parseAnnotationsAttr (ClassFileReader reader, Object tag){
+<span class="fc" id="L1650">    int numAnnotations = readU2();</span>
+<span class="fc" id="L1651">    setAnnotationCount(reader, tag, numAnnotations);</span>
+
+<span class="fc bfc" id="L1653" title="All 2 branches covered.">    for (int i=0; i&lt;numAnnotations; i++){</span>
+<span class="fc" id="L1654">      parseAnnotation(reader, tag, i, false);</span>
+    }
+
+<span class="fc" id="L1657">    setAnnotationsDone(reader, tag);</span>
+<span class="fc" id="L1658">  }</span>
+
+  
+  // JSR 308 type annotation target types
+  public static final int CLASS_TYPE_PARAMETER                 = 0x00;
+  public static final int METHOD_TYPE_PARAMETER                = 0x01;
+  public static final int CLASS_EXTENDS                        = 0x10;
+  public static final int CLASS_TYPE_PARAMETER_BOUND           = 0x11;
+  public static final int METHOD_TYPE_PARAMETER_BOUND          = 0x12;
+  public static final int FIELD                                = 0x13;
+  public static final int METHOD_RETURN                        = 0x14;
+  public static final int METHOD_RECEIVER                      = 0x15;
+  public static final int METHOD_FORMAL_PARAMETER              = 0x16;
+  public static final int THROWS                               = 0x17;
+  public static final int LOCAL_VARIABLE                       = 0x40;
+  public static final int RESOURCE_VARIABLE                    = 0x41;
+  public static final int EXCEPTION_PARAMETER                  = 0x42;
+  public static final int INSTANCEOF                           = 0x43;
+  public static final int NEW                                  = 0x44;
+  public static final int CONSTRUCTOR_REFERENCE                = 0x45;
+  public static final int METHOD_REFERENCE                     = 0x46;
+  public static final int CAST                                 = 0x47;
+  public static final int CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT = 0x48;
+  public static final int METHOD_INVOCATION_TYPE_ARGUMENT      = 0x49;
+  public static final int CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT  = 0x4a;
+  public static final int METHOD_REFERENCE_TYPE_ARGUMENT       = 0x4b;  
+  
+  public static String getTargetTypeName (int targetType){
+<span class="nc bnc" id="L1686" title="All 22 branches missed.">    switch (targetType){</span>
+<span class="nc" id="L1687">      case CLASS_TYPE_PARAMETER: return &quot;class type parameter&quot;;</span>
+<span class="nc" id="L1688">      case METHOD_TYPE_PARAMETER: return &quot;method type parameter&quot;;</span>
+<span class="nc" id="L1689">      case CLASS_EXTENDS: return &quot;super class&quot;;</span>
+<span class="nc" id="L1690">      case CLASS_TYPE_PARAMETER_BOUND: return &quot;class type parameter bound&quot;;</span>
+<span class="nc" id="L1691">      case METHOD_TYPE_PARAMETER_BOUND: return &quot;method type parameter bound&quot;;</span>
+<span class="nc" id="L1692">      case FIELD: return &quot;field&quot;;</span>
+<span class="nc" id="L1693">      case METHOD_RETURN: return &quot;method return&quot;;</span>
+<span class="nc" id="L1694">      case METHOD_RECEIVER: return &quot;method receiver&quot;;</span>
+<span class="nc" id="L1695">      case METHOD_FORMAL_PARAMETER: return &quot;method formal parameter&quot;;</span>
+<span class="nc" id="L1696">      case THROWS: return &quot;throws&quot;;</span>
+<span class="nc" id="L1697">      case LOCAL_VARIABLE: return &quot;local variable&quot;;</span>
+<span class="nc" id="L1698">      case RESOURCE_VARIABLE: return &quot;resource variable&quot;;</span>
+<span class="nc" id="L1699">      case EXCEPTION_PARAMETER: return &quot;exception parameter&quot;;</span>
+<span class="nc" id="L1700">      case INSTANCEOF: return &quot;instanceof&quot;;</span>
+<span class="nc" id="L1701">      case NEW: return &quot;new&quot;;</span>
+<span class="nc" id="L1702">      case CONSTRUCTOR_REFERENCE: return &quot;ctor reference&quot;;</span>
+<span class="nc" id="L1703">      case METHOD_REFERENCE: return &quot;method reference&quot;;</span>
+<span class="nc" id="L1704">      case CAST: return &quot;case&quot;;</span>
+<span class="nc" id="L1705">      case METHOD_INVOCATION_TYPE_ARGUMENT: return &quot;method invocation type argument&quot;;</span>
+<span class="nc" id="L1706">      case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT: return &quot;ctor reference type argument&quot;;</span>
+<span class="nc" id="L1707">      case METHOD_REFERENCE_TYPE_ARGUMENT: return &quot;method reference type argument&quot;;</span>
+      default:
+<span class="nc" id="L1709">        return &quot;&lt;unknown target type 0x&quot; + Integer.toHexString(targetType);</span>
+    }
+  }
+  
+  public static String getTypePathEncoding (short[] typePath){
+<span class="nc bnc" id="L1714" title="All 2 branches missed.">    if (typePath == null){</span>
+<span class="nc" id="L1715">      return &quot;()&quot;;</span>
+    }
+    
+<span class="nc" id="L1718">    StringBuffer sb = new StringBuffer();</span>
+<span class="nc bnc" id="L1719" title="All 2 branches missed.">    for (int i=0; i&lt;typePath.length;i++){</span>
+<span class="nc" id="L1720">      int e = typePath[i];</span>
+<span class="nc" id="L1721">      sb.append('(');</span>
+<span class="nc" id="L1722">      sb.append( Integer.toString((e&gt;&gt;8) &amp; 0xff));</span>
+<span class="nc" id="L1723">      sb.append( Integer.toString(e &amp; 0xff));</span>
+<span class="nc" id="L1724">      sb.append(')');</span>
+    }
+    
+<span class="nc" id="L1727">    return sb.toString();</span>
+  }
+  
+  public static String getScopeEncoding (long[] scopeEntries){
+<span class="nc" id="L1731">    StringBuffer sb = new StringBuffer();</span>
+<span class="nc bnc" id="L1732" title="All 2 branches missed.">    for (int i=0; i&lt;scopeEntries.length;i++){</span>
+<span class="nc" id="L1733">      long e = scopeEntries[i];</span>
+<span class="nc" id="L1734">      int slotIndex = (int)(e &amp; 0xffff);</span>
+<span class="nc" id="L1735">      int length = (int)((e &gt;&gt; 16) &amp; 0xffff);</span>
+<span class="nc" id="L1736">      int startPc = (int)((e &gt;&gt; 32) &amp; 0xffff);</span>
+      
+<span class="nc bnc" id="L1738" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L1739">        sb.append(',');</span>
+      }
+      
+<span class="nc" id="L1742">      sb.append('[');</span>
+<span class="nc" id="L1743">      sb.append( Integer.toString(startPc));</span>
+<span class="nc" id="L1744">      sb.append(&quot;..&quot;);</span>
+<span class="nc" id="L1745">      sb.append( Integer.toString(startPc + length-1));</span>
+<span class="nc" id="L1746">      sb.append(&quot;]#&quot;);</span>
+<span class="nc" id="L1747">      sb.append(slotIndex);</span>
+    }
+    
+<span class="nc" id="L1750">    return sb.toString();</span>
+  }
+  
+  // JSR 308 type annotation, which adds 3 fields to the old annotation structure
+  //
+  //  type_annotation {
+  //      u1 target_type;        // targeted program element (sec 3.2)
+  //      union {                // ?? this is probably packed - variable size unions make no sense
+  //          type_parameter_target;
+  //          supertype_target;
+  //          type_parameter_bound_target;
+  //          empty_target;
+  //          method_formal_parameter_target;
+  //          throws_target;
+  //          localvar_target;
+  //          catch_target;
+  //          offset_target;
+  //          type_argument_target;
+  //      } target_info;         // targeted program element (sec 3.3)
+  //
+  //      type_path target_path; // encoding of annotation position in compound type (array, generic, etc., sec 3.4)
+  //
+  //                             // standard annotation fields
+  //      u2 type_index;         // the annotation type
+  //      u2 num_element_value_pairs;
+  //      {
+  //          u2 element_name_index;
+  //          element_value value;
+  //      } element_value_pairs[num_element_value_pairs];
+  //  }
+  //
+  //  struct type_path {
+  //    u1              path_length;
+  //    type_path_entry path[path_length];
+  //  }
+  //
+  //  struct type_path_entry {
+  //    u1 type_path_kind;
+  //        // 0: deeper in array type
+  //        // 1: deeper in nested type
+  //        // 2: bound of wildcard typearg
+  //        // 3: type argument of parameterized type
+  //    u1 type_argument_index;
+  //        // 0, if type_path_kind == 0,1,2
+  //        // 0-based index of type arg in parameterized type if type_path_kind i== 3
+  //  }
+  
+  int getTargetInfoSize (int targetType){
+<span class="nc" id="L1798">    int len = 3; // max static length are xx_TYPE_ARGUMENTs</span>
+<span class="nc bnc" id="L1799" title="All 4 branches missed.">    if (targetType == LOCAL_VARIABLE || targetType == RESOURCE_VARIABLE){</span>
+<span class="nc" id="L1800">      len = Math.max( len, u2(pos) * 6); // three u2 values per entry</span>
+    }
+    
+<span class="nc" id="L1803">    return len;</span>
+  }
+
+  int getTypePathSize (short[] typePath){
+<span class="nc" id="L1807">    int typePathSize = 1;</span>
+<span class="nc bnc" id="L1808" title="All 2 branches missed.">    if (typePath != null) {</span>
+<span class="nc" id="L1809">      typePathSize += typePath.length * 2;</span>
+    }
+<span class="nc" id="L1811">    return typePathSize;</span>
+  }
+  
+  
+  short[] readTypePath (){
+<span class="fc" id="L1816">    short[] typePath = null;</span>
+    
+<span class="fc" id="L1818">    int pathLength = readUByte();</span>
+<span class="pc bpc" id="L1819" title="1 of 2 branches missed.">    if (pathLength &gt; 0){</span>
+<span class="nc" id="L1820">      typePath = new short[pathLength];</span>
+<span class="nc bnc" id="L1821" title="All 2 branches missed.">      for (int i=0; i&lt;pathLength; i++){</span>
+<span class="nc" id="L1822">        int pathKind = (short)readUByte();</span>
+<span class="nc" id="L1823">        int argIdx = (short)readUByte();</span>
+<span class="nc" id="L1824">        typePath[i]= (short)((pathKind &lt;&lt; 8) | argIdx);</span>
+      }
+    }
+    
+<span class="fc" id="L1828">    return typePath;</span>
+  }
+
+  String readAnnotationType (){
+<span class="fc" id="L1832">    int cpIdx = readU2();</span>
+<span class="fc" id="L1833">    String annotationType = (String)cpValue[cpIdx];</span>
+<span class="fc" id="L1834">    return annotationType;</span>
+  }
+
+  void setTypeAnnotation (ClassFileReader reader, Object tag, int annotationIndex) {
+<span class="fc" id="L1838">    int targetType = readUByte();</span>
+    
+<span class="pc bpc" id="L1840" title="7 of 11 branches missed.">    switch (targetType){</span>
+      case CLASS_TYPE_PARAMETER:
+      case METHOD_TYPE_PARAMETER: {
+        // type_parameter_target { u1 type_parameter_index; }
+<span class="nc" id="L1844">        int typeParamIdx = readUByte();</span>
+<span class="nc" id="L1845">        reader.setTypeParameterAnnotation( this, tag, annotationIndex, targetType, typeParamIdx, readTypePath(), readAnnotationType());</span>
+<span class="nc" id="L1846">        break;</span>
+      } 
+      case CLASS_EXTENDS: {
+        // supertype_target { u2 supertype_index; }
+<span class="fc" id="L1850">        int superTypeIdx = readU2();</span>
+<span class="fc" id="L1851">        reader.setSuperTypeAnnotation( this, tag, annotationIndex, targetType, superTypeIdx, readTypePath(), readAnnotationType());</span>
+<span class="fc" id="L1852">        break;</span>
+      }
+      case CLASS_TYPE_PARAMETER_BOUND:
+      case METHOD_TYPE_PARAMETER_BOUND: {
+        // type_parameter_bound_target { u1 type_parameter_index; u1 bound_index; }
+<span class="nc" id="L1857">        int typeParamIdx = readUByte();</span>
+<span class="nc" id="L1858">        int boundIdx = readUByte();</span>
+<span class="nc" id="L1859">        reader.setTypeParameterBoundAnnotation(this, tag, annotationIndex, targetType, typeParamIdx, boundIdx, readTypePath(), readAnnotationType());</span>
+<span class="nc" id="L1860">        break;</span>
+      }
+      case METHOD_RETURN:
+      case METHOD_RECEIVER:
+      case FIELD:
+        // empty_target {}
+<span class="fc" id="L1866">        reader.setTypeAnnotation( this, tag, annotationIndex, targetType, readTypePath(), readAnnotationType());</span>
+<span class="fc" id="L1867">        break;</span>
+        
+      case METHOD_FORMAL_PARAMETER: {
+        // method_formal_parameter_target { u1 method_formal_parameter_index; }
+<span class="fc" id="L1871">        int formalParamIdx = readUByte();</span>
+<span class="fc" id="L1872">        reader.setFormalParameterAnnotation( this, tag, annotationIndex, targetType, formalParamIdx, readTypePath(), readAnnotationType());</span>
+<span class="fc" id="L1873">        break;</span>
+      }
+      case THROWS: {
+        // throws_target { u2 throws_type_index; }
+<span class="nc" id="L1877">        int throwsTypeIdx = readU2();</span>
+<span class="nc" id="L1878">        reader.setThrowsAnnotation( this, tag, annotationIndex, targetType, throwsTypeIdx, readTypePath(), readAnnotationType());        </span>
+<span class="nc" id="L1879">        break;</span>
+      } 
+      case LOCAL_VARIABLE:
+      case RESOURCE_VARIABLE: {
+        // this can't just refer to a LocalVarInfo since those depend on debug compile options
+        //
+        //  localvar_target {
+        //      u2 table_length;  // number of entries, not bytes
+        //      {
+        //          u2 start_pc;
+        //          u2 length; // bytecode offset length
+        //          u2 index;  // local var idx
+        //      } table[table_length];
+        //  }
+<span class="fc" id="L1893">        int tableLength = readU2();</span>
+<span class="fc" id="L1894">        long[] scopeEntries = new long[tableLength];</span>
+<span class="fc bfc" id="L1895" title="All 2 branches covered.">        for (int i=0; i&lt;tableLength; i++){</span>
+<span class="fc" id="L1896">          int startPc = readU2();</span>
+<span class="fc" id="L1897">          int length = readU2();</span>
+<span class="fc" id="L1898">          int slotIdx = readU2();</span>
+<span class="fc" id="L1899">          scopeEntries[i] = ((long)startPc &lt;&lt; 32) | ((long)length &lt;&lt; 16) | slotIdx;</span>
+        }
+<span class="fc" id="L1901">        reader.setVariableAnnotation( this, tag, annotationIndex, targetType, scopeEntries, readTypePath(), readAnnotationType());</span>
+<span class="fc" id="L1902">        break;</span>
+      }
+      case EXCEPTION_PARAMETER: {
+        // catch_target { u2 exception_table_index; }
+<span class="nc" id="L1906">        int exceptionIdx = readU2();</span>
+<span class="nc" id="L1907">        reader.setExceptionParameterAnnotation( this, tag, annotationIndex, targetType, exceptionIdx, readTypePath(), readAnnotationType());        </span>
+<span class="nc" id="L1908">        break;</span>
+      }
+      case INSTANCEOF:
+      case METHOD_REFERENCE:
+      case CONSTRUCTOR_REFERENCE:
+      case NEW: {
+        // offset_target { u2 offset; }   // insn offset within bytecode
+<span class="nc" id="L1915">        int offset = readU2();</span>
+<span class="nc" id="L1916">        reader.setBytecodeAnnotation(this, tag, annotationIndex, targetType, offset, readTypePath(), readAnnotationType());</span>
+<span class="nc" id="L1917">        break;</span>
+      }
+      case CAST:
+      case CONSTRUCTOR_INVOCATION_TYPE_ARGUMENT:
+      case METHOD_INVOCATION_TYPE_ARGUMENT:
+      case CONSTRUCTOR_REFERENCE_TYPE_ARGUMENT:
+      case METHOD_REFERENCE_TYPE_ARGUMENT: {
+        //  type_argument_target {
+        //      u2 offset;
+        //      u1 type_argument_index;
+        //  }
+<span class="nc" id="L1928">        int offset = readU2();</span>
+<span class="nc" id="L1929">        int typeArgIdx = readUByte();</span>
+<span class="nc" id="L1930">        reader.setBytecodeTypeParameterAnnotation(this, tag, annotationIndex, targetType, offset, typeArgIdx, readTypePath(), readAnnotationType());</span>
+<span class="nc" id="L1931">        break;</span>
+      }
+      
+      default:
+        // &lt;2do - report this to the reader
+<span class="nc" id="L1936">        throw new RuntimeException(&quot;unknown type annotation target: 0x&quot; + Integer.toHexString(targetType));</span>
+    }
+<span class="fc" id="L1938">  }</span>
+
+  
+  void parseTypeAnnotation (ClassFileReader reader, Object tag, int annotationIndex) {
+   
+    // this does the respective setXTypeAnnotation() reader callback
+    //dumpData(pos, 16);
+<span class="fc" id="L1945">    setTypeAnnotation(reader, tag, annotationIndex);</span>
+    
+    // now set the annotation value pairs
+<span class="fc" id="L1948">    parseAnnotationValues( reader, tag, annotationIndex);</span>
+<span class="fc" id="L1949">  }</span>
+  
+  /*
+   * Runtime[In]VisibleTypeAnnotations_attribute {
+   *    u2 attribute_name_index;
+   *    u4 attribute_length;
+   *    u2 num_annotations;
+   *    type_annotation annotations[num_annotations];
+   * }
+   */
+  public void parseTypeAnnotationsAttr (ClassFileReader reader, Object tag) {
+<span class="fc" id="L1960">    int numAnnotations = readU2();</span>
+<span class="fc" id="L1961">    setTypeAnnotationCount(reader, tag, numAnnotations);</span>
+
+<span class="fc bfc" id="L1963" title="All 2 branches covered.">    for (int i=0; i&lt;numAnnotations; i++){</span>
+<span class="fc" id="L1964">      parseTypeAnnotation(reader, tag, i);</span>
+    }
+
+<span class="fc" id="L1967">    setTypeAnnotationsDone(reader, tag);</span>
+<span class="fc" id="L1968">  }</span>
+  
+  /*
+   *   RuntimeInvisibleParameterAnnotations_attribute {
+   *     u2 attribute_name_index;
+   *     u4 attribute_length;
+   *     u1 num_parameters; &lt;&lt; pos
+   *     {
+   *       u2 num_annotations;
+   *       annotation annotations[num_annotations];
+   *     } parameter_annotations[num_parameters];
+   *   }
+   */
+   public void parseParameterAnnotationsAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L1982">     int numParameters = readUByte();</span>
+<span class="fc" id="L1983">     setParameterCount(reader, tag, numParameters);</span>
+<span class="fc bfc" id="L1984" title="All 2 branches covered.">     for (int i=0; i&lt;numParameters; i++){</span>
+<span class="fc" id="L1985">       int numAnnotations = readU2();</span>
+
+<span class="fc" id="L1987">       setParameterAnnotationCount(reader, tag, i, numAnnotations);</span>
+<span class="fc bfc" id="L1988" title="All 2 branches covered.">       for (int j=0; j&lt;numAnnotations; j++){</span>
+<span class="fc" id="L1989">         parseAnnotation(reader, tag, j, true);</span>
+       }
+<span class="fc" id="L1991">       setParameterAnnotationsDone(reader, tag, i);</span>
+     }
+<span class="fc" id="L1993">     setParametersDone(reader, tag);</span>
+<span class="fc" id="L1994">   }</span>
+
+  /**
+   *  Signature_attribute {
+   *    u2 attribute_name_index;
+   *    u4 attr-length;
+   *    u2 signature-index &lt;&lt; pos
+   *  }
+   */
+   public void parseSignatureAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L2004">     int cpIdx = readU2();</span>
+<span class="fc" id="L2005">     setSignature(reader, tag, utf8At(cpIdx));</span>
+<span class="fc" id="L2006">   }</span>
+
+
+  /**
+   *    AnnotationDefault_attribute {
+   *      u2 attribute_name_index;
+   *      u4 attribute_length;
+   *      element_value default_value; &lt;&lt; pos
+   *    }
+   */
+   public void parseAnnotationDefaultAttr(ClassFileReader reader, Object tag){
+<span class="fc" id="L2017">     parseAnnotationValue(reader, tag, -1, -1, null, -1);</span>
+<span class="fc" id="L2018">   }</span>
+
+
+//   EnclosingMethod_attribute {
+//     u2 attribute_name_index;
+//     u4 attribute_length;
+//     u2 class_index
+//     u2 method_index;
+//   }
+
+//   LocalVariableTypeTable_attribute {  // Code attr
+//     u2 attribute_name_index;
+//     u4 attribute_length;
+//     u2 local_variable_type_table_length;
+//     {
+//       u2 start_pc;
+//       u2 length;
+//       u2 name_index;
+//       u2 signature_index;
+//       u2 index;
+//     } local_variable_type_table[local_variable_type_table_length];
+//   }
+
+
+
+
+  public void parseBytecode(JVMByteCodeReader reader, Object tag, int codeLength){
+    int localVarIndex;
+    int cpIdx;
+    int constVal;
+    int offset;
+    int defaultOffset;
+
+<span class="fc" id="L2051">    boolean isWide = false; // modifier for Xload,Xstore,ret and iinc</span>
+
+<span class="fc" id="L2053">    int startPos = pos;</span>
+<span class="fc" id="L2054">    int endPos = pos+codeLength;</span>
+    int nextPos;
+
+
+<span class="fc bfc" id="L2058" title="All 2 branches covered.">    while (pos &lt; endPos){</span>
+<span class="fc" id="L2059">      pc = pos - startPos;</span>
+
+<span class="fc" id="L2061">      int opcode = readUByte();</span>
+<span class="pc bpc" id="L2062" title="9 of 203 branches missed.">      switch (opcode){</span>
+        case 0: // nop
+<span class="nc" id="L2064">          reader.nop();</span>
+<span class="nc" id="L2065">          break;</span>
+        case 1:  // aconst_null
+<span class="fc" id="L2067">          reader.aconst_null();</span>
+<span class="fc" id="L2068">          break;</span>
+        case 2: // iconst_m1
+<span class="fc" id="L2070">          reader.iconst_m1();</span>
+<span class="fc" id="L2071">          break;</span>
+        case 3: // iconst_0
+<span class="fc" id="L2073">          reader.iconst_0();</span>
+<span class="fc" id="L2074">          break;</span>
+        case 4: // iconst_1
+<span class="fc" id="L2076">          reader.iconst_1();</span>
+<span class="fc" id="L2077">          break;</span>
+        case 5: // iconst_2
+<span class="fc" id="L2079">          reader.iconst_2();</span>
+<span class="fc" id="L2080">          break;</span>
+        case 6: // iconst_3
+<span class="fc" id="L2082">          reader.iconst_3();</span>
+<span class="fc" id="L2083">          break;</span>
+        case 7: // iconst_4
+<span class="fc" id="L2085">          reader.iconst_4();</span>
+<span class="fc" id="L2086">          break;</span>
+        case 8: // iconst_5
+<span class="fc" id="L2088">          reader.iconst_5();</span>
+<span class="fc" id="L2089">          break;</span>
+        case 9: // lconst_0
+<span class="fc" id="L2091">          reader.lconst_0();</span>
+<span class="fc" id="L2092">          break;</span>
+        case 10: // lconst_1
+<span class="fc" id="L2094">          reader.lconst_1();</span>
+<span class="fc" id="L2095">          break;</span>
+        case 11: // fconst_0
+<span class="fc" id="L2097">          reader.fconst_0();</span>
+<span class="fc" id="L2098">          break;</span>
+        case 12: // fconst_1
+<span class="fc" id="L2100">          reader.fconst_1();</span>
+<span class="fc" id="L2101">          break;</span>
+        case 13: // fconst_2
+<span class="fc" id="L2103">          reader.fconst_2();</span>
+<span class="fc" id="L2104">          break;</span>
+        case 14: // dconst_0
+<span class="fc" id="L2106">          reader.dconst_0();</span>
+<span class="fc" id="L2107">          break;</span>
+        case 15: // dconst_1
+<span class="fc" id="L2109">          reader.dconst_1();</span>
+<span class="fc" id="L2110">          break;</span>
+        case 16: // bipush
+<span class="fc" id="L2112">          constVal = readByte();</span>
+<span class="fc" id="L2113">          reader.bipush(constVal);</span>
+<span class="fc" id="L2114">          break;</span>
+        case 17: // sipush
+<span class="fc" id="L2116">          constVal = readI2();</span>
+<span class="fc" id="L2117">          reader.sipush(constVal);</span>
+<span class="fc" id="L2118">          break;</span>
+        case 18: // ldc
+<span class="fc" id="L2120">          cpIdx = readUByte();</span>
+<span class="fc" id="L2121">          reader.ldc_(cpIdx);</span>
+<span class="fc" id="L2122">          break;</span>
+        case 19: // ldc_w
+<span class="fc" id="L2124">          cpIdx = readU2();</span>
+<span class="fc" id="L2125">          reader.ldc_w_(cpIdx);</span>
+<span class="fc" id="L2126">          break;</span>
+        case 20: // ldc2_w
+<span class="fc" id="L2128">          cpIdx = readU2();</span>
+<span class="fc" id="L2129">          reader.ldc2_w(cpIdx);</span>
+<span class="fc" id="L2130">          break;</span>
+        case 21: // iload
+<span class="pc bpc" id="L2132" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2133">          reader.iload(localVarIndex);</span>
+<span class="fc" id="L2134">          break;</span>
+        case 22: // lload
+<span class="pc bpc" id="L2136" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2137">          reader.lload(localVarIndex);</span>
+<span class="fc" id="L2138">          break;</span>
+        case 23: // fload
+<span class="pc bpc" id="L2140" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2141">          reader.fload(localVarIndex);</span>
+<span class="fc" id="L2142">          break;</span>
+        case 24: // dload
+<span class="pc bpc" id="L2144" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2145">          reader.dload(localVarIndex);</span>
+<span class="fc" id="L2146">          break;</span>
+        case 25: // aload
+<span class="pc bpc" id="L2148" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2149">          reader.aload(localVarIndex);</span>
+<span class="fc" id="L2150">          break;</span>
+        case 26: // iload_0
+<span class="fc" id="L2152">          reader.iload_0();</span>
+<span class="fc" id="L2153">          break;</span>
+        case 27: // iload_1
+<span class="fc" id="L2155">          reader.iload_1();</span>
+<span class="fc" id="L2156">          break;</span>
+        case 28: // iload_2
+<span class="fc" id="L2158">          reader.iload_2();</span>
+<span class="fc" id="L2159">          break;</span>
+        case 29: // iload_3
+<span class="fc" id="L2161">          reader.iload_3();</span>
+<span class="fc" id="L2162">          break;</span>
+        case 30: // lload_0
+<span class="fc" id="L2164">          reader.lload_0();</span>
+<span class="fc" id="L2165">          break;</span>
+        case 31: // lload_1
+<span class="fc" id="L2167">          reader.lload_1();</span>
+<span class="fc" id="L2168">          break;</span>
+        case 32: // lload_2
+<span class="fc" id="L2170">          reader.lload_2();</span>
+<span class="fc" id="L2171">          break;</span>
+        case 33: // lload_3
+<span class="fc" id="L2173">          reader.lload_3();</span>
+<span class="fc" id="L2174">          break;</span>
+        case 34: // fload_0
+<span class="fc" id="L2176">          reader.fload_0();</span>
+<span class="fc" id="L2177">          break;</span>
+        case 35: // fload_1
+<span class="fc" id="L2179">          reader.fload_1();</span>
+<span class="fc" id="L2180">          break;</span>
+        case 36: // fload_2
+<span class="fc" id="L2182">          reader.fload_2();</span>
+<span class="fc" id="L2183">          break;</span>
+        case 37: // fload_3
+<span class="fc" id="L2185">          reader.fload_3();</span>
+<span class="fc" id="L2186">          break;</span>
+        case 38: // dload_0
+<span class="fc" id="L2188">          reader.dload_0();</span>
+<span class="fc" id="L2189">          break;</span>
+        case 39: // dload_1
+<span class="fc" id="L2191">          reader.dload_1();</span>
+<span class="fc" id="L2192">          break;</span>
+        case 40: // dload_2
+<span class="fc" id="L2194">          reader.dload_2();</span>
+<span class="fc" id="L2195">          break;</span>
+        case 41: // dload_3
+<span class="fc" id="L2197">          reader.dload_3();</span>
+<span class="fc" id="L2198">          break;</span>
+        case 42: // aload_0
+<span class="fc" id="L2200">          reader.aload_0();</span>
+<span class="fc" id="L2201">          break;</span>
+        case 43: // aload_1
+<span class="fc" id="L2203">          reader.aload_1();</span>
+<span class="fc" id="L2204">          break;</span>
+        case 44: // aload_2
+<span class="fc" id="L2206">          reader.aload_2();</span>
+<span class="fc" id="L2207">          break;</span>
+        case 45: // aload_3
+<span class="fc" id="L2209">          reader.aload_3();</span>
+<span class="fc" id="L2210">          break;</span>
+        case 46: // iaload
+<span class="fc" id="L2212">          reader.iaload();</span>
+<span class="fc" id="L2213">          break;</span>
+        case 47: // laload
+<span class="fc" id="L2215">          reader.laload();</span>
+<span class="fc" id="L2216">          break;</span>
+        case 48: // faload
+<span class="fc" id="L2218">          reader.faload();</span>
+<span class="fc" id="L2219">          break;</span>
+        case 49: // daload
+<span class="fc" id="L2221">          reader.daload();</span>
+<span class="fc" id="L2222">          break;</span>
+        case 50: // aaload
+<span class="fc" id="L2224">          reader.aaload();</span>
+<span class="fc" id="L2225">          break;</span>
+        case 51: // baload
+<span class="fc" id="L2227">          reader.baload();</span>
+<span class="fc" id="L2228">          break;</span>
+        case 52: // caload
+<span class="fc" id="L2230">          reader.caload();</span>
+<span class="fc" id="L2231">          break;</span>
+        case 53: // saload
+<span class="fc" id="L2233">          reader.saload();</span>
+<span class="fc" id="L2234">          break;</span>
+        case 54: // istore
+<span class="pc bpc" id="L2236" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2237">          reader.istore(localVarIndex);</span>
+<span class="fc" id="L2238">          break;</span>
+        case 55: // lstore
+<span class="pc bpc" id="L2240" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2241">          reader.lstore(localVarIndex);</span>
+<span class="fc" id="L2242">          break;</span>
+        case 56: // fstore
+<span class="pc bpc" id="L2244" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2245">          reader.fstore(localVarIndex);</span>
+<span class="fc" id="L2246">          break;</span>
+        case 57: // dstore
+<span class="pc bpc" id="L2248" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2249">          reader.dstore(localVarIndex);</span>
+<span class="fc" id="L2250">          break;</span>
+        case 58: // astore
+<span class="pc bpc" id="L2252" title="1 of 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="fc" id="L2253">          reader.astore(localVarIndex);</span>
+<span class="fc" id="L2254">          break;</span>
+        case 59: // istore_0
+<span class="fc" id="L2256">          reader.istore_0();</span>
+<span class="fc" id="L2257">          break;</span>
+        case 60: // istore_1
+<span class="fc" id="L2259">          reader.istore_1();</span>
+<span class="fc" id="L2260">          break;</span>
+        case 61: // istore_2
+<span class="fc" id="L2262">          reader.istore_2();</span>
+<span class="fc" id="L2263">          break;</span>
+        case 62: // istore_3
+<span class="fc" id="L2265">          reader.istore_3();</span>
+<span class="fc" id="L2266">          break;</span>
+        case 63: // lstore_0
+<span class="fc" id="L2268">          reader.lstore_0();</span>
+<span class="fc" id="L2269">          break;</span>
+        case 64: // lstore_1
+<span class="fc" id="L2271">          reader.lstore_1();</span>
+<span class="fc" id="L2272">          break;</span>
+        case 65: // lstore_2
+<span class="fc" id="L2274">          reader.lstore_2();</span>
+<span class="fc" id="L2275">          break;</span>
+        case 66: // lstore_3
+<span class="fc" id="L2277">          reader.lstore_3();</span>
+<span class="fc" id="L2278">          break;</span>
+        case 67: // fstore_0
+<span class="fc" id="L2280">          reader.fstore_0();</span>
+<span class="fc" id="L2281">          break;</span>
+        case 68: // fstore_1
+<span class="fc" id="L2283">          reader.fstore_1();</span>
+<span class="fc" id="L2284">          break;</span>
+        case 69: // fstore_2
+<span class="fc" id="L2286">          reader.fstore_2();</span>
+<span class="fc" id="L2287">          break;</span>
+        case 70: // fstore_3
+<span class="fc" id="L2289">          reader.fstore_3();</span>
+<span class="fc" id="L2290">          break;</span>
+        case 71: //dstore_0
+<span class="fc" id="L2292">          reader.dstore_0();</span>
+<span class="fc" id="L2293">          break;</span>
+        case 72: //dstore_1
+<span class="fc" id="L2295">          reader.dstore_1();</span>
+<span class="fc" id="L2296">          break;</span>
+        case 73: //dstore_2
+<span class="fc" id="L2298">          reader.dstore_2();</span>
+<span class="fc" id="L2299">          break;</span>
+        case 74: //dstore_3
+<span class="fc" id="L2301">          reader.dstore_3();</span>
+<span class="fc" id="L2302">          break;</span>
+        case 75: // astore_0
+<span class="fc" id="L2304">          reader.astore_0();</span>
+<span class="fc" id="L2305">          break;</span>
+        case 76: // astore_1
+<span class="fc" id="L2307">          reader.astore_1();</span>
+<span class="fc" id="L2308">          break;</span>
+        case 77: // astore_2
+<span class="fc" id="L2310">          reader.astore_2();</span>
+<span class="fc" id="L2311">          break;</span>
+        case 78: // astore_3
+<span class="fc" id="L2313">          reader.astore_3();</span>
+<span class="fc" id="L2314">          break;</span>
+        case 79: // iastore
+<span class="fc" id="L2316">          reader.iastore();</span>
+<span class="fc" id="L2317">          break;</span>
+        case 80: // lastore
+<span class="fc" id="L2319">          reader.lastore();</span>
+<span class="fc" id="L2320">          break;</span>
+        case 81: // fastore
+<span class="fc" id="L2322">          reader.fastore();</span>
+<span class="fc" id="L2323">          break;</span>
+        case 82: // dastore
+<span class="fc" id="L2325">          reader.dastore();</span>
+<span class="fc" id="L2326">          break;</span>
+        case 83: // aastore
+<span class="fc" id="L2328">          reader.aastore();</span>
+<span class="fc" id="L2329">          break;</span>
+        case 84: // bastore
+<span class="fc" id="L2331">          reader.bastore();</span>
+<span class="fc" id="L2332">          break;</span>
+        case 85: // castore
+<span class="fc" id="L2334">          reader.castore();</span>
+<span class="fc" id="L2335">          break;</span>
+        case 86: // sastore
+<span class="fc" id="L2337">          reader.sastore();</span>
+<span class="fc" id="L2338">          break;</span>
+        case 87: // pop
+<span class="fc" id="L2340">          reader.pop();</span>
+<span class="fc" id="L2341">          break;</span>
+        case 88: // pop2
+<span class="fc" id="L2343">          reader.pop2();</span>
+<span class="fc" id="L2344">          break;</span>
+        case 89: // dup
+<span class="fc" id="L2346">          reader.dup();</span>
+<span class="fc" id="L2347">          break;</span>
+        case 90: // dup_x1
+<span class="fc" id="L2349">          reader.dup_x1();</span>
+<span class="fc" id="L2350">          break;</span>
+        case 91: // dup_x2
+<span class="fc" id="L2352">          reader.dup_x2();</span>
+<span class="fc" id="L2353">          break;</span>
+        case 92: // dup2
+<span class="fc" id="L2355">          reader.dup2();</span>
+<span class="fc" id="L2356">          break;</span>
+        case 93: // dup2_x1
+<span class="fc" id="L2358">          reader.dup2_x1();</span>
+<span class="fc" id="L2359">          break;</span>
+        case 94: // dup2_x2
+<span class="nc" id="L2361">          reader.dup2_x2();</span>
+<span class="nc" id="L2362">          break;</span>
+        case 95: // swap
+<span class="nc" id="L2364">          reader.swap();</span>
+<span class="nc" id="L2365">          break;</span>
+        case 96: // iadd
+<span class="fc" id="L2367">          reader.iadd();</span>
+<span class="fc" id="L2368">          break;</span>
+        case 97: // ladd
+<span class="fc" id="L2370">          reader.ladd();</span>
+<span class="fc" id="L2371">          break;</span>
+        case 98: // fadd
+<span class="fc" id="L2373">          reader.fadd();</span>
+<span class="fc" id="L2374">          break;</span>
+        case 99: // dadd
+<span class="fc" id="L2376">          reader.dadd();</span>
+<span class="fc" id="L2377">          break;</span>
+        case 100: // isub
+<span class="fc" id="L2379">          reader.isub();</span>
+<span class="fc" id="L2380">          break;</span>
+        case 101: // lsub
+<span class="fc" id="L2382">          reader.lsub();</span>
+<span class="fc" id="L2383">          break;</span>
+        case 102: // fsub
+<span class="fc" id="L2385">          reader.fsub();</span>
+<span class="fc" id="L2386">          break;</span>
+        case 103: // dsub
+<span class="fc" id="L2388">          reader.dsub();</span>
+<span class="fc" id="L2389">          break;</span>
+        case 104: // imul
+<span class="fc" id="L2391">          reader.imul();</span>
+<span class="fc" id="L2392">          break;</span>
+        case 105: // lmul
+<span class="fc" id="L2394">          reader.lmul();</span>
+<span class="fc" id="L2395">          break;</span>
+        case 106: // fmul
+<span class="fc" id="L2397">          reader.fmul();</span>
+<span class="fc" id="L2398">          break;</span>
+        case 107: // dmul
+<span class="fc" id="L2400">          reader.dmul();</span>
+<span class="fc" id="L2401">          break;</span>
+        case 108: // idiv
+<span class="fc" id="L2403">          reader.idiv();</span>
+<span class="fc" id="L2404">          break;</span>
+        case 109: // ldiv
+<span class="fc" id="L2406">          reader.ldiv();</span>
+<span class="fc" id="L2407">          break;</span>
+        case 110: // fdiv
+<span class="fc" id="L2409">          reader.fdiv();</span>
+<span class="fc" id="L2410">          break;</span>
+        case 111: //ddiv
+<span class="fc" id="L2412">          reader.ddiv();</span>
+<span class="fc" id="L2413">          break;</span>
+        case 112: // irem
+<span class="fc" id="L2415">          reader.irem();</span>
+<span class="fc" id="L2416">          break;</span>
+        case 113: // lrem
+<span class="fc" id="L2418">          reader.lrem();</span>
+<span class="fc" id="L2419">          break;</span>
+        case 114: // frem
+<span class="nc" id="L2421">          reader.frem();</span>
+<span class="nc" id="L2422">          break;</span>
+        case 115: // drem
+<span class="nc" id="L2424">          reader.drem();</span>
+<span class="nc" id="L2425">          break;</span>
+        case 116: // ineg
+<span class="fc" id="L2427">          reader.ineg();</span>
+<span class="fc" id="L2428">          break;</span>
+        case 117: // lneg
+<span class="fc" id="L2430">          reader.lneg();</span>
+<span class="fc" id="L2431">          break;</span>
+        case 118: // fneg
+<span class="fc" id="L2433">          reader.fneg();</span>
+<span class="fc" id="L2434">          break;</span>
+        case 119: // dneg
+<span class="fc" id="L2436">          reader.dneg();</span>
+<span class="fc" id="L2437">          break;</span>
+        case 120: // ishl
+<span class="fc" id="L2439">          reader.ishl();</span>
+<span class="fc" id="L2440">          break;</span>
+        case 121: // lshl
+<span class="fc" id="L2442">          reader.lshl();</span>
+<span class="fc" id="L2443">          break;</span>
+        case 122: // ishr
+<span class="fc" id="L2445">          reader.ishr();</span>
+<span class="fc" id="L2446">          break;</span>
+        case 123: // lshr
+<span class="fc" id="L2448">          reader.lshr();</span>
+<span class="fc" id="L2449">          break;</span>
+        case 124: // iushr
+<span class="fc" id="L2451">          reader.iushr();</span>
+<span class="fc" id="L2452">          break;</span>
+        case 125: // lushr
+<span class="fc" id="L2454">          reader.lushr();</span>
+<span class="fc" id="L2455">          break;</span>
+        case 126: // iand
+<span class="fc" id="L2457">          reader.iand();</span>
+<span class="fc" id="L2458">          break;</span>
+        case 127: // land
+<span class="fc" id="L2460">          reader.land();</span>
+<span class="fc" id="L2461">          break;</span>
+        case 128: // ior
+<span class="fc" id="L2463">          reader.ior();</span>
+<span class="fc" id="L2464">          break;</span>
+        case 129: // lor
+<span class="fc" id="L2466">          reader.lor();</span>
+<span class="fc" id="L2467">          break;</span>
+        case 130: // ixor
+<span class="fc" id="L2469">          reader.ixor();</span>
+<span class="fc" id="L2470">          break;</span>
+        case 131: // lxor
+<span class="fc" id="L2472">          reader.lxor();</span>
+<span class="fc" id="L2473">          break;</span>
+        case 132: // iinc
+<span class="fc bfc" id="L2475" title="All 2 branches covered.">          if (isWide){</span>
+<span class="fc" id="L2476">            localVarIndex = readU2();</span>
+<span class="fc" id="L2477">            constVal = readI2();</span>
+          } else {
+<span class="fc" id="L2479">            localVarIndex = readUByte();</span>
+<span class="fc" id="L2480">            constVal = readByte();</span>
+          }
+<span class="fc" id="L2482">          reader.iinc(localVarIndex, constVal);</span>
+<span class="fc" id="L2483">          break;</span>
+        case 133: // i2l
+<span class="fc" id="L2485">          reader.i2l();</span>
+<span class="fc" id="L2486">          break;</span>
+        case 134: // i2f
+<span class="fc" id="L2488">          reader.i2f();</span>
+<span class="fc" id="L2489">          break;</span>
+        case 135: // i2d
+<span class="fc" id="L2491">          reader.i2d();</span>
+<span class="fc" id="L2492">          break;</span>
+        case 136: // l2i
+<span class="fc" id="L2494">          reader.l2i();</span>
+<span class="fc" id="L2495">          break;</span>
+        case 137: // l2f
+<span class="fc" id="L2497">          reader.l2f();</span>
+<span class="fc" id="L2498">          break;</span>
+        case 138: // l2d
+<span class="fc" id="L2500">          reader.l2d();</span>
+<span class="fc" id="L2501">          break;</span>
+        case 139: // f2i
+<span class="fc" id="L2503">          reader.f2i();</span>
+<span class="fc" id="L2504">          break;</span>
+        case 140: // f2l
+<span class="fc" id="L2506">          reader.f2l();</span>
+<span class="fc" id="L2507">          break;</span>
+        case 141: // f2d
+<span class="fc" id="L2509">          reader.f2d();</span>
+<span class="fc" id="L2510">          break;</span>
+        case 142: // d2i
+<span class="fc" id="L2512">          reader.d2i();</span>
+<span class="fc" id="L2513">          break;</span>
+        case 143: // d2l
+<span class="fc" id="L2515">          reader.d2l();</span>
+<span class="fc" id="L2516">          break;</span>
+        case 144: // d2f
+<span class="fc" id="L2518">          reader.d2f();</span>
+<span class="fc" id="L2519">          break;</span>
+        case 145: // i2b
+<span class="fc" id="L2521">          reader.i2b();</span>
+<span class="fc" id="L2522">          break;</span>
+        case 146: // i2c
+<span class="fc" id="L2524">          reader.i2c();</span>
+<span class="fc" id="L2525">          break;</span>
+        case 147: // i2s
+<span class="fc" id="L2527">          reader.i2s();</span>
+<span class="fc" id="L2528">          break;</span>
+        case 148: // lcmp
+<span class="fc" id="L2530">          reader.lcmp();</span>
+<span class="fc" id="L2531">          break;</span>
+        case 149: // fcmpl
+<span class="fc" id="L2533">          reader.fcmpl();</span>
+<span class="fc" id="L2534">          break;</span>
+        case 150: // fcmpg
+<span class="fc" id="L2536">          reader.fcmpg();</span>
+<span class="fc" id="L2537">          break;</span>
+        case 151: // dcmpl
+<span class="fc" id="L2539">          reader.dcmpl();</span>
+<span class="fc" id="L2540">          break;</span>
+        case 152: // dcmpg
+<span class="fc" id="L2542">          reader.dcmpg();</span>
+<span class="fc" id="L2543">          break;</span>
+        case 153: // ifeq
+<span class="fc" id="L2545">          offset = readI2();</span>
+<span class="fc" id="L2546">          reader.ifeq(offset);</span>
+<span class="fc" id="L2547">          break;</span>
+        case 154: // ifne
+<span class="fc" id="L2549">          offset = readI2();</span>
+<span class="fc" id="L2550">          reader.ifne(offset);</span>
+<span class="fc" id="L2551">          break;</span>
+        case 155: // iflt
+<span class="fc" id="L2553">          offset = readI2();</span>
+<span class="fc" id="L2554">          reader.iflt(offset);</span>
+<span class="fc" id="L2555">          break;</span>
+        case 156: // ifge
+<span class="fc" id="L2557">          offset = readI2();</span>
+<span class="fc" id="L2558">          reader.ifge(offset);</span>
+<span class="fc" id="L2559">          break;</span>
+        case 157: // ifgt
+<span class="fc" id="L2561">          offset = readI2();</span>
+<span class="fc" id="L2562">          reader.ifgt(offset);</span>
+<span class="fc" id="L2563">          break;</span>
+        case 158: // ifle
+<span class="fc" id="L2565">          offset = readI2();</span>
+<span class="fc" id="L2566">          reader.ifle(offset);</span>
+<span class="fc" id="L2567">          break;</span>
+        case 159: // if_icmpeq
+<span class="fc" id="L2569">          offset = readI2();</span>
+<span class="fc" id="L2570">          reader.if_icmpeq(offset);</span>
+<span class="fc" id="L2571">          break;</span>
+        case 160: // if_icmpne
+<span class="fc" id="L2573">          offset = readI2();</span>
+<span class="fc" id="L2574">          reader.if_icmpne(offset);</span>
+<span class="fc" id="L2575">          break;</span>
+        case 161: // if_icmplt
+<span class="fc" id="L2577">          offset = readI2();</span>
+<span class="fc" id="L2578">          reader.if_icmplt(offset);</span>
+<span class="fc" id="L2579">          break;</span>
+        case 162: // if_icmpge
+<span class="fc" id="L2581">          offset = readI2();</span>
+<span class="fc" id="L2582">          reader.if_icmpge(offset);</span>
+<span class="fc" id="L2583">          break;</span>
+        case 163: // if_icmpgt
+<span class="fc" id="L2585">          offset = readI2();</span>
+<span class="fc" id="L2586">          reader.if_icmpgt(offset);</span>
+<span class="fc" id="L2587">          break;</span>
+        case 164: // if_icmple
+<span class="fc" id="L2589">          offset = readI2();</span>
+<span class="fc" id="L2590">          reader.if_icmple(offset);</span>
+<span class="fc" id="L2591">          break;</span>
+        case 165: // if_acmpeq
+<span class="fc" id="L2593">          offset = readI2();</span>
+<span class="fc" id="L2594">          reader.if_acmpeq(offset);</span>
+<span class="fc" id="L2595">          break;</span>
+        case 166: // if_acmpne
+<span class="fc" id="L2597">          offset = readI2();</span>
+<span class="fc" id="L2598">          reader.if_acmpne(offset);</span>
+<span class="fc" id="L2599">          break;</span>
+        case 167: // goto
+<span class="fc" id="L2601">          offset = readI2();</span>
+<span class="fc" id="L2602">          reader.goto_(offset);</span>
+<span class="fc" id="L2603">          break;</span>
+        case 168: // jsr
+<span class="nc" id="L2605">          offset = readI2();</span>
+<span class="nc" id="L2606">          reader.jsr(offset);</span>
+<span class="nc" id="L2607">          break;</span>
+        case 169: // ret
+<span class="nc bnc" id="L2609" title="All 2 branches missed.">          localVarIndex = isWide ? readU2() : readUByte();</span>
+<span class="nc" id="L2610">          reader.ret(localVarIndex);</span>
+<span class="nc" id="L2611">          break;</span>
+        case 170: // tableswitch
+<span class="fc" id="L2613">          pos = (((pc+4)&gt;&gt;2)&lt;&lt;2)+startPos; // skip over padding</span>
+
+<span class="fc" id="L2615">          defaultOffset = readI4();</span>
+<span class="fc" id="L2616">          int low = readI4();</span>
+<span class="fc" id="L2617">          int high = readI4();</span>
+
+<span class="fc" id="L2619">          int len = high-low+1;</span>
+<span class="fc" id="L2620">          nextPos = pos + len*4;</span>
+<span class="fc" id="L2621">          reader.tableswitch(defaultOffset, low, high);</span>
+<span class="fc" id="L2622">          pos = nextPos;</span>
+<span class="fc" id="L2623">          break;</span>
+        case 171: // lookupswitch
+<span class="fc" id="L2625">          pos = (((pc+4)&gt;&gt;2)&lt;&lt;2)+startPos; // skip over padding</span>
+
+<span class="fc" id="L2627">          defaultOffset = readI4();</span>
+<span class="fc" id="L2628">          int nPairs = readI4();</span>
+
+<span class="fc" id="L2630">          nextPos = pos + (nPairs*8);</span>
+<span class="fc" id="L2631">          reader.lookupswitch(defaultOffset, nPairs);</span>
+<span class="fc" id="L2632">          pos = nextPos;</span>
+<span class="fc" id="L2633">          break;</span>
+        case 172: // ireturn
+<span class="fc" id="L2635">          reader.ireturn();</span>
+<span class="fc" id="L2636">          break;</span>
+        case 173: // lreturn
+<span class="fc" id="L2638">          reader.lreturn();</span>
+<span class="fc" id="L2639">          break;</span>
+        case 174: // freturn
+<span class="fc" id="L2641">          reader.freturn();</span>
+<span class="fc" id="L2642">          break;</span>
+        case 175: // dreturn
+<span class="fc" id="L2644">          reader.dreturn();</span>
+<span class="fc" id="L2645">          break;</span>
+        case 176: // areturn
+<span class="fc" id="L2647">          reader.areturn();</span>
+<span class="fc" id="L2648">          break;</span>
+        case 177: // return
+<span class="fc" id="L2650">          reader.return_();</span>
+<span class="fc" id="L2651">          break;</span>
+        case 178: // getstatic
+<span class="fc" id="L2653">          cpIdx = readU2(); // CP index of fieldRef</span>
+<span class="fc" id="L2654">          reader.getstatic(cpIdx);</span>
+<span class="fc" id="L2655">          break;</span>
+        case 179: // putstatic
+<span class="fc" id="L2657">          cpIdx = readU2(); // CP index of fieldRef</span>
+<span class="fc" id="L2658">          reader.putstatic(cpIdx);</span>
+<span class="fc" id="L2659">          break;</span>
+        case 180: // getfield
+<span class="fc" id="L2661">          cpIdx = readU2(); // CP index of fieldRef</span>
+<span class="fc" id="L2662">          reader.getfield(cpIdx);</span>
+<span class="fc" id="L2663">          break;</span>
+        case 181: // putfield
+<span class="fc" id="L2665">          cpIdx = readU2(); // CP index of fieldRef</span>
+<span class="fc" id="L2666">          reader.putfield(cpIdx);</span>
+<span class="fc" id="L2667">          break;</span>
+        case 182: // invokevirtual
+<span class="fc" id="L2669">          cpIdx = readU2(); // CP index of methodRef</span>
+<span class="fc" id="L2670">          reader.invokevirtual(cpIdx);</span>
+<span class="fc" id="L2671">          break;</span>
+        case 183: // invokespecial
+<span class="fc" id="L2673">          cpIdx = readU2(); // CP index of methodRef</span>
+<span class="fc" id="L2674">          reader.invokespecial(cpIdx);</span>
+<span class="fc" id="L2675">          break;</span>
+        case 184: // invokestatic
+<span class="fc" id="L2677">          cpIdx = readU2(); // CP index of methodRef</span>
+<span class="fc" id="L2678">          reader.invokestatic(cpIdx);</span>
+<span class="fc" id="L2679">          break;</span>
+        case 185: // invokeinterface
+<span class="fc" id="L2681">          cpIdx = readU2(); // CP index of methodRef</span>
+<span class="fc" id="L2682">          int count = readUByte();</span>
+<span class="fc" id="L2683">          int zero = readUByte(); // must be 0</span>
+<span class="fc" id="L2684">          reader.invokeinterface(cpIdx, count, zero);</span>
+<span class="fc" id="L2685">          break;</span>
+        case 186: // invokedynamic
+<span class="fc" id="L2687">          cpIdx = readU2(); // CP index of bootstrap method</span>
+<span class="fc" id="L2688">          readUByte();  // 0</span>
+<span class="fc" id="L2689">          readUByte(); //  0</span>
+<span class="fc" id="L2690">          reader.invokedynamic(cpIdx);</span>
+<span class="fc" id="L2691">          break;</span>
+        case 187: // new
+<span class="fc" id="L2693">          cpIdx = readU2();</span>
+<span class="fc" id="L2694">          reader.new_(cpIdx);</span>
+<span class="fc" id="L2695">          break;</span>
+        case 188: // newarray
+<span class="fc" id="L2697">          int aType = readUByte();</span>
+<span class="fc" id="L2698">          reader.newarray(aType);</span>
+<span class="fc" id="L2699">          break;</span>
+        case 189: // anewarray
+<span class="fc" id="L2701">          cpIdx = readU2(); // CP index of component type</span>
+<span class="fc" id="L2702">          reader.anewarray(cpIdx);</span>
+<span class="fc" id="L2703">          break;</span>
+        case 190: // arraylength
+<span class="fc" id="L2705">          reader.arraylength();</span>
+<span class="fc" id="L2706">          break;</span>
+        case 191: // athrow
+<span class="fc" id="L2708">          reader.athrow();</span>
+<span class="fc" id="L2709">          break;</span>
+        case 192: // checkcast
+<span class="fc" id="L2711">          cpIdx = readU2(); // cast type cp index</span>
+<span class="fc" id="L2712">          reader.checkcast(cpIdx);</span>
+<span class="fc" id="L2713">          break;</span>
+        case 193: // instanceof
+<span class="fc" id="L2715">          cpIdx = readU2(); // check type cp index</span>
+<span class="fc" id="L2716">          reader.instanceof_(cpIdx);</span>
+<span class="fc" id="L2717">          break;</span>
+        case 194: // monitorenter
+<span class="fc" id="L2719">          reader.monitorenter();</span>
+<span class="fc" id="L2720">          break;</span>
+        case 195: // monitorexit
+<span class="fc" id="L2722">          reader.monitorexit();</span>
+<span class="fc" id="L2723">          break;</span>
+        case 196: // wide
+<span class="fc" id="L2725">          isWide = true;</span>
+          // affects immediate operand width if next bytecode is:
+          //  iload,fload,aload,lload,dload,
+          //  istore,fstore,astore,lstore,dstore
+          //  ret
+<span class="fc" id="L2730">          reader.wide();</span>
+<span class="fc" id="L2731">          continue;</span>
+        case 197: // multianewarray
+<span class="fc" id="L2733">          cpIdx = readU2();</span>
+<span class="fc" id="L2734">          int dimensions = readUByte();</span>
+<span class="fc" id="L2735">          reader.multianewarray(cpIdx, dimensions);</span>
+<span class="fc" id="L2736">          break;</span>
+        case 198: // ifnull
+<span class="fc" id="L2738">          offset = readI2();</span>
+<span class="fc" id="L2739">          reader.ifnull(offset);</span>
+<span class="fc" id="L2740">          break;</span>
+        case 199: // ifnonnull
+<span class="fc" id="L2742">          offset = readI2();</span>
+<span class="fc" id="L2743">          reader.ifnonnull(offset);</span>
+<span class="fc" id="L2744">          break;</span>
+        case 200: // goto_w
+<span class="fc" id="L2746">          offset = readI4();</span>
+<span class="fc" id="L2747">          reader.goto_w(offset);</span>
+<span class="fc" id="L2748">          break;</span>
+        case 201: // jsr_w
+<span class="nc" id="L2750">          offset = readI4();</span>
+<span class="nc" id="L2751">          reader.jsr_w(offset);</span>
+<span class="nc" id="L2752">          break;</span>
+          
+          
+        default:
+<span class="nc" id="L2756">          reader.unknown(opcode);</span>
+      }
+
+<span class="fc" id="L2759">      isWide = false; // reset wide modifier</span>
+<span class="fc" id="L2760">    }</span>
+
+<span class="fc" id="L2762">  }</span>
+
+  //--- those can only be called from within a JVMByteCodeReader.tableswitch() notification
+  public void parseTableSwitchEntries(JVMByteCodeReader reader, int low, int high){
+<span class="fc bfc" id="L2766" title="All 2 branches covered.">    for (int val=low; val&lt;=high; val++){</span>
+<span class="fc" id="L2767">      int offset = readI4();</span>
+<span class="fc" id="L2768">      reader.tableswitchEntry(val, offset);</span>
+    }
+<span class="fc" id="L2770">  }</span>
+  public int getTableSwitchOffset(int low, int high, int defaultOffset, int val){
+<span class="nc bnc" id="L2772" title="All 4 branches missed.">    if (val &lt; low || val &gt; high){</span>
+<span class="nc" id="L2773">      return defaultOffset;</span>
+    }
+
+<span class="nc" id="L2776">    int n = Math.abs(val - low);</span>
+<span class="nc" id="L2777">    pos += n*4;</span>
+<span class="nc" id="L2778">    int pcOffset = readI4();</span>
+
+<span class="nc" id="L2780">    return pcOffset;</span>
+  }
+
+  //--- those can only be called from within a JVMByteCodeReader.lookupswitch() notification
+  public void parseLookupSwitchEntries(JVMByteCodeReader reader, int nEntries){
+<span class="fc bfc" id="L2785" title="All 2 branches covered.">    for (int i=0; i&lt;nEntries; i++){</span>
+<span class="fc" id="L2786">      int value = readI4();</span>
+<span class="fc" id="L2787">      int offset = readI4();</span>
+<span class="fc" id="L2788">      reader.lookupswitchEntry(i, value, offset);</span>
+    }
+<span class="fc" id="L2790">  }</span>
+  public int getLookupSwitchOffset(int nEntries, int defaultOffset, int val){
+<span class="nc bnc" id="L2792" title="All 2 branches missed.">    for (int i=0; i&lt;nEntries; i++){</span>
+<span class="nc" id="L2793">      int match = readI4();</span>
+<span class="nc bnc" id="L2794" title="All 2 branches missed.">      if (val &gt; match){</span>
+<span class="nc" id="L2795">        pos +=4;</span>
+<span class="nc bnc" id="L2796" title="All 2 branches missed.">      } else if (val == match) {</span>
+<span class="nc" id="L2797">        int offset = readI4();</span>
+<span class="nc" id="L2798">        return offset;</span>
+      } else {
+        break;
+      }
+    }
+<span class="nc" id="L2803">    return defaultOffset;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringExpander.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">StringExpander.java</span></div><h1>StringExpander.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * utility class to expand regular expression like strings. We support
+ * alternatives &quot;&lt;..|..&gt;&quot; and character categories &quot;[.. X-Z ..]&quot;. Alternatives
+ * can be nested, char categories can include '-' ranges
+ *
+ *  e.g. &quot;a&lt;B|X[0-1]Y&gt;z&quot; =&gt; aBz, aX0Yz, aX1Yz
+ *
+ * &lt;2do&gt; this is awfully connected to ESParser - we should really make it more generic
+ * (this is the reason why it was moved from the general gov.nasa.jpf.util to
+ * this package)
+ */
+<span class="nc bnc" id="L35" title="All 2 branches missed.">public class StringExpander {</span>
+
+  public static final char META_CHAR = '`';  // starts a symbol
+
+  public static final char ALT_START_CHAR = '&lt;';
+  public static final char ALT_END_CHAR   = '&gt;';
+  public static final char ALT_CHAR = '|';
+
+  public static final char CAT_START_CHAR = '[';
+  public static final char CAT_END_CHAR = ']';
+  public static final char CAT_CHAR = '-';
+
+  static class Exception extends RuntimeException {
+    Exception(String details){
+<span class="nc" id="L49">      super(details);</span>
+<span class="nc" id="L50">    }</span>
+  }
+
+  static class Token {
+    String value;
+
+<span class="nc" id="L56">    Token (String value){</span>
+<span class="nc" id="L57">      this.value = value;</span>
+<span class="nc" id="L58">    }</span>
+    int length() {
+<span class="nc" id="L60">      return value.length();</span>
+    }
+    boolean isSymbol() {
+<span class="nc" id="L63">      return false;</span>
+    }
+    @Override
+	public String toString(){
+<span class="nc" id="L67">      return value;</span>
+    }
+
+  }
+  static class Symbol extends Token {
+    Symbol (String s){
+<span class="nc" id="L73">      super(s);</span>
+<span class="nc" id="L74">    }</span>
+    @Override
+	boolean isSymbol(){
+<span class="nc" id="L77">      return true;</span>
+    }
+  }
+
+  // our symbol tokens
+<span class="nc" id="L82">  static final Symbol CAT_START = new Symbol(&quot;CAT_START&quot;);</span>
+<span class="nc" id="L83">  static final Symbol CAT_END = new Symbol(&quot;CAT_END&quot;);</span>
+
+<span class="nc" id="L85">  static final Symbol ALT_START = new Symbol(&quot;ALT_START&quot;);</span>
+<span class="nc" id="L86">  static final Symbol ALT_END = new Symbol(&quot;ALT_END&quot;);</span>
+<span class="nc" id="L87">  static final Symbol ALT = new Symbol(&quot;ALT&quot;);</span>
+<span class="nc" id="L88">  static final Symbol EOS = new Symbol(&quot;END&quot;);</span>
+
+  final String src;
+  final int len;
+
+  Token token;
+  int pos;
+
+/**
+    // a quoted symbol char version - doesn't look nice, but is more general
+  void nextToken () {
+
+    int i = pos;
+    int len = this.len;
+
+    if (i&gt;=len){
+      token = EOS;
+
+    } else {
+      if (src.charAt(i) == META_CHAR){  // symbol
+        char c = src.charAt(++i);
+        switch (c){
+          case CAT_START_CHAR:       token = CAT_START; break;
+          case CAT_END_CHAR:         token = CAT_END; break;
+
+          case ALT_START_CHAR:       token = ALT_START; break;
+          case ALT_CHAR:             token = ALT; break;
+          case ALT_END_CHAR:         token = ALT_END; break;
+          default:
+            error(&quot;illegal symbol: &quot; + c);
+        }
+        pos += 2;
+
+      } else { // string literal
+        int j = i + 1;
+        for (; j &lt; len &amp;&amp; src.charAt(j) != META_CHAR; j++);
+        pos = j;
+        token = new Token(src.substring(i, j));
+      }
+    }
+  }
+**/
+
+  private boolean isMetaChar(char c){
+<span class="nc bnc" id="L132" title="All 10 branches missed.">    return ((c == CAT_START_CHAR) || (c == CAT_END_CHAR) ||</span>
+            (c == ALT_START_CHAR) || (c == ALT_END_CHAR) || (c == ALT_CHAR));
+
+  }
+
+  void nextToken() {
+<span class="nc" id="L138">    int i = pos;</span>
+<span class="nc" id="L139">    int len = this.len;</span>
+
+<span class="nc bnc" id="L141" title="All 2 branches missed.">    if (i&gt;=len){</span>
+<span class="nc" id="L142">      token = EOS;</span>
+
+    } else {
+<span class="nc" id="L145">      char c = src.charAt(i);</span>
+<span class="nc bnc" id="L146" title="All 6 branches missed.">      switch (c){</span>
+<span class="nc" id="L147">        case CAT_START_CHAR:       token = CAT_START;   pos++; break;</span>
+<span class="nc" id="L148">        case CAT_END_CHAR:         token = CAT_END;     pos++; break;</span>
+
+<span class="nc" id="L150">        case ALT_START_CHAR:       token = ALT_START;   pos++; break;</span>
+<span class="nc" id="L151">        case ALT_CHAR:             token = ALT;         pos++; break;</span>
+<span class="nc" id="L152">        case ALT_END_CHAR:         token = ALT_END;     pos++; break;</span>
+
+        default:
+<span class="nc" id="L155">          int j = i + 1;</span>
+<span class="nc bnc" id="L156" title="All 4 branches missed.">          for (; j &lt; len &amp;&amp; !isMetaChar(src.charAt(j)); j++);</span>
+<span class="nc" id="L157">          pos = j;</span>
+<span class="nc" id="L158">          token = new Token(src.substring(i, j));</span>
+      }
+    }
+<span class="nc" id="L161">  }</span>
+
+  boolean match (Symbol sym){
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    if (token == sym){</span>
+<span class="nc" id="L165">      nextToken();</span>
+<span class="nc" id="L166">      return true;</span>
+    } else {
+<span class="nc" id="L168">      return false;</span>
+    }
+  }
+
+<span class="nc" id="L172">  public StringExpander (String src){</span>
+<span class="nc" id="L173">    this.src = src;</span>
+<span class="nc" id="L174">    this.len = src.length();</span>
+<span class="nc" id="L175">    this.pos = 0;</span>
+<span class="nc" id="L176">  }</span>
+
+  List&lt;String&gt; addSeq (List&lt;String&gt; list, List&lt;String&gt; seq){
+<span class="nc" id="L179">    List&lt;String&gt; result = new LinkedList&lt;String&gt;();</span>
+
+<span class="nc bnc" id="L181" title="All 4 branches missed.">    if (list != null &amp;&amp; list.size() &gt; 0){</span>
+<span class="nc" id="L182">      result.addAll(list);</span>
+    }
+<span class="nc" id="L184">    result.addAll(seq);</span>
+
+<span class="nc" id="L186">    return result;</span>
+  }
+
+  List&lt;String&gt; addLiteral (List&lt;String&gt; list, String s){
+<span class="nc" id="L190">    List&lt;String&gt; result = new LinkedList&lt;String&gt;();</span>
+
+<span class="nc bnc" id="L192" title="All 4 branches missed.">    if (list == null || list.size() == 0){</span>
+<span class="nc" id="L193">      result.add(s);</span>
+
+    } else {
+<span class="nc bnc" id="L196" title="All 2 branches missed.">      for (String e : list) {</span>
+<span class="nc" id="L197">        result.add(e + s);</span>
+<span class="nc" id="L198">      }</span>
+    }
+
+<span class="nc" id="L201">    return result;</span>
+  }
+
+  List&lt;String&gt; addAlt (List&lt;String&gt; list, List&lt;String&gt;alt){
+<span class="nc" id="L205">    List&lt;String&gt; result = new LinkedList&lt;String&gt;();</span>
+
+<span class="nc bnc" id="L207" title="All 4 branches missed.">    if (list == null || list.size() == 0){</span>
+<span class="nc" id="L208">      result.addAll(alt);</span>
+
+    } else {
+<span class="nc bnc" id="L211" title="All 2 branches missed.">      for (String e : list) {</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        for (String p : alt) {</span>
+<span class="nc" id="L213">          result.add(e + p);</span>
+<span class="nc" id="L214">        }</span>
+<span class="nc" id="L215">      }</span>
+    }
+
+<span class="nc" id="L218">    return result;</span>
+  }
+
+  List&lt;String&gt; addCat (List&lt;String&gt; list, char[] cat){
+<span class="nc" id="L222">    List&lt;String&gt; result = new LinkedList&lt;String&gt;();</span>
+
+<span class="nc bnc" id="L224" title="All 4 branches missed.">    if (list == null || list.size() == 0){</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">      for (char c : cat){</span>
+<span class="nc" id="L226">        result.add(Character.toString(c));</span>
+      }
+
+    } else {
+<span class="nc bnc" id="L230" title="All 2 branches missed.">      for (String e : list) {</span>
+<span class="nc bnc" id="L231" title="All 2 branches missed.">        for (char c : cat){</span>
+<span class="nc" id="L232">          result.add(e + c);</span>
+        }
+<span class="nc" id="L234">      }</span>
+    }
+
+<span class="nc" id="L237">    return result;</span>
+  }
+
+  void error (String msg){
+<span class="nc" id="L241">    throw new Exception(msg);</span>
+  }
+
+  protected char[] createCategory(String cat){
+<span class="nc" id="L245">    char[] s = cat.toCharArray();</span>
+<span class="nc" id="L246">    int l1 = s.length-1;</span>
+<span class="nc" id="L247">    char[] d = s;</span>
+
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    for (int i=0, j=0; i&lt;s.length; i++){</span>
+<span class="nc" id="L251">      char c = s[i];</span>
+<span class="nc bnc" id="L252" title="All 6 branches missed.">      if ((c == CAT_CHAR) &amp;&amp; (i&gt;0) &amp;&amp; (i&lt;l1)){</span>
+<span class="nc" id="L253">        char c0 = s[i-1];</span>
+<span class="nc" id="L254">        char c1 = s[i+1];</span>
+<span class="nc" id="L255">        int  n = c1 - c0;</span>
+
+<span class="nc" id="L257">        int len = j + n + (s.length-i-2);</span>
+<span class="nc" id="L258">        char[] dNew = new char[len];</span>
+<span class="nc" id="L259">        System.arraycopy(d, 0, dNew, 0, j);</span>
+<span class="nc" id="L260">        d = dNew;</span>
+
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (int k=c0+1; k&lt;=c1; k++){</span>
+<span class="nc" id="L263">          d[j++] = (char)k;</span>
+        }
+<span class="nc" id="L265">        i++;</span>
+
+<span class="nc" id="L267">      } else {</span>
+<span class="nc" id="L268">        d[j++] = c;</span>
+      }
+    }
+
+<span class="nc" id="L272">    return d;</span>
+  }
+
+  // seq       :=  {LIT | cat | alt}*
+  // cat       :=  `[ LIT `]
+  // alt       :=  `&lt; spec {`| spec}* `&gt;
+
+  public List&lt;String&gt; expand() {
+<span class="nc" id="L280">    return seq();</span>
+  }
+
+  List&lt;String&gt; seq() {
+<span class="nc" id="L284">    List&lt;String&gt; result = null;</span>
+
+<span class="nc bnc" id="L286" title="All 2 branches missed.">    for (nextToken(); token != EOS; ){</span>
+<span class="nc bnc" id="L287" title="All 2 branches missed.">      if (!token.isSymbol()){</span>
+<span class="nc" id="L288">        result = addLiteral( result,token.value);</span>
+<span class="nc" id="L289">        nextToken();</span>
+
+<span class="nc bnc" id="L291" title="All 2 branches missed.">      } else if (token == ALT_START){</span>
+<span class="nc" id="L292">        result = addAlt( result, alt());</span>
+
+<span class="nc bnc" id="L294" title="All 2 branches missed.">      } else if (token == CAT_START){</span>
+<span class="nc" id="L295">        result = addCat( result, cat());</span>
+
+      } else {
+        break;
+      }
+    }
+
+<span class="nc" id="L302">    return result;</span>
+  }
+
+
+  List&lt;String&gt; alt() {
+<span class="nc" id="L307">    List&lt;String&gt; result = null;</span>
+
+<span class="nc bnc" id="L309" title="All 4 branches missed.">    assert token == ALT_START;</span>
+
+    do {
+<span class="nc" id="L312">      result = addSeq(result, seq());</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    } while (token == ALT);</span>
+
+<span class="nc bnc" id="L315" title="All 2 branches missed.">    if (!match(ALT_END)){</span>
+<span class="nc" id="L316">      error(&quot;unterminated alternative&quot;);</span>
+    }
+<span class="nc" id="L318">    return result;</span>
+  }
+
+  char[] cat() {
+<span class="nc" id="L322">    char[] set = null;</span>
+
+<span class="nc bnc" id="L324" title="All 4 branches missed.">    assert token == CAT_START;</span>
+
+<span class="nc" id="L326">    nextToken();</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">    if (!token.isSymbol()){</span>
+<span class="nc" id="L328">      set = createCategory(token.value);</span>
+<span class="nc" id="L329">      nextToken();</span>
+    }
+
+<span class="nc bnc" id="L332" title="All 2 branches missed.">    if (!match(CAT_END)){</span>
+<span class="nc" id="L333">      error(&quot;unterminated category&quot;);</span>
+    }
+<span class="nc" id="L335">    return set;</span>
+  }
+
+
+  public static void main (String[] args) {
+    //String a = &quot;&lt;B[0-3]C&gt;&quot;;
+<span class="nc" id="L341">    String a = args[0];</span>
+<span class="nc" id="L342">    System.out.println(a);</span>
+    
+<span class="nc" id="L344">    StringExpander ex = new StringExpander(a);</span>
+
+/**
+    for (ex.nextToken(); ex.token != EOS; ex.nextToken()){
+      System.out.println(ex.token);
+    }
+**/
+/**/
+<span class="nc bnc" id="L352" title="All 2 branches missed.">    for (String s : ex.expand()) {</span>
+<span class="nc" id="L353">      System.out.println(s);</span>
+<span class="nc" id="L354">    }</span>
+/**/
+/**
+    System.out.println(new String(ex.createCategory(args[0])));
+**/
+<span class="nc" id="L359">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

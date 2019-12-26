@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Event.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.script</a> &gt; <span class="el_source">Event.java</span></div><h1>Event.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.script;
+
+
+import gov.nasa.jpf.util.StringExpander;
+import java.util.ArrayList;
+import java.util.List;
+
+public class Event extends ScriptElement {
+
+  public static final String NONE = &quot;NONE&quot;;
+
+  protected String id;
+  protected String[] arguments;
+
+
+  public Event(ScriptElement parent, String id, String[] args, int line) {
+<span class="nc" id="L35">    super(parent, line);</span>
+<span class="nc" id="L36">    this.id = id;</span>
+
+<span class="nc bnc" id="L38" title="All 4 branches missed.">    if ((args != null) &amp;&amp; (args.length &gt; 0)){</span>
+<span class="nc" id="L39">      arguments = args.clone();</span>
+    }
+<span class="nc" id="L41">  }</span>
+
+  public boolean isNone() {
+<span class="nc" id="L44">    return (NONE.equals(id));</span>
+  }
+
+  public static boolean isNone (String id) {
+<span class="nc" id="L48">    return (NONE.equals(id));</span>
+  }
+
+  public String getId() {
+<span class="nc" id="L52">    return id;</span>
+  }
+
+  @Override
+  public int getLine() {
+<span class="nc" id="L57">    return line;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (arguments == null) {</span>
+<span class="nc" id="L63">      return id;</span>
+    } else {
+<span class="nc" id="L65">      StringBuilder sb = new StringBuilder(id);</span>
+
+<span class="nc" id="L67">      sb.append('(');</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      for (int i=0; i&lt;arguments.length; i++) {</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        if (i &gt; 0) {</span>
+<span class="nc" id="L70">          sb.append(',');</span>
+        }
+<span class="nc" id="L72">        sb.append(arguments[i]);</span>
+      }
+<span class="nc" id="L74">      sb.append(')');</span>
+
+<span class="nc" id="L76">      return sb.toString();</span>
+    }
+  }
+
+  public String[] getArguments() {
+<span class="nc" id="L81">    return arguments;</span>
+  }
+
+  public void setArguments (String[] args) {
+<span class="nc" id="L85">    arguments = args;</span>
+<span class="nc" id="L86">  }</span>
+
+  @Override
+  public void process (ElementProcessor p) {
+<span class="nc" id="L90">    p.process(this);</span>
+<span class="nc" id="L91">  }</span>
+
+  String[] expandArgument (String a) {
+<span class="nc" id="L94">    ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+
+<span class="nc" id="L96">    StringExpander ex = new StringExpander(a);</span>
+<span class="nc" id="L97">    List&lt;String&gt; l = ex.expand();</span>
+<span class="nc" id="L98">    list.addAll(l);</span>
+
+<span class="nc" id="L100">    return list.toArray(new String[list.size()]);</span>
+  }
+
+  /**
+   * this is an interesting little exercise since we have to cover all
+   * combinations of parameter values, which would normally be a simple set
+   * of nested loops, only that the number of parameters is a variable itself
+   */
+  public List&lt;Event&gt; expand () {
+<span class="nc" id="L109">    StringExpander ex = new StringExpander(id);</span>
+<span class="nc" id="L110">    List&lt;String&gt; ids = ex.expand();</span>
+<span class="nc" id="L111">    ArrayList&lt;Event&gt; list = new ArrayList&lt;Event&gt;();</span>
+
+<span class="nc bnc" id="L113" title="All 2 branches missed.">    if (arguments != null) {</span>
+<span class="nc" id="L114">      String[] a = new String[arguments.length];</span>
+<span class="nc" id="L115">      String[][] args = new String[arguments.length][];</span>
+<span class="nc" id="L116">      int[] argIdx = new int[args.length];</span>
+
+<span class="nc bnc" id="L118" title="All 2 branches missed.">      for (int i=0; i&lt;args.length; i++) {</span>
+<span class="nc" id="L119">        args[i] = expandArgument(arguments[i]);</span>
+      }
+
+<span class="nc" id="L122">      int n = args.length-1;</span>
+
+<span class="nc bnc" id="L124" title="All 2 branches missed.">      for (String id : ids) {</span>
+        int i;
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        for (i=0; i&lt;=n; i++) { // reset arg indices</span>
+<span class="nc" id="L127">          argIdx[i] = 0;</span>
+        }
+
+<span class="nc" id="L130">        for (i=n; ;) {</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">          if (argIdx[i] &gt;= args[i].length){ // all choices at this level exhausted</span>
+            // increment next lower level(s), reset level(s) above
+            int l;
+<span class="nc bnc" id="L134" title="All 2 branches missed.">            for (l=i-1; l &gt;= 0; l--) {</span>
+<span class="nc" id="L135">              argIdx[l]++;</span>
+<span class="nc" id="L136">              argIdx[l+1] = 0;</span>
+<span class="nc bnc" id="L137" title="All 2 branches missed.">              if (argIdx[l] &lt; args[l].length) {</span>
+<span class="nc" id="L138">                break;</span>
+              }
+            }
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (l &lt; 0) {</span>
+<span class="nc" id="L142">              break; // done, do next id</span>
+            } else {
+<span class="nc" id="L144">              i = n; // restart from top level</span>
+            }
+
+<span class="nc" id="L147">          } else { // got a new combination</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            for (int k=0; k&lt;args.length; k++) {</span>
+<span class="nc" id="L149">              a[k] = args[k][argIdx[k]];</span>
+            }
+<span class="nc" id="L151">            Event ee = new Event(parent, id, a, line);</span>
+<span class="nc" id="L152">            list.add(ee);</span>
+<span class="nc" id="L153">            argIdx[i]++;</span>
+<span class="nc" id="L154">          }</span>
+        }
+<span class="nc" id="L156">      }</span>
+
+<span class="nc" id="L158">    } else { // no parameter variation, but we still might have expanded ids</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">      if (ids.size() == 1) {</span>
+<span class="nc" id="L160">        list.add(this);</span>
+      } else {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        for (String id : ids) {</span>
+<span class="nc" id="L163">          list.add( new Event(parent, id, arguments, line));</span>
+<span class="nc" id="L164">        }</span>
+      }
+    }
+
+<span class="nc" id="L168">    return list;</span>
+  }
+
+  public Object[] getConcreteArguments () {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">    if (arguments == null) {</span>
+<span class="nc" id="L173">      return null;</span>
+    }
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (arguments.length == 0) {</span>
+<span class="nc" id="L176">      return new Object[0];</span>
+    }
+
+<span class="nc" id="L179">    Object[] a = new Object[arguments.length];</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">    for (int i=0; i&lt;arguments.length; i++) {</span>
+<span class="nc" id="L181">      a[i] = getConcreteArgument(arguments[i]);</span>
+    }
+
+<span class="nc" id="L184">    return a;</span>
+  }
+
+  Object getConcreteArgument (String s) {
+<span class="nc" id="L188">    char c = s.charAt(0);</span>
+
+<span class="nc bnc" id="L190" title="All 4 branches missed.">    if (c == '&quot;' || c == '\'') { // String literal</span>
+<span class="nc" id="L191">      return s.substring(1,s.length()-1);</span>
+
+<span class="nc bnc" id="L193" title="All 6 branches missed.">    } else if (Character.isDigit(c) || c == '-' || c == '+') { // ints and doubles</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">      if (s.indexOf('.') &gt;=0) {</span>
+<span class="nc" id="L195">        return Double.parseDouble(s);</span>
+      } else {
+<span class="nc" id="L197">        return Integer.parseInt(s);</span>
+      }
+      
+<span class="nc bnc" id="L200" title="All 2 branches missed.">    } else if (s.equals(&quot;true&quot;)) { // boolean</span>
+<span class="nc" id="L201">      return Boolean.TRUE;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">    } else if (s.equals(&quot;false&quot;)) {</span>
+<span class="nc" id="L203">      return Boolean.FALSE;</span>
+      
+<span class="nc bnc" id="L205" title="All 2 branches missed.">    } else if (c == '@'){ // variable</span>
+<span class="nc" id="L206">      return s;</span>
+      
+    } else { // not supported
+<span class="nc" id="L209">      throw new IllegalArgumentException(&quot;unsupported event argument type of value=&quot; + s);</span>
+    }
+  }
+
+  /**
+   * variations over boolean lists are quite easy to produce :)
+   */
+  public static Object[][] getBooleanArgVariations (int nArgs) {
+<span class="nc" id="L217">    int n = 1&lt;&lt;nArgs;</span>
+<span class="nc" id="L218">    Object[][] args = new Object[n][];</span>
+
+<span class="nc bnc" id="L220" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="nc" id="L221">      args[i] = new Boolean[nArgs];</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">      for (int j=0; j&lt;nArgs; j++) {</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        args[i][j] = ((i &amp; (1&lt;&lt;j)) != 0) ? Boolean.TRUE : Boolean.FALSE;</span>
+      }
+    }
+
+<span class="nc" id="L227">    return args;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

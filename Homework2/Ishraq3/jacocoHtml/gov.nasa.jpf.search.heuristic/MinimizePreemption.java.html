@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MinimizePreemption.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search.heuristic</a> &gt; <span class="el_source">MinimizePreemption.java</span></div><h1>MinimizePreemption.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.search.heuristic;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadChoiceGenerator;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * a simple heuristic that tries to minimize preemptive scheduling, i.e.
+ * switching from a thread that is not blocked.
+ * 
+ * This is supposed to be a less expensive and more robust version of the old
+ * IterativContextBounding search
+ */
+public class MinimizePreemption extends SimplePriorityHeuristic {
+  
+  // an optional threshold value of preemptions that cause states to be
+  // added at the end of the queue (or discarded if queue is full)
+  int threshold;
+  
+  public MinimizePreemption (Config config, VM vm) {
+<span class="fc" id="L39">    super(config,vm);</span>
+    
+<span class="fc" id="L41">    threshold = config.getInt(&quot;search.mp.threshold&quot;, Integer.MAX_VALUE);</span>
+<span class="fc" id="L42">  }</span>
+  
+  @Override
+  protected int computeHeuristicValue () {
+<span class="fc" id="L46">    int preemptions = 0;</span>
+
+    // this is redundant, but since it is easy enough to compute we don't store it
+    // &lt;2do&gt; this relies on that there are no cascaded SchedulingPoints (which would not work anyways)
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    for (ThreadChoiceGenerator tcg = vm.getLastChoiceGeneratorOfType(ThreadChoiceGenerator.class); tcg != null;){</span>
+<span class="fc" id="L51">      ThreadInfo ti= tcg.getNextChoice();</span>
+<span class="fc" id="L52">      ThreadChoiceGenerator tcgPrev = tcg.getPreviousChoiceGeneratorOfType(ThreadChoiceGenerator.class);</span>
+
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">      if (tcg.isSchedulingPoint()){</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (tcgPrev != null){</span>
+<span class="fc" id="L56">          ThreadInfo tiPrev = tcgPrev.getNextChoice();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">          if (ti != tiPrev){</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (tcg.contains(tiPrev)){</span>
+              // the previous thread is still in the runnable list, so it can't be blocked or terminated
+<span class="fc" id="L60">              preemptions++;</span>
+              
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">              if (preemptions &gt;= threshold){</span>
+                // we don't care, it gets the lowest priority (highest heuristic value)
+<span class="nc" id="L64">                return Integer.MAX_VALUE;</span>
+              }
+            }            
+          }
+        }
+      }
+      
+<span class="fc" id="L71">      tcg = tcgPrev;</span>
+<span class="fc" id="L72">    }</span>
+    
+<span class="fc" id="L74">    return preemptions;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JVMStackFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JVMStackFrame.java</span></div><h1>JVMStackFrame.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.util.FixedBitSet;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * a stackframe that is used for executing Java bytecode, supporting both
+ * locals and an operand stack. This is essentially the JVm stack machine
+ * implementation
+ */
+public class JVMStackFrame extends StackFrame {
+
+  public JVMStackFrame (MethodInfo callee){
+<span class="fc" id="L34">    super( callee);</span>
+<span class="fc" id="L35">  }</span>
+  
+  /**
+   * creates callerSlots dummy Stackframe for testing of operand/local operations
+   * NOTE - TESTING ONLY! this does not have callerSlots MethodInfo
+   */
+  protected JVMStackFrame (int nLocals, int nOperands){
+<span class="fc" id="L42">    super( nLocals, nOperands);</span>
+<span class="fc" id="L43">  }</span>
+  
+  /**
+   * this sets up arguments from a bytecode caller 
+   */
+  protected void setCallArguments (ThreadInfo ti){
+<span class="fc" id="L49">    StackFrame caller = ti.getTopFrame();</span>
+<span class="fc" id="L50">    MethodInfo miCallee = mi;</span>
+<span class="fc" id="L51">    int nArgSlots = miCallee.getArgumentsSize();</span>
+    
+<span class="fc bfc" id="L53" title="All 2 branches covered.">    if (nArgSlots &gt; 0){</span>
+<span class="fc" id="L54">      int[] calleeSlots = slots;</span>
+<span class="fc" id="L55">      FixedBitSet calleeRefs = isRef;</span>
+<span class="fc" id="L56">      int[] callerSlots = caller.getSlots();</span>
+<span class="fc" id="L57">      FixedBitSet callerRefs = caller.getReferenceMap();</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">      for (int i = 0, j = caller.getTopPos() - nArgSlots + 1; i &lt; nArgSlots; i++, j++) {</span>
+<span class="fc" id="L60">        calleeSlots[i] = callerSlots[j];</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (callerRefs.get(j)) {</span>
+<span class="fc" id="L62">          calleeRefs.set(i);</span>
+        }
+<span class="fc" id="L64">        Object a = caller.getSlotAttr(j);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (a != null) {</span>
+<span class="fc" id="L66">          setSlotAttr(i, a);</span>
+        }
+      }
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">      if (!miCallee.isStatic()) {</span>
+<span class="fc" id="L71">        thisRef = calleeSlots[0];</span>
+      }
+    }
+<span class="fc" id="L74">  }</span>
+
+  @Override
+  public void setExceptionReference (int exRef){
+<span class="fc" id="L78">    clearOperandStack();</span>
+<span class="fc" id="L79">    pushRef( exRef);</span>
+<span class="fc" id="L80">  }</span>
+  
+  //--- these are for setting up arguments from a VM / listener caller
+
+  /*
+   * to be used to initialize locals of a stackframe (only required for explicit construction without a caller,
+   * otherwise the Stackframe ctor/invoke insn will take care of copying the values from its caller)
+   */
+  @Override
+  public void setArgumentLocal (int idx, int v, Object attr){
+<span class="nc" id="L90">    setLocalVariable( idx, v);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L92">      setLocalAttr( idx, attr);</span>
+    }
+<span class="nc" id="L94">  }</span>
+  @Override
+  public void setReferenceArgumentLocal (int idx, int ref, Object attr){
+<span class="nc" id="L97">    setLocalReferenceVariable( idx, ref);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L99">      setLocalAttr( idx, attr);</span>
+    }
+<span class="nc" id="L101">  }</span>
+  @Override
+  public void setLongArgumentLocal (int idx, long v, Object attr){
+<span class="nc" id="L104">    setLongLocalVariable( idx, v);</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L106">      setLocalAttr( idx, attr);</span>
+    }
+<span class="nc" id="L108">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

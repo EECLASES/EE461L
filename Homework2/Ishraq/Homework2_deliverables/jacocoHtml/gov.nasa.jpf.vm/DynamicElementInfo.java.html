@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DynamicElementInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">DynamicElementInfo.java</span></div><h1>DynamicElementInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+
+/**
+ * A specialized version of ElementInfo that represents heap objects
+ */
+public class DynamicElementInfo extends ElementInfo {
+  
+<span class="fc" id="L27">  public DynamicElementInfo () {</span>
+    // for restoration
+<span class="fc" id="L29">  }</span>
+
+  public DynamicElementInfo (int objref, ClassInfo ci, Fields f, Monitor m, ThreadInfo ti) {
+<span class="fc" id="L32">    super(objref, ci, f, m, ti);</span>
+
+<span class="fc" id="L34">    attributes = ci.getElementInfoAttrs();</span>
+
+<span class="fc" id="L36">    ti.getScheduler().initializeObjectSharedness(ti, this);</span>
+<span class="fc" id="L37">  }</span>
+
+  @Override
+  public ElementInfo getModifiableInstance() {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">    if (!isFrozen()) {</span>
+<span class="fc" id="L42">      return this;</span>
+    } else {
+<span class="fc" id="L44">      return VM.getVM().getHeap().getModifiable( objRef);</span>
+    }
+  }
+    
+  @Override
+  public boolean isObject(){
+<span class="nc" id="L50">    return true;</span>
+  }
+  
+  @Override
+  public boolean hasFinalizer() {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">    return (ci.getFinalizer()!=null);</span>
+  }
+  
+  @Override
+  protected int getNumberOfFieldsOrElements(){
+<span class="fc bfc" id="L60" title="All 2 branches covered.">    if (fields instanceof ArrayFields){</span>
+<span class="fc" id="L61">      return ((ArrayFields)fields).arrayLength();</span>
+    } else {
+<span class="fc" id="L63">      return ci.getNumberOfInstanceFields();</span>
+    }
+  }
+
+  @Override
+  public int getNumberOfFields () {
+<span class="fc" id="L69">    return getClassInfo().getNumberOfInstanceFields();</span>
+  }
+
+  @Override
+  public FieldInfo getFieldInfo (int fieldIndex) {
+<span class="fc" id="L74">    return getClassInfo().getInstanceField(fieldIndex);</span>
+  }
+
+  @Override
+  public FieldInfo getFieldInfo (String fname) {
+<span class="fc" id="L79">    return getClassInfo().getInstanceField(fname);</span>
+  }
+  @Override
+  protected FieldInfo getDeclaredFieldInfo (String clsBase, String fname) {
+<span class="fc" id="L83">    return getClassInfo().getClassLoaderInfo().getResolvedClassInfo(clsBase).getDeclaredInstanceField(fname);</span>
+  }
+
+  @Override
+  public ElementInfo getEnclosingElementInfo(){
+<span class="nc bnc" id="L88" title="All 2 branches missed.">    for (FieldInfo fi : getClassInfo().getDeclaredInstanceFields()){</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">      if (fi.getName().startsWith(&quot;this$&quot;)){</span>
+<span class="nc" id="L90">        int objref = getReferenceField(fi);</span>
+<span class="nc" id="L91">        return VM.getVM().getElementInfo(objref);</span>
+      }
+    }
+<span class="nc" id="L94">    return null;</span>
+  }
+
+  @Override
+  public String asString() {
+<span class="fc" id="L99">    char[] data = getStringChars();</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">    if (data != null){</span>
+<span class="fc" id="L101">      return new String(data);</span>
+      
+    } else {
+<span class="nc" id="L104">      return &quot;&quot;;</span>
+    }
+  }
+
+  @Override
+  public char[] getStringChars(){
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">    if (!ClassInfo.isStringClassInfo(ci)) {</span>
+<span class="nc" id="L111">      throw new JPFException(&quot;object is not of type java.lang.String&quot;);</span>
+    }
+
+<span class="fc" id="L114">    int vref = getDeclaredReferenceField(&quot;value&quot;, &quot;java.lang.String&quot;);    </span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">    if (vref != MJIEnv.NULL){</span>
+<span class="fc" id="L116">      ElementInfo eVal = VM.getVM().getHeap().get(vref);</span>
+<span class="fc" id="L117">      char[] value = eVal.asCharArray();</span>
+<span class="fc" id="L118">      return value;</span>
+      
+    } else {
+<span class="nc" id="L121">      return null;</span>
+    }    
+  }
+  
+  /**
+   * just a helper to avoid creating objects just for the sake of comparing
+   */
+  @Override
+  public boolean equalsString (String s) {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">    if (!ClassInfo.isStringClassInfo(ci)) {</span>
+<span class="nc" id="L131">      return false;</span>
+    }
+
+<span class="nc" id="L134">    int vref = getDeclaredReferenceField(&quot;value&quot;, &quot;java.lang.String&quot;);</span>
+<span class="nc" id="L135">    ElementInfo e = VM.getVM().getHeap().get(vref);</span>
+<span class="nc" id="L136">    CharArrayFields cf = (CharArrayFields)e.getFields();</span>
+<span class="nc" id="L137">    char[] v = cf.asCharArray();</span>
+    
+<span class="nc" id="L139">    return new String(v).equals(s);</span>
+  }
+
+  @Override
+  public boolean isBoxObject(){
+<span class="nc" id="L144">    String cname = ci.getName();</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">    if (cname.startsWith(&quot;java.lang.&quot;)){</span>
+<span class="nc" id="L146">      cname = cname.substring(10);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">      return (&quot;Boolean&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">          &quot;Character&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">          &quot;Byte&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">          &quot;Short&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">          &quot;Integer&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">          &quot;Float&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">          &quot;Long&quot;.equals(cname) ||</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">          &quot;Double&quot;.equals(cname) );</span>
+        
+    } else {
+<span class="nc" id="L157">      return false;</span>
+    }
+  }
+  
+  @Override
+  public Object asBoxObject(){
+<span class="nc" id="L163">    String cname = ci.getName();</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    if (cname.startsWith(&quot;java.lang.&quot;)){</span>
+<span class="nc" id="L165">      cname = cname.substring(10);</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">      if (&quot;Boolean&quot;.equals(cname)){</span>
+<span class="nc" id="L167">        return Boolean.valueOf( getBooleanField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">      } else if (&quot;Character&quot;.equals(cname)){</span>
+<span class="nc" id="L169">        return Character.valueOf(getCharField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">      } else if (&quot;Byte&quot;.equals(cname)){</span>
+<span class="nc" id="L171">        return Byte.valueOf( getByteField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">      } else if (&quot;Short&quot;.equals(cname)){</span>
+<span class="nc" id="L173">        return Short.valueOf( getShortField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">      } else if (&quot;Integer&quot;.equals(cname)){</span>
+<span class="nc" id="L175">        return Integer.valueOf( getIntField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">      } else if (&quot;Float&quot;.equals(cname)){</span>
+<span class="nc" id="L177">        return Float.valueOf( getFloatField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">      } else if (&quot;Long&quot;.equals(cname)){</span>
+<span class="nc" id="L179">        return Long.valueOf( getLongField(&quot;value&quot;));</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">      } else if (&quot;Double&quot;.equals(cname)){</span>
+<span class="nc" id="L181">        return Double.valueOf( getDoubleField(&quot;value&quot;));</span>
+      }
+    }
+    
+<span class="nc" id="L185">    throw new JPFException(&quot;object is not a box object: &quot; + this);    </span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

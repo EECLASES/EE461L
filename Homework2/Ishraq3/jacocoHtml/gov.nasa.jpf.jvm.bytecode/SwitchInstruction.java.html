@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SwitchInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">SwitchInstruction.java</span></div><h1>SwitchInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.KernelState;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.SystemState;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.choice.IntIntervalGenerator;
+
+/**
+ * common root class for LOOKUPSWITCH and TABLESWITCH insns
+ *
+ * &lt;2do&gt; this is inefficient. First, we should store targets as instruction indexes
+ * to avoid execution() looping. Second, there are no matches for a TABLESWITCH
+ */
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">public abstract class SwitchInstruction extends Instruction implements JVMInstruction {</span>
+
+  public static final int DEFAULT = -1; 
+  
+  protected int   target;   // default branch
+  protected int[] targets;  // explicit value branches
+  protected int[] matches;  // branch consts
+
+  protected int lastIdx;
+
+<span class="fc" id="L44">  protected SwitchInstruction (int defaultTarget, int numberOfTargets){</span>
+<span class="fc" id="L45">    target = defaultTarget;</span>
+<span class="fc" id="L46">    targets = new int[numberOfTargets];</span>
+<span class="fc" id="L47">    matches = new int[numberOfTargets];</span>
+<span class="fc" id="L48">  }</span>
+
+  public int getNumberOfEntries() {
+<span class="nc" id="L51">    return targets.length;</span>
+  }
+
+  protected Instruction executeConditional (ThreadInfo ti){
+<span class="fc" id="L55">    StackFrame frame = ti.getModifiableTopFrame();</span>
+
+<span class="fc" id="L57">    int value = frame.pop();</span>
+
+<span class="fc" id="L59">    lastIdx = DEFAULT;</span>
+
+<span class="fc bfc" id="L61" title="All 2 branches covered.">    for (int i = 0, l = matches.length; i &lt; l; i++) {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">      if (value == matches[i]) {</span>
+<span class="fc" id="L63">        lastIdx = i;</span>
+<span class="fc" id="L64">        return mi.getInstructionAt(targets[i]);</span>
+      }
+    }
+
+<span class="fc" id="L68">    return mi.getInstructionAt(target);</span>
+  }
+  
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+    // this can be overridden by subclasses, so we have to delegate the conditional execution
+    // to avoid getting recursive in executeAllBranches()
+<span class="fc" id="L75">    return executeConditional(ti);</span>
+  }
+
+  /** useful for symbolic execution modes */
+  public Instruction executeAllBranches (SystemState ss, KernelState ks, ThreadInfo ti) {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    if (!ti.isFirstStepInsn()) {</span>
+<span class="nc" id="L81">      IntIntervalGenerator cg = new IntIntervalGenerator(&quot;switchAll&quot;, 0,matches.length);</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">      if (ss.setNextChoiceGenerator(cg)){</span>
+<span class="nc" id="L83">        return this;</span>
+
+      } else {
+        // listener did override CG, fall back to conditional execution
+<span class="nc" id="L87">        return executeConditional(ti);</span>
+      }
+      
+    } else {
+<span class="nc" id="L91">      IntIntervalGenerator cg = ss.getCurrentChoiceGenerator(&quot;switchAll&quot;, IntIntervalGenerator.class);</span>
+<span class="nc bnc" id="L92" title="All 4 branches missed.">      assert (cg != null) : &quot;no IntIntervalGenerator&quot;;</span>
+      
+<span class="nc" id="L94">      StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L95">      int idx = frame.pop(); // but we are not using it</span>
+<span class="nc" id="L96">      idx = cg.getNextChoice();</span>
+      
+<span class="nc bnc" id="L98" title="All 2 branches missed.">      if (idx == matches.length){ // default branch</span>
+<span class="nc" id="L99">        lastIdx = DEFAULT;</span>
+<span class="nc" id="L100">        return mi.getInstructionAt(target);</span>
+      } else {
+<span class="nc" id="L102">        lastIdx = idx;</span>
+<span class="nc" id="L103">        return mi.getInstructionAt(targets[idx]);</span>
+      }
+    }
+  }
+
+  //--- a little inspection, but only post exec yet
+  
+  public int getLastTargetIndex () {
+<span class="nc" id="L111">    return lastIdx;</span>
+  }
+  
+  public int getNumberOfTargets () {
+<span class="nc" id="L115">    return matches.length;</span>
+  }
+  
+  public int getMatchConst (int idx){
+<span class="nc" id="L119">    return matches[idx];</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L124">	  insVisitor.visit(this);</span>
+<span class="nc" id="L125">  }</span>
+
+  public int getTarget() {
+<span class="nc" id="L128">	return target;</span>
+  }
+
+  public int[] getTargets() {
+<span class="nc" id="L132">	return targets;</span>
+  }
+
+  public int[] getMatches() {
+<span class="nc" id="L136">	return matches;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativePeer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">NativePeer.java</span></div><h1>NativePeer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.annotation.MJI;
+import gov.nasa.jpf.util.JPFLogger;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Level;
+
+
+/**
+ * native peer classes are part of MJI and contain the code that is
+ * executed by the host VM (i.e. outside the state-tracked JPF VM). Each
+ * class executed by JPF that has native methods must have a native peer class
+ * (which is looked up and associated at class loadtime)
+ */
+<span class="fc" id="L41">public class NativePeer implements Cloneable {</span>
+
+  static final String MODEL_PACKAGE = &quot;&lt;model&gt;&quot;;
+  static final String DEFAULT_PACKAGE = &quot;&lt;default&gt;&quot;;
+
+<span class="fc" id="L46">  static JPFLogger logger = JPF.getLogger(&quot;class&quot;);</span>
+
+  static ClassLoader loader;
+  static HashMap&lt;ClassInfo, NativePeer&gt; peers;
+  static Config config;
+  static boolean noOrphanMethods;
+
+  static String[] peerPackages;
+
+  ClassInfo ci;
+  Class&lt;?&gt; peerClass;
+  HashMap&lt;String, Method&gt; methods;
+
+
+  public static boolean init (Config conf) {
+<span class="fc" id="L61">    loader = conf.getClassLoader();</span>
+<span class="fc" id="L62">    peers = new HashMap&lt;ClassInfo, NativePeer&gt;();</span>
+
+<span class="fc" id="L64">    peerPackages = getPeerPackages(conf);</span>
+
+<span class="fc" id="L66">    config = conf;</span>
+<span class="fc" id="L67">    noOrphanMethods = conf.getBoolean(&quot;vm.no_orphan_methods&quot;, false);</span>
+
+<span class="fc" id="L69">    return true;</span>
+  }
+
+  static String[] getPeerPackages (Config conf) {
+<span class="fc" id="L73">    String[] defPeerPackages = { MODEL_PACKAGE, &quot;gov.nasa.jpf.vm&quot;, DEFAULT_PACKAGE };</span>
+<span class="fc" id="L74">    String[] packages = conf.getStringArray(&quot;peer_packages&quot;, defPeerPackages);</span>
+
+    // internalize
+<span class="fc bfc" id="L77" title="All 2 branches covered.">    for (int i=0; i&lt;packages.length; i++) {</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">      if (packages[i].equals(MODEL_PACKAGE)) {</span>
+<span class="fc" id="L79">        packages[i] = MODEL_PACKAGE;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">      } else if (packages[i].equals(DEFAULT_PACKAGE)) {</span>
+<span class="fc" id="L81">        packages[i] = DEFAULT_PACKAGE;</span>
+      }
+    }
+
+<span class="fc" id="L85">    return packages;</span>
+  }
+
+  static Class&lt;?&gt; locatePeerCls (String clsName) {
+<span class="fc" id="L89">    String cn = &quot;JPF_&quot; + clsName.replace('.', '_');</span>
+
+<span class="fc bfc" id="L91" title="All 2 branches covered.">    for (int i=0; i&lt;peerPackages.length; i++) {</span>
+      String pcn;
+<span class="fc" id="L93">      String pkg = peerPackages[i];</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">      if (pkg == MODEL_PACKAGE) {</span>
+<span class="fc" id="L96">        int j = clsName.lastIndexOf('.');</span>
+<span class="fc" id="L97">        pcn = clsName.substring(0, j+1) + cn;</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">      } else if (pkg == DEFAULT_PACKAGE) {</span>
+<span class="fc" id="L99">        pcn = cn;</span>
+      } else {
+<span class="fc" id="L101">        pcn = pkg + '.' + cn;</span>
+      }
+     
+      try {
+<span class="fc" id="L105">        Class&lt;?&gt; peerCls = loader.loadClass(pcn);</span>
+        
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if ((peerCls.getModifiers() &amp; Modifier.PUBLIC) == 0) {</span>
+<span class="nc" id="L108">          logger.warning(&quot;non-public peer class: &quot;, pcn);</span>
+<span class="nc" id="L109">          continue; // pointless to use this one, it would just create IllegalAccessExceptions</span>
+        }
+        
+<span class="fc" id="L112">        logger.info(&quot;loaded peer class: &quot;, pcn);</span>
+        
+<span class="fc" id="L114">        return peerCls;</span>
+<span class="fc" id="L115">      } catch (ClassNotFoundException cnfx) {</span>
+        // try next one
+      }
+    }
+
+<span class="fc" id="L120">    return null; // nothing found</span>
+  }
+
+  /**
+   * this becomes the factory method to load either a plain (slow)
+   * reflection-based peer (a NativePeer object), or some speed optimized
+   * derived class object.
+   * Watch out - this gets called before the ClassInfo is fully initialized
+   * (we shouldn't rely on more than just its name here)
+   */
+  static NativePeer getNativePeer (ClassInfo ci) {
+<span class="fc" id="L131">    String     clsName = ci.getName();</span>
+<span class="fc" id="L132">    NativePeer peer = peers.get(ci);</span>
+<span class="fc" id="L133">    Class&lt;?&gt;      peerCls = null;</span>
+
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">    if (peer == null) {</span>
+<span class="fc" id="L136">      peerCls = locatePeerCls(clsName);</span>
+
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      if (peerCls != null) {</span>
+<span class="fc" id="L139">        initializePeerClass( peerCls);</span>
+                
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (logger.isLoggable(Level.INFO)) {</span>
+<span class="nc" id="L142">          logger.info(&quot;load peer: &quot;, peerCls.getName());</span>
+        }
+
+<span class="fc" id="L145">        peer = getInstance(peerCls, NativePeer.class);</span>
+<span class="fc" id="L146">        peer.initialize(peerCls, ci, true);</span>
+
+<span class="fc" id="L148">        peers.put(ci, peer);</span>
+      }
+    }
+
+<span class="fc" id="L152">    return peer;</span>
+  }
+
+  public static &lt;T&gt; T getInstance(Class&lt;?&gt; cls, Class&lt;T&gt; type) throws JPFException {
+<span class="fc" id="L156">    Class&lt;?&gt;[] argTypes = Config.CONFIG_ARGTYPES;</span>
+<span class="fc" id="L157">    Object[] args = config.CONFIG_ARGS;</span>
+
+<span class="fc" id="L159">    return getInstance(cls, type, argTypes, args);</span>
+  }
+
+  public static &lt;T&gt; T getInstance(Class&lt;?&gt; cls, Class&lt;T&gt; type, Class&lt;?&gt;[] argTypes,
+                     Object[] args) throws JPFException {
+<span class="fc" id="L164">    Object o = null;</span>
+<span class="fc" id="L165">    Constructor&lt;?&gt; ctor = null;</span>
+
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">    if (cls == null) {</span>
+<span class="nc" id="L168">      return null;</span>
+    }
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">    while (o == null) {</span>
+      try {
+<span class="fc" id="L173">        ctor = cls.getConstructor(argTypes);</span>
+<span class="fc" id="L174">        o = ctor.newInstance(args);</span>
+<span class="fc" id="L175">      } catch (NoSuchMethodException nmx) {</span>
+         
+<span class="pc bpc" id="L177" title="3 of 6 branches missed.">        if ((argTypes.length &gt; 1) || ((argTypes.length == 1) &amp;&amp; (argTypes[0] != Config.class))) {</span>
+          // fallback 1: try a single Config param
+<span class="nc" id="L179">          argTypes = Config.CONFIG_ARGTYPES;</span>
+<span class="nc" id="L180">          args = config.CONFIG_ARGS;</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        } else if (argTypes.length &gt; 0) {</span>
+          // fallback 2: try the default ctor
+<span class="fc" id="L183">          argTypes = Config.NO_ARGTYPES;</span>
+<span class="fc" id="L184">          args = Config.NO_ARGS;</span>
+
+        } else {
+          // Ok, there is no suitable ctor, bail out
+<span class="nc" id="L188">          throw new JPFException(&quot;no suitable ctor found for the peer class &quot; + cls.getName());</span>
+        }
+<span class="nc" id="L190">      } catch (IllegalAccessException iacc) {</span>
+<span class="nc" id="L191">        throw new JPFException(&quot;ctor not accessible: &quot;</span>
+<span class="nc" id="L192">            + config.getMethodSignature(ctor));</span>
+<span class="nc" id="L193">      } catch (IllegalArgumentException iarg) {</span>
+<span class="nc" id="L194">        throw new JPFException(&quot;illegal constructor arguments: &quot;</span>
+<span class="nc" id="L195">            + config.getMethodSignature(ctor));</span>
+<span class="nc" id="L196">      } catch (InvocationTargetException ix) {</span>
+<span class="nc" id="L197">        Throwable tx = ix.getCause();</span>
+<span class="nc" id="L198">        throw new JPFException(&quot;exception &quot; + tx + &quot; occured in &quot; </span>
+<span class="nc" id="L199">            + config.getMethodSignature(ctor));</span>
+<span class="nc" id="L200">      } catch (InstantiationException ivt) {</span>
+<span class="nc" id="L201">        throw new JPFException(&quot;abstract class cannot be instantiated&quot;);</span>
+<span class="nc" id="L202">      } catch (ExceptionInInitializerError eie) {</span>
+<span class="nc" id="L203">        throw new JPFException(&quot;static initialization failed:\n&gt;&gt; &quot;</span>
+<span class="nc" id="L204">            + eie.getException(), eie.getException());</span>
+<span class="fc" id="L205">      }</span>
+    }
+
+    // check type
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">    if (!cls.isInstance(o)) {</span>
+<span class="nc" id="L210">      throw new JPFException(&quot;instance not of type: &quot;</span>
+<span class="nc" id="L211">          + cls.getName());</span>
+    }
+
+<span class="fc" id="L214">    return type.cast(o); // safe according to above</span>
+  }
+
+  static String getPeerDispatcherClassName (String clsName) {
+<span class="nc" id="L218">    return (clsName + '$');</span>
+  }
+
+  public Class&lt;?&gt; getPeerClass() {
+<span class="nc" id="L222">    return peerClass;</span>
+  }
+
+  public String getPeerClassName() {
+<span class="fc" id="L226">    return peerClass.getName();</span>
+  }
+
+  protected void initialize (Class&lt;?&gt; peerClass, ClassInfo ci, boolean cacheMethods) {
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">    if ((this.ci != null) || (this.peerClass != null)) {</span>
+<span class="nc" id="L231">      throw new RuntimeException(&quot;cannot re-initialize NativePeer: &quot; +</span>
+<span class="nc" id="L232">                                 peerClass.getName());</span>
+    }
+
+<span class="fc" id="L235">    this.ci = ci;</span>
+<span class="fc" id="L236">    this.peerClass = peerClass;</span>
+
+<span class="fc" id="L238">    loadMethods(cacheMethods);</span>
+<span class="fc" id="L239">  }</span>
+
+  protected static void initializePeerClass( Class&lt;?&gt; cls) {
+    try {
+<span class="fc" id="L243">      Method m = cls.getDeclaredMethod(&quot;init&quot;, Config.class );</span>
+      try {
+<span class="fc" id="L245">        m.invoke(null, config);</span>
+<span class="nc" id="L246">      } catch (IllegalArgumentException iax){</span>
+        // can't happen - static method
+<span class="nc" id="L248">      } catch (IllegalAccessException iacx) {</span>
+<span class="nc" id="L249">        throw new RuntimeException(&quot;peer initialization method not accessible: &quot;</span>
+<span class="nc" id="L250">                                   + cls.getName());</span>
+<span class="nc" id="L251">      } catch (InvocationTargetException itx){</span>
+<span class="nc" id="L252">        throw new RuntimeException(&quot;initialization of peer &quot; +</span>
+<span class="nc" id="L253">                                   cls.getName() + &quot; failed: &quot; + itx.getCause());</span>
+
+<span class="pc" id="L255">      }</span>
+<span class="fc" id="L256">    } catch (NoSuchMethodException nsmx){</span>
+      // nothing to do
+<span class="fc" id="L258">    }</span>
+<span class="fc" id="L259">  }</span>
+
+  private static boolean isMJICandidate (Method mth) {
+
+    // the native peer should be annotated with @MJI
+<span class="fc bfc" id="L264" title="All 2 branches covered.">    if(!mth.isAnnotationPresent(MJI.class)) {</span>
+<span class="fc" id="L265">      return false;</span>
+    }
+
+    // this native peer should be Public
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">    if(!Modifier.isPublic(mth.getModifiers())) {</span>
+<span class="nc" id="L270">      return false;</span>
+    }
+
+    // native method always have a MJIEnv and int as the first parameters
+<span class="fc" id="L274">    Class&lt;?&gt;[] argTypes = mth.getParameterTypes();</span>
+<span class="fc bfc" id="L275" title="All 6 branches covered.">    if ((argTypes.length &gt;= 2) &amp;&amp; (argTypes[0] == MJIEnv.class) &amp;&amp; (argTypes[1] == int.class) ) {</span>
+<span class="fc" id="L276">      return true;</span>
+    } else {
+<span class="fc" id="L278">      return false;</span>
+    }
+  }
+
+
+  private Method getMethod (MethodInfo mi) {
+<span class="nc" id="L284">    return getMethod(null, mi);</span>
+  }
+
+  private Method getMethod (String prefix, MethodInfo mi) {
+<span class="nc" id="L288">    String name = mi.getUniqueName();</span>
+
+<span class="nc bnc" id="L290" title="All 2 branches missed.">    if (prefix != null) {</span>
+<span class="nc" id="L291">      name = prefix + name;</span>
+    }
+
+<span class="nc" id="L294">    return methods.get(name);</span>
+  }
+
+  /**
+   * look at all @MJI annotated  methods in the peer and set their
+   * corresponding model class MethodInfo attributes
+   * &lt;2do&gt; pcm - this is too long, break it down
+   */
+  protected void loadMethods (boolean cacheMethods) {
+    // since we allow native peer class hierarchies, we have to look at all methods
+    //Method[] m = peerClass.getDeclaredMethods();
+<span class="fc" id="L305">    Method[] m = peerClass.getMethods();</span>
+    
+<span class="fc" id="L307">    methods = new HashMap&lt;String, Method&gt;(m.length);</span>
+
+<span class="fc" id="L309">    Map&lt;String,MethodInfo&gt; methodInfos = ci.getDeclaredMethods();</span>
+<span class="fc" id="L310">    MethodInfo[] mis = null;</span>
+
+<span class="fc bfc" id="L312" title="All 2 branches covered.">    for (int i = 0; i &lt; m.length; i++) {</span>
+<span class="fc" id="L313">      Method  mth = m[i];</span>
+
+<span class="fc bfc" id="L315" title="All 2 branches covered.">      if (isMJICandidate(mth)) {</span>
+        // Note that we can't mangle the name automatically, since we loose the
+        // object type info (all mapped to int). This has to be handled
+        // the same way like with overloaded JNI methods - you have to
+        // mangle them manually
+<span class="fc" id="L320">        String mn = mth.getName();</span>
+
+        // JNI doesn't allow &lt;clinit&gt; or &lt;init&gt; to be native, but MJI does
+        // (you should know what you are doing before you use that, really)
+<span class="fc bfc" id="L324" title="All 2 branches covered.">        if (mn.startsWith(&quot;$clinit&quot;)) {</span>
+<span class="fc" id="L325">          mn = &quot;&lt;clinit&gt;&quot;;</span>
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        } else if (mn.startsWith(&quot;$init&quot;)) {</span>
+<span class="fc" id="L327">          mn = &quot;&lt;init&gt;&quot; + mn.substring(5);</span>
+        }
+
+<span class="fc" id="L330">        String mname = Types.getJNIMethodName(mn);</span>
+<span class="fc" id="L331">        String sig = Types.getJNISignature(mn);</span>
+
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (sig != null) {</span>
+<span class="fc" id="L334">          mname += sig;</span>
+        }
+
+        // now try to find a corresponding MethodInfo object and mark it
+        // as 'peer-ed'
+        // &lt;2do&gt; in case of &lt;clinit&gt;, it wouldn't be strictly required to
+        // have a MethodInfo upfront (we could create it). Might be handy
+        // for classes where we intercept just a few methods, but need
+        // to init before
+<span class="fc" id="L343">        MethodInfo mi = methodInfos.get(mname);</span>
+
+<span class="fc bfc" id="L345" title="All 4 branches covered.">        if ((mi == null) &amp;&amp; (sig == null)) {</span>
+          // nothing found, we have to do it the hard way - check if there is
+          // a single method with this name (still unsafe, but JNI behavior)
+          // Note there's no point in doing that if we do have a signature
+<span class="fc bfc" id="L349" title="All 2 branches covered.">          if (mis == null) { // cache it for subsequent lookup</span>
+<span class="fc" id="L350">            mis = new MethodInfo[methodInfos.size()];</span>
+<span class="fc" id="L351">            methodInfos.values().toArray(mis);</span>
+          }
+
+<span class="fc" id="L354">          mi = searchMethod(mname, mis);</span>
+        }
+
+<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (mi != null) {</span>
+<span class="fc" id="L358">          logger.info(&quot;load MJI method: &quot;, mname);</span>
+
+<span class="fc" id="L360">          NativeMethodInfo miNative = new NativeMethodInfo(mi, mth, this);</span>
+<span class="fc" id="L361">          miNative.replace(mi);</span>
+
+<span class="fc" id="L363">        } else {</span>
+<span class="fc" id="L364">          checkOrphan(mth, mname);</span>
+        }
+      }
+    }
+<span class="fc" id="L368">  }</span>
+
+  protected void checkOrphan (Method mth, String mname){
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">    if (!ignoreOrphan(mth)) {</span>
+      // we have an orphan method, i.e. a peer method that does not map into any model method
+      // This is usually a signature typo or an out-of-sync peer, but could also be a
+      // MJI method in a peer superclass which is bound to a MethodInfo in a model superclass
+
+<span class="fc" id="L376">      Class&lt;?&gt; implCls = mth.getDeclaringClass();</span>
+<span class="fc bfc" id="L377" title="All 2 branches covered.">      if (implCls != peerClass) {</span>
+<span class="fc" id="L378">        ClassInfo ciSuper = ci.getSuperClass();</span>
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">        if (ciSuper != null){</span>
+<span class="fc" id="L380">          MethodInfo mi = ciSuper.getMethod(mname, true);</span>
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">          if (mi != null){</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">            if (mi instanceof NativeMethodInfo){</span>
+<span class="fc" id="L383">              NativeMethodInfo nmi = (NativeMethodInfo)mi;</span>
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">              if (nmi.getMethod().equals(mth)){</span>
+<span class="fc" id="L385">                return;</span>
+              }
+            }
+          }
+        }
+      }
+
+<span class="fc" id="L392">      String message = &quot;orphan NativePeer method: &quot; + ci.getName() + '.' + mname;</span>
+
+<span class="pc bpc" id="L394" title="1 of 2 branches missed.">      if (noOrphanMethods) {</span>
+<span class="nc" id="L395">        throw new JPFException(message);</span>
+      } else {
+        // issue a warning if we have a NativePeer native method w/o a corresponding
+        // method in the model class (this might happen due to compiler optimizations
+        // silently skipping empty methods)
+<span class="fc" id="L400">        logger.warning(message);</span>
+      }
+    }
+<span class="fc" id="L403">  }</span>
+  
+  protected boolean ignoreOrphan (Method m){
+<span class="fc" id="L406">    MJI annotation = m.getAnnotation(MJI.class);</span>
+<span class="fc" id="L407">    return annotation.noOrphanWarning();</span>
+  }
+  
+  private MethodInfo searchMethod (String mname, MethodInfo[] methods) {
+<span class="fc" id="L411">    int idx = -1;</span>
+
+<span class="fc bfc" id="L413" title="All 2 branches covered.">    for (int j = 0; j &lt; methods.length; j++) {</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">      if (methods[j].getName().equals(mname)) {</span>
+        // if this is actually a overloaded method, and the first one
+        // isn't the right choice, we would get an IllegalArgumentException,
+        // hence we have to go on and make sure it's not overloaded
+
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        if (idx == -1) {</span>
+<span class="fc" id="L420">          idx = j;</span>
+        } else {
+<span class="nc" id="L422">          throw new JPFException(&quot;overloaded native method without signature: &quot; + ci.getName() + '.' + mname);</span>
+        }
+      }
+    }
+
+<span class="pc bpc" id="L427" title="1 of 2 branches missed.">    if (idx &gt;= 0) {</span>
+<span class="fc" id="L428">      return methods[idx];</span>
+    } else {
+<span class="nc" id="L430">      return null;</span>
+    }
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

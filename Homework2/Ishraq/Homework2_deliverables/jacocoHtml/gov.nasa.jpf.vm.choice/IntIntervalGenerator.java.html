@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IntIntervalGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">IntIntervalGenerator.java</span></div><h1>IntIntervalGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.IntChoiceGenerator;
+
+import java.util.Arrays;
+import java.util.Comparator;
+
+/**
+ * Choice Generator that enumerates an interval of int values. Pretty simplistic
+ * implementation for now, but at least it can count up and down
+ *
+ * randomizing is handled through RandomOrderIntCG
+ */
+public class IntIntervalGenerator extends ChoiceGeneratorBase&lt;Integer&gt; implements IntChoiceGenerator {
+
+  protected int min, max;
+  protected int next;
+  protected int delta;
+
+  @Override
+  public void reset () {
+<span class="fc" id="L43">    isDone = false;</span>
+
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">    if (delta == 0) {</span>
+<span class="nc" id="L46">      throw new JPFException(&quot;IntIntervalGenerator delta value is 0&quot;);</span>
+    }
+
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">    if (min &gt; max) {</span>
+<span class="nc" id="L50">      int t = max;</span>
+<span class="nc" id="L51">      max = min;</span>
+<span class="nc" id="L52">      min = t;</span>
+    }
+
+<span class="fc bfc" id="L55" title="All 2 branches covered.">    if (delta &gt; 0) {</span>
+<span class="fc" id="L56">      next = min - delta;</span>
+    } else {
+<span class="fc" id="L58">      next = max - delta;</span>
+    }
+<span class="fc" id="L60">  }</span>
+
+  /**
+   *  don't use this since it is not safe for cascaded ChoiceGenerators
+   * (we need the 'id' to be as context specific as possible)
+   */
+  @Deprecated public IntIntervalGenerator(int min, int max){
+<span class="nc" id="L67">    this(&quot;?&quot;, min, max);</span>
+<span class="nc" id="L68">  }</span>
+
+  @Deprecated public IntIntervalGenerator(int min, int max, int delta){
+<span class="nc" id="L71">    this(&quot;?&quot;, min, max, delta);</span>
+<span class="nc" id="L72">  }</span>
+
+  public IntIntervalGenerator(String id, int min, int max, int delta) {
+<span class="fc" id="L75">    super(id);</span>
+
+<span class="fc" id="L77">    this.min = min;</span>
+<span class="fc" id="L78">    this.max = max;</span>
+<span class="fc" id="L79">    this.delta = delta;</span>
+
+<span class="fc" id="L81">    reset();</span>
+<span class="fc" id="L82">  }</span>
+
+  public IntIntervalGenerator(String id, int min, int max) {
+<span class="fc" id="L85">    this(id, min, max, 1);</span>
+<span class="fc" id="L86">  }</span>
+
+  public IntIntervalGenerator(Config conf, String id) {
+<span class="nc" id="L89">    super(id);</span>
+<span class="nc" id="L90">    min = conf.getInt(id + &quot;.min&quot;);</span>
+<span class="nc" id="L91">    max = conf.getInt(id + &quot;.max&quot;);</span>
+<span class="nc" id="L92">    delta = conf.getInt(id + &quot;.delta&quot;, 1);</span>
+
+<span class="nc" id="L94">    reset();</span>
+<span class="nc" id="L95">  }</span>
+
+  @Override
+  public Integer getChoice (int idx){
+<span class="nc" id="L99">    int nChoices = getTotalNumberOfChoices();</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; nChoices){</span>
+<span class="nc" id="L101">      return min + idx*delta;</span>
+    } else {
+<span class="nc" id="L103">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+  
+  @Override
+  public Integer getNextChoice () {
+<span class="fc" id="L109">    return new Integer(next);</span>
+  }
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">    if (isDone) {</span>
+<span class="fc" id="L115">      return false;</span>
+    } else {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">      if (delta &gt; 0) {</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        return (next &lt; max);</span>
+      } else {
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        return (next &gt; min);</span>
+      }
+    }
+  }
+
+  @Override
+  public void advance () {
+<span class="fc" id="L127">    next += delta;</span>
+<span class="fc" id="L128">  }</span>
+  
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="fc" id="L132">    return Math.abs((max - min) / delta) + 1;</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">    if (delta &gt; 0) {</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      if (next &lt; min){</span>
+<span class="fc" id="L139">        return 0;</span>
+      } else {
+<span class="fc" id="L141">        return (Math.abs((next - min) / delta) + 1);</span>
+      }
+    } else {
+<span class="nc bnc" id="L144" title="All 2 branches missed.">      if (next &gt; max){</span>
+<span class="nc" id="L145">        return 0;</span>
+      } else {
+<span class="nc" id="L147">        return (Math.abs((max - next) / delta) + 1);</span>
+      }
+    }
+  }
+  
+  public boolean isAscending(){
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    return delta &gt; 0;</span>
+  }
+
+  /**
+   *  note this should only be called before the CG is advanced since it resets
+   *  the enumeration state 
+   */
+  public void reverse(){
+<span class="fc" id="L161">    delta = -delta;</span>
+<span class="fc" id="L162">    reset();</span>
+<span class="fc" id="L163">  }</span>
+  
+  
+  public Integer[] getChoices(){
+<span class="nc" id="L167">    int n = getTotalNumberOfChoices();</span>
+<span class="nc" id="L168">    Integer[] vals = new Integer[n];</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">    int v = (delta &gt; 0) ? min : max;</span>
+    
+<span class="nc bnc" id="L171" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L172">      vals[i] = v;</span>
+<span class="nc" id="L173">      v += delta;</span>
+    }
+    
+<span class="nc" id="L176">    return vals;</span>
+  }
+
+  @Override
+  public boolean supportsReordering(){
+<span class="nc" id="L181">    return true;</span>
+  }
+  
+  @Override
+  public ChoiceGenerator&lt;Integer&gt; reorder (Comparator&lt;Integer&gt; comparator){
+<span class="nc" id="L186">    Integer[] vals = getChoices();</span>
+<span class="nc" id="L187">    Arrays.sort(vals, comparator);</span>
+    
+<span class="nc" id="L189">    return new IntChoiceFromList(id, vals);</span>
+  }
+  
+  @Override
+  public String toString () {
+<span class="fc" id="L194">    StringBuilder sb = new StringBuilder(getClass().getName());</span>
+<span class="fc" id="L195">    sb.append(&quot;[id=\&quot;&quot;);</span>
+<span class="fc" id="L196">    sb.append(id);</span>
+<span class="fc" id="L197">    sb.append('&quot;');</span>
+
+<span class="fc" id="L199">    sb.append(&quot;,isCascaded:&quot;);</span>
+<span class="fc" id="L200">    sb.append(isCascaded);</span>
+
+<span class="fc" id="L202">    sb.append(&quot;,&quot;);</span>
+<span class="fc" id="L203">    sb.append(min);</span>
+<span class="fc" id="L204">    sb.append(&quot;..&quot;);</span>
+<span class="fc" id="L205">    sb.append(max);</span>
+<span class="fc" id="L206">    sb.append(&quot;,delta=&quot;);</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">    if (delta &gt; 0) {</span>
+<span class="fc" id="L208">      sb.append('+');</span>
+    }
+<span class="fc" id="L210">    sb.append(delta);</span>
+<span class="fc" id="L211">    sb.append(&quot;,cur=&quot;);</span>
+<span class="fc" id="L212">    sb.append(getNextChoice());</span>
+<span class="fc" id="L213">    sb.append(']');</span>
+<span class="fc" id="L214">    return sb.toString();</span>
+  }
+
+  @Override
+  public Class&lt;Integer&gt; getChoiceType() {
+<span class="nc" id="L219">    return Integer.class;</span>
+  }
+
+  @Override
+  public ChoiceGenerator&lt;Integer&gt; randomize() {
+<span class="nc" id="L224">    return new RandomOrderIntCG(this);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

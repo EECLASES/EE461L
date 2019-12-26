@@ -1,0 +1,1055 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Search.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search</a> &gt; <span class="el_source">Search.java</span></div><h1>Search.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.search;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ConfigChangeListener;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.JPFListenerException;
+import gov.nasa.jpf.Property;
+import gov.nasa.jpf.State;
+import gov.nasa.jpf.report.Reporter;
+import gov.nasa.jpf.util.IntVector;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.ThreadList;
+import gov.nasa.jpf.vm.Transition;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * The {@code Search} abstract class is at the heart of all search classes. Even when it is not extended by child classes, it will
+ * be embedded in the logic as an input for some of the methods. 
+ * 
+ * &lt;p&gt;The main purpose of the {@code Search} class is to track general search information such as depth, configured properties, 
+ * errors, etc. as well as to define how the search algorithm functions. In its simplest form, a search algorithm can be defined 
+ * using the abstract method {@code search} with a series of {@code forward} and {@code backtrack}. More complex search 
+ * algorithms can also make use of the state storing functionality of the {@code Search} class, as well as ignoring states and
+ * removing states from the search tree.
+ * 
+ * &lt;p&gt;Another very important aspect of the {@code Search} class is not only to implement search algorithms, but also to define
+ * the information that describes the current search loop. This is crucial in order to enable the {@code SearchListener} and 
+ * {@code SearchListenerAdapter} classes responsible for extracting crucial data from the search loop during its verification
+ * efforts.
+ */
+public abstract class Search {
+  
+  /** The {@code JPFLogger} object assigned to the {@code gov.nasa.jpf.search} subsystem 
+   * @see gov.nasa.jpf.util.JPFLogger
+   */
+<span class="fc" id="L61">  protected static JPFLogger log = JPF.getLogger(&quot;gov.nasa.jpf.search&quot;);</span>
+  
+  /** The value of {@code currentError} will either be the error encountered during last
+   *  transition or null if no error was encountered */
+<span class="fc" id="L65">  protected Error currentError = null;</span>
+  
+  /** A running list of all errors encountered during verification. The list will always 
+   * contain the current and past values of {@code currentError}. Errors are set added
+   * during verification in the {@code error}
+   * method.
+   * 
+   * &lt;p&gt;{@code errors} will only hold one error before verification stops unless {@code getAllErrors}
+   * is set to true
+   * 
+   * @see #error(Property, Path, ThreadList)
+   * @see #getAllErrors
+   */
+<span class="fc" id="L78">  protected ArrayList&lt;Error&gt; errors = new ArrayList&lt;Error&gt;();</span>
+
+  /**  {@code depth} represents the current depth of the search tree. */
+<span class="fc" id="L81">  protected int depth = 0;</span>
+  /** {@code vm} represents the virtual machine that the search algorithm will be traversing*/
+  protected VM vm;
+
+  /** A list of properties provided from the search configuration at the start of verification. Every property has a {@code check}
+   * method that will be used during verification to tell if any of the properties have been violated.*/
+  protected ArrayList&lt;Property&gt; properties;
+
+  /** A property set by the user before verification. If {@code matchDepth} is true it will change the behavior of 
+   * {@code isNewState()}.
+   * @see #isNewState() */
+  protected boolean matchDepth;
+  /** A property set by the user to define what the minimum memory required to keep verifying is. The reason this is a non-zero
+   * value is to ensure some memory is left over to output a legible message before ending execution instead of simply throwing
+   * an {@code OutOfMemoryError}.
+   * 
+   * &lt;p&gt; The default value for {@code minFreeMemory} is 1024 &lt;&lt; 10 bytes. */
+  protected long    minFreeMemory;
+  /** A property set by the user to define what the maximum depth allowed during verification is. 
+   * 
+   * &lt;p&gt;By default the value is set to {@code Integer.MAX_VALUE}*/
+  protected int     depthLimit;
+  
+  /** A property set by the user to define whether to halt execution after encountering the first error during verification.
+   * If {@code getAllErrors} is set to true, verification will not stop after the first error, and every possible error
+   * during verification will be logged as a result. */
+  protected boolean getAllErrors;
+
+  /** A {@code String} set to contain details on what the constraint that caused verification to halt was. Will generally be 
+   * used by the {@code searchContraintHit} methods in {@code SearchListeners}.
+   * 
+   * @see gov.nasa.jpf.search.SearchListener#searchConstraintHit(Search) */
+  protected String lastSearchConstraint;
+
+  /** {@code done} is a flag set during verification to notify the search loop when verification has finished. */
+<span class="fc" id="L116">  protected boolean done = false;</span>
+  /** {@code doBacktrack} is a flag set during verification in order to request that the search loop backtracks
+   * one state.*/
+<span class="fc" id="L119">  protected boolean doBacktrack = false;</span>
+
+ /** {@code notifyProbeListeners} is a flag set during verification stating whether or not a probe has been 
+  * requested. When a probe is requested, relevant {@code SearchListeners} will be notified via {@code checkAndResetProbeRequest}*/
+<span class="fc" id="L123">  protected AtomicBoolean notifyProbeListeners = new AtomicBoolean(false);</span>
+
+  /** {@code listeners} is an array used to hold {@code SearchListener} objects. We keep them in a simple array to avoid
+   creating objects on each notification */
+<span class="fc" id="L127">  protected SearchListener[] listeners = new SearchListener[0];</span>
+
+  /** {@code reporter} is a special listener that is always notified last in order to ensure all other listeners have been notified
+   * beforehand. {@code reporter} is used to report information about the search loop to whichever output method the user has 
+   * specified.
+   * 
+   *  &lt;p&gt;By default, the output method is to console.*/
+  protected Reporter reporter;
+
+  /** {@code config} is an object passed in during instantiation of the {@code Search} object and it specifies the properties and 
+   * configurations the search loop should run under. The value behind {@code config} is only ever used once and stored within this
+   * object.*/
+  protected final Config config;
+
+  /**
+   * {@code ConfigListener} is an implementation of the interface {@code ConfigChangeListener} and is used to subscribe to changes 
+   * that occur to the configuration of JPF in order to update the {@code config} object. While highly useful, one should always
+   * remember to unregister the {@code config} object from each {@code ConfigListener} once it is no longer needed. Failure to
+   * do this will cause massive memory leaks to begin piling up as a result of the same {@code Config} object being used across
+   * several JPF executions. 
+   *
+   */
+<span class="fc" id="L149">  class ConfigListener implements ConfigChangeListener {</span>
+
+    @Override
+    public void propertyChanged(Config config, String key, String oldValue, String newValue) {
+      // Different Config instance
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">      if (!config.equals(Search.this.config)) {</span>
+<span class="nc" id="L155">        return;</span>
+      }
+
+      // Check if Search configuration changed
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">      if (key.startsWith(&quot;search.&quot;)){</span>
+<span class="nc" id="L160">        String k = key.substring(7);</span>
+<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (&quot;match_depth&quot;.equals(k) ||</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            &quot;min_free&quot;.equals(k) ||</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">            &quot;multiple_errors&quot;.equals(k)){</span>
+<span class="nc" id="L164">          initialize(config);</span>
+        }
+      }
+<span class="fc" id="L167">    }</span>
+    
+    @Override
+    public void jpfRunTerminated (Config config){
+<span class="fc" id="L171">      config.removeChangeListener(this);</span>
+<span class="fc" id="L172">    }</span>
+  }
+  
+  /** {@code stateDepth} is an int vector storage system (akin to a map) that is responsible for associating states with their 
+   * corresponding depths. 
+   * 
+   * &lt;p&gt;{@code stateDepth} maps the state id of every state to the corresponding depth, in a one to one mapping.*/
+<span class="fc" id="L179">  protected final IntVector stateDepth = new IntVector();</span>
+
+  /** 
+   * Constructs a {@code Search} object using the configuration specified by the user in {@code config} and a virtual machine
+   * that will be used for verification.
+   * 
+   *  @param config The configuration and properties that the search loop will be required to commence verification under
+   *  @param vm The virtual machine that the search loop will traverse and verify states from
+   */
+<span class="fc" id="L188">  protected Search (Config config, VM vm) {</span>
+<span class="fc" id="L189">    this.vm = vm;</span>
+<span class="fc" id="L190">    this.config = config;</span>
+
+<span class="fc" id="L192">    initialize( config);</span>
+
+<span class="fc" id="L194">    properties = getProperties(config);</span>
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">    if (properties.isEmpty()) {</span>
+<span class="nc" id="L196">      log.severe(&quot;no property&quot;);</span>
+    }
+    
+<span class="fc" id="L199">    config.addChangeListener( new ConfigListener());</span>
+<span class="fc" id="L200">  }</span>
+
+  /**
+   * Initializes the properties that the search loop will need to run under in order to make sure that each iteration of the search
+   * loop is in compliance with the properties set by JPF and the user.
+   * 
+   * @param conf The configuration object ({@code config}) that contains the necessary information to initialize the property values
+   */
+  protected void initialize( Config conf){
+<span class="fc" id="L209">    depthLimit = conf.getInt(&quot;search.depth_limit&quot;, Integer.MAX_VALUE);</span>
+<span class="fc" id="L210">    matchDepth = conf.getBoolean(&quot;search.match_depth&quot;);</span>
+<span class="fc" id="L211">    minFreeMemory = conf.getMemorySize(&quot;search.min_free&quot;, 1024&lt;&lt;10);    </span>
+<span class="fc" id="L212">    getAllErrors = conf.getBoolean(&quot;search.multiple_errors&quot;);</span>
+<span class="fc" id="L213">  }</span>
+  
+  /**
+   * Called after the JPF run is finished. Should not be public, but is called by JPF
+   */
+  public void cleanUp(){
+    // nothing here, the ConfigListener removes itself
+<span class="fc" id="L220">  }</span>
+  
+  /** 
+   * Returns the {@code config} object that is used by the {@code Search} class.
+   * 
+   * @return The configuration object that is used for verification
+   */
+  public Config getConfig() {
+<span class="nc" id="L228">    return config;</span>
+  }
+  
+  /**
+   * One of the most important methods in the {@code Search} class. {@code search} is used to specify what the algorithm and behavior 
+   * for verification are. When the term &quot;search loop&quot; is brought up in other documentation, it generally means the loop that is used
+   * running in the {@code search} method.
+   */
+  public abstract void search ();
+
+  /**
+   * Sets the {@code reporter} object used during verification to the specified {@code reporter}.
+   * 
+   * @param reporter The reporter used to replace the current reporter object in the {@code Search} class
+   */
+  public void setReporter(Reporter reporter){
+<span class="fc" id="L244">    this.reporter = reporter;</span>
+<span class="fc" id="L245">  }</span>
+
+  /**
+   * Appends a {@code SearchListener} object to the {@code listener} array. In addition to appending the search listener, the action is also logged
+   * to the JPFLog {@code log} used in the {@code Search} class.
+   * 
+   * @param newListener A new {@code SearchListener} to append to the {@code listener} array
+   */
+  public void addListener (SearchListener newListener) {
+<span class="fc" id="L254">    log.info(&quot;SearchListener added: &quot;, newListener);</span>
+<span class="fc" id="L255">    listeners = Misc.appendElement(listeners, newListener);</span>
+<span class="fc" id="L256">  }</span>
+
+  /**
+   * Checks whether a listener of the same type as {@code listenerCls} exists in {@code listeners} already.
+   * 
+   * @param listenerCls The object type to check {@code listeners} against
+   * @return true if an element of the same type as the input parameter exists in {@code listeners}. False otherwise
+   */
+  public boolean hasListenerOfType (Class&lt;?&gt; listenerCls) {
+<span class="nc" id="L265">    return Misc.hasElementOfType(listeners, listenerCls);</span>
+  }
+  
+  /**
+   * Returns the next element in {@code listeners} after the element matching {@code prev} that is of the same type as {@code type}.
+   * 
+   * @param type The type of element to search for and return
+   * @param prev The previous element to begin the search from
+   * @return An element of the same class as {@code type} and coming after {@code prev} in the {@code listeners} array
+   */
+  public &lt;T&gt; T getNextListenerOfType(Class&lt;T&gt; type, T prev){
+<span class="nc" id="L276">    return Misc.getNextElementOfType(listeners, type, prev);</span>
+  }
+
+  /**
+   * Remove the specified {@code SearchListener} from the {@code listeners} array.
+   * 
+   * @param removeListener The element to remove from the {@code listeners} array
+   */
+  public void removeListener (SearchListener removeListener) {
+<span class="nc" id="L285">    listeners = Misc.removeElement(listeners, removeListener);</span>
+<span class="nc" id="L286">  }</span>
+
+  /**
+   * Add a new property to {@code properties}
+   * 
+   * @param newProperty The property to add to {@code properties}
+   */
+  public void addProperty (Property newProperty) {
+<span class="fc" id="L294">    properties.add(newProperty);</span>
+<span class="fc" id="L295">  }</span>
+
+  /**
+   * Remove the specified property from {@code properties}
+   * 
+   * @param oldProperty The property to remove from {@code properties}
+   */
+  public void removeProperty (Property oldProperty) {
+<span class="nc" id="L303">     properties.remove(oldProperty);</span>
+<span class="nc" id="L304">  }</span>
+
+  /**
+   * Returns the list of configured properties.
+   * 
+   * &lt;p&gt;Note there is a name clash here - JPF 'properties' have nothing to do with Java properties (java.util.Properties)
+   * 
+   * @param config The config object to retrieve the properties list from
+   * @return The list of configured properties
+   */
+  protected ArrayList&lt;Property&gt; getProperties (Config config) {
+<span class="fc" id="L315">    Class&lt;?&gt;[] argTypes = { Config.class, Search.class };</span>
+<span class="fc" id="L316">    Object[] args = { config, this };</span>
+
+<span class="fc" id="L318">    ArrayList&lt;Property&gt; list = config.getInstances(&quot;search.properties&quot;, Property.class,</span>
+                                                   argTypes, args);
+
+<span class="fc" id="L321">    return list;</span>
+  }
+
+  /**
+   * Check for property violations and return true if a property is violated and the search loop has finished running (i.e. {@code done} 
+   * is set to true). Returns false otherwise.
+   * 
+   * @return true if an a property has been violated (i.e. {@code currentError} is not null) and {@code done} is true
+   */
+  protected boolean hasPropertyTermination () {
+<span class="fc bfc" id="L331" title="All 2 branches covered.">    if (currentError != null){</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">      if (done){</span>
+<span class="fc" id="L333">        return true;</span>
+      } else { // we search for multiple errors, so we ignore and go on
+<span class="fc" id="L335">        doBacktrack = true;</span>
+      }
+    }
+
+<span class="fc" id="L339">    return false;</span>
+  }
+
+  /**
+   * Iterates through {@code properties} and checks for property violations. {@code checkPropertyViolation} should only be 
+   * called once per transition to avoid it adding the same error every time it is called.
+   * 
+   * @return true if a property violation is found, false otherwise
+   */
+  protected boolean checkPropertyViolation () {
+<span class="fc bfc" id="L349" title="All 2 branches covered.">    for (Property p : properties) {</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">      if (!p.check(this, vm)) {</span>
+<span class="fc" id="L351">        error(p, vm.getClonedPath(), vm.getThreadList());</span>
+<span class="fc" id="L352">        return true;</span>
+      }
+<span class="fc" id="L354">    }</span>
+
+<span class="fc" id="L356">    return false;</span>
+  }
+
+  /**
+   * Returns the list of errors encountered during verification
+   * 
+   * @return The list of errors encountered during verification
+   */
+  public List&lt;Error&gt; getErrors () {
+<span class="fc" id="L365">    return errors;</span>
+  }
+
+  /**
+   * Returns the number of errors encountered during verification. Will always return 1 if {@code getAllErrors} is false
+   * 
+   * @return The number of errors encountered during verification
+   */
+  public int getNumberOfErrors(){
+<span class="nc" id="L374">    return errors.size();</span>
+  }
+
+  /**
+   * Returns the search constraint that was most recently encountered
+   * 
+   * @return A String detailing the search constraint most recently hit or null if none was encountered
+   */
+  public String getLastSearchConstraint() {
+<span class="fc" id="L383">    return lastSearchConstraint;</span>
+  }
+
+  /**
+   * Request a probe
+   * 
+   * &lt;p&gt;This does not perform the actual listener notification, it only stores
+   * the request, which is then processed from within JPFs inner execution loop.
+   * As a consequence, {@code probeSearch} can be called asynchronously, and {@code searchProbed} listeners
+   * don't have to bother with synchronization or inconsistent JPF states (notification 
+   * happens from within JPFs main thread after a completed Instruction execution)
+   */
+  public void probeSearch(){
+<span class="nc" id="L396">    notifyProbeListeners.set(true);</span>
+<span class="nc" id="L397">  }</span>
+  
+  /**
+   * Performs the actual notification and resets the request, hence this call should only happen from within JPFs main thread
+   */
+  public void checkAndResetProbeRequest(){
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">    if (notifyProbeListeners.compareAndSet(true, false)){</span>
+<span class="nc" id="L404">      notifySearchProbed();</span>
+    }
+<span class="fc" id="L406">  }</span>
+  
+  /**
+   * Returns the most recent error encountered during the last transition
+   * 
+   * @return The error encountered during the last transition or null if none was encountered
+   */
+  public Error getCurrentError(){
+<span class="fc" id="L414">    return currentError;</span>
+  }
+
+  /**
+   * Returns the most recent error encountered in the past
+   * 
+   * @return The most recent error encountered in the past or none if no error has been encountered during verification
+   */
+  public Error getLastError() {
+<span class="fc" id="L423">    int i=errors.size()-1;</span>
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">    if (i &gt;=0) {</span>
+<span class="fc" id="L425">      return errors.get(i);</span>
+    } else {
+<span class="nc" id="L427">      return null;</span>
+    }
+  }
+
+  /**
+   * Returns whether or not the search loop has encountered an error yet
+   * 
+   * @return true if an error has been encountered, false otherwise
+   */
+  public boolean hasErrors(){
+<span class="nc bnc" id="L437" title="All 2 branches missed.">    return !errors.isEmpty();</span>
+  }
+
+  /**
+   * Returns the {@code vm} object used by the search loop
+   * 
+   * @return the {@code vm} object used by {@code Search}
+   */
+  public VM getVM() {
+<span class="fc" id="L446">    return vm;</span>
+  }
+
+  /**
+   * Returns true if the search loop has transitioned into an end state in the virtual machine
+   * 
+   * @return true if the current state of the {@code vm} is an end state
+   */
+  public boolean isEndState () {
+<span class="fc" id="L455">    return vm.isEndState();</span>
+  }
+
+  /**
+   * Returns if an error has been encountered during the transition into the current state
+   * 
+   * @return true if an error has been encountered during the most recent transition, false otherwise
+   */
+  public boolean isErrorState(){
+<span class="nc bnc" id="L464" title="All 2 branches missed.">    return (currentError != null);</span>
+  }
+
+  /**
+   * Returns whether of not the current state is an end state in the virtual machine
+   * 
+   * @return true if this is not an end state of the {@code vm}, false otherwise
+   */
+  public boolean hasNextState () {
+<span class="nc bnc" id="L473" title="All 2 branches missed.">    return !isEndState();</span>
+  }
+
+  /**
+   * Returns whether a transition has occurred from the previous state or not
+   * 
+   * @return true if a transition has occurred, false otherwise
+   */
+  public boolean transitionOccurred(){
+<span class="nc" id="L482">    return vm.transitionOccurred();</span>
+  }
+
+  /**
+   * Returns whether the current state in the search loop is a new state and false otherwise. 
+   * 
+   * &lt;p&gt;However, if {@code matchDepth} is set to true,
+   * then it  will true if the state is new or if the states depth is less than the previously recorded depth. If the state is new, the states
+   * depth will also be recorded for future use.
+   * 
+   * @return true if the current state is a new state and false otherwise (behaviour changes if {@code matchDepth} is true
+   */
+  public boolean isNewState () {
+<span class="fc" id="L495">    boolean isNew = vm.isNewState();</span>
+
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">    if (matchDepth) {</span>
+<span class="nc" id="L498">      int id = vm.getStateId();</span>
+
+<span class="nc bnc" id="L500" title="All 2 branches missed.">      if (isNew) {</span>
+<span class="nc" id="L501">        setStateDepth(id, depth);</span>
+      } else {
+<span class="nc bnc" id="L503" title="All 2 branches missed.">        return depth &lt; getStateDepth(id);</span>
+      }
+    }
+
+<span class="fc" id="L507">    return isNew;</span>
+  }
+
+  /**
+   * Returns whether the current state has been visited yet. The opposite of {@code isNewState}
+   * 
+   * @return true if the state has been visited, false otherwise (behavior changes if {@code matchDepth} is true)
+   * @see #isNewState()
+   */
+  public boolean isVisitedState () {
+<span class="nc bnc" id="L517" title="All 2 branches missed.">    return !isNewState();</span>
+  }
+
+  /**
+   * Returns whether the current state is an ignored state in the virtual machine
+   * 
+   * @return true if the current state is an ignored state, false otherwise
+   */
+  public boolean isIgnoredState(){
+<span class="fc" id="L526">    return vm.isIgnoredState();</span>
+  }
+
+  /**
+   * Returns whether the current state has been fully explored by the search loop.
+   * 
+   * @return true if the current state has been fully explored and processed, false otherwise
+   */
+  public boolean isProcessedState(){
+<span class="nc" id="L535">    return vm.getChoiceGenerator().isProcessed();</span>
+  }
+
+  /**
+   * Return whether the search loop has finished verification
+   * 
+   * @return true if the search loop has finished verification, false otherwise
+   */
+  public boolean isDone(){
+<span class="nc" id="L544">    return done;</span>
+  }
+
+  /**
+   * Return the current depth of the search loop
+   * 
+   * @return The current depth inside the search tree.
+   */
+  public int getDepth () {
+<span class="fc" id="L553">    return depth;</span>
+  }
+
+  /**
+   * Returns the most recent search constraint that was encountered
+   * 
+   * @return A String detailing the most recent search constraint that was encountered
+   */
+  public String getSearchConstraint () {
+<span class="nc" id="L562">    return lastSearchConstraint;</span>
+  }
+
+  /**
+   * Returns the most recent transition that has occurred
+   * 
+   * @return The last transition that occurred during verification, or null if none has occurred
+   */
+  public Transition getTransition () {
+<span class="nc" id="L571">    return vm.getLastTransition();</span>
+  }
+
+  /**
+   * Returns the state id of the current state
+   * 
+   * @return The state id of the current state
+   */
+  public int getStateId () {
+<span class="fc" id="L580">    return vm.getStateId();</span>
+  }
+
+  /**
+   * Returns the purged states id
+   * 
+   * &lt;p&gt;Note that while it should return the purged states id, it currently only returns -1 as a 
+   * result of many searches not utilizing this functionality. If it is required, {@code getPurgedStateId}
+   * should be overridden and changed in subsequent child classes.
+   * 
+   * @return The purged states id (currently only returns -1)
+   */
+  public int getPurgedStateId () {
+<span class="nc" id="L593">    return -1; // a lot of Searches don't purge any states</span>
+  }
+
+
+  /**
+   * Requests that the search loop backtracks one step
+   * 
+   * &lt;p&gt;This is somewhat redundant to {@code SystemState.setIgnored}, but we don't
+   * want to mix the case of overriding state matching with backtracking when
+   * searching for multiple errors.
+   * 
+   * @return The value of {@code doBacktrack} after is has been set to true (i.e. always true)
+   */
+  public boolean requestBacktrack () {
+<span class="nc" id="L607">    return doBacktrack = true;</span>
+  }
+
+  /**
+   * Returns the value of {@code doBacktrack} as well as resetting {@code doBacktrack} to false
+   * 
+   * @return the value of {@code doBackTrack}
+   */
+  protected boolean checkAndResetBacktrackRequest() {
+<span class="fc bfc" id="L616" title="All 2 branches covered.">    if (doBacktrack){</span>
+<span class="fc" id="L617">      doBacktrack = false;</span>
+<span class="fc" id="L618">      return true;</span>
+    } else {
+<span class="fc" id="L620">      return false;</span>
+    }
+  }
+
+  /**
+   * Returns whether the search algorithm supports backtracking or not
+   * 
+   * @return true if the search algorithm supports backtracking, false otherwise (by default the return
+   * is true unless overridden)
+   */
+  public boolean supportsBacktrack () {
+<span class="nc" id="L631">    return true;</span>
+  }
+
+  /**
+   * Returns whether the search algorithm supports restoring states that have been stored (a useful method in 
+   * BreadthFirstSearch)
+   * 
+   * @return true if the search algorithm supports restoring states, false otherwise (by default the return
+   * is false as the function is unsupported)
+   */
+  public boolean supportsRestoreState () {
+    // not supported by default
+<span class="nc" id="L643">    return false;</span>
+  }
+
+  /**
+   * Returns the depth limit set at the beginning of verification
+   * 
+   * @return The {@code depthLimit} property
+   */
+  public int getDepthLimit () {
+<span class="nc" id="L652">    return depthLimit;</span>
+  }
+  
+  /**
+   * Sets a new value for the {@code depthLimit} property
+   * 
+   * @param limit The new limit to set {@code depthLimit} to
+   */
+  public void setDepthLimit(int limit){
+<span class="nc" id="L661">    depthLimit = limit;</span>
+<span class="nc" id="L662">  }</span>
+
+  /**
+   * Returns a {@code SearchState} object with information describing the current state in the search loop
+   * 
+   * @return A {@code SearchState} object with information about the current state
+   */
+  protected SearchState getSearchState () {
+<span class="nc" id="L670">    return new SearchState(this);</span>
+  }
+
+  /**
+   * Creates a new error with the corresponding {@code Property} that causes the error. Does not provide a {@code Path} or {@code ThreadList}, and
+   * can therefore be used by {@code SearchListeners} to create path-less errors to ensure liveness. 
+   * 
+   * @param property the property that caused the error
+   * @see #error(Property, Path, ThreadList)
+   */
+  public void error (Property property) {
+<span class="fc" id="L681">    error(property, null, null);</span>
+<span class="fc" id="L682">  }</span>
+
+  /**
+   * Creates an error with the corresponding {@code Property} that causes the error, alongside the {@code Path}, and {@code ThreadList}.
+   * 
+   * &lt;p&gt;Will set {@code done} to true and halt the search loop  if {@code getAllErrors} is false. If {@code getAllErrors} is true, it will 
+   * clone the {@code Property}, {@code Path}, and {@code ThreadList} objects that were passed in (as not cloning them may cause subsequent
+   * operations to overwrite information still in use) and add them to the {@code errors} list
+   * and continue verification.
+   * 
+   * &lt;p&gt;The property that caused the error is not reset here as the listeners attached to the search should be notified of the error first.
+   * This becomes especially problematic if one of the listeners caused the property violation, as which point it would get  confused
+   * if the {@code propertyViolated()} notification happens after the property is reset.
+   * 
+   * @param property The property that causes the error
+   * @param path The path corresponding to the error
+   * @param threadList The list of thread information corresponding to the error
+   */
+  public void error (Property property, Path path, ThreadList threadList) {
+
+<span class="fc bfc" id="L702" title="All 2 branches covered.">    if (getAllErrors) {</span>
+       // otherwise we are going to overwrite it if we go on
+      try {
+<span class="fc" id="L705">        property = property.clone();</span>
+<span class="fc" id="L706">        path = path.clone();</span>
+<span class="fc" id="L707">        threadList = (ThreadList) threadList.clone(); // this makes it a snapshot (deep) clone</span>
+<span class="nc" id="L708">      } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L709">        throw new JPFException(&quot;failed to clone error information: &quot; + cnsx);</span>
+<span class="fc" id="L710">      }</span>
+<span class="fc" id="L711">      done = false;</span>
+      
+    } else {
+<span class="fc" id="L714">      done = true;</span>
+    }
+
+<span class="fc" id="L717">    currentError = new Error(errors.size()+1, property, path, threadList);</span>
+
+<span class="fc" id="L719">    errors.add(currentError);</span>
+
+<span class="fc" id="L721">  }</span>
+
+  /**
+   * Resets all properties, returning violated properties to their default states.
+   */
+  public void resetProperties(){
+<span class="fc bfc" id="L727" title="All 2 branches covered.">    for (Property p : properties) {</span>
+<span class="fc" id="L728">      p.reset();</span>
+<span class="fc" id="L729">    }</span>
+<span class="fc" id="L730">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has advanced states.
+   */
+  protected void notifyStateAdvanced () {
+    try {
+<span class="fc bfc" id="L737" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L738">        listeners[i].stateAdvanced(this);</span>
+      }
+<span class="pc bpc" id="L740" title="1 of 2 branches missed.">      if (reporter != null){</span>
+        // reporter always comes last to ensure all listeners have been notified
+<span class="fc" id="L742">        reporter.stateAdvanced(this);</span>
+      }
+<span class="nc" id="L744">    } catch (Throwable t) {</span>
+<span class="nc" id="L745">      throw new JPFListenerException(&quot;exception during stateAdvanced() notification&quot;, t);</span>
+<span class="fc" id="L746">    }</span>
+<span class="fc" id="L747">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has finished processing
+   * the current state.
+   */
+  protected void notifyStateProcessed() {
+    try {
+<span class="fc bfc" id="L755" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L756">        listeners[i].stateProcessed(this);</span>
+      }
+<span class="pc bpc" id="L758" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L759">        reporter.stateProcessed(this);</span>
+      }
+<span class="nc" id="L761">    } catch (Throwable t) {</span>
+<span class="nc" id="L762">      throw new JPFListenerException(&quot;exception during stateProcessed() notification&quot;, t);</span>
+<span class="fc" id="L763">    }</span>
+<span class="fc" id="L764">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has stored the current state.
+   */
+  protected void notifyStateStored() {
+    try {
+<span class="fc bfc" id="L771" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L772">        listeners[i].stateStored(this);</span>
+      }
+<span class="pc bpc" id="L774" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L775">        reporter.stateStored(this);</span>
+      }
+<span class="nc" id="L777">    } catch (Throwable t) {</span>
+<span class="nc" id="L778">      throw new JPFListenerException(&quot;exception during stateStored() notification&quot;, t);</span>
+<span class="fc" id="L779">    }</span>
+<span class="fc" id="L780">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has restored a currently 
+   * stored state.
+   */
+  protected void notifyStateRestored() {
+    try {
+<span class="fc bfc" id="L788" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L789">        listeners[i].stateRestored(this);</span>
+      }
+<span class="pc bpc" id="L791" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L792">        reporter.stateRestored(this);</span>
+      }
+<span class="nc" id="L794">    } catch (Throwable t) {</span>
+<span class="nc" id="L795">      throw new JPFListenerException(&quot;exception during stateRestored() notification&quot;, t);</span>
+<span class="fc" id="L796">    }</span>
+<span class="fc" id="L797">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has backtracked to a 
+   * previous state.
+   */
+  protected void notifyStateBacktracked() {
+    try {
+<span class="fc bfc" id="L805" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L806">        listeners[i].stateBacktracked(this);</span>
+      }
+<span class="pc bpc" id="L808" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L809">        reporter.stateBacktracked(this);</span>
+      }
+<span class="nc" id="L811">    } catch (Throwable t) {</span>
+<span class="nc" id="L812">      throw new JPFListenerException(&quot;exception during stateBacktracked() notification&quot;, t);</span>
+<span class="fc" id="L813">    }</span>
+<span class="fc" id="L814">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has purged the current state.
+   */
+  protected void notifyStatePurged() {
+    try {
+<span class="nc bnc" id="L821" title="All 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L822">        listeners[i].statePurged(this);</span>
+      }
+<span class="nc bnc" id="L824" title="All 2 branches missed.">      if (reporter != null){</span>
+<span class="nc" id="L825">        reporter.statePurged(this);</span>
+      }
+<span class="nc" id="L827">    } catch (Throwable t) {</span>
+<span class="nc" id="L828">      throw new JPFListenerException(&quot;exception during statePurged() notification&quot;, t);</span>
+<span class="nc" id="L829">    }</span>
+<span class="nc" id="L830">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that a probe request has been triggered during 
+   * verification.
+   */
+  public void notifySearchProbed() {
+    try {
+<span class="nc bnc" id="L838" title="All 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L839">        listeners[i].searchProbed(this);</span>
+      }
+<span class="nc bnc" id="L841" title="All 2 branches missed.">      if (reporter != null){</span>
+<span class="nc" id="L842">        reporter.searchProbed(this);</span>
+      }
+<span class="nc" id="L844">    } catch (Throwable t) {</span>
+<span class="nc" id="L845">      throw new JPFListenerException(&quot;exception during searchProbed() notification&quot;, t);</span>
+<span class="nc" id="L846">    }</span>
+<span class="nc" id="L847">  }</span>
+
+  
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has encountered a property 
+   * violation
+   */
+  protected void notifyPropertyViolated() {
+    try {
+<span class="fc bfc" id="L856" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L857">        listeners[i].propertyViolated(this);</span>
+      }
+<span class="pc bpc" id="L859" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L860">        reporter.propertyViolated(this);</span>
+      }
+<span class="nc" id="L862">    } catch (Throwable t) {</span>
+<span class="nc" id="L863">      throw new JPFListenerException(&quot;exception during propertyViolated() notification&quot;, t);</span>
+<span class="fc" id="L864">    }</span>
+
+    // reset properties if getAllErrors is set
+<span class="fc bfc" id="L867" title="All 2 branches covered.">    if (getAllErrors){</span>
+<span class="fc" id="L868">      resetProperties();</span>
+    }
+<span class="fc" id="L870">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has begun verification.
+   */
+  protected void notifySearchStarted() {
+    try {
+<span class="fc bfc" id="L877" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L878">        listeners[i].searchStarted(this);</span>
+      }
+<span class="pc bpc" id="L880" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L881">        reporter.searchStarted(this);</span>
+      }
+<span class="nc" id="L883">    } catch (Throwable t) {</span>
+<span class="nc" id="L884">      throw new JPFListenerException(&quot;exception during searchStarted() notification&quot;, t);</span>
+<span class="fc" id="L885">    }</span>
+<span class="fc" id="L886">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has encountered a
+   * search constraint. The {@code details} String outlines the search constraint that was hit as well as any other
+   * relevant information.
+   * 
+   * @param details Information regarding the recent search constraint that was encountered.
+   */
+  public void notifySearchConstraintHit(String details) {
+    try {
+<span class="fc" id="L897">      lastSearchConstraint = details;</span>
+<span class="pc bpc" id="L898" title="1 of 2 branches missed.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="nc" id="L899">        listeners[i].searchConstraintHit(this);</span>
+      }
+<span class="pc bpc" id="L901" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L902">        reporter.searchConstraintHit(this);</span>
+      }
+<span class="nc" id="L904">    } catch (Throwable t) {</span>
+<span class="nc" id="L905">      throw new JPFListenerException(&quot;exception during searchConstraintHit() notification&quot;, t);</span>
+<span class="fc" id="L906">    }</span>
+<span class="fc" id="L907">  }</span>
+
+  /**
+   * Notifies the {@code SearchListener} objects in the {@code listeners} list that the search loop has finished verification.
+   */
+  protected void notifySearchFinished() {
+    try {
+<span class="fc bfc" id="L914" title="All 2 branches covered.">      for (int i = 0; i &lt; listeners.length; i++) {</span>
+<span class="fc" id="L915">        listeners[i].searchFinished(this);</span>
+      }
+<span class="pc bpc" id="L917" title="1 of 2 branches missed.">      if (reporter != null){</span>
+<span class="fc" id="L918">        reporter.searchFinished(this);</span>
+      }
+<span class="nc" id="L920">    } catch (Throwable t) {</span>
+<span class="nc" id="L921">      throw new JPFListenerException(&quot;exception during searchFinished() notification&quot;, t);</span>
+<span class="fc" id="L922">    }</span>
+<span class="fc" id="L923">  }</span>
+
+  /**
+   * Requests that the virtual machine move to the next unvisited state below the current one in the search tree.
+   * {@code forward} along with {@code backtrack} constitute the two methods that are generally used to advance
+   * the search algorithm during verification.
+   * 
+   * @return true if a state exists and the virtual machine can move to it, false if the state does not exist
+   * or if it was previously explored.
+   * @see #backtrack()
+   */
+  protected boolean forward () {
+<span class="fc" id="L935">    currentError = null;</span>
+
+<span class="fc" id="L937">    boolean ret = vm.forward();</span>
+
+<span class="fc" id="L939">    checkPropertyViolation();</span>
+<span class="fc" id="L940">    return ret;</span>
+  }
+  
+  /**
+   * Requests that the virtual machine move to the previous state in the search tree. {@code backtrack} along
+   * with {@code forward} constitute the two methods that are generally used to advance the search algorithm 
+   * during verification.
+   * 
+   * @return true if the backtrack to the previous state was successful, false otherwise
+   */
+  protected boolean backtrack () {
+<span class="fc" id="L951">    return vm.backtrack();</span>
+  }
+
+  /**
+   * Requests that the virtual machine sets whether the current state should be ignored in all future iterations
+   * of the search loop. This should not be used without cause as it causes the search tree to be pruned whenever
+   * it is called, which is expensive, especially in larger trees.
+   * 
+   * @param cond Whether or not the current state should be ignored
+   */
+  public void setIgnoredState (boolean cond) {
+<span class="nc" id="L962">    vm.ignoreState(cond);</span>
+<span class="nc" id="L963">  }</span>
+
+  /**
+   * Restores a previously stored virtual machine state.
+   * 
+   * &lt;p&gt;By default this method is not supported, and therefore requires implementation logic in child classes.
+   *
+   * @param state The stored state to be restored
+   */
+  protected void restoreState (State state) {
+    // not supported by default
+<span class="nc" id="L974">  }</span>
+
+  /** 
+   * Sets {@code done} to true in order to terminate the search loop.
+   * 
+   * &lt;p&gt;Can be used by listeners to terminate the search.
+   * 
+   */
+  public void terminate () {
+<span class="fc" id="L983">    done = true;</span>
+<span class="fc" id="L984">  }</span>
+
+  /**
+   * Sets the depth of the specified state given its state id.
+   * 
+   * &lt;p&gt;When the depth of the state is set, it is set as depth + 1. This is to differentiate between
+   * states that have had their depths set, and states that have not (in which case their default depth
+   * will be 0).
+   * 
+   * @param stateId The state in question
+   * @param depth The new depth to set for the state
+   */
+  protected void setStateDepth (int stateId, int depth) {
+<span class="nc" id="L997">    stateDepth.set(stateId, depth + 1);</span>
+<span class="nc" id="L998">  }</span>
+
+  
+  /**
+   * Returns the saved depth of the specified state given its state id.
+   * 
+   * &lt;p&gt;If the state in question has not had its state depth set previously, then it will by default have
+   * a depth that is less than or equal to 0. Otherwise if the state has been visited, the depth will be 
+   * returned.
+   * 
+   * @param stateId The state to return the depth of
+   * @return The depth of the specified state
+   * @throws JPFException If the state has not been visited in the past
+   */
+  public int getStateDepth (int stateId) {
+<span class="nc" id="L1013">    int depthPlusOne = stateDepth.get(stateId);</span>
+<span class="nc bnc" id="L1014" title="All 2 branches missed.">    if (depthPlusOne &lt;= 0) {</span>
+<span class="nc" id="L1015">      throw new JPFException(&quot;Asked for depth of unvisited state&quot;);</span>
+    } else {
+<span class="nc" id="L1017">      return depthPlusOne - 1;</span>
+    }
+  }
+
+  /**
+   * Check if there is the minimum amount of free memory left or more. If not, we would rather stop in time
+   * (with a threshold amount left) in order to report something useful, and not just end verification silently
+   * with a OutOfMemoryError (which is not handled too gracefully by most VMs)
+   * 
+   * &lt;p&gt;If the minimum amount of memory has been reached, the method will first try to activate garbage collection
+   * and then check again if that made a difference. If the amount of memory available is still less than the 
+   * minimum amount of memory, then we return false.
+   * 
+   * @return true if we have more memory than the minimum free memory, false otherwise.
+   */
+  public boolean checkStateSpaceLimit () {
+<span class="fc" id="L1033">    Runtime rt = Runtime.getRuntime();</span>
+
+<span class="fc" id="L1035">    long avail = rt.freeMemory();</span>
+
+    // we could also just check for a max number of states, but what really
+    // limits us is the memory required to store states
+
+<span class="pc bpc" id="L1040" title="1 of 2 branches missed.">    if (avail &lt; minFreeMemory) {</span>
+      // try to collect first
+<span class="nc" id="L1042">      rt.gc();</span>
+<span class="nc" id="L1043">      avail = rt.freeMemory();</span>
+
+<span class="nc bnc" id="L1045" title="All 2 branches missed.">      if (avail &lt; minFreeMemory) {</span>
+        // Ok, we give up, threshold reached
+<span class="nc" id="L1047">        return false;</span>
+      }
+    }
+
+<span class="fc" id="L1051">    return true;</span>
+  }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

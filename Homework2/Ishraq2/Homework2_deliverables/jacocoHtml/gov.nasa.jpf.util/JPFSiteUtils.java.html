@@ -1,0 +1,477 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JPFSiteUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">JPFSiteUtils.java</span></div><h1>JPFSiteUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * utility class for JPF site configuration related functions. This is partially redundant to Config since
+ * it is used during bootstrapping, and gov.nasa.jpf.Config might not be in the classpath yet. It mostly
+ * differs in terms of key/value expansion, which is only partially supported here.
+ * 
+ * NOTE - this class is not allowed to use any JPF specific types
+ */
+<span class="nc" id="L41">public class JPFSiteUtils {</span>
+
+  //--- preparse support - we need this if we use app properties to locat lower level property files
+
+<span class="fc" id="L45">  static Pattern keyValPattern = Pattern.compile(&quot;^[ \t]*([^# \t][^ \t]*)[ \t]*=[ \t]*(.+?)[ \t]*$&quot;);</span>
+
+  /**
+   * minimal parsing - only local key, system property and and config_path expansion
+   * NOTE this stops after finding the key, and it doesn't add the file to the 'sources'
+   */
+  public static String getMatchFromFile (String pathName, String lookupKey){
+<span class="fc" id="L52">    String value = null;</span>
+<span class="fc" id="L53">    Pattern lookupPattern = Pattern.compile(lookupKey);</span>
+
+<span class="fc" id="L55">    File propFile = new File(pathName);</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">    if (!propFile.isFile()){</span>
+<span class="nc" id="L57">      return null;</span>
+    }
+
+<span class="fc" id="L60">    HashMap&lt;String, String&gt; map = new HashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L61">    String dir = propFile.getParent();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">    if (dir == null) {</span>
+<span class="nc" id="L63">      dir = &quot;.&quot;;</span>
+    }
+<span class="fc" id="L65">    map.put(&quot;config_path&quot;, dir);</span>
+
+    try {
+<span class="fc" id="L68">      FileReader fr = new FileReader(propFile);</span>
+<span class="fc" id="L69">      BufferedReader br = new BufferedReader(fr);</span>
+
+<span class="fc bfc" id="L71" title="All 2 branches covered.">      for (String line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="fc" id="L72">        Matcher m = keyValPattern.matcher(line);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (m.matches()) {</span>
+<span class="fc" id="L74">          String key = m.group(1);</span>
+<span class="fc" id="L75">          String val = m.group(2);</span>
+
+<span class="fc" id="L77">          val = expandLocal(val, map);</span>
+
+<span class="pc bpc" id="L79" title="2 of 4 branches missed.">          if ((key.length() &gt; 0) &amp;&amp; (val.length() &gt; 0)) {</span>
+            // check for continuation lines
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (val.charAt(val.length() - 1) == '\\') {</span>
+<span class="nc" id="L82">              val = val.substring(0, val.length() - 1).trim();</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">              for (line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="nc" id="L84">                line = line.trim();</span>
+<span class="nc" id="L85">                int len = line.length();</span>
+<span class="nc bnc" id="L86" title="All 4 branches missed.">                if ((len &gt; 0) &amp;&amp; (line.charAt(len - 1) == '\\')) {</span>
+<span class="nc" id="L87">                  line = line.substring(0, line.length() - 1).trim();</span>
+<span class="nc" id="L88">                  val += expandLocal(line, map);</span>
+                } else {
+<span class="nc" id="L90">                  val += expandLocal(line, map);</span>
+<span class="nc" id="L91">                  break;</span>
+                }
+              }
+            }
+
+<span class="fc" id="L96">            Matcher lookupMatcher = lookupPattern.matcher(key);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (lookupMatcher.matches()) {</span>
+<span class="nc" id="L98">              value = val;</span>
+<span class="nc" id="L99">              break;</span>
+            } else {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">              if (key.charAt(key.length() - 1) == '+') {</span>
+<span class="nc" id="L102">                key = key.substring(0, key.length() - 1);</span>
+<span class="nc" id="L103">                String v = map.get(key);</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                if (v != null) {</span>
+<span class="nc" id="L105">                  val = v + val;</span>
+                }
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">              } else if (key.charAt(0) == '+') {</span>
+<span class="nc" id="L108">                key = key.substring(1);</span>
+<span class="nc" id="L109">                String v = map.get(key);</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                if (v != null) {</span>
+<span class="nc" id="L111">                  val = val + v;</span>
+                }
+              }
+<span class="fc" id="L114">              map.put(key, val);</span>
+            }
+          }
+        }
+      }
+<span class="fc" id="L119">      br.close();</span>
+
+<span class="nc" id="L121">    } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L122">      return null;</span>
+<span class="nc" id="L123">    } catch (IOException iox) {</span>
+<span class="nc" id="L124">      return null;</span>
+<span class="fc" id="L125">    }</span>
+
+<span class="fc" id="L127">    return value;</span>
+  }
+
+  /**
+   * this returns the contents of a config source in-order, without expanding values or keys
+   */
+  public static List&lt;Pair&lt;String,String&gt;&gt; getRawEntries (Reader reader) throws IOException {
+<span class="nc" id="L134">    ArrayList&lt;Pair&lt;String,String&gt;&gt; list = new ArrayList&lt;Pair&lt;String,String&gt;&gt;();</span>
+<span class="nc" id="L135">    BufferedReader br = new BufferedReader(reader);</span>
+    
+<span class="nc bnc" id="L137" title="All 2 branches missed.">    for (String line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="nc" id="L138">      Matcher m = keyValPattern.matcher(line);</span>
+<span class="nc bnc" id="L139" title="All 2 branches missed.">      if (m.matches()) {</span>
+<span class="nc" id="L140">        String key = m.group(1);</span>
+<span class="nc" id="L141">        String val = m.group(2);</span>
+        
+<span class="nc bnc" id="L143" title="All 4 branches missed.">        if ((key.length() &gt; 0) &amp;&amp; (val.length() &gt; 0)) {</span>
+          // check for continuation lines
+<span class="nc bnc" id="L145" title="All 2 branches missed.">          if (val.charAt(val.length() - 1) == '\\') {</span>
+<span class="nc" id="L146">            val = val.substring(0, val.length() - 1).trim();</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            for (line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="nc" id="L148">              line = line.trim();</span>
+<span class="nc" id="L149">              int len = line.length();</span>
+<span class="nc bnc" id="L150" title="All 4 branches missed.">              if ((len &gt; 0) &amp;&amp; (line.charAt(len - 1) == '\\')) {</span>
+<span class="nc" id="L151">                line = line.substring(0, line.length() - 1).trim();</span>
+<span class="nc" id="L152">                val += line;</span>
+              } else {
+<span class="nc" id="L154">                val += line;</span>
+<span class="nc" id="L155">                break;</span>
+              }
+            }
+          }
+          
+<span class="nc" id="L160">          list.add( new Pair&lt;String,String&gt;(key,val));</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L165">    return list;</span>
+  }
+  
+  // simple non-recursive, local key and system property expander
+  private static String expandLocal (String s, HashMap&lt;String,String&gt; map) {
+<span class="fc" id="L170">    int i, j = 0;</span>
+<span class="pc bpc" id="L171" title="2 of 4 branches missed.">    if (s == null || s.length() == 0) {</span>
+<span class="nc" id="L172">      return s;</span>
+    }
+
+<span class="fc bfc" id="L175" title="All 2 branches covered.">    while ((i = s.indexOf(&quot;${&quot;, j)) &gt;= 0) {</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">      if ((j = s.indexOf('}', i)) &gt; 0) {</span>
+<span class="fc" id="L177">        String k = s.substring(i + 2, j);</span>
+<span class="fc" id="L178">        String v = null;</span>
+
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        if (map != null){</span>
+<span class="fc" id="L181">          v = map.get(k);</span>
+        }
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (v == null){</span>
+<span class="nc" id="L184">          v = System.getProperty(k);</span>
+        }
+
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        if (v != null) {</span>
+<span class="fc" id="L188">          s = s.substring(0, i) + v + s.substring(j + 1, s.length());</span>
+<span class="fc" id="L189">          j = i + v.length();</span>
+        } else {
+<span class="nc" id="L191">          s = s.substring(0, i) + s.substring(j + 1, s.length());</span>
+<span class="nc" id="L192">          j = i;</span>
+        }
+<span class="fc" id="L194">      }</span>
+    }
+
+<span class="fc" id="L197">    return s;</span>
+  }
+
+  public static File getCoreDir (File siteProps){
+<span class="nc bnc" id="L201" title="All 2 branches missed.">    if (siteProps != null){</span>
+<span class="nc" id="L202">      String path = getMatchFromFile(siteProps.getAbsolutePath(), &quot;jpf-core&quot;);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">      if (path != null) {</span>
+<span class="nc" id="L204">        File coreDir = new File(path);</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">        if (coreDir.isDirectory()) {</span>
+<span class="nc" id="L206">          return coreDir;</span>
+        }
+      }
+    }
+<span class="nc" id="L210">    return null;</span>
+  }
+  
+  public static File getSiteCoreDir (String[] args){
+<span class="nc" id="L214">    File siteProps = getSiteProperties( args);    </span>
+<span class="nc" id="L215">    return getCoreDir( siteProps);</span>
+  }
+
+  /**
+   * get location of jpf-core from site.properties
+   * @return null if it doesn't exist
+   */
+  public static File getSiteCoreDir() {
+<span class="nc" id="L223">    File siteProps = getStandardSiteProperties();</span>
+<span class="nc" id="L224">    return getCoreDir( siteProps);</span>
+  }
+
+  /**
+   * find project properties (jpf.properties) from current dir
+   */
+  public static File getCurrentProjectProperties() {
+<span class="fc" id="L231">    File d = new File(System.getProperty(&quot;user.dir&quot;));</span>
+    do {
+<span class="fc" id="L233">      File f = new File(d, &quot;jpf.properties&quot;);</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">      if (f.isFile()){</span>
+<span class="fc" id="L235">        return f;</span>
+      }
+<span class="nc" id="L237">      d = d.getParentFile();</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">    } while (d != null);</span>
+
+<span class="nc" id="L240">    return null;</span>
+  }
+
+
+<span class="fc" id="L244">  static Pattern idPattern = Pattern.compile(&quot;^[ \t]*([^# \t][^ \t]*)[ \t]*=[ \t]*\\$\\{config_path\\}&quot;);</span>
+
+  static String projectId;
+
+  /**
+   * look for a &quot;&lt;id&gt; = ${config_path}&quot; entry in current dir/jpf.properties
+   * this looks recursively upwards
+   * @return null if no jpf.properties found
+   */
+  public static String getCurrentProjectId (){
+<span class="fc bfc" id="L254" title="All 2 branches covered.">    if (projectId == null) {</span>
+<span class="fc" id="L255">      File propFile = getCurrentProjectProperties();</span>
+
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">      if (propFile != null) {</span>
+        try {
+<span class="fc" id="L259">          FileReader fr = new FileReader(propFile);</span>
+<span class="fc" id="L260">          BufferedReader br = new BufferedReader(fr);</span>
+
+<span class="fc bfc" id="L262" title="All 2 branches covered.">          for (String line = br.readLine(); line != null; line = br.readLine()) {</span>
+<span class="fc" id="L263">            Matcher m = idPattern.matcher(line);</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            if (m.matches()) {</span>
+<span class="fc" id="L265">              projectId = m.group(1);</span>
+            }
+          }
+<span class="fc" id="L268">          br.close();</span>
+
+<span class="nc" id="L270">        } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L271">          return null;</span>
+<span class="nc" id="L272">        } catch (IOException iox) {</span>
+<span class="nc" id="L273">          return null;</span>
+<span class="fc" id="L274">        }</span>
+      }
+    }
+
+<span class="fc" id="L278">    return projectId;</span>
+  }
+  
+  public static boolean isFreeArg (String a){
+<span class="nc bnc" id="L282" title="All 8 branches missed.">    return ((a != null) &amp;&amp; (a.length() &gt; 0) &amp;&amp; a.charAt(0) != '+' &amp;&amp; a.charAt(0) != '-');</span>
+  }
+  
+  public static File getSiteProperties (String[] args){
+    //--- 1. check for a +site=&lt;path&gt; argument up to first free arg
+<span class="nc bnc" id="L287" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc" id="L288">      String a = args[i];</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">      if (!isFreeArg(a)){</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        if (a.startsWith(&quot;+site=&quot;)) {</span>
+<span class="nc" id="L291">          String path = a.substring(6).trim();</span>
+<span class="nc" id="L292">          return new File(path);</span>
+        }
+      } else {
+        break;
+      }
+    }
+    
+    //--- 2. check if the first free arg is an application property file (*.jpf), and it contains a 'site=..' setting
+<span class="nc bnc" id="L300" title="All 2 branches missed.">    for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc" id="L301">      String a = args[i];</span>
+<span class="nc bnc" id="L302" title="All 2 branches missed.">      if (isFreeArg(a)){</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        if (a.matches(&quot;[^+-].*\\.jpf&quot;)) {</span>
+<span class="nc" id="L304">          String path = getMatchFromFile(a, &quot;site&quot;);</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">          if (path != null) {</span>
+<span class="nc" id="L306">            return new File(path);</span>
+          }
+<span class="nc" id="L308">        }</span>
+        break;
+      }
+    }
+    
+    //--- 3. finally, check upwards from the current dir up to the home dir 
+<span class="nc" id="L314">    return JPFSiteUtils.getStandardSiteProperties();</span>
+  } 
+  
+  /**
+   * locate the site.properties. Start with the current dir, go upwards until the
+   * user.home is reached. If site.properties isn't found there, look for '.jpf' and
+   * 'jpf' dirs within the home dir. If no site.properties is found there either, give up
+   */
+  public static File getStandardSiteProperties(){    
+<span class="fc" id="L323">    String userDir = System.getProperty(&quot;user.dir&quot;);</span>
+<span class="fc" id="L324">    File dir = new File(userDir);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">    for (; dir != null; dir = dir.getParentFile()) {</span>
+<span class="fc" id="L326">      File f = new File(dir, &quot;site.properties&quot;);</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">      if (f.isFile()) {</span>
+<span class="nc" id="L328">        return f;</span>
+      }
+    }
+
+<span class="fc" id="L332">    String[] jpfDirCandidates = { &quot;.jpf&quot;, &quot;jpf&quot; };</span>
+<span class="fc" id="L333">    String userHome = System.getProperty(&quot;user.home&quot;);</span>
+    
+<span class="fc bfc" id="L335" title="All 2 branches covered.">    for (String jpfDir : jpfDirCandidates){</span>
+<span class="fc" id="L336">      dir = new File(userHome, jpfDir);</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">      if (dir.isDirectory()) {</span>
+<span class="nc" id="L338">        File f = new File(dir, &quot;site.properties&quot;);</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (f.isFile()) {</span>
+<span class="nc" id="L340">          return f;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L345">    return null;</span>
+  }
+
+  public static String getGlobalSitePropertiesPath() {
+<span class="nc" id="L349">    String userHome = System.getProperty(&quot;user.home&quot;);</span>
+<span class="nc" id="L350">    String globalPath = userHome + File.separator + &quot;.jpf&quot;</span>
+         + File.separator + &quot;site.properties&quot;;
+<span class="nc" id="L352">    return globalPath;</span>
+  }
+  
+  public static List&lt;Pair&lt;String,String&gt;&gt; getRawEntries (File siteProps){
+<span class="nc" id="L356">    FileReader fr = null;</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">    if (siteProps.isFile()) {</span>
+      try {
+<span class="nc" id="L359">        fr = new FileReader(siteProps);</span>
+<span class="nc" id="L360">        List&lt;Pair&lt;String,String&gt;&gt; entries = getRawEntries(fr);</span>
+<span class="nc" id="L361">        fr.close();</span>
+        
+<span class="nc" id="L363">        return entries;</span>
+
+<span class="nc" id="L365">      } catch (IOException iox) {</span>
+      } finally {
+<span class="nc" id="L367">        try { fr.close(); } catch (IOException _ignore){}</span>
+      }
+    }    
+    
+<span class="nc" id="L371">    return new ArrayList&lt;Pair&lt;String,String&gt;&gt;();</span>
+  }
+    
+  /**
+   * this returns a list of all the project ids in the 'extensions' entries (also
+   * handles accumulated 'extensions+=..&quot; entries
+   */
+  public static List&lt;String&gt; getExtensions (List&lt;Pair&lt;String,String&gt;&gt; entries){
+<span class="nc" id="L379">    ArrayList&lt;String&gt; list = new ArrayList&lt;String&gt;();</span>
+    
+<span class="nc bnc" id="L381" title="All 2 branches missed.">    for (Pair&lt;String,String&gt; p : entries){</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">      if (p._1.startsWith(&quot;extensions&quot;)){</span>
+<span class="nc bnc" id="L383" title="All 2 branches missed.">        for (String pid : p._2.split(&quot;[,;]&quot;)){</span>
+<span class="nc" id="L384">          pid = pid.trim();</span>
+<span class="nc bnc" id="L385" title="All 2 branches missed.">          if (pid.charAt(0) == '$'){</span>
+<span class="nc" id="L386">            pid = pid.substring(2, pid.length()-1);</span>
+<span class="nc" id="L387">            list.add( pid);</span>
+          }
+        }
+      }
+<span class="nc" id="L391">    }</span>
+    
+<span class="nc" id="L393">    return list;</span>
+  }
+  
+  
+  public static boolean addProject (File siteProps, String projectId, File projectDir, boolean isExt){
+<span class="nc" id="L398">    List&lt;Pair&lt;String,String&gt;&gt; entries = getRawEntries(siteProps);</span>
+<span class="nc" id="L399">    List&lt;String&gt; extensions = getExtensions(entries);</span>
+
+<span class="nc bnc" id="L401" title="All 2 branches missed.">    if (&quot;jpf-core&quot;.equals(projectId)){ // jpf-core always has to be in the extensions list</span>
+<span class="nc" id="L402">      isExt = true;</span>
+    }
+    
+    try {
+<span class="nc" id="L406">      FileUtils.ensureDirs(siteProps);</span>
+<span class="nc" id="L407">      String projectPath = FileUtils.asCanonicalUserPathName(projectDir.getAbsolutePath());</span>
+
+<span class="nc" id="L409">      PrintWriter pw = new PrintWriter(siteProps);</span>
+
+<span class="nc" id="L411">      pw.println(&quot;# auto-generated JPF site properties&quot;);</span>
+<span class="nc" id="L412">      pw.println();</span>
+
+<span class="nc" id="L414">      boolean alreadyThere = false;</span>
+<span class="nc bnc" id="L415" title="All 2 branches missed.">      for (Pair&lt;String, String&gt; e : entries) {</span>
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        if (!&quot;extensions&quot;.equals(e._1)) {</span>
+
+<span class="nc" id="L418">          pw.print(e._1);</span>
+<span class="nc" id="L419">          pw.print(&quot; = &quot;);</span>
+
+<span class="nc bnc" id="L421" title="All 2 branches missed.">          if (projectId.equals(e._1)) {</span>
+<span class="nc" id="L422">            alreadyThere = true;</span>
+            // Hmm, not sure its best to use absolute pathnames here (e.g. when doing local site installs)
+<span class="nc" id="L424">            pw.println(projectPath);</span>
+            
+            // check if we have to update extensions
+<span class="nc bnc" id="L427" title="All 2 branches missed.">            if (extensions.contains(projectId)){</span>
+<span class="nc bnc" id="L428" title="All 2 branches missed.">              if (!isExt){</span>
+<span class="nc" id="L429">                extensions.remove(projectId);</span>
+              }
+            } else {
+<span class="nc" id="L432">              extensions.add(projectId);</span>
+            }
+            
+          } else {
+<span class="nc" id="L436">            pw.println(e._2);</span>
+          }
+        }
+<span class="nc" id="L439">      }</span>
+
+<span class="nc bnc" id="L441" title="All 2 branches missed.">      if (!alreadyThere) {</span>
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        if (isExt) {</span>
+<span class="nc" id="L443">          extensions.add(projectId);</span>
+        }
+
+<span class="nc" id="L446">        pw.print(projectId);</span>
+<span class="nc" id="L447">        pw.print(&quot; = &quot;);</span>
+<span class="nc" id="L448">        pw.println(projectPath);</span>
+      }
+
+<span class="nc" id="L451">      pw.println();</span>
+<span class="nc" id="L452">      pw.print(&quot;extensions = &quot;);</span>
+
+<span class="nc" id="L454">      boolean isFirst = true;</span>
+<span class="nc bnc" id="L455" title="All 2 branches missed.">      for (String e : extensions) {</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">        if (isFirst) {</span>
+<span class="nc" id="L457">          isFirst = false;</span>
+        } else {
+<span class="nc" id="L459">          pw.print(',');          </span>
+        }
+<span class="nc" id="L461">        pw.print(&quot;${&quot;);</span>
+<span class="nc" id="L462">        pw.print(e);</span>
+<span class="nc" id="L463">        pw.print('}');</span>
+<span class="nc" id="L464">      }</span>
+      
+<span class="nc" id="L466">      pw.println();</span>
+<span class="nc" id="L467">      pw.close();</span>
+
+<span class="nc" id="L469">    } catch (IOException iox) {</span>
+<span class="nc" id="L470">      iox.printStackTrace();</span>
+<span class="nc" id="L471">      return false;</span>
+<span class="nc" id="L472">    }</span>
+    
+<span class="nc" id="L474">    return true;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

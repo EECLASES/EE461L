@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FinalBitSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">FinalBitSet.java</span></div><h1>FinalBitSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.util.Arrays;
+
+/**
+ * Faster version of BitSet for those that never change.
+ */
+public class FinalBitSet {
+  final byte[] data;
+  
+<span class="fc" id="L28">  FinalBitSet(byte[] in) {</span>
+<span class="fc" id="L29">    int len = in.length;</span>
+<span class="fc bfc" id="L30" title="All 4 branches covered.">    while (len &gt; 0 &amp;&amp; in[len - 1] == 0) len--;</span>
+<span class="fc" id="L31">    this.data = new byte[len];</span>
+<span class="fc" id="L32">    System.arraycopy(in, 0, this.data, 0, len);</span>
+<span class="fc" id="L33">  }</span>
+  
+  public final boolean get(int idx) {
+<span class="fc" id="L36">    int a = idx &gt;&gt; 3;</span>
+<span class="pc bpc" id="L37" title="1 of 6 branches missed.">    return a &lt; data.length &amp;&amp; a &gt;= 0 &amp;&amp; (data[a] &amp; (1 &lt;&lt; (idx &amp; 7))) != 0;</span>
+  }
+  
+  @Override
+  public int hashCode() {
+<span class="fc" id="L42">    return Arrays.hashCode(data);</span>
+  }
+  
+  @Override
+  public boolean equals(Object o) {
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">    if (this == o) return true;</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">    if (! (o instanceof FinalBitSet)) return false;</span>
+<span class="fc" id="L49">    byte[] thatData = ((FinalBitSet)o).data;</span>
+<span class="fc" id="L50">    byte[] thisData = this.data;</span>
+<span class="fc" id="L51">    return Arrays.equals(thisData, thatData);</span>
+  }
+  
+  
+  /*======= Static Stuff ========*/
+<span class="fc" id="L56">  static final SimplePool&lt;FinalBitSet&gt; pool = new SimplePool&lt;FinalBitSet&gt;();</span>
+  
+<span class="fc" id="L58">  public static final FinalBitSet empty = create(BitArray.empty);</span>
+  
+  /**
+   * Creates a pooled FinalBitSet.
+   */
+  public static FinalBitSet create(BitArray in) {
+<span class="fc" id="L64">    return pool.pool(new FinalBitSet(in.data));</span>
+  }
+
+  /**
+   * Creates a pooled FinalBitSet.
+   */
+  public static FinalBitSet create(byte[] in) {
+<span class="nc" id="L71">    return pool.pool(new FinalBitSet(in));</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MULTIANEWARRAY.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">MULTIANEWARRAY.java</span></div><h1>MULTIANEWARRAY.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Heap;
+import gov.nasa.jpf.vm.LoadOnJPFRequired;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.Types;
+
+
+/**
+ * Create new multidimensional array
+ * ..., count1, [count2, ...] =&gt; ..., arrayref
+ */
+public class MULTIANEWARRAY extends Instruction implements JVMInstruction {
+  protected String type;
+  
+  protected int dimensions;
+  protected int[] arrayLengths;
+
+<span class="fc" id="L41">  public MULTIANEWARRAY (String typeName, int dimensions){</span>
+<span class="fc" id="L42">    this.type = Types.getClassNameFromTypeName(typeName);</span>
+<span class="fc" id="L43">    this.dimensions = dimensions;</span>
+<span class="fc" id="L44">  }</span>
+
+  public static int allocateArray (Heap heap, String type, int[] dim, ThreadInfo ti, int d) {
+<span class="fc" id="L47">    int l = dim[d];</span>
+<span class="fc" id="L48">    ElementInfo eiArray = heap.newArray(type.substring(d + 1), l, ti);</span>
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    if (dim.length &gt; (d + 1)) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">      for (int i = 0; i &lt; l; i++) {</span>
+<span class="fc" id="L52">        eiArray.setReferenceElement(i, allocateArray(heap, type, dim, ti, d + 1));</span>
+      }
+    }
+
+<span class="fc" id="L56">    return eiArray.getObjectRef();</span>
+  }
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L61">    String compType = Types.getComponentTerminal(type);</span>
+
+    // resolve the component class first
+<span class="fc bfc" id="L64" title="All 2 branches covered.">    if(Types.isReferenceSignature(type)) {</span>
+      try {
+<span class="fc" id="L66">        ti.resolveReferencedClass(compType);</span>
+<span class="nc" id="L67">      } catch(LoadOnJPFRequired lre) {</span>
+<span class="nc" id="L68">        return ti.getPC();</span>
+<span class="fc" id="L69">      }</span>
+    }
+
+<span class="fc" id="L72">    arrayLengths = new int[dimensions];</span>
+<span class="fc" id="L73">    StackFrame frame = ti.getModifiableTopFrame();</span>
+
+<span class="fc bfc" id="L75" title="All 2 branches covered.">    for (int i = dimensions - 1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L76">      arrayLengths[i] = frame.pop();</span>
+    }
+
+    // there is no clinit for array classes, but we still have  to create a class object
+    // since its a builtin class, we also don't have to bother with NoClassDefFoundErrors
+<span class="fc" id="L81">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(type);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">    if (!ci.isRegistered()) {</span>
+<span class="fc" id="L83">      ci.registerClass(ti);</span>
+<span class="fc" id="L84">      ci.setInitialized();</span>
+    }
+    
+<span class="fc" id="L87">    int arrayRef = allocateArray(ti.getHeap(), type, arrayLengths, ti, 0);</span>
+
+    // put the result (the array reference) on the stack
+<span class="fc" id="L90">    frame.pushRef(arrayRef);</span>
+
+<span class="fc" id="L92">    return getNext(ti);</span>
+  }
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L97">    return 4; // opcode, index1, index2, dimensions</span>
+  }
+  
+  @Override
+  public int getByteCode () {
+<span class="fc" id="L102">    return 0xC5;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L107">	  insVisitor.visit(this);</span>
+<span class="nc" id="L108">  }</span>
+
+  public String getType(){
+<span class="nc" id="L111">    return type;</span>
+  }
+  
+  public int getDimensions() {
+<span class="nc" id="L115">    return dimensions;</span>
+  }
+  
+  public int getArrayLength (int dimension){
+<span class="nc bnc" id="L119" title="All 4 branches missed.">    if (dimension &lt; dimensions &amp;&amp; arrayLengths != null){</span>
+<span class="nc" id="L120">      return arrayLengths[dimension];</span>
+    } else {
+<span class="nc" id="L122">      return -1;</span>
+    }
+  }
+  
+  @Override
+  public void cleanupTransients(){
+<span class="fc" id="L128">    arrayLengths= null;</span>
+<span class="fc" id="L129">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EventChoiceGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.event</a> &gt; <span class="el_source">EventChoiceGenerator.java</span></div><h1>EventChoiceGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util.event;
+
+import gov.nasa.jpf.util.Predicate;
+import gov.nasa.jpf.vm.ChoiceGeneratorBase;
+import gov.nasa.jpf.vm.SystemState;
+
+
+/**
+ * ChoiceGenerator for Events.
+ * This is basically just a pointer into the event tree
+ */
+public class EventChoiceGenerator extends ChoiceGeneratorBase&lt;Event&gt; {
+
+  protected Event base;
+  protected Event cur;
+  protected int nProcessed;
+  
+  protected EventContext ctx; // optional, can replace/expand events during execution
+  
+  /**
+   * convenience method to get successors from current CG chain 
+   */
+  public static EventChoiceGenerator getNext (SystemState ss, String id, Event base, EventContext ctx){
+<span class="nc" id="L42">    EventChoiceGenerator cgPrev = ss.getLastChoiceGeneratorOfType(EventChoiceGenerator.class);</span>
+<span class="nc bnc" id="L43" title="All 2 branches missed.">    if (cgPrev == null){</span>
+<span class="nc" id="L44">      return new EventChoiceGenerator( id, base, ctx);</span>
+    } else {
+<span class="nc" id="L46">      return cgPrev.getSuccessor(id, ctx);</span>
+    }
+  }
+  
+  public EventChoiceGenerator (String id, Event base){
+<span class="nc" id="L51">    this(id, base, null);</span>
+<span class="nc" id="L52">  }</span>
+  
+  public EventChoiceGenerator (String id, Event base, EventContext ctx) {
+<span class="fc" id="L55">    super(id);</span>
+<span class="fc" id="L56">    this.base = base;</span>
+<span class="fc" id="L57">    this.ctx = ctx;</span>
+<span class="fc" id="L58">  }</span>
+  
+  @Override
+  public Event getChoice (int idx){
+<span class="nc bnc" id="L62" title="All 2 branches missed.">    if (idx &gt;= 0){</span>
+<span class="nc" id="L63">      Event e = base;</span>
+<span class="nc bnc" id="L64" title="All 2 branches missed.">      for (int i=0; i&lt;idx; i++){</span>
+<span class="nc" id="L65">        e = e.alt;</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (e == null){</span>
+<span class="nc" id="L67">          break;</span>
+        } else {
+<span class="nc" id="L69">          return e;</span>
+        }
+      }
+      
+    }
+<span class="nc" id="L74">    throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+  }
+
+  
+  public void setContextExpander (EventContext ctx){
+<span class="nc" id="L79">    this.ctx = ctx;</span>
+<span class="nc" id="L80">  }</span>
+  
+  public boolean containsMatchingChoice (Predicate&lt;Event&gt; predicate){
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    for (Event e = base; e != null; e = e.getAlt()){</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">      if (predicate.isTrue(e)){</span>
+<span class="nc" id="L85">        return true;</span>
+      }
+    }
+<span class="nc" id="L88">    return false;</span>
+  }
+  
+  public void addChoice (Event newEvent){
+<span class="nc bnc" id="L92" title="All 2 branches missed.">    for (Event e = base; e != null;){</span>
+<span class="nc" id="L93">      Event eAlt = e.getAlt();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">      if (eAlt == null){</span>
+<span class="nc" id="L95">        e.setAlt(newEvent);</span>
+<span class="nc" id="L96">        return;</span>
+      }
+<span class="nc" id="L98">      e = eAlt;</span>
+<span class="nc" id="L99">    }</span>
+<span class="nc" id="L100">  }</span>
+  
+  public EventChoiceGenerator getSuccessor (String id){
+<span class="nc" id="L103">    return getSuccessor(id, null);</span>
+  }
+  
+  public EventChoiceGenerator getSuccessor (String id, EventContext ctx){
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">    if (cur == null){</span>
+<span class="nc" id="L108">      return new EventChoiceGenerator(id, base.getNext(), ctx);</span>
+      
+    } else {
+<span class="fc" id="L111">      Event next = cur.getNext();</span>
+      
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">      if (cur instanceof CheckEvent){ // CheckEvents use next for conjunction</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        while (next instanceof CheckEvent){</span>
+<span class="nc" id="L115">          next = next.getNext();</span>
+        }
+      }
+      
+<span class="fc bfc" id="L119" title="All 2 branches covered.">      if (next != null){</span>
+<span class="fc" id="L120">        return new EventChoiceGenerator( id, next, ctx);</span>
+      } else {
+<span class="fc" id="L122">        return null; // done</span>
+      }
+    }
+  }
+  
+  @Override
+  public Event getNextChoice () {
+<span class="fc" id="L129">    return cur;</span>
+  }
+
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="fc bfc" id="L135" title="All 2 branches covered.">    if (cur == null){</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">      return (nProcessed == 0);</span>
+    } else {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">      return (cur.getAlt() != null);</span>
+    }
+  }
+
+  @Override
+  public void advance () {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">    if (cur == null){</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">      if (nProcessed == 0){</span>
+<span class="fc" id="L146">        cur = base;</span>
+<span class="fc" id="L147">        nProcessed = 1;</span>
+      }
+    } else {
+<span class="fc" id="L150">      cur = cur.getAlt();</span>
+<span class="fc" id="L151">      nProcessed++;</span>
+    }
+    
+<span class="fc bfc" id="L154" title="All 2 branches covered.">    if (ctx != null){</span>
+<span class="fc" id="L155">      Event newCur = ctx.map(cur);</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">      if (newCur != cur){</span>
+<span class="fc" id="L157">        cur = newCur;</span>
+      }
+    }
+<span class="fc" id="L160">  }</span>
+
+  @Override
+  public void reset () {
+<span class="nc" id="L164">    isDone = false;</span>
+<span class="nc" id="L165">    cur = null;</span>
+<span class="nc" id="L166">    nProcessed = 0;</span>
+<span class="nc" id="L167">  }</span>
+
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="nc" id="L171">    return base.getNumberOfAlternatives() + 1; // include base itself</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="nc" id="L176">    return nProcessed;</span>
+  }
+
+  @Override
+  public String toString() {
+<span class="fc" id="L181">    StringBuilder sb = new StringBuilder(getClass().getName());</span>
+<span class="fc" id="L182">    sb.append(&quot;{id:\&quot;&quot;);</span>
+<span class="fc" id="L183">    sb.append(id);</span>
+<span class="fc" id="L184">    sb.append('&quot;');</span>
+
+    //sb.append(&quot;,isCascaded:&quot;);
+    //sb.append(Boolean.toString(isCascaded));
+
+<span class="fc" id="L189">    sb.append(&quot;,[&quot;);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">    for (Event e=base; e!= null; e = e.getAlt()){</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">      if (e != base){</span>
+<span class="fc" id="L192">        sb.append(',');</span>
+      }
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">      if (e == cur){</span>
+<span class="nc" id="L195">        sb.append(MARKER);        </span>
+      }
+<span class="fc" id="L197">      sb.append(e.toString());</span>
+    }
+<span class="fc" id="L199">    sb.append(&quot;],cur:&quot;);</span>
+<span class="fc" id="L200">    sb.append(cur);</span>
+<span class="fc" id="L201">    sb.append(&quot;}&quot;);</span>
+    
+<span class="fc" id="L203">    return sb.toString();</span>
+  }
+
+  @Override
+  public Class&lt;Event&gt; getChoiceType() {
+<span class="nc" id="L208">    return Event.class;</span>
+  }
+  
+  protected Event[] getFirstNChoices(int n){
+<span class="nc" id="L212">    Event[] a = new Event[n];</span>
+    
+<span class="nc" id="L214">    Event e = base;</span>
+<span class="nc bnc" id="L215" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L216">      a[i] = e;</span>
+<span class="nc" id="L217">      e = e.getAlt();</span>
+    }
+    
+<span class="nc" id="L220">    return a;</span>
+  }
+
+  @Override
+  public Event[] getAllChoices(){
+<span class="nc" id="L225">    return getFirstNChoices( getTotalNumberOfChoices());</span>
+  }
+
+  @Override
+  public Event[] getProcessedChoices(){
+<span class="nc" id="L230">    return getFirstNChoices( getProcessedNumberOfChoices());</span>
+  }
+  
+  @Override
+  public Event[] getUnprocessedChoices(){
+<span class="nc" id="L235">    int n=0;</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">    for (Event e=cur; e != null; e = e.getAlt()){</span>
+<span class="nc" id="L237">      n++;</span>
+    }
+    
+<span class="nc" id="L240">    Event[] a = new Event[n];</span>
+    
+<span class="nc" id="L242">    Event e = cur;</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++){</span>
+<span class="nc" id="L244">      a[i] = e;</span>
+<span class="nc" id="L245">      e = e.getAlt();</span>
+    }
+    
+<span class="nc" id="L248">    return a;    </span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

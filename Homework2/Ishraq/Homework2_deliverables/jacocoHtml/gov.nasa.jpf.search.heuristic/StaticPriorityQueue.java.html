@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StaticPriorityQueue.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search.heuristic</a> &gt; <span class="el_source">StaticPriorityQueue.java</span></div><h1>StaticPriorityQueue.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.search.heuristic;
+
+import gov.nasa.jpf.Config;
+
+import java.util.Iterator;
+import java.util.TreeSet;
+
+/**
+ * container for statically prioritized states, based on bounded
+ * RB trees
+ * 
+ * TreeSet is a better choice than PriorityQueue since the size
+ * constraint means we have to remove elements from both ends, which
+ * is inefficient with heaps. A simple (binary) sorted array using
+ * block copy can be more efficient, but that very much depends on
+ * queue size and processor, so it's not really worth the trouble
+ * 
+ * &lt;2do&gt; this needs to be re-evaluated in light of the stupid fact
+ * that pollFirst()/pollLast() are only in Java 1.6 and we can't switch
+ * yet (no Java 1.6 for PPC), which forces us to do some shuffling to
+ * make remove(last()) work as expected
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public class StaticPriorityQueue extends TreeSet&lt;PrioritizedState&gt; {
+
+  int maxQueueSize;
+  
+<span class="fc" id="L46">  public StaticPriorityQueue (Config config) {</span>
+    // unbound queues are pretty pointless - we could probably better use
+    // DFSearch in this case
+<span class="fc" id="L49">    maxQueueSize = config.getInt(&quot;search.heuristic.queue_limit&quot;, 1024);</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">    if (maxQueueSize &lt; 0){</span>
+<span class="fc" id="L51">      maxQueueSize = Integer.MAX_VALUE;</span>
+    }
+<span class="fc" id="L53">  }</span>
+    
+  @Override
+  public boolean add (PrioritizedState s) {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">    if (size() &lt; maxQueueSize) { // limit not yet reached</span>
+<span class="fc" id="L58">      return super.add(s);</span>
+      
+    } else {
+<span class="nc" id="L61">      PrioritizedState last = last();</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (s.compareTo(last) &lt; 0) {</span>
+        //pollLast();   // that's only Java 1.6
+<span class="nc" id="L64">        remove(last);</span>
+        
+<span class="nc" id="L66">        return super.add(s);</span>
+        
+      } else {
+        // don't add with this priority value
+<span class="nc" id="L70">        return false;</span>
+      }
+    }
+  }
+  
+  public boolean isQueueLimitReached() {
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">    return size() &gt;= maxQueueSize;</span>
+  }
+  
+  // for debugging purposes
+  void dump() {
+<span class="nc" id="L81">    int i=0;</span>
+<span class="nc" id="L82">    System.err.print('[');</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">    for (Iterator&lt;PrioritizedState&gt; it=iterator(); it.hasNext();) {</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">      if (i++ &gt; 0) {</span>
+<span class="nc" id="L85">        System.err.print(',');</span>
+      }
+<span class="nc" id="L87">      System.err.print(it.next());</span>
+    }
+<span class="nc" id="L89">    System.err.println(']');</span>
+<span class="nc" id="L90">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

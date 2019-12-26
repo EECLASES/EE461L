@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StateCountEstimator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">StateCountEstimator.java</span></div><h1>StateCountEstimator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.Path;
+import gov.nasa.jpf.vm.Transition;
+
+import java.io.PrintWriter;
+import java.util.Formatter;
+
+/**
+ * From already visited states, estimates the total number of states by the branching factor.
+ */
+
+public class StateCountEstimator extends ListenerAdapter
+{
+   private final PrintWriter   m_out;
+<span class="nc" id="L38">   private final StringBuilder m_buffer    = new StringBuilder();</span>
+<span class="nc" id="L39">   private final Formatter     m_formatter = new Formatter(m_buffer);</span>
+   private final int           m_logPeriod;
+   private       double        m_lastPercent;
+   private       long          m_nextLog;
+   private       long          m_startTime;
+
+   public StateCountEstimator(Config config)
+<span class="nc" id="L46">   {</span>
+<span class="nc" id="L47">      m_out       = new PrintWriter(System.out, true);</span>
+<span class="nc" id="L48">      m_logPeriod = config.getInt(&quot;jpf.state_count_estimator.log_period&quot;, 0);</span>
+<span class="nc" id="L49">   }</span>
+
+   @Override
+   public void searchStarted(Search search)
+   {
+<span class="nc" id="L54">      m_nextLog     = 0;</span>
+<span class="nc" id="L55">      m_lastPercent = 0.0;</span>
+<span class="nc" id="L56">      m_startTime   = System.currentTimeMillis();</span>
+<span class="nc" id="L57">   }</span>
+
+   @Override
+   public void searchFinished(Search search)
+   {
+<span class="nc" id="L62">      log(search);</span>
+<span class="nc" id="L63">   }</span>
+
+   @Override
+   public void stateProcessed(Search search)
+   {
+<span class="nc bnc" id="L68" title="All 2 branches missed.">      if (m_nextLog &gt; System.currentTimeMillis())</span>
+<span class="nc" id="L69">         return;</span>
+      
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      if (log(search))</span>
+<span class="nc" id="L72">         m_nextLog = m_logPeriod + System.currentTimeMillis();</span>
+<span class="nc" id="L73">   }</span>
+
+   private boolean log(Search search)
+   {
+      VM vm;
+      Path path;
+      Transition trans;
+      ChoiceGenerator cg;
+      double percent, delta;
+      long currentState, expectedState, currentTime, expectedTime;
+      int i, size, processed;
+
+<span class="nc" id="L85">      vm       = search.getVM();</span>
+<span class="nc" id="L86">      path      = vm.getPath();</span>
+<span class="nc" id="L87">      size      = path.size();</span>
+<span class="nc" id="L88">      percent   = 0.0;</span>
+<span class="nc" id="L89">      delta     = 1.0;</span>
+<span class="nc" id="L90">      processed = 0;</span>
+      
+<span class="nc bnc" id="L92" title="All 2 branches missed.">      for (i = 0; i &lt; size; i++)</span>
+      {
+<span class="nc" id="L94">         trans      = path.get(i);</span>
+<span class="nc" id="L95">         cg         = trans.getChoiceGenerator();</span>
+<span class="nc" id="L96">         delta     /= cg.getTotalNumberOfChoices();</span>
+<span class="nc" id="L97">         processed  = cg.getProcessedNumberOfChoices() - 1;</span>
+<span class="nc" id="L98">         percent   += delta * processed;</span>
+      }
+      
+<span class="nc bnc" id="L101" title="All 2 branches missed.">      if (size == 0)</span>
+<span class="nc" id="L102">         percent = 1.0;</span>
+      
+<span class="nc bnc" id="L104" title="All 2 branches missed.">      if (m_lastPercent &gt; percent)  // Sometimes a state is declared as processed but doesn't show up in the path so the percentage appears to go backwards.</span>
+<span class="nc" id="L105">         return(false);</span>
+      
+<span class="nc" id="L107">      m_lastPercent = percent;</span>
+         
+<span class="nc" id="L109">      currentState  = vm.getStateCount();</span>
+<span class="nc" id="L110">      expectedState = (long) (currentState / percent);</span>
+      
+<span class="nc" id="L112">      currentTime   = System.currentTimeMillis() - m_startTime;</span>
+<span class="nc" id="L113">      expectedTime  = (long) (currentTime / percent);</span>
+      
+<span class="nc" id="L115">      m_formatter.format(&quot;State:  %,d / %,d (%g%%)    Time:  &quot;, currentState, expectedState, 100.0 * percent);</span>
+      
+<span class="nc" id="L117">      formatTime(expectedTime);</span>
+<span class="nc" id="L118">      m_buffer.append(&quot; - &quot;);</span>
+<span class="nc" id="L119">      formatTime(currentTime);</span>
+<span class="nc" id="L120">      m_buffer.append(&quot; = &quot;);</span>
+<span class="nc" id="L121">      formatTime(expectedTime - currentTime);</span>
+
+<span class="nc" id="L123">      m_out.println(m_buffer.toString());</span>
+<span class="nc" id="L124">      m_buffer.setLength(0);</span>
+      
+<span class="nc" id="L126">      return(true);</span>
+   }
+
+   private void formatTime(long time)
+   {
+      long days, hours, minutes, seconds;
+      boolean commit;
+
+<span class="nc" id="L134">      seconds = time / 1000;</span>
+<span class="nc" id="L135">      minutes = seconds / 60;</span>
+<span class="nc" id="L136">      hours   = minutes / 60;</span>
+<span class="nc" id="L137">      days    = hours / 24;</span>
+
+<span class="nc" id="L139">      seconds %= 60;</span>
+<span class="nc" id="L140">      minutes %= 60;</span>
+<span class="nc" id="L141">      hours   %= 24;</span>
+
+<span class="nc" id="L143">      commit = false;</span>
+
+<span class="nc bnc" id="L145" title="All 4 branches missed.">      if ((commit) || (days != 0))</span>
+      {
+<span class="nc" id="L147">         commit = true;</span>
+<span class="nc" id="L148">         m_buffer.append(days);</span>
+<span class="nc" id="L149">         m_buffer.append(' ');</span>
+      }
+
+<span class="nc bnc" id="L152" title="All 4 branches missed.">      if ((commit) || (hours != 0))</span>
+      {
+<span class="nc bnc" id="L154" title="All 4 branches missed.">         if ((commit) &amp;&amp; (hours &lt; 10))</span>
+<span class="nc" id="L155">            m_buffer.append('0');</span>
+
+<span class="nc" id="L157">         m_buffer.append(hours);</span>
+<span class="nc" id="L158">         m_buffer.append(':');</span>
+<span class="nc" id="L159">         commit = true;</span>
+      }
+
+<span class="nc bnc" id="L162" title="All 4 branches missed.">      if ((commit) || (minutes != 0))</span>
+      {
+<span class="nc bnc" id="L164" title="All 4 branches missed.">         if ((commit) &amp;&amp; (minutes &lt; 10))</span>
+<span class="nc" id="L165">            m_buffer.append('0');</span>
+
+<span class="nc" id="L167">         m_buffer.append(minutes);</span>
+<span class="nc" id="L168">         m_buffer.append(':');</span>
+<span class="nc" id="L169">         commit = true;</span>
+      }
+
+<span class="nc bnc" id="L172" title="All 4 branches missed.">      if ((commit) &amp;&amp; (seconds &lt; 10))</span>
+<span class="nc" id="L173">         m_buffer.append('0');</span>
+
+<span class="nc" id="L175">      m_buffer.append(seconds);</span>
+<span class="nc" id="L176">   }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

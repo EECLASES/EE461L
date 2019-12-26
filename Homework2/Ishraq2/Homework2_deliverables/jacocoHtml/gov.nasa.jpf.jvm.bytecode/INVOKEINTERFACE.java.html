@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INVOKEINTERFACE.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">INVOKEINTERFACE.java</span></div><h1>INVOKEINTERFACE.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+
+/**
+ * Invoke interface method
+ * ..., objectref, [arg1, [arg2 ...]] =&gt; ...
+ */
+public class INVOKEINTERFACE extends VirtualInvocation {
+<span class="nc" id="L26">  public INVOKEINTERFACE () {}</span>
+
+  protected INVOKEINTERFACE (String clsDescriptor, String methodName, String signature){
+<span class="fc" id="L29">    super(clsDescriptor, methodName, signature);</span>
+<span class="fc" id="L30">  }</span>
+
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L35">    return 5; // opcode, index1, index2, nargs, 0</span>
+  }
+  
+  @Override
+  public int getByteCode () {
+<span class="fc" id="L40">    return 0xB9;</span>
+  }
+
+  @Override
+  public String toString() {
+    // methodInfo not set outside real call context (requires target object)
+<span class="nc" id="L46">    return &quot;invokeinterface &quot; + cname + '.' + mname;</span>
+  }
+
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="nc" id="L51">	  insVisitor.visit(this);</span>
+<span class="nc" id="L52">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LockedStackDepth.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">LockedStackDepth.java</span></div><h1>LockedStackDepth.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.search.DFSearch;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.search.heuristic.BFSHeuristic;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ * A listener that tracks information about the stack depth of when a lock is first acquired.  If 
+ *
+ * Writing a test for this class is very difficult.  Hence, a lot of asserts are added.
+ */
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">public class LockedStackDepth extends ListenerAdapter</span>
+{
+<span class="fc" id="L44">   private static final Logger  s_logger    = JPF.getLogger(LockedStackDepth.class.getName());</span>
+<span class="fc" id="L45">   private static final Integer EMPTY[]     = new Integer[0];</span>
+   private static final int     THREAD_FLAG = 0x80000000;
+   
+<span class="fc" id="L48">   private final HashMap&lt;Integer, Operation&gt; m_operations = new HashMap&lt;Integer, Operation&gt;();</span>
+<span class="fc" id="L49">   private final HashMap&lt;Integer, Integer&gt;   m_state      = new HashMap&lt;Integer, Integer&gt;();</span>
+<span class="fc" id="L50">   private final HashMap&lt;Operation, Integer&gt; m_index      = new HashMap&lt;Operation, Integer&gt;();</span>
+<span class="fc" id="L51">   private final ArrayList&lt;Operation&gt;        m_apply      = new ArrayList&lt;Operation&gt;();</span>
+   private       Operation                   m_current;
+
+   public int getLockedStackDepth(ElementInfo lock)
+   {
+      Integer result;
+      int lockIndex;
+      
+<span class="nc" id="L59">      lockIndex = lock.getObjectRef();</span>
+<span class="nc" id="L60">      result    = m_state.get(makeKey(lock));</span>
+      
+<span class="nc bnc" id="L62" title="All 2 branches missed.">      if (s_logger.isLoggable(Level.INFO))</span>
+<span class="nc" id="L63">         s_logger.info(&quot;Depth = &quot; + result + &quot; | Lock Index = &quot; + lockIndex + &quot; | Lock = &quot; + lock);</span>
+      
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      if (result == null)</span>
+<span class="nc" id="L66">         return(-1);</span>
+      
+<span class="nc bnc" id="L68" title="All 4 branches missed.">      assert result &gt;= 0;</span>
+      
+<span class="nc" id="L70">      return(result);</span>
+   }
+   
+   public List&lt;ElementInfo&gt; getLockedInTopFrame(ThreadInfo thread)
+   {
+      ArrayList&lt;ElementInfo&gt; result;
+      ElementInfo lock;
+      int threadDepth;
+      
+<span class="nc" id="L79">      threadDepth = thread.getStackDepth();</span>
+<span class="nc" id="L80">      result      = new ArrayList&lt;ElementInfo&gt;();</span>
+      
+<span class="nc bnc" id="L82" title="All 2 branches missed.">      for (Integer key : m_state.keySet())</span>
+      {
+<span class="nc bnc" id="L84" title="All 2 branches missed.">         if (key &lt; 0)</span>
+<span class="nc" id="L85">            continue;</span>
+         
+<span class="nc bnc" id="L87" title="All 2 branches missed.">         if (threadDepth != m_state.get(key))</span>
+<span class="nc" id="L88">            continue;</span>
+         
+<span class="nc" id="L90">         lock = thread.getElementInfo(key);</span>
+         
+<span class="nc bnc" id="L92" title="All 2 branches missed.">         if (lock == null)</span>
+<span class="nc" id="L93">            continue;</span>
+         
+<span class="nc bnc" id="L95" title="All 2 branches missed.">         if (!lock.isLockedBy(thread))</span>
+<span class="nc" id="L96">            continue;</span>
+            
+<span class="nc" id="L98">         result.add(lock);</span>
+<span class="nc" id="L99">      }</span>
+      
+<span class="nc" id="L101">      return(result);</span>
+   }
+
+   @Override
+   public void objectLocked(VM vm, ThreadInfo thread, ElementInfo ei)
+   {
+      ElementInfo lock;
+      Integer depth;
+
+<span class="fc" id="L110">      lock   = ei;</span>
+
+<span class="fc" id="L112">      logStack(thread);</span>
+
+<span class="fc" id="L114">      depth  = new Operation(thread, null).getOldDepth();</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">      if (depth == null)</span>
+<span class="fc" id="L117">         depth = thread.getStackDepth();</span>
+
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">      assert thread.getLockCount() == 0;</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">      assert thread.getLockObject() == null;</span>
+<span class="pc bpc" id="L121" title="2 of 4 branches missed.">      assert lock.isLockedBy(thread);</span>
+      
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">      if (m_state.containsKey(makeKey(lock)))               // So that a breakpoint on the next line will only get hit if the assert will trigger.</span>
+<span class="nc bnc" id="L124" title="All 4 branches missed.">         assert !m_state.containsKey(makeKey(lock));</span>
+            
+<span class="pc bpc" id="L126" title="2 of 4 branches missed.">      assert !m_state.containsKey(makeKey(thread));</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">      assert depth &gt;= 0;</span>
+
+<span class="fc" id="L129">      new Operation(lock, depth);</span>
+<span class="fc" id="L130">   }</span>
+
+   @Override
+   public void objectUnlocked(VM vm, ThreadInfo thread, ElementInfo ei)
+   {
+      ElementInfo lock;
+      Integer depth;
+
+<span class="fc" id="L138">      logStack(thread);</span>
+
+<span class="fc" id="L140">      lock   = ei;</span>
+<span class="fc" id="L141">      depth  = new Operation(lock, null).getOldDepth();</span>
+
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">      assert !m_state.containsKey(makeKey(lock));</span>
+<span class="pc bpc" id="L144" title="2 of 4 branches missed.">      assert !m_state.containsKey(makeKey(thread));</span>
+<span class="pc bpc" id="L145" title="2 of 4 branches missed.">      assert depth &gt;= 0;</span>
+
+<span class="fc bfc" id="L147" title="All 2 branches covered.">      if (thread.isWaiting())</span>
+      {
+<span class="pc bpc" id="L149" title="2 of 4 branches missed.">         assert !lock.isLockedBy(thread);</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">         assert lock.getLockCount() == 0;</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">         assert thread.getLockCount() &gt; 0;</span>
+<span class="pc bpc" id="L152" title="2 of 4 branches missed.">         assert thread.getLockObject() == lock;</span>
+<span class="fc" id="L153">         new Operation(thread, depth);</span>
+      }
+      else
+      {
+<span class="pc bpc" id="L157" title="2 of 4 branches missed.">         assert lock.isLockedBy(thread);</span>
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">         assert lock.getLockCount() &gt; 0;</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">         assert thread.getLockCount() == 0;</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">         assert thread.getLockObject() == null;</span>
+      }
+<span class="fc" id="L162">   }</span>
+
+   @Override
+   public void searchStarted(Search search)
+   {
+<span class="fc" id="L167">      m_operations.clear();</span>
+<span class="fc" id="L168">      m_state.clear();</span>
+      
+<span class="fc" id="L170">      m_current = null;</span>
+<span class="fc" id="L171">   }</span>
+
+   @Override
+   public void stateAdvanced(Search search)
+   {
+      Integer id;
+      
+<span class="fc" id="L178">      id = search.getStateId();</span>
+      
+<span class="fc bfc" id="L180" title="All 2 branches covered.">      if (!m_operations.containsKey(id))       // Don't overwrite the original chain of Operations to get to the same state.  The original chain is more likely to be shorter.</span>
+<span class="fc" id="L181">         m_operations.put(id, m_current);</span>
+
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">      if (s_logger.isLoggable(Level.FINE))</span>
+<span class="nc" id="L184">         s_logger.fine(&quot;State Advanced: &quot; + id);</span>
+      
+<span class="fc" id="L186">      logState();</span>
+<span class="fc" id="L187">   }</span>
+
+   @Override
+   public void stateProcessed(Search search)
+   {
+      Integer id;
+
+<span class="fc bfc" id="L194" title="All 2 branches covered.">      if (!(search instanceof DFSearch))  // Can't remove from m_operations since Search could go back to the state.</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">         if (!(search instanceof BFSHeuristic))</span>
+<span class="fc" id="L196">            return;</span>
+
+<span class="fc" id="L198">      id = search.getStateId();</span>
+
+<span class="fc" id="L200">      m_operations.remove(id);            // DFSearch won't ever revisit this state.  It is safe to remove and allow for cleanup.</span>
+
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">      if (s_logger.isLoggable(Level.FINE))</span>
+<span class="nc" id="L203">         s_logger.fine(&quot;State Processed: &quot; + id);</span>
+<span class="fc" id="L204">   }</span>
+
+   @Override
+   public void stateBacktracked(Search search)
+   {
+<span class="fc" id="L209">      switchTo(search);</span>
+<span class="fc" id="L210">   }</span>
+
+   @Override
+   public void stateRestored(Search search)
+   {
+<span class="fc" id="L215">      switchTo(search);</span>
+<span class="fc" id="L216">   }</span>
+   
+   private void switchTo(Search search)
+   {
+      Operation next;
+      Integer id;
+      
+<span class="fc" id="L223">      id   = search.getStateId();</span>
+<span class="fc" id="L224">      next = m_operations.get(id);</span>
+
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">      if (s_logger.isLoggable(Level.FINE))</span>
+<span class="nc" id="L227">         s_logger.fine(&quot;State Switching: &quot; + id);</span>
+
+<span class="pc bpc" id="L229" title="2 of 6 branches missed.">      assert (id &lt;= 0) || (m_operations.containsKey(id));</span>
+      
+<span class="fc" id="L231">      switchTo(next);</span>
+      
+<span class="fc" id="L233">      m_current = next;</span>
+
+<span class="fc" id="L235">      logState();</span>
+
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">      if (s_logger.isLoggable(Level.FINE))</span>
+<span class="nc" id="L238">         s_logger.fine(&quot;State Switched:  &quot; + id);</span>
+<span class="fc" id="L239">   }</span>
+   
+   private void switchTo(Operation next)
+   {
+      Operation operation;
+      Integer index;
+      int i;
+      
+<span class="fc bfc" id="L247" title="All 2 branches covered.">      for (operation = next; operation != null; operation = operation.getParent())  // Go through all of the operations leading back to the root.</span>
+      {
+<span class="fc" id="L249">         m_index.put(operation, m_apply.size());  // Keep track of the index into m_apply where operation is found</span>
+<span class="fc" id="L250">         m_apply.add(operation);</span>
+      }
+      
+<span class="fc" id="L253">      index = null;</span>
+      
+<span class="fc bfc" id="L255" title="All 2 branches covered.">      for (operation = m_current; operation != null; operation = operation.getParent())  // Go through all of the operations leading back to the root.</span>
+      {
+<span class="fc" id="L257">         index = m_index.get(operation);</span>
+         
+<span class="fc bfc" id="L259" title="All 2 branches covered.">         if (index != null)        // If a common ancestor is found, stop going back.</span>
+<span class="fc" id="L260">            break;</span>
+         
+<span class="fc" id="L262">         operation.revert();       // Revert the operation since it isn't common to both states.</span>
+      }
+      
+<span class="fc bfc" id="L265" title="All 2 branches covered.">      if (index == null)</span>
+<span class="fc" id="L266">         index = m_apply.size();   // No common ancestor found.  Must apply all of the operations.</span>
+      
+<span class="fc bfc" id="L268" title="All 2 branches covered.">      for (i = index; --i &gt;= 0; )  // Apply all of the operations required to get back to the &quot;next&quot; state.</span>
+<span class="fc" id="L269">         m_apply.get(i).apply();</span>
+
+<span class="fc" id="L271">      m_index.clear();</span>
+<span class="fc" id="L272">      m_apply.clear();</span>
+<span class="fc" id="L273">   }</span>
+   
+   private void logState()
+   {
+      StringBuilder message;
+      String type;
+      Integer key, keys[], depth;
+      int i;
+      
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">      if (!s_logger.isLoggable(Level.FINER))</span>
+<span class="fc" id="L283">         return;</span>
+
+<span class="nc" id="L285">      message = new StringBuilder();</span>
+<span class="nc" id="L286">      keys    = m_state.keySet().toArray(EMPTY);</span>
+      
+<span class="nc" id="L288">      Arrays.sort(keys);</span>
+<span class="nc" id="L289">      message.append(&quot;State | Size = &quot;);</span>
+<span class="nc" id="L290">      message.append(keys.length);</span>
+      
+<span class="nc bnc" id="L292" title="All 2 branches missed.">      for (i = 0; i &lt; keys.length; i++)</span>
+      {
+<span class="nc" id="L294">         key   = keys[i];</span>
+<span class="nc" id="L295">         depth = m_state.get(key);</span>
+
+<span class="nc bnc" id="L297" title="All 2 branches missed.">         if ((key &amp; THREAD_FLAG) != 0)</span>
+<span class="nc" id="L298">            type = &quot;Thread&quot;;</span>
+         else
+<span class="nc" id="L300">            type = &quot;Lock&quot;;</span>
+
+<span class="nc" id="L302">         message.append('\n');</span>
+<span class="nc" id="L303">         message.append(&quot;Depth = &quot;);</span>
+<span class="nc" id="L304">         message.append(depth);</span>
+<span class="nc" id="L305">         message.append(&quot; | Key = &quot;);</span>
+<span class="nc" id="L306">         message.append(key &amp; ~THREAD_FLAG);</span>
+<span class="nc" id="L307">         message.append(&quot; | &quot;);</span>
+<span class="nc" id="L308">         message.append(type);</span>
+      }
+      
+<span class="nc" id="L311">      s_logger.finer(message.toString());</span>
+<span class="nc" id="L312">   }</span>
+   
+   private void logStack(ThreadInfo thread)
+   {
+<span class="pc bpc" id="L316" title="1 of 2 branches missed.">      if (!s_logger.isLoggable(Level.FINEST))</span>
+<span class="fc" id="L317">         return;</span>
+      
+<span class="nc" id="L319">      s_logger.finest(thread.getStackTrace());</span>
+<span class="nc" id="L320">   }</span>
+   
+   private static int makeKey(ElementInfo lock)
+   {
+<span class="fc" id="L324">      return(lock.getObjectRef());</span>
+   }
+   
+   private static int makeKey(ThreadInfo thread)
+   {
+<span class="fc" id="L329">      return(thread.getThreadObjectRef() ^ THREAD_FLAG);</span>
+   }
+   
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">   private class Operation</span>
+   {
+      private final Operation m_parent;
+      private final Integer   m_key;
+      private final Integer   m_oldDepth;
+      private final Integer   m_newDepth;
+      
+      public Operation(ElementInfo lock, Integer newDepth)
+      {
+<span class="fc" id="L341">         this(makeKey(lock), newDepth);</span>
+<span class="fc" id="L342">      }</span>
+      
+      public Operation(ThreadInfo thread, Integer newDepth)
+      {
+<span class="fc" id="L346">         this(makeKey(thread), newDepth);</span>
+<span class="fc" id="L347">      }</span>
+      
+      private Operation(Integer key, Integer newDepth)
+<span class="fc" id="L350">      {</span>
+<span class="fc" id="L351">         m_parent   = m_current;</span>
+<span class="fc" id="L352">         m_current  = this;</span>
+<span class="fc" id="L353">         m_key      = key;</span>
+<span class="fc" id="L354">         m_newDepth = newDepth;</span>
+<span class="fc" id="L355">         m_oldDepth = m_state.get(key);</span>
+         
+<span class="fc" id="L357">         apply();</span>
+<span class="fc" id="L358">      }</span>
+      
+      public Operation getParent()
+      {
+<span class="fc" id="L362">         return(m_parent);</span>
+      }
+      
+      public Integer getOldDepth()
+      {
+<span class="fc" id="L367">         return(m_oldDepth);</span>
+      }
+      
+      public Integer getNewDepth()
+      {
+<span class="nc" id="L372">         return(m_newDepth);</span>
+      }
+      
+      public void apply()
+      {
+<span class="fc" id="L377">         change(m_newDepth);</span>
+<span class="fc" id="L378">         log(&quot;Apply &quot;);</span>
+<span class="fc" id="L379">      }</span>
+      
+      public void revert()
+      {
+<span class="fc" id="L383">         change(m_oldDepth);</span>
+<span class="fc" id="L384">         log(&quot;Revert&quot;);</span>
+<span class="fc" id="L385">      }</span>
+      
+      private void change(Integer depth)
+      {
+         Integer previous;
+         
+<span class="fc bfc" id="L391" title="All 2 branches covered.">         if (depth == null)</span>
+<span class="fc" id="L392">            m_state.remove(m_key);</span>
+         else
+         {
+<span class="fc" id="L395">            previous = m_state.put(m_key, depth);</span>
+            
+<span class="pc bpc" id="L397" title="2 of 4 branches missed.">            assert previous == null;</span>
+         }
+<span class="fc" id="L399">      }</span>
+      
+      private void log(String header)
+      {
+         String message, subheader, depthStr, type;
+         Integer depth;
+         
+<span class="pc bpc" id="L406" title="1 of 2 branches missed.">         if (!s_logger.isLoggable(Level.FINE))</span>
+<span class="fc" id="L407">            return;</span>
+
+<span class="nc bnc" id="L409" title="All 2 branches missed.">         if (m_newDepth != null)</span>
+         {
+<span class="nc" id="L411">            subheader = &quot;Add   &quot;;</span>
+<span class="nc" id="L412">            depth     = m_newDepth;</span>
+         }
+         else
+         {
+<span class="nc" id="L416">            subheader = &quot;Remove&quot;;</span>
+<span class="nc" id="L417">            depth     = m_oldDepth;</span>
+         }
+
+<span class="nc" id="L420">         depthStr = String.valueOf(depth);</span>
+         
+<span class="nc bnc" id="L422" title="All 4 branches missed.">         switch (depthStr.length())</span>
+         {
+<span class="nc" id="L424">            case 1: depthStr = &quot;   &quot; + depthStr; break;</span>
+<span class="nc" id="L425">            case 2: depthStr = &quot;  &quot; + depthStr; break;</span>
+<span class="nc" id="L426">            case 3: depthStr = &quot; &quot; + depthStr; break;</span>
+            default: break;
+         }
+         
+<span class="nc bnc" id="L430" title="All 2 branches missed.">         if ((m_key &amp; THREAD_FLAG) != 0)</span>
+<span class="nc" id="L431">            type = &quot;Thread&quot;;</span>
+         else
+<span class="nc" id="L433">            type = &quot;Lock&quot;;</span>
+         
+<span class="nc" id="L435">         message = header + &quot; &quot; + subheader + &quot; | Depth = &quot; + depthStr + &quot; | Key = &quot; + (m_key &amp; ~THREAD_FLAG) + &quot; | &quot; + type;</span>
+            
+<span class="nc" id="L437">         s_logger.fine(message);</span>
+<span class="nc" id="L438">      }</span>
+   }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

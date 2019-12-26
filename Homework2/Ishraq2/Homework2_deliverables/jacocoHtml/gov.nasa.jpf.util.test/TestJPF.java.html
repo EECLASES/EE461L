@@ -1,0 +1,1182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TestJPF.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.test</a> &gt; <span class="el_source">TestJPF.java</span></div><h1>TestJPF.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util.test;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.Error;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFShell;
+import gov.nasa.jpf.Property;
+import gov.nasa.jpf.annotation.FilterField;
+import gov.nasa.jpf.tool.RunTest;
+import gov.nasa.jpf.util.DevNullPrintStream;
+import gov.nasa.jpf.util.TypeRef;
+import gov.nasa.jpf.util.JPFSiteUtils;
+import gov.nasa.jpf.util.Reflection;
+import gov.nasa.jpf.vm.ExceptionInfo;
+import gov.nasa.jpf.vm.NoUncaughtExceptionsProperty;
+import gov.nasa.jpf.vm.NotDeadlockedProperty;
+
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * base class for JPF unit tests. TestJPF mostly includes JPF invocations
+ * that check for occurrence or absence of certain execution results
+ *
+ * This class can be used in two modes:
+ *
+ * &lt;ol&gt;
+ * &lt;li&gt; wrapping a number of related tests for different SuTs into one class
+ * (suite) that calls the various JPF runners with complete argument lists
+ * (as in JPF.main(String[]args)) &lt;/li&gt;
+ *
+ * &lt;li&gt; derive a class from TestJPF that uses the &quot;..This&quot; methods, which in
+ * turn use reflection to automatically append the test class and method to the
+ * JPF.main argument list (based on the calling class / method names). Note that
+ * you have to obey naming conventions for this to work:
+ *
+ * &lt;li&gt; the SuT class has to be the same as the test class without &quot;Test&quot;, e.g.
+ * &quot;CastTest&quot; -&gt; &quot;Cast&quot; &lt;/li&gt;
+ *
+ * &lt;li&gt; the SuT method has to have the same name as the @Test method that
+ * invokes JPF, e.g. &quot;CastTest {.. @Test void testArrayCast() ..}&quot; -&gt;
+ * &quot;Cast {.. void testArrayCast()..} &lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+public abstract class TestJPF implements JPFShell  {
+<span class="fc" id="L69">  static PrintStream out = System.out;</span>
+
+  public static final String UNNAMED_PACKAGE = &quot;&quot;;
+<span class="fc" id="L72">  public static final String SAME_PACKAGE = null;</span>
+
+  //--- those are only used outside of JPF execution
+  @FilterField protected static boolean globalRunDirectly, globalShowConfig;
+
+  @FilterField protected static boolean runDirectly; // don't run test methods through JPF, invoke it directly
+  @FilterField protected static boolean stopOnFailure; // stop as soon as we encounter a failed test or error
+  @FilterField protected static boolean showConfig; // for debugging purposes
+  @FilterField protected static boolean showConfigSources; // for debugging purposes  
+  @FilterField protected static boolean hideSummary;
+  
+  @FilterField protected static boolean quiet; // don't show test output
+  
+  @FilterField protected String sutClassName;
+
+  static class GlobalArg {
+    String key;
+    String val;
+
+<span class="nc" id="L91">    GlobalArg (String k, String v){</span>
+<span class="nc" id="L92">      key = k;</span>
+<span class="nc" id="L93">      val = v;</span>
+<span class="nc" id="L94">    }</span>
+  }
+
+  // it seems wrong to pull globalArgs here instead of setting it from
+  // RunTest, but RunTest has to make sure TestJPF is loaded through the
+  // JPFClassLoader, i.e. cannot directly reference this class.
+
+  @FilterField static ArrayList&lt;GlobalArg&gt; globalArgs;
+
+  protected static ArrayList&lt;GlobalArg&gt; getGlobalArgs() {
+    // NOTE - this is only set if we execute tests from build.xml
+<span class="fc" id="L105">    Config globalConf = RunTest.getConfig();</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">    if (globalConf != null){</span>
+<span class="nc" id="L107">      ArrayList&lt;GlobalArg&gt; list = new ArrayList&lt;GlobalArg&gt;();</span>
+
+      //--- the &quot;test.&lt;key&gt;&quot; specs
+<span class="nc" id="L110">      String[] testKeys = globalConf.getKeysStartingWith(&quot;test.&quot;);</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">      if (testKeys.length &gt; 0){</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        for (String key : testKeys){</span>
+<span class="nc" id="L113">          String val = globalConf.getString(key);</span>
+          // &lt;2do&gt; this is a hack to avoid the problem of not being able to store
+          // empty/nil/null values in the global config (they are removed during global config init)
+<span class="nc bnc" id="L116" title="All 2 branches missed.">          if (val.equals(&quot;REMOVE&quot;)){</span>
+<span class="nc" id="L117">            val = null;</span>
+          }
+          
+<span class="nc" id="L120">          key = key.substring(5);</span>
+          
+<span class="nc" id="L122">          list.add(new GlobalArg(key,val));</span>
+        }
+      }
+
+<span class="nc" id="L126">      return list;</span>
+    }
+
+<span class="fc" id="L129">    return null;</span>
+  }
+
+  static {
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">    if (!isJPFRun()){</span>
+<span class="fc" id="L134">      globalArgs = getGlobalArgs();</span>
+    }
+<span class="fc" id="L136">  }</span>
+
+  //--- internal methods
+
+  public static void fail (String msg, String[] args, String cause){
+<span class="nc" id="L141">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc" id="L143">    sb.append(msg);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">    if (args != null){</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">      for (String s : args){</span>
+<span class="nc" id="L146">        sb.append(s);</span>
+<span class="nc" id="L147">        sb.append(' ');</span>
+      }
+    }
+
+<span class="nc bnc" id="L151" title="All 2 branches missed.">    if (cause != null){</span>
+<span class="nc" id="L152">      sb.append(':');</span>
+<span class="nc" id="L153">      sb.append(cause);</span>
+    }
+
+<span class="nc" id="L156">    fail(sb.toString());</span>
+<span class="nc" id="L157">  }</span>
+
+  public static void fail (){
+<span class="nc" id="L160">    throw new AssertionError();</span>
+  }
+
+  public static void fail (String msg){
+<span class="nc" id="L164">    throw new AssertionError(msg);</span>
+  }
+
+  public void report (String[] args) {
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">    if (!quiet){</span>
+<span class="fc" id="L169">      out.print(&quot;  running jpf with args:&quot;);</span>
+
+<span class="fc bfc" id="L171" title="All 2 branches covered.">      for (int i = 0; i &lt; args.length; i++) {</span>
+<span class="fc" id="L172">        out.print(' ');</span>
+<span class="fc" id="L173">        out.print(args[i]);</span>
+      }
+
+<span class="fc" id="L176">      out.println();</span>
+    }
+<span class="fc" id="L178">  }</span>
+
+  /**
+   * compute the SuT class name for a given JUnit test class: remove
+   * optionally ending &quot;..Test&quot;, and replace package (if specified)
+   * 
+   * @param testClassName the JUnit test class
+   * @param sutPackage optional SuT package name (without ending '.', null
+   * os SAME_PACKAGE means same package, &quot;&quot; or UNNAMED_PACKAGE means unnamed package)
+   * @return main class name of system under test
+   */
+  protected static String getSutClassName (String testClassName, String sutPackage){
+
+<span class="fc" id="L191">    String sutClassName = testClassName;</span>
+
+<span class="fc" id="L193">    int i = sutClassName.lastIndexOf('.');</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">    if (i &gt;= 0){  // testclass has a package</span>
+
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">      if (sutPackage == null){   // use same package</span>
+        // nothing to do
+<span class="nc bnc" id="L198" title="All 2 branches missed.">      } else if (sutPackage.length() &gt; 0) { // explicit sut package</span>
+<span class="nc" id="L199">        sutClassName = sutPackage + sutClassName.substring(i);</span>
+
+      } else { // unnamed sut package
+<span class="nc" id="L202">        sutClassName = sutClassName.substring(i+1);</span>
+      }
+
+    } else { // test class has no package
+<span class="pc bpc" id="L206" title="3 of 4 branches missed.">      if (sutPackage == null || sutPackage.length() == 0){   // use same package</span>
+        // nothing to do
+      } else { // explicit sut package
+<span class="nc" id="L209">        sutClassName = sutPackage + '.' + sutClassName;</span>
+      }
+    }
+
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">    if (sutClassName.endsWith(&quot;JPF&quot;)) {</span>
+<span class="nc" id="L214">      sutClassName = sutClassName.substring(0, sutClassName.length() - 3);</span>
+    }
+
+<span class="fc" id="L217">    return sutClassName;</span>
+  }
+
+  // we can't set the sutClassName only from main() called methods (like
+  // runTestsOfThisClass()) since main() doesn't get called if this is executed
+  // by Ant (via &lt;junit&gt; task)
+  // the default ctor is always executed
+<span class="fc" id="L224">  public TestJPF () {</span>
+<span class="fc" id="L225">    sutClassName = getSutClassName(getClass().getName(), SAME_PACKAGE);</span>
+<span class="fc" id="L226">  }</span>
+
+
+
+  //------ the API to be used by subclasses
+
+  /**
+   * to be used from default ctor of derived class if the SuT is in a different
+   * package
+   * @param sutClassName the qualified SuT class name to be checked by JPF
+   */
+<span class="nc" id="L237">  protected TestJPF (String sutClassName){</span>
+<span class="nc" id="L238">    this.sutClassName = sutClassName;</span>
+<span class="nc" id="L239">  }</span>
+
+  public static boolean isJPFRun () {
+<span class="fc" id="L242">    return false;</span>
+  }
+
+  public static boolean isJUnitRun() {
+    // intercepted by native peer if this runs under JPF
+<span class="nc" id="L247">    Throwable t = new Throwable();</span>
+<span class="nc" id="L248">    t.fillInStackTrace();</span>
+
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    for (StackTraceElement se : t.getStackTrace()){</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">      if (se.getClassName().startsWith(&quot;org.junit.&quot;)){</span>
+<span class="nc" id="L252">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L256">    return false;</span>
+  }
+
+  public static boolean isRunTestRun() {
+    // intercepted by native peer if this runs under JPF
+<span class="nc" id="L261">    Throwable t = new Throwable();</span>
+<span class="nc" id="L262">    t.fillInStackTrace();</span>
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">    for (StackTraceElement se : t.getStackTrace()){</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">      if (se.getClassName().equals(&quot;gov.nasa.jpf.tool.RunTest&quot;)){</span>
+<span class="nc" id="L266">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L270">    return false;</span>
+  }
+
+
+  protected static void getOptions (String[] args){
+<span class="fc" id="L275">    runDirectly = globalRunDirectly;</span>
+<span class="fc" id="L276">    showConfig = globalShowConfig;</span>
+
+    // hideSummary and stopOnFailure only make sense as global options anyways
+
+<span class="pc bpc" id="L280" title="1 of 2 branches missed.">    if (args != null){   </span>
+<span class="pc bfc" id="L281" title="All 2 branches covered.">      for (int i=0; i&lt;args.length; i++){</span>
+<span class="fc" id="L282">        String a = args[i];</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (a != null){</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">          if (a.length() &gt; 0){</span>
+<span class="pc bpc" id="L285" title="1 of 2 branches missed.">            if (a.charAt(0) == '-'){</span>
+<span class="nc" id="L286">              a = a.substring(1);</span>
+              
+<span class="nc bnc" id="L288" title="All 2 branches missed.">              if (a.equals(&quot;d&quot;)){</span>
+<span class="nc" id="L289">                runDirectly = true;</span>
+<span class="nc bnc" id="L290" title="All 4 branches missed.">              } else if (a.equals(&quot;s&quot;) || a.equals(&quot;show&quot;)){</span>
+<span class="nc" id="L291">                showConfig = true;</span>
+<span class="nc bnc" id="L292" title="All 4 branches missed.">              } else if (a.equals(&quot;l&quot;) || a.equals(&quot;log&quot;)){</span>
+<span class="nc" id="L293">                showConfigSources = true;</span>
+<span class="nc bnc" id="L294" title="All 4 branches missed.">              } else if (a.equals(&quot;q&quot;) || a.equals(&quot;quiet&quot;)){</span>
+<span class="nc" id="L295">                quiet = true;                </span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">              } else if (a.equals(&quot;x&quot;)){</span>
+<span class="nc" id="L297">                stopOnFailure = true;</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">              } else if (a.equals(&quot;h&quot;)){</span>
+<span class="nc" id="L299">                hideSummary = true;</span>
+              }
+<span class="nc" id="L301">              args[i] = null;  // set it consumed</span>
+
+            } else {
+              break; // done, this is a test method
+            }
+          }
+        }
+      }
+    }
+<span class="fc" id="L310">  }</span>
+
+  protected static boolean hasExplicitTestMethods(String[] args){
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    for (String a : args){</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">      if (a != null){</span>
+<span class="nc" id="L315">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L319">    return false;</span>
+  }
+
+  protected static List&lt;Method&gt; getMatchingMethods(Class&lt;? extends TestJPF&gt; testCls,
+          int setModifiers, int unsetModifiers, String[] annotationNames){
+<span class="nc" id="L324">    List&lt;Method&gt; list = new ArrayList&lt;Method&gt;();</span>
+    
+<span class="nc bnc" id="L326" title="All 2 branches missed.">    for (Method m : testCls.getMethods()){</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">      if (isMatchingMethod(m, setModifiers, unsetModifiers, annotationNames)){</span>
+<span class="nc" id="L328">        list.add(m);</span>
+      }
+    }
+    
+<span class="nc" id="L332">    return list;</span>
+  }
+
+  protected static boolean isMatchingMethod(Method m, int setModifiers, int unsetModifiers, String[] annotationNames) {
+<span class="nc" id="L336">    int mod = m.getModifiers();</span>
+<span class="nc bnc" id="L337" title="All 4 branches missed.">    if (((mod &amp; setModifiers) != 0) &amp;&amp; ((mod &amp; unsetModifiers) == 0)) {</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">      if (m.getParameterTypes().length == 0) {</span>
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if (annotationNames != null){</span>
+<span class="nc" id="L340">          Annotation[] annotations = m.getAnnotations();</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">          for (int i = 0; i &lt; annotations.length; i++) {</span>
+<span class="nc" id="L342">            String annotType = annotations[i].annotationType().getName();</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">            for (int j = 0; j &lt; annotationNames.length; j++) {</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">              if (annotType.equals(annotationNames[j])) {</span>
+<span class="nc" id="L345">                return true;</span>
+              }
+            }
+          }
+<span class="nc" id="L349">        } else {</span>
+<span class="nc" id="L350">          return true;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L355">    return false;</span>
+  }
+
+  protected static List&lt;Method&gt; getContextMethods(Class&lt;? extends TestJPF&gt; testCls, 
+                                                  int setModifiers, int unsetModifiers, String annotation){
+<span class="nc" id="L360">    String[] annotations = {annotation};</span>
+
+<span class="nc" id="L362">    List&lt;Method&gt; list = new ArrayList&lt;Method&gt;();</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">    for (Method m : testCls.getMethods()){</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">      if (isMatchingMethod(m, setModifiers, unsetModifiers, annotations)){</span>
+<span class="nc" id="L365">        list.add(m);</span>
+      }
+    }
+<span class="nc" id="L368">    return list;</span>
+  }
+
+  protected static List&lt;Method&gt; getBeforeMethods(Class&lt;? extends TestJPF&gt; testCls){
+<span class="nc" id="L372">    return getContextMethods(testCls, Modifier.PUBLIC, Modifier.STATIC, &quot;org.junit.Before&quot;);</span>
+  }
+
+  protected static List&lt;Method&gt; getAfterMethods(Class&lt;? extends TestJPF&gt; testCls){
+<span class="nc" id="L376">    return getContextMethods(testCls, Modifier.PUBLIC, Modifier.STATIC, &quot;org.junit.After&quot;);</span>
+  }
+
+  protected static List&lt;Method&gt; getBeforeClassMethods(Class&lt;? extends TestJPF&gt; testCls){
+<span class="nc" id="L380">    return getContextMethods(testCls, Modifier.PUBLIC | Modifier.STATIC, 0, &quot;org.junit.BeforeClass&quot;);</span>
+  }
+  
+  protected static List&lt;Method&gt; getAfterClassMethods(Class&lt;? extends TestJPF&gt; testCls){
+<span class="nc" id="L384">    return getContextMethods(testCls, Modifier.PUBLIC | Modifier.STATIC, 0, &quot;org.junit.AfterClass&quot;);</span>
+  }
+  
+  protected static boolean haveTestMethodSpecs( String[] args){
+<span class="nc bnc" id="L388" title="All 4 branches missed.">    if (args != null &amp;&amp; args.length &gt; 0){</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">      for (int i=0; i&lt;args.length; i++){</span>
+<span class="nc bnc" id="L390" title="All 2 branches missed.">        if (args[i] != null){</span>
+<span class="nc" id="L391">          return true;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L396">    return false;</span>
+  }
+  
+  protected static List&lt;Method&gt; getTestMethods(Class&lt;? extends TestJPF&gt; testCls, String[] args){
+<span class="nc" id="L400">    String[] testAnnotations = {&quot;org.junit.Test&quot;, &quot;org.testng.annotations.Test&quot;};</span>
+
+<span class="nc bnc" id="L402" title="All 2 branches missed.">    if (haveTestMethodSpecs( args)){ // test methods specified as arguments</span>
+<span class="nc" id="L403">      List&lt;Method&gt; list = new ArrayList&lt;Method&gt;();</span>
+
+<span class="nc bnc" id="L405" title="All 2 branches missed.">      for (String test : args){</span>
+<span class="nc bnc" id="L406" title="All 2 branches missed.">        if (test != null){</span>
+
+          try {
+<span class="nc" id="L409">            Method m = testCls.getMethod(test);</span>
+
+<span class="nc bnc" id="L411" title="All 2 branches missed.">            if (isMatchingMethod(m, Modifier.PUBLIC, Modifier.STATIC, null /*testAnnotations*/ )){</span>
+<span class="nc" id="L412">              list.add(m);</span>
+            } else {
+<span class="nc" id="L414">              throw new RuntimeException(&quot;test method must be @Test annotated public instance method without arguments: &quot; + test);</span>
+            }
+
+<span class="nc" id="L417">          } catch (NoSuchMethodException x) {</span>
+<span class="nc" id="L418">            throw new RuntimeException(&quot;method: &quot; + test</span>
+<span class="nc" id="L419">                    + &quot;() not in test class: &quot; + testCls.getName(), x);</span>
+<span class="nc" id="L420">          }</span>
+        }
+      }
+      
+<span class="nc" id="L424">      return list;</span>
+
+    } else { // no explicit test method specification, get all matches
+<span class="nc" id="L427">      return getMatchingMethods(testCls, Modifier.PUBLIC, Modifier.STATIC, testAnnotations);</span>
+    }
+  }
+
+
+  protected static void reportTestStart(String mthName){
+<span class="nc bnc" id="L433" title="All 2 branches missed.">    if (!quiet){</span>
+<span class="nc" id="L434">      System.out.println();</span>
+<span class="nc" id="L435">      System.out.print(&quot;......................................... testing &quot;);</span>
+<span class="nc" id="L436">      System.out.print(mthName);</span>
+<span class="nc" id="L437">      System.out.println(&quot;()&quot;);</span>
+    }
+<span class="nc" id="L439">  }</span>
+
+  protected static void reportTestInitialization(String mthName){
+<span class="nc bnc" id="L442" title="All 2 branches missed.">    if (!quiet){</span>
+<span class="nc" id="L443">      System.out.print(&quot;.... running test initialization: &quot;);</span>
+<span class="nc" id="L444">      System.out.print(mthName);</span>
+<span class="nc" id="L445">      System.out.println(&quot;()&quot;);</span>
+    }
+<span class="nc" id="L447">  }</span>
+
+  protected static void reportTestCleanup(String mthName){
+<span class="nc bnc" id="L450" title="All 2 branches missed.">    if (!quiet){</span>
+<span class="nc" id="L451">      System.out.print(&quot;.... running test cleanup: &quot;);</span>
+<span class="nc" id="L452">      System.out.print(mthName);</span>
+<span class="nc" id="L453">      System.out.println(&quot;()&quot;);</span>
+    }
+<span class="nc" id="L455">  }</span>
+
+  protected static void reportTestFinished(String msg){
+<span class="nc bnc" id="L458" title="All 2 branches missed.">    if (!quiet){</span>
+<span class="nc" id="L459">      System.out.print(&quot;......................................... &quot;);</span>
+<span class="nc" id="L460">      System.out.println(msg);</span>
+    }
+<span class="nc" id="L462">  }</span>
+
+  protected static void reportResults(String clsName, int nTests, int nFailures, int nErrors, List&lt;String&gt; results){
+<span class="nc" id="L465">    System.out.println();</span>
+<span class="nc" id="L466">    System.out.print(&quot;......................................... execution of testsuite: &quot; + clsName);</span>
+<span class="nc bnc" id="L467" title="All 4 branches missed.">    if (nFailures &gt; 0 || nErrors &gt; 0){</span>
+<span class="nc" id="L468">      System.out.println(&quot; FAILED&quot;);</span>
+<span class="nc bnc" id="L469" title="All 2 branches missed.">    } else if (nTests &gt; 0) {</span>
+<span class="nc" id="L470">      System.out.println(&quot; SUCCEEDED&quot;);</span>
+    } else {
+<span class="nc" id="L472">      System.out.println(&quot; OBSOLETE&quot;);</span>
+    }
+
+<span class="nc bnc" id="L475" title="All 2 branches missed.">    if (!quiet){</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">      if (results != null) {</span>
+<span class="nc" id="L477">        int i = 0;</span>
+<span class="nc bnc" id="L478" title="All 2 branches missed.">        for (String result : results) {</span>
+<span class="nc" id="L479">          System.out.print(&quot;.... [&quot; + ++i + &quot;] &quot;);</span>
+<span class="nc" id="L480">          System.out.println(result);</span>
+<span class="nc" id="L481">        }</span>
+      }
+    }
+
+<span class="nc" id="L485">    System.out.print(&quot;.........................................&quot;);</span>
+<span class="nc" id="L486">    System.out.println(&quot; tests: &quot; + nTests + &quot;, failures: &quot; + nFailures + &quot;, errors: &quot; + nErrors);</span>
+<span class="nc" id="L487">  }</span>
+
+  
+  static void invoke (Method m, Object testObject) throws IllegalAccessException, InvocationTargetException  {
+<span class="nc" id="L491">    PrintStream sysOut = null;</span>
+    
+    try {
+<span class="nc bnc" id="L494" title="All 2 branches missed.">      if (quiet){</span>
+<span class="nc" id="L495">        sysOut = System.out;</span>
+<span class="nc" id="L496">        System.setOut( new DevNullPrintStream());</span>
+      }
+      
+<span class="nc" id="L499">      m.invoke( testObject);</span>
+      
+    } finally {
+<span class="nc bnc" id="L502" title="All 2 branches missed.">      if (quiet){</span>
+<span class="nc" id="L503">        System.setOut( sysOut);</span>
+      }
+    }
+<span class="nc" id="L506">  }</span>
+  
+  /**
+   * this is the main test loop if this TestJPF instance is executed directly
+   * or called from RunTest. It is *not* called if this is executed from JUnit
+   */
+  public static void runTests (Class&lt;? extends TestJPF&gt; testCls, String... args){
+<span class="nc" id="L513">    int nTests = 0;</span>
+<span class="nc" id="L514">    int nFailures = 0;</span>
+<span class="nc" id="L515">    int nErrors = 0;</span>
+<span class="nc" id="L516">    String testMethodName = null;</span>
+<span class="nc" id="L517">    List&lt;String&gt; results = null;</span>
+
+<span class="nc" id="L519">    getOptions(args);</span>
+<span class="nc" id="L520">    globalRunDirectly = runDirectly;</span>
+<span class="nc" id="L521">    globalShowConfig = showConfig;</span>
+<span class="nc" id="L522">    boolean globalStopOnFailure = stopOnFailure;</span>
+
+    try {
+<span class="nc" id="L525">      List&lt;Method&gt; testMethods = getTestMethods(testCls, args);</span>
+<span class="nc" id="L526">      results = new ArrayList&lt;String&gt;(testMethods.size());</span>
+
+      // check if we have JUnit style housekeeping methods (initialization and
+      // cleanup should use the same mechanisms as JUnit)
+            
+<span class="nc" id="L531">      List&lt;Method&gt; beforeClassMethods = getBeforeClassMethods(testCls);</span>
+<span class="nc" id="L532">      List&lt;Method&gt; afterClassMethods = getAfterClassMethods(testCls);</span>
+            
+<span class="nc" id="L534">      List&lt;Method&gt; beforeMethods = getBeforeMethods(testCls);</span>
+<span class="nc" id="L535">      List&lt;Method&gt; afterMethods = getAfterMethods(testCls);</span>
+
+<span class="nc bnc" id="L537" title="All 2 branches missed.">      for (Method initMethod : beforeClassMethods) {</span>
+<span class="nc" id="L538">        reportTestInitialization(initMethod.getName());</span>
+<span class="nc" id="L539">        initMethod.invoke(null);</span>
+<span class="nc" id="L540">      }</span>
+            
+<span class="nc bnc" id="L542" title="All 2 branches missed.">      for (Method testMethod : testMethods) {</span>
+<span class="nc" id="L543">        testMethodName = testMethod.getName();</span>
+<span class="nc" id="L544">        String result = testMethodName;</span>
+        try {
+<span class="nc" id="L546">          Object testObject = testCls.newInstance();</span>
+
+<span class="nc" id="L548">          nTests++;</span>
+<span class="nc" id="L549">          reportTestStart( testMethodName);</span>
+
+          // run per test initialization methods
+<span class="nc bnc" id="L552" title="All 2 branches missed.">          for (Method initMethod : beforeMethods){</span>
+<span class="nc" id="L553">            reportTestInitialization( initMethod.getName());</span>
+<span class="nc" id="L554">            invoke( initMethod, testObject);</span>
+<span class="nc" id="L555">          }</span>
+
+          // now run the test method itself
+<span class="nc" id="L558">          invoke( testMethod, testObject);</span>
+<span class="nc" id="L559">          result += &quot;: Ok&quot;;</span>
+
+          // run per test initialization methods
+<span class="nc bnc" id="L562" title="All 2 branches missed.">          for (Method cleanupMethod : afterMethods){</span>
+<span class="nc" id="L563">            reportTestCleanup( cleanupMethod.getName());</span>
+<span class="nc" id="L564">            invoke( cleanupMethod, testObject);</span>
+<span class="nc" id="L565">          }</span>
+
+<span class="nc" id="L567">        } catch (InvocationTargetException x) {</span>
+<span class="nc" id="L568">          Throwable cause = x.getCause();</span>
+<span class="nc" id="L569">          cause.printStackTrace();</span>
+<span class="nc bnc" id="L570" title="All 2 branches missed.">          if (cause instanceof AssertionError) {</span>
+<span class="nc" id="L571">            nFailures++;</span>
+<span class="nc" id="L572">            reportTestFinished(&quot;test method failed with: &quot; + cause.getMessage());</span>
+<span class="nc" id="L573">            result += &quot;: Failed&quot;;</span>
+          } else {
+<span class="nc" id="L575">            nErrors++;</span>
+<span class="nc" id="L576">            reportTestFinished(&quot;unexpected error while executing test method: &quot; + cause.getMessage());</span>
+<span class="nc" id="L577">            result += &quot;: Error&quot;;</span>
+          }
+
+<span class="nc bnc" id="L580" title="All 2 branches missed.">          if (globalStopOnFailure){</span>
+<span class="nc" id="L581">            break;</span>
+          }
+<span class="nc" id="L583">        }</span>
+        
+<span class="nc" id="L585">        results.add(result);</span>
+<span class="nc" id="L586">        reportTestFinished(result);</span>
+<span class="nc" id="L587">      }</span>
+      
+<span class="nc bnc" id="L589" title="All 2 branches missed.">      for (Method cleanupMethod : afterClassMethods) {</span>
+<span class="nc" id="L590">        reportTestCleanup( cleanupMethod.getName());</span>
+<span class="nc" id="L591">        cleanupMethod.invoke(null);</span>
+<span class="nc" id="L592">      }</span>
+
+
+    //--- those exceptions are unexpected and represent unrecoverable test harness errors
+<span class="nc" id="L596">    } catch (InvocationTargetException x) {</span>
+<span class="nc" id="L597">      Throwable cause = x.getCause();</span>
+<span class="nc" id="L598">      cause.printStackTrace();</span>
+<span class="nc" id="L599">      nErrors++;</span>
+<span class="nc" id="L600">      reportTestFinished(&quot;TEST ERROR: @BeforeClass,@AfterClass method failed: &quot; + x.getMessage());</span>
+      
+<span class="nc" id="L602">    } catch (InstantiationException x) {</span>
+<span class="nc" id="L603">      nErrors++;</span>
+<span class="nc" id="L604">      reportTestFinished(&quot;TEST ERROR: cannot instantiate test class: &quot; + x.getMessage());</span>
+<span class="nc" id="L605">    } catch (IllegalAccessException x) { // can't happen if getTestMethods() worked</span>
+<span class="nc" id="L606">      nErrors++;</span>
+<span class="nc" id="L607">      reportTestFinished(&quot;TEST ERROR: default constructor or test method not public: &quot; + testMethodName);</span>
+<span class="nc" id="L608">    } catch (IllegalArgumentException x) {  // can't happen if getTestMethods() worked</span>
+<span class="nc" id="L609">      nErrors++;</span>
+<span class="nc" id="L610">      reportTestFinished(&quot;TEST ERROR: illegal argument for test method: &quot; + testMethodName);</span>
+<span class="nc" id="L611">    } catch (RuntimeException rx) {</span>
+<span class="nc" id="L612">      nErrors++;</span>
+<span class="nc" id="L613">      reportTestFinished(&quot;TEST ERROR: &quot; + rx.toString());</span>
+<span class="nc" id="L614">    }</span>
+
+<span class="nc bnc" id="L616" title="All 2 branches missed.">    if (!hideSummary){</span>
+<span class="nc" id="L617">      reportResults(testCls.getName(), nTests, nFailures, nErrors, results);</span>
+    }
+
+<span class="nc bnc" id="L620" title="All 4 branches missed.">    if (nErrors &gt; 0 || nFailures &gt; 0){</span>
+<span class="nc bnc" id="L621" title="All 2 branches missed.">      if (isRunTestRun()){</span>
+        // we need to reportTestFinished this test has failed
+<span class="nc" id="L623">        throw new RunTest.Failed();</span>
+      }
+    }
+<span class="nc" id="L626">  }</span>
+
+  static String getProperty(String key){
+    // intercepted by peer
+<span class="nc" id="L630">    return null;</span>
+  }
+  
+  /**
+   * this is the JPF entry method in case there is no main() in the test class
+   * 
+   * &lt;2do&gt; we should support test method arguments here
+   */
+  static void runTestMethod(String args[]) throws Throwable {
+<span class="nc" id="L639">    String testClsName = getProperty(&quot;target&quot;);</span>
+<span class="nc" id="L640">    String testMthName = getProperty(&quot;target.test_method&quot;);</span>
+    
+<span class="nc" id="L642">    Class&lt;?&gt; testCls = Class.forName(testClsName);</span>
+<span class="nc" id="L643">    Object target = testCls.newInstance();</span>
+    
+<span class="nc" id="L645">    Method method = testCls.getMethod(testMthName);</span>
+
+    try {
+<span class="nc" id="L648">      method.invoke(target);</span>
+<span class="nc" id="L649">    } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L650">      throw e.getCause(); </span>
+<span class="nc" id="L651">    }</span>
+<span class="nc" id="L652">  }</span>
+
+  /**
+   * NOTE: this needs to be called from the concrete test class, typically from
+   * its main() method, otherwise we don't know the name of the class we have
+   * to pass to JPF
+   */
+  protected static void runTestsOfThisClass (String[] testMethods){
+    // needs to be at the same stack level, so we can't delegate
+<span class="nc" id="L661">    Class&lt;? extends TestJPF&gt; testClass = Reflection.getCallerClass(TestJPF.class);</span>
+<span class="nc" id="L662">    runTests(testClass, testMethods);</span>
+<span class="nc" id="L663">  }</span>
+
+  /**
+   * needs to be broken up into two methods for cases that do additional
+   * JPF initialization (jpf-inspector)
+   *
+   * this is called from the various verifyX() methods (i.e. host VM) to
+   * start JPF, it is never executed under JPF
+   */
+  protected JPF createAndRunJPF (StackTraceElement testMethod, String[] args) {
+<span class="fc" id="L673">    JPF jpf = createJPF( testMethod, args);</span>
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">    if (jpf != null){</span>
+<span class="fc" id="L675">      jpf.run();</span>
+    }
+<span class="fc" id="L677">    return jpf;</span>
+  }
+
+  /**
+   * this is never executed under JPF
+   */
+  protected JPF createJPF (StackTraceElement testMethod, String[] args) {
+<span class="fc" id="L684">    JPF jpf = null;</span>
+    
+<span class="fc" id="L686">    Config conf = new Config(args);</span>
+
+    // --- add global args (if we run under RunTest)
+<span class="pc bpc" id="L689" title="1 of 2 branches missed.">    if (globalArgs != null) {</span>
+<span class="nc bnc" id="L690" title="All 2 branches missed.">      for (GlobalArg ga : globalArgs) {</span>
+<span class="nc" id="L691">        String key = ga.key;</span>
+<span class="nc" id="L692">        String val = ga.val;</span>
+<span class="nc bnc" id="L693" title="All 2 branches missed.">        if (val != null){</span>
+<span class="nc" id="L694">          conf.put(key, val);</span>
+        } else {
+<span class="nc" id="L696">          conf.remove(key);</span>
+        }
+<span class="nc" id="L698">      }</span>
+    }
+
+<span class="fc" id="L701">    setTestTargetKeys(conf, testMethod);</span>
+    
+    // --- initialize the classpath from &lt;projectId&gt;.test_classpath
+<span class="fc" id="L704">    String projectId = JPFSiteUtils.getCurrentProjectId();</span>
+<span class="pc bpc" id="L705" title="1 of 2 branches missed.">    if (projectId != null) {</span>
+<span class="fc" id="L706">      String testCp = conf.getString(projectId + &quot;.test_classpath&quot;);</span>
+<span class="pc bpc" id="L707" title="1 of 2 branches missed.">      if (testCp != null) {</span>
+<span class="fc" id="L708">        conf.append(&quot;classpath&quot;, testCp, &quot;,&quot;);</span>
+      }
+    }
+
+    // --- if we have any specific test property overrides, do so
+<span class="fc" id="L713">    conf.promotePropertyCategory(&quot;test.&quot;);</span>
+
+<span class="fc" id="L715">    getOptions(args);</span>
+
+<span class="pc bpc" id="L717" title="2 of 4 branches missed.">    if (showConfig || showConfigSources) {</span>
+<span class="nc" id="L718">      PrintWriter pw = new PrintWriter(System.out, true);</span>
+<span class="nc bnc" id="L719" title="All 2 branches missed.">      if (showConfigSources) {</span>
+<span class="nc" id="L720">        conf.printSources(pw);</span>
+      }
+
+<span class="nc bnc" id="L723" title="All 2 branches missed.">      if (showConfig) {</span>
+<span class="nc" id="L724">        conf.print(pw);</span>
+      }
+<span class="nc" id="L726">      pw.flush();</span>
+    }
+
+<span class="fc" id="L729">    jpf = new JPF(conf);</span>
+
+<span class="fc" id="L731">    return jpf;</span>
+  }
+
+  protected void setTestTargetKeys(Config conf, StackTraceElement testMethod) {
+<span class="fc" id="L735">    conf.put(&quot;target.entry&quot;, &quot;runTestMethod([Ljava/lang/String;)V&quot;);</span>
+<span class="fc" id="L736">    conf.put(&quot;target&quot;, testMethod.getClassName());</span>
+<span class="fc" id="L737">    conf.put(&quot;target.test_method&quot;, testMethod.getMethodName());</span>
+<span class="fc" id="L738">  }</span>
+
+  //--- the JPFShell interface
+  @Override
+  public void start(String[] testMethods){
+<span class="nc" id="L743">    Class&lt;? extends TestJPF&gt; testClass = getClass(); // this is an instance method</span>
+<span class="nc" id="L744">    runTests(testClass, testMethods);</span>
+<span class="nc" id="L745">  }</span>
+
+  protected StackTraceElement getCaller(){
+<span class="fc" id="L748">    StackTraceElement[] st = (new Throwable()).getStackTrace();</span>
+<span class="fc" id="L749">    return st[2];</span>
+  }
+  
+  protected StackTraceElement setTestMethod (String clsName, String mthName){
+<span class="fc" id="L753">    return new StackTraceElement( clsName, mthName, null, -1);</span>
+  }
+  
+  protected StackTraceElement setTestMethod (String mthName){
+<span class="fc" id="L757">    return new StackTraceElement( getClass().getName(), mthName, null, -1);</span>
+  }
+  
+  
+  //--- the JPF run test methods
+
+  /**
+   * run JPF expecting a AssertionError in the SuT
+   * @param args JPF main() arguments
+   */
+  protected JPF assertionError (StackTraceElement testMethod, String... args){
+<span class="fc" id="L768">    return unhandledException( testMethod, &quot;java.lang.AssertionError&quot;, null, args );    </span>
+  }
+  protected JPF assertionError (String... args) {
+<span class="nc" id="L771">    return unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, null, args );</span>
+  }
+  
+  protected JPF assertionErrorDetails (StackTraceElement testMethod, String details, String... args) {
+<span class="nc" id="L775">    return unhandledException( testMethod, &quot;java.lang.AssertionError&quot;, details, args );</span>
+  }
+  protected JPF assertionErrorDetails (String details, String... args) {
+<span class="nc" id="L778">    return unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, details, args );</span>
+  }
+  protected boolean verifyAssertionErrorDetails (String details, String... args){
+<span class="pc bpc" id="L781" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L782">      return true;</span>
+    } else {
+<span class="fc" id="L784">      unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, details, args);</span>
+<span class="fc" id="L785">      return false;</span>
+    }
+  }
+  protected boolean verifyAssertionError (String... args){
+<span class="pc bpc" id="L789" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L790">      return true;</span>
+    } else {
+<span class="fc" id="L792">      unhandledException( getCaller(), &quot;java.lang.AssertionError&quot;, null, args);</span>
+<span class="fc" id="L793">      return false;</span>
+    }
+  }
+
+  /**
+   * run JPF expecting no SuT property violations 
+   */
+  protected JPF noPropertyViolation (StackTraceElement testMethod, String... args) {
+<span class="fc" id="L801">    JPF jpf = null;</span>
+
+<span class="fc" id="L803">    report(args);</span>
+
+    try {
+<span class="fc" id="L806">      jpf = createAndRunJPF( testMethod, args);</span>
+<span class="nc" id="L807">    } catch (Throwable t) {</span>
+      // we get as much as one little hickup and we declare it failed
+<span class="nc" id="L809">      t.printStackTrace();</span>
+<span class="nc" id="L810">      fail(&quot;JPF internal exception executing: &quot;, args, t.toString());</span>
+<span class="nc" id="L811">      return jpf;</span>
+<span class="fc" id="L812">    }</span>
+
+<span class="fc" id="L814">    List&lt;Error&gt; errors = jpf.getSearchErrors();</span>
+<span class="pc bpc" id="L815" title="2 of 4 branches missed.">    if ((errors != null) &amp;&amp; (errors.size() &gt; 0)) {</span>
+<span class="nc" id="L816">      fail(&quot;JPF found unexpected errors: &quot; + (errors.get(0)).getDescription());</span>
+    }
+
+<span class="fc" id="L819">    return jpf;</span>
+  }
+  
+  protected JPF noPropertyViolation (String... args) {
+<span class="fc" id="L823">    return noPropertyViolation( getCaller(), args);    </span>
+  }
+  
+  protected boolean verifyNoPropertyViolation (String...args){
+<span class="pc bpc" id="L827" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L828">      return true;</span>
+    } else {
+<span class="fc" id="L830">      noPropertyViolation( getCaller(), args);</span>
+<span class="fc" id="L831">      return false;</span>
+    }
+  }
+
+  /**
+   * NOTE: this uses the exception class name because it might be an
+   * exception type that is only known to JPF (i.e. not in the native classpath)
+   *
+   * @param xClassName name of the exception base type that is expected
+   * @param details detail message of the expected exception
+   * @param args JPF arguments
+   */
+  protected JPF unhandledException (StackTraceElement testMethod, String xClassName, String details, String... args) {
+<span class="fc" id="L844">    JPF jpf = null;</span>
+
+<span class="fc" id="L846">    report(args);</span>
+
+    try {
+<span class="fc" id="L849">      jpf = createAndRunJPF(testMethod, args);</span>
+<span class="nc" id="L850">    } catch (Throwable t) {</span>
+<span class="nc" id="L851">      t.printStackTrace();</span>
+<span class="nc" id="L852">      fail(&quot;JPF internal exception executing: &quot;, args, t.toString());</span>
+<span class="nc" id="L853">      return jpf;</span>
+<span class="fc" id="L854">    }</span>
+
+<span class="fc" id="L856">    Error error = jpf.getLastError();</span>
+<span class="pc bpc" id="L857" title="1 of 2 branches missed.">    if (error != null){</span>
+<span class="fc" id="L858">      Property errorProperty = error.getProperty();</span>
+<span class="pc bpc" id="L859" title="1 of 2 branches missed.">      if (errorProperty instanceof NoUncaughtExceptionsProperty){ </span>
+<span class="fc" id="L860">        ExceptionInfo xi = ((NoUncaughtExceptionsProperty)errorProperty).getUncaughtExceptionInfo();</span>
+<span class="fc" id="L861">        String xn = xi.getExceptionClassname();</span>
+<span class="pc bpc" id="L862" title="1 of 2 branches missed.">        if (!xn.equals(xClassName)) {</span>
+<span class="nc" id="L863">          fail(&quot;JPF caught wrong exception: &quot; + xn + &quot;, expected: &quot; + xClassName);</span>
+        }
+
+<span class="fc bfc" id="L866" title="All 2 branches covered.">        if (details != null) {</span>
+<span class="fc" id="L867">          String gotDetails = xi.getDetails();</span>
+<span class="pc bpc" id="L868" title="1 of 2 branches missed.">          if (gotDetails == null) {</span>
+<span class="nc" id="L869">            fail(&quot;JPF caught the right exception but no details, expected: &quot; + details);</span>
+          } else {
+<span class="pc bpc" id="L871" title="1 of 2 branches missed.">            if (!gotDetails.endsWith(details)) {</span>
+<span class="nc" id="L872">              fail(&quot;JPF caught the right exception but the details were wrong: &quot; + gotDetails + &quot;, expected: &quot; + details);</span>
+            }
+          }
+        }
+<span class="fc" id="L876">      } else { // error not a NoUncaughtExceptionsProperty</span>
+<span class="nc" id="L877">        fail(&quot;JPF failed to catch exception executing: &quot;, args, (&quot;expected &quot; + xClassName));        </span>
+      }
+<span class="fc" id="L879">    } else { // no error</span>
+<span class="nc" id="L880">      fail(&quot;JPF failed to catch exception executing: &quot;, args, (&quot;expected &quot; + xClassName));</span>
+    }
+    
+<span class="fc" id="L883">    return jpf;</span>
+  }
+  
+  protected JPF unhandledException (String xClassName, String details, String... args) {
+<span class="nc" id="L887">    return unhandledException( getCaller(), xClassName, details, args);</span>
+  }
+
+    
+  protected boolean verifyUnhandledExceptionDetails (String xClassName, String details, String... args){
+<span class="pc bpc" id="L892" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L893">      return true;</span>
+    } else {
+<span class="fc" id="L895">      unhandledException( getCaller(), xClassName, details, args);</span>
+<span class="fc" id="L896">      return false;</span>
+    }
+  }
+  protected boolean verifyUnhandledException (String xClassName, String... args){
+<span class="pc bpc" id="L900" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L901">      return true;</span>
+    } else {
+<span class="fc" id="L903">      unhandledException( getCaller(), xClassName, null, args);</span>
+<span class="fc" id="L904">      return false;</span>
+    }
+  }
+
+
+  /**
+   * run JPF expecting it to throw an exception
+   * NOTE - xClassName needs to be the concrete exception, not a super class
+   * @param args JPF main() arguments
+   */
+  protected JPF jpfException (StackTraceElement testMethod, Class&lt;? extends Throwable&gt; xCls, String... args) {
+<span class="fc" id="L915">    JPF jpf = null;</span>
+<span class="fc" id="L916">    Throwable exception = null;</span>
+
+<span class="fc" id="L918">    report(args);</span>
+
+    try {
+<span class="nc" id="L921">      jpf = createAndRunJPF( testMethod, args);</span>
+<span class="fc" id="L922">    } catch (JPF.ExitException xx) {</span>
+<span class="fc" id="L923">      exception = xx.getCause();</span>
+<span class="fc" id="L924">    } catch (Throwable x) {</span>
+<span class="fc" id="L925">      exception = x;</span>
+<span class="pc" id="L926">    }</span>
+
+<span class="pc bpc" id="L928" title="1 of 2 branches missed.">    if (exception != null){</span>
+<span class="pc bpc" id="L929" title="1 of 2 branches missed.">      if (!xCls.isAssignableFrom(exception.getClass())){</span>
+<span class="nc" id="L930">        fail(&quot;JPF produced wrong exception: &quot; + exception + &quot;, expected: &quot; + xCls.getName());</span>
+      }
+    } else {
+<span class="nc" id="L933">      fail(&quot;JPF failed to produce exception, expected: &quot; + xCls.getName());</span>
+    }
+
+<span class="fc" id="L936">    return jpf;</span>
+  }
+  
+  protected JPF jpfException (Class&lt;? extends Throwable&gt; xCls, String... args) {
+<span class="nc" id="L940">    return jpfException( getCaller(), xCls, args);</span>
+  }  
+  
+  protected boolean verifyJPFException (TypeRef xClsSpec, String... args){
+<span class="pc bpc" id="L944" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L945">      return true;</span>
+
+    } else {
+      try {
+<span class="fc" id="L949">        Class&lt;? extends Throwable&gt; xCls = xClsSpec.asNativeSubclass(Throwable.class);</span>
+
+<span class="fc" id="L951">        jpfException( getCaller(), xCls, args);</span>
+
+<span class="nc" id="L953">      } catch (ClassCastException ccx){</span>
+<span class="nc" id="L954">        fail(&quot;not a property type: &quot; + xClsSpec);</span>
+<span class="nc" id="L955">      } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L956">        fail(&quot;property class not found: &quot; + xClsSpec);</span>
+<span class="pc" id="L957">      }</span>
+<span class="fc" id="L958">      return false;</span>
+    }
+  }
+
+  
+  
+  /**
+   * run JPF expecting a property violation of the SuT
+   * @param args JPF main() arguments
+   */
+  protected JPF propertyViolation (StackTraceElement testMethod, Class&lt;? extends Property&gt; propertyCls, String... args ){
+<span class="fc" id="L969">    JPF jpf = null;</span>
+
+<span class="fc" id="L971">    report(args);</span>
+
+    try {
+<span class="fc" id="L974">      jpf = createAndRunJPF( testMethod, args);</span>
+<span class="nc" id="L975">    } catch (Throwable t) {</span>
+<span class="nc" id="L976">      t.printStackTrace();</span>
+<span class="nc" id="L977">      fail(&quot;JPF internal exception executing: &quot;, args, t.toString());</span>
+<span class="fc" id="L978">    }</span>
+
+<span class="fc" id="L980">    List&lt;Error&gt; errors = jpf.getSearchErrors();</span>
+<span class="pc bpc" id="L981" title="1 of 2 branches missed.">    if (errors != null) {</span>
+<span class="pc bpc" id="L982" title="1 of 2 branches missed.">      for (Error e : errors) {</span>
+<span class="pc bpc" id="L983" title="1 of 2 branches missed.">        if (propertyCls == e.getProperty().getClass()) {</span>
+<span class="fc" id="L984">          return jpf; // success, we got the sucker</span>
+        }
+<span class="nc" id="L986">      }</span>
+    }
+
+<span class="nc" id="L989">    fail(&quot;JPF failed to detect error: &quot; + propertyCls.getName());</span>
+<span class="nc" id="L990">    return jpf;</span>
+  }
+  
+  protected JPF propertyViolation (Class&lt;? extends Property&gt; propertyCls, String... args ){
+<span class="nc" id="L994">    return propertyViolation( getCaller(), propertyCls, args);</span>
+  }
+  
+  protected boolean verifyPropertyViolation (TypeRef propertyClsSpec, String... args){
+<span class="pc bpc" id="L998" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L999">      return true;</span>
+
+    } else {
+      try {
+<span class="fc" id="L1003">        Class&lt;? extends Property&gt; propertyCls = propertyClsSpec.asNativeSubclass(Property.class);</span>
+<span class="fc" id="L1004">        propertyViolation( getCaller(), propertyCls, args);</span>
+
+<span class="nc" id="L1006">      } catch (ClassCastException ccx){</span>
+<span class="nc" id="L1007">        fail(&quot;not a property type: &quot; + propertyClsSpec);</span>
+<span class="nc" id="L1008">      } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L1009">        fail(&quot;property class not found: &quot; + propertyClsSpec);</span>
+<span class="pc" id="L1010">      }</span>
+<span class="fc" id="L1011">      return false;</span>
+    }
+  }
+
+
+  /**
+   * run JPF expecting a deadlock in the SuT
+   * @param args JPF main() arguments
+   */
+  protected JPF deadlock (String... args) {
+<span class="nc" id="L1021">    return propertyViolation( getCaller(), NotDeadlockedProperty.class, args );</span>
+  }
+  
+  protected boolean verifyDeadlock (String... args){
+<span class="pc bpc" id="L1025" title="1 of 2 branches missed.">    if (runDirectly) {</span>
+<span class="nc" id="L1026">      return true;</span>
+    } else {
+<span class="fc" id="L1028">      propertyViolation( getCaller(), NotDeadlockedProperty.class, args);</span>
+<span class="fc" id="L1029">      return false;</span>
+    }
+  }
+    
+  // these are the org.junit.Assert APIs, but we don't want org.junit to be
+  // required to run tests
+
+  public static void assertEquals(String msg, Object expected, Object actual){
+<span class="pc bpc" id="L1037" title="3 of 4 branches missed.">    if (expected == null &amp;&amp; actual == null) { </span>
+<span class="nc" id="L1038">      return; </span>
+    }
+    
+<span class="pc bpc" id="L1041" title="2 of 4 branches missed.">    if (expected != null &amp;&amp; expected.equals(actual)) {</span>
+<span class="fc" id="L1042">      return; </span>
+    }
+    
+<span class="nc" id="L1045">    fail(msg);</span>
+<span class="nc" id="L1046">  }</span>
+
+  public static void assertEquals(Object expected, Object actual){
+<span class="fc" id="L1049">    assertEquals(&quot;&quot;, expected, actual); </span>
+<span class="fc" id="L1050">  }</span>
+
+  public static void assertEquals(String msg, int expected, int actual){
+<span class="pc bpc" id="L1053" title="1 of 2 branches missed.">    if (expected != actual) {</span>
+<span class="nc" id="L1054">      fail(msg);</span>
+    }
+<span class="fc" id="L1056">  }</span>
+
+  public static void assertEquals(int expected, int actual){    
+<span class="fc" id="L1059">    assertEquals(&quot;expected != actual : &quot; + expected + &quot; != &quot; + actual, expected, actual);</span>
+<span class="fc" id="L1060">  }  </span>
+
+  public static void assertEquals(String msg, long expected, long actual){
+<span class="pc bpc" id="L1063" title="1 of 2 branches missed.">    if (expected != actual) {</span>
+<span class="nc" id="L1064">      fail(msg);</span>
+    }
+<span class="fc" id="L1066">  }</span>
+
+  public static void assertEquals(long expected, long actual){    
+<span class="fc" id="L1069">      assertEquals(&quot;expected != actual : &quot; + expected + &quot; != &quot; + actual,</span>
+                   expected, actual);
+<span class="fc" id="L1071">  }</span>
+
+  public static void assertEquals(double expected, double actual){
+<span class="nc bnc" id="L1074" title="All 2 branches missed.">    if (expected != actual){</span>
+<span class="nc" id="L1075">      fail(&quot;expected != actual : &quot; + expected + &quot; != &quot; + actual);</span>
+    }
+<span class="nc" id="L1077">  }</span>
+
+  public static void assertEquals(String msg, double expected, double actual){
+<span class="nc bnc" id="L1080" title="All 2 branches missed.">    if (expected != actual){</span>
+<span class="nc" id="L1081">      fail(msg);</span>
+    }
+<span class="nc" id="L1083">  }</span>
+
+  public static void assertEquals(float expected, float actual){
+<span class="nc bnc" id="L1086" title="All 2 branches missed.">    if (expected != actual){</span>
+<span class="nc" id="L1087">      fail(&quot;expected != actual : &quot; + expected + &quot; != &quot; + actual);</span>
+    }
+<span class="nc" id="L1089">  }</span>
+
+  public static void assertEquals(String msg, float expected, float actual){
+<span class="nc bnc" id="L1092" title="All 2 branches missed.">    if (expected != actual){</span>
+<span class="nc" id="L1093">      fail(msg);</span>
+    }
+<span class="nc" id="L1095">  }</span>
+
+  public static void assertEquals(String msg, double expected, double actual, double delta){
+<span class="pc bpc" id="L1098" title="1 of 2 branches missed.">    if (Math.abs(expected - actual) &gt; delta) {</span>
+<span class="nc" id="L1099">      fail(msg);</span>
+    }
+<span class="fc" id="L1101">  }</span>
+
+  public static void assertEquals(double expected, double actual, double delta){    
+<span class="fc" id="L1104">    assertEquals(&quot;Math.abs(expected - actual) &gt; delta : &quot; + &quot;Math.abs(&quot; + expected + &quot; - &quot; + actual + &quot;) &gt; &quot; + delta,</span>
+                 expected, actual, delta);
+<span class="fc" id="L1106">  }</span>
+
+  public static void assertEquals(String msg, float expected, float actual, float delta){
+<span class="nc bnc" id="L1109" title="All 2 branches missed.">    if (Math.abs(expected - actual) &gt; delta) {</span>
+<span class="nc" id="L1110">      fail(msg);</span>
+    }
+<span class="nc" id="L1112">  }</span>
+
+  public static void assertEquals(float expected, float actual, float delta){    
+<span class="nc" id="L1115">      assertEquals(&quot;Math.abs(expected - actual) &gt; delta : &quot; + &quot;Math.abs(&quot; + expected + &quot; - &quot; + actual + &quot;) &gt; &quot; + delta,</span>
+                   expected, actual, delta);
+<span class="nc" id="L1117">  }</span>
+
+  public static void assertArrayEquals(byte[] expected, byte[] actual){
+<span class="pc bpc" id="L1120" title="4 of 8 branches missed.">    if (((expected == null) != (actual == null)) ||</span>
+        (expected.length != actual.length)){
+<span class="nc" id="L1122">      fail(&quot;array sizes different&quot;);</span>
+    }
+
+<span class="fc bfc" id="L1125" title="All 2 branches covered.">    for (int i=0; i&lt;expected.length; i++){</span>
+<span class="pc bpc" id="L1126" title="1 of 2 branches missed.">      if (expected[i] != actual[i]){</span>
+<span class="nc" id="L1127">        fail(&quot;array element&quot; + i + &quot; different, expected &quot; + expected[i] + &quot;, actual &quot; + actual[i]);</span>
+      }
+    }
+<span class="fc" id="L1130">  }</span>
+
+  public static void assertNotNull(String msg, Object o) {
+<span class="pc bpc" id="L1133" title="1 of 2 branches missed.">    if (o == null) {</span>
+<span class="nc" id="L1134">      fail(msg);</span>
+    }
+<span class="fc" id="L1136">  }</span>
+
+  public static void assertNotNull(Object o){
+<span class="nc" id="L1139">    assertNotNull(&quot;o == null&quot;, o);</span>
+<span class="nc" id="L1140">  }</span>
+
+  public static void assertNull(String msg, Object o){
+<span class="pc bpc" id="L1143" title="1 of 2 branches missed.">    if (o != null) {</span>
+<span class="nc" id="L1144">      fail(msg);</span>
+    }
+<span class="fc" id="L1146">  }</span>
+
+  public static void assertNull(Object o){    
+<span class="fc" id="L1149">    assertNull(&quot;o != null&quot;, o);</span>
+<span class="fc" id="L1150">  }</span>
+
+  public static void assertSame(String msg, Object expected, Object actual){
+<span class="pc bpc" id="L1153" title="1 of 2 branches missed.">    if (expected != actual) {</span>
+<span class="nc" id="L1154">      fail(msg);</span>
+    }
+<span class="fc" id="L1156">  }</span>
+
+  public static void assertSame(Object expected, Object actual){
+<span class="fc" id="L1159">    assertSame(&quot;expected != actual : &quot; + expected + &quot; != &quot; + actual, expected, actual);</span>
+<span class="fc" id="L1160">  }</span>
+
+  public static void assertFalse (String msg, boolean cond){
+<span class="pc bpc" id="L1163" title="1 of 2 branches missed.">    if (cond) {</span>
+<span class="nc" id="L1164">      fail(msg);</span>
+    }
+<span class="fc" id="L1166">  }</span>
+
+  public static void assertFalse (boolean cond){
+<span class="fc" id="L1169">    assertFalse(&quot;&quot;, cond);</span>
+<span class="fc" id="L1170">  }</span>
+
+  public static void assertTrue (String msg, boolean cond){
+<span class="pc bpc" id="L1173" title="1 of 2 branches missed.">    if (!cond) {</span>
+<span class="nc" id="L1174">      fail(msg);</span>
+    }
+<span class="fc" id="L1176">  }</span>
+
+  public static void assertTrue (boolean cond){
+<span class="fc" id="L1179">    assertTrue(&quot;&quot;, cond);</span>
+<span class="fc" id="L1180">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

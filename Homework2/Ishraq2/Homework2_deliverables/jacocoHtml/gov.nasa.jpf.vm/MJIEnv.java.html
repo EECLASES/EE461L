@@ -1,0 +1,1872 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MJIEnv.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">MJIEnv.java</span></div><h1>MJIEnv.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.util.Date;
+import java.util.Locale;
+import java.util.Optional;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.JPFListener;
+import gov.nasa.jpf.vm.AnnotationInfo.EnumValue;
+import gov.nasa.jpf.vm.serialize.UnknownJPFClass;
+
+/**
+ * MJIEnv is the call environment for &quot;native&quot; methods, i.e. code that
+ * is executed by the VM, not by JPF.
+ *
+ * Since library abstractions are supposed to be &quot;user code&quot;, we provide
+ * this class as a (little bit of) insulation towards the inner JPF workings.
+ *
+ * There are two APIs exported by this class. The public methods (like
+ * getStringObject) don't expose JPF internals, and can be used from non
+ * gov.nasa.jpf.vm NativePeer classes). The rest is package-default
+ * and can be used to fiddle around as much as you like to (if you are in
+ * the ..jvm package)
+ *
+ * Note that MJIEnv objects are now per-ThreadInfo (i.e. the variable
+ * call envionment only includes MethodInfo and ClassInfo), which means
+ * MJIEnv can be used in non-native methods (but only carefully, if you
+ * don't need mi or ciMth).
+ *
+ * Note also this only works because we are not getting recursive in
+ * native method calls. In fact, the whole DirectCallStackFrame / repeatTopInstruction
+ * mechanism is there to turn logial recursion (JPF calling native, calling
+ * JPF, calling native,..) into iteration. Otherwise we couldn't backtrack
+ */
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">public class MJIEnv {</span>
+  public static final int NULL = 0;
+
+  VM                     vm;
+  ClassInfo               ciMth;  // the ClassInfo of the method this is called from
+  MethodInfo              mi;
+  ThreadInfo              ti;
+  Heap                    heap;
+
+  // those are various attributes set by the execution. note that
+  // NativePeer.invoke never gets recursive in a roundtrip (at least if
+  // used correctly, so we don't have to be afraid to overwrite any of these
+  boolean                 repeat;
+  Object                  returnAttr;
+
+  // exception to be thrown upon return from native method
+  // NOTE: this is only transient - don't expect this to be preserved over
+  // transition boundaries
+  int                     exceptionRef;
+
+<span class="fc" id="L74">  MJIEnv (ThreadInfo ti) {</span>
+<span class="fc" id="L75">    this.ti = ti;</span>
+
+    // set those here so that we don't have an inconsistent state between
+    // creation of an MJI object and the first native method call in
+    // this thread (where any access to the heap or sa would bomb)
+<span class="fc" id="L80">    vm = ti.getVM();</span>
+<span class="fc" id="L81">    heap = vm.getHeap();</span>
+
+<span class="fc" id="L83">    exceptionRef = NULL;</span>
+<span class="fc" id="L84">  }</span>
+
+  public VM getVM () {
+<span class="fc" id="L87">    return vm;</span>
+  }
+
+  public JPF getJPF () {
+<span class="nc" id="L91">    return vm.getJPF();</span>
+  }
+
+  public boolean isBigEndianPlatform(){
+<span class="nc" id="L95">    return vm.isBigEndianPlatform();</span>
+  }
+  
+  public void addListener (JPFListener l){
+<span class="nc" id="L99">    vm.getJPF().addListener(l);</span>
+<span class="nc" id="L100">  }</span>
+
+  public void removeListener (JPFListener l){
+<span class="nc" id="L103">    vm.getJPF().removeListener(l);</span>
+<span class="nc" id="L104">  }</span>
+
+  public Config getConfig() {
+<span class="fc" id="L107">    return vm.getConfig();</span>
+  }
+
+  public void gc() {
+<span class="fc" id="L111">    heap.gc();</span>
+<span class="fc" id="L112">  }</span>
+
+  public void forceState (){
+<span class="nc" id="L115">    getSystemState().setForced(true);</span>
+<span class="nc" id="L116">  }</span>
+
+  public void ignoreTransition () {
+<span class="nc" id="L119">    getSystemState().setIgnored(true);</span>
+<span class="nc" id="L120">  }</span>
+
+  public boolean isArray (int objref) {
+<span class="fc" id="L123">    return heap.get(objref).isArray();</span>
+  }
+
+  public int getArrayLength (int objref) {
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">    if (isArray(objref)) {</span>
+<span class="fc" id="L128">      return heap.get(objref).arrayLength();</span>
+    } else {
+<span class="nc" id="L130">      throwException(&quot;java.lang.IllegalArgumentException&quot;);</span>
+
+<span class="nc" id="L132">      return 0;</span>
+    }
+  }
+
+  public String getArrayType (int objref) {
+<span class="nc" id="L137">    return heap.get(objref).getArrayType();</span>
+  }
+
+  public int getArrayTypeSize (int objref) {
+<span class="nc" id="L141">    return Types.getTypeSize(getArrayType(objref));</span>
+  }
+
+  //=== various attribute accessors ============================================
+  // we only support some attribute APIs here, since MJIEnv adds little value
+  // other than hiding the ElementInfo access. If the client already has
+  // an ElementInfo reference, it should use that one to retrieve/enumerate/set
+  // attributes since this avoids repeated Heap.get() calls
+  
+  //--- object attributes
+
+  public boolean hasObjectAttr (int objref){
+<span class="nc bnc" id="L153" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L154">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L155">      return ei.hasObjectAttr();</span>
+    }
+
+<span class="nc" id="L158">    return false;</span>
+  }
+
+  public boolean hasObjectAttr (int objref, Class&lt;?&gt; type){
+<span class="nc bnc" id="L162" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L163">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L164">      return ei.hasObjectAttr(type);</span>
+    }
+
+<span class="nc" id="L167">    return false;    </span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */  
+  public Object getObjectAttr (int objref){
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L176">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L177">      return ei.getObjectAttr();</span>
+    }
+<span class="nc" id="L179">    return null;</span>
+  }
+  
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setObjectAttr (int objref, Object a){
+<span class="nc bnc" id="L189" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L190">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L191">      ei.setObjectAttr(a);</span>
+    }
+<span class="nc" id="L193">  }</span>
+
+  public void addObjectAttr (int objref, Object a){
+<span class="nc bnc" id="L196" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L197">      ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="nc" id="L198">      ei.addObjectAttr(a);</span>
+    }
+<span class="nc" id="L200">  }</span>
+
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getObjectAttr (int objref, Class&lt;T&gt; attrType){
+<span class="nc" id="L208">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L209">    return ei.getObjectAttr(attrType);</span>
+  }
+  
+  //--- field attributes
+
+  public boolean hasFieldAttr (int objref){
+<span class="nc bnc" id="L215" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L216">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L217">      return ei.hasFieldAttr();</span>
+    }
+
+<span class="nc" id="L220">    return false;</span>
+  }
+  
+  public boolean hasFieldAttr (int objref, Class&lt;?&gt; type){
+<span class="nc bnc" id="L224" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L225">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L226">      return ei.hasFieldAttr(type);</span>
+    }
+
+<span class="nc" id="L229">    return false;    </span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */  
+  public Object getFieldAttr (int objref, String fname){
+<span class="nc" id="L237">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L238">    FieldInfo fi = ei.getFieldInfo(fname);</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">    if (fi != null){</span>
+<span class="nc" id="L240">      return ei.getFieldAttr(fi);</span>
+    } else {
+<span class="nc" id="L242">      throw new JPFException(&quot;no such field: &quot; + fname);</span>
+    }
+  }
+  
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setFieldAttr (int objref, String fname, Object a){
+<span class="nc bnc" id="L253" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L254">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L255">      FieldInfo fi = ei.getFieldInfo(fname);</span>
+<span class="nc" id="L256">      ei.setFieldAttr(fi, a);</span>
+    }
+<span class="nc" id="L258">  }</span>
+
+  public void addFieldAttr (int objref, String fname, Object a){
+<span class="nc bnc" id="L261" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L262">      ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="nc" id="L263">      FieldInfo fi = ei.getFieldInfo(fname);</span>
+<span class="nc" id="L264">      ei.addFieldAttr(fi, a);</span>
+    }
+<span class="nc" id="L266">  }</span>
+
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getFieldAttr (int objref, String fname, Class&lt;T&gt; attrType){
+<span class="nc" id="L274">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L275">    FieldInfo fi = ei.getFieldInfo(fname);</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">    if (fi != null){</span>
+<span class="nc" id="L277">      return ei.getFieldAttr(fi, attrType);</span>
+    } else {
+<span class="nc" id="L279">      throw new JPFException(&quot;no such field: &quot; + fname);</span>
+    }
+  }
+
+  
+  //--- element attrs
+
+  public boolean hasElementdAttr (int objref){
+<span class="nc bnc" id="L287" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L288">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L289">      return ei.hasElementAttr();</span>
+    }
+
+<span class="nc" id="L292">    return false;</span>
+  }
+  
+  public boolean hasElementAttr (int objref, Class&lt;?&gt; type){
+<span class="nc bnc" id="L296" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L297">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L298">      return ei.hasElementAttr(type);</span>
+    }
+
+<span class="nc" id="L301">    return false;    </span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */  
+  public Object getElementAttr (int objref, int idx){
+<span class="nc" id="L309">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L310">    return ei.getElementAttr(idx);</span>
+  }
+  
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setElementAttr (int objref, int idx, Object a){
+<span class="nc" id="L320">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L321">    ei.setElementAttr(idx, a);</span>
+<span class="nc" id="L322">  }</span>
+
+  public void addElementAttr (int objref, int idx, Object a){
+<span class="nc" id="L325">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="nc" id="L326">    ei.addElementAttr(idx, a);</span>
+<span class="nc" id="L327">  }</span>
+
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getElementAttr (int objref, int idx, Class&lt;T&gt; attrType){
+<span class="nc bnc" id="L335" title="All 2 branches missed.">    if (objref != NULL){</span>
+<span class="nc" id="L336">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L337">      return ei.getElementAttr(idx, attrType);</span>
+    }
+<span class="nc" id="L339">    return null;</span>
+  }
+
+  
+
+  // == end attrs ==  
+
+
+  
+  // the instance field setters
+  public void setBooleanField (int objref, String fname, boolean val) {
+<span class="fc" id="L350">    heap.getModifiable(objref).setBooleanField(fname, val);</span>
+<span class="fc" id="L351">  }</span>
+
+  public boolean getBooleanField (int objref, String fname) {
+<span class="fc" id="L354">    return heap.get(objref).getBooleanField(fname);</span>
+  }
+
+  public boolean getBooleanArrayElement (int objref, int index) {
+<span class="fc" id="L358">    return heap.get(objref).getBooleanElement(index);</span>
+  }
+
+  public void setBooleanArrayElement (int objref, int index, boolean value) {
+<span class="fc" id="L362">    heap.getModifiable(objref).setBooleanElement(index, value);</span>
+<span class="fc" id="L363">  }</span>
+
+
+  public void setByteField (int objref, String fname, byte val) {
+<span class="fc" id="L367">    heap.getModifiable(objref).setByteField(fname, val);</span>
+<span class="fc" id="L368">  }</span>
+
+  public byte getByteField (int objref, String fname) {
+<span class="fc" id="L371">    return heap.get(objref).getByteField(fname);</span>
+  }
+
+  public void setCharField (int objref, String fname, char val) {
+<span class="fc" id="L375">    heap.getModifiable(objref).setCharField(fname, val);</span>
+<span class="fc" id="L376">  }</span>
+
+  public char getCharField (int objref, String fname) {
+<span class="fc" id="L379">    return heap.get(objref).getCharField(fname);</span>
+  }
+
+  public void setDoubleField (int objref, String fname, double val) {
+<span class="fc" id="L383">    heap.getModifiable(objref).setDoubleField(fname, val);</span>
+<span class="fc" id="L384">  }</span>
+
+  public double getDoubleField (int objref, String fname) {
+<span class="fc" id="L387">    return heap.get(objref).getDoubleField(fname);</span>
+  }
+
+  public void setFloatField (int objref, String fname, float val) {
+<span class="fc" id="L391">    heap.getModifiable(objref).setFloatField(fname, val);</span>
+<span class="fc" id="L392">  }</span>
+
+  public float getFloatField (int objref, String fname) {
+<span class="fc" id="L395">    return heap.get(objref).getFloatField(fname);</span>
+  }
+
+
+  public void setByteArrayElement (int objref, int index, byte value) {
+<span class="fc" id="L400">    heap.getModifiable(objref).setByteElement(index, value);</span>
+<span class="fc" id="L401">  }</span>
+
+  public byte getByteArrayElement (int objref, int index) {
+<span class="fc" id="L404">    return heap.get(objref).getByteElement(index);</span>
+  }
+
+  public void setCharArrayElement (int objref, int index, char value) {
+<span class="fc" id="L408">    heap.getModifiable(objref).setCharElement(index, value);</span>
+<span class="fc" id="L409">  }</span>
+
+  public void setIntArrayElement (int objref, int index, int value) {
+<span class="fc" id="L412">    heap.getModifiable(objref).setIntElement(index, value);</span>
+<span class="fc" id="L413">  }</span>
+
+  public void setShortArrayElement (int objref, int index, short value) {
+<span class="fc" id="L416">    heap.getModifiable(objref).setShortElement(index, value);</span>
+<span class="fc" id="L417">  }</span>
+
+  public void setFloatArrayElement (int objref, int index, float value) {
+<span class="fc" id="L420">    heap.getModifiable(objref).setFloatElement(index, value);</span>
+<span class="fc" id="L421">  }</span>
+
+  public float getFloatArrayElement (int objref, int index) {
+<span class="fc" id="L424">    return heap.get(objref).getFloatElement(index);</span>
+  }
+
+  public double getDoubleArrayElement (int objref, int index) {
+<span class="fc" id="L428">    return heap.get(objref).getDoubleElement(index);</span>
+  }
+  public void setDoubleArrayElement (int objref, int index, double value) {
+<span class="fc" id="L431">    heap.getModifiable(objref).setDoubleElement(index, value);</span>
+<span class="fc" id="L432">  }</span>
+
+  public short getShortArrayElement (int objref, int index) {
+<span class="fc" id="L435">    return heap.get(objref).getShortElement(index);</span>
+  }
+
+  public int getIntArrayElement (int objref, int index) {
+<span class="fc" id="L439">    return heap.get(objref).getIntElement(index);</span>
+  }
+
+  public char getCharArrayElement (int objref, int index) {
+<span class="fc" id="L443">    return heap.get(objref).getCharElement(index);</span>
+  }
+
+  public void setIntField (int objref, String fname, int val) {
+<span class="fc" id="L447">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="fc" id="L448">    ei.setIntField(fname, val);</span>
+<span class="fc" id="L449">  }</span>
+
+  // these two are the workhorses
+  public void setDeclaredIntField (int objref, String refType, String fname, int val) {
+<span class="nc" id="L453">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="nc" id="L454">    ei.setDeclaredIntField(fname, refType, val);</span>
+<span class="nc" id="L455">  }</span>
+
+  public int getIntField (int objref, String fname) {
+<span class="fc" id="L458">    ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L459">    return ei.getIntField(fname);</span>
+  }
+
+  public int getDeclaredIntField (int objref, String refType, String fname) {
+<span class="nc" id="L463">    ElementInfo ei = heap.get(objref);</span>
+<span class="nc" id="L464">    return ei.getDeclaredIntField(fname, refType);</span>
+  }
+
+  // these two are the workhorses
+  public void setDeclaredReferenceField (int objref, String refType, String fname, int val) {
+<span class="nc" id="L469">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="nc" id="L470">    ei.setDeclaredReferenceField(fname, refType, val);</span>
+<span class="nc" id="L471">  }</span>
+
+  public void setReferenceField (int objref, String fname, int ref) {
+<span class="fc" id="L474">     ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="fc" id="L475">     ei.setReferenceField(fname, ref);</span>
+<span class="fc" id="L476">  }</span>
+
+  public int getReferenceField (int objref, String fname) {
+<span class="fc" id="L479">    ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L480">    return ei.getReferenceField(fname);</span>
+  }
+
+  // we need this in case of a masked field
+  public int getReferenceField (int objref, FieldInfo fi) {
+<span class="fc" id="L485">    ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L486">    return ei.getReferenceField(fi);</span>
+  }
+
+  public String getStringField (int objref, String fname){
+<span class="fc" id="L490">    int ref = getReferenceField(objref, fname);</span>
+<span class="fc" id="L491">    return getStringObject(ref);</span>
+  }
+
+  // the box object accessors (should probably test for the appropriate class)
+  public boolean getBooleanValue (int objref) {
+<span class="nc" id="L496">    return getBooleanField(objref, &quot;value&quot;);</span>
+  }
+
+  public byte getByteValue (int objref) {
+<span class="nc" id="L500">    return getByteField(objref, &quot;value&quot;);</span>
+  }
+
+  public char getCharValue (int objref) {
+<span class="nc" id="L504">    return getCharField(objref, &quot;value&quot;);</span>
+  }
+
+  public short getShortValue (int objref) {
+<span class="nc" id="L508">    return getShortField(objref, &quot;value&quot;);</span>
+  }
+
+  public int getIntValue (int objref) {
+<span class="nc" id="L512">    return getIntField(objref, &quot;value&quot;);</span>
+  }
+
+  public long getLongValue (int objref) {
+<span class="nc" id="L516">    return getLongField(objref, &quot;value&quot;);</span>
+  }
+
+  public float getFloatValue (int objref) {
+<span class="nc" id="L520">    return getFloatField(objref, &quot;value&quot;);</span>
+  }
+
+  public double getDoubleValue (int objref) {
+<span class="nc" id="L524">    return getDoubleField(objref, &quot;value&quot;);</span>
+  }
+
+
+  public void setLongArrayElement (int objref, int index, long value) {
+<span class="fc" id="L529">    heap.getModifiable(objref).setLongElement(index, value);</span>
+<span class="fc" id="L530">  }</span>
+
+  public long getLongArrayElement (int objref, int index) {
+<span class="fc" id="L533">    return heap.get(objref).getLongElement(index);</span>
+  }
+
+  public void setLongField (int objref, String fname, long val) {
+<span class="fc" id="L537">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="fc" id="L538">    ei.setLongField(fname, val);</span>
+<span class="fc" id="L539">  }</span>
+
+//  public void setLongField (int objref, String refType, String fname, long val) {
+//    ElementInfo ei = heap.get(objref);
+//    ei.setLongField(fname, refType, val);
+//  }
+
+  public long getLongField (int objref, String fname) {
+<span class="fc" id="L547">    ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L548">    return ei.getLongField(fname);</span>
+  }
+
+//  public long getLongField (int objref, String refType, String fname) {
+//    ElementInfo ei = heap.get(objref);
+//    return ei.getLongField(fname, refType);
+//  }
+
+  public void setReferenceArrayElement (int objref, int index, int eRef) {
+<span class="fc" id="L557">    heap.getModifiable(objref).setReferenceElement(index, eRef);</span>
+<span class="fc" id="L558">  }</span>
+
+  public int getReferenceArrayElement (int objref, int index) {
+<span class="fc" id="L561">    return heap.get(objref).getReferenceElement(index);</span>
+  }
+
+  public void setShortField (int objref, String fname, short val) {
+<span class="fc" id="L565">    ElementInfo ei = heap.getModifiable(objref);</span>
+<span class="fc" id="L566">    ei.setShortField(fname, val);</span>
+<span class="fc" id="L567">  }</span>
+
+  public short getShortField (int objref, String fname) {
+<span class="fc" id="L570">    ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L571">    return ei.getShortField(fname);</span>
+  }
+
+  /**
+   * NOTE - this doesn't support element type checks or overlapping in-array copy 
+   */
+  public void arrayCopy (int srcRef, int srcPos, int dstRef, int dstPos, int len){
+<span class="nc" id="L578">    ElementInfo eiSrc = heap.get(srcRef);</span>
+<span class="nc" id="L579">    ElementInfo eiDst = heap.get(dstRef);</span>
+    
+<span class="nc" id="L581">    eiDst.arrayCopy(eiSrc, srcPos, dstPos, len);</span>
+<span class="nc" id="L582">  }</span>
+  
+  public String getTypeName (int objref) {
+<span class="nc" id="L585">    return heap.get(objref).getType();</span>
+  }
+
+  public boolean isInstanceOf (int objref, String clsName) {
+<span class="fc" id="L589">    ClassInfo ci = getClassInfo(objref);</span>
+<span class="fc" id="L590">    return ci.isInstanceOf(clsName);</span>
+  }
+  
+  public boolean isInstanceOf (int objref, ClassInfo cls) {
+<span class="nc" id="L594">    ClassInfo ci = getClassInfo(objref);</span>
+<span class="nc" id="L595">    return ci.isInstanceOf(cls);</span>
+  }
+
+  //--- the static field accessors
+  // NOTE - it is the callers responsibility to ensure the class is
+  // properly initialized, since calling &lt;clinit&gt; requires a roundtrip
+  // (i.e. cannot be done synchronously from one of the following methods)
+  
+  // &lt;2do&gt; this uses the current system CL, we should probably use an explicit CL argument
+  
+  public void setStaticBooleanField (String clsName, String fname,
+                                     boolean value) {
+<span class="nc" id="L607">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L608">    ci.getStaticElementInfo().setBooleanField(fname, value);</span>
+<span class="nc" id="L609">  }</span>
+  public void setStaticBooleanField (int clsObjRef, String fname, boolean val) {
+<span class="nc" id="L611">    ElementInfo cei = getStaticElementInfo(clsObjRef);</span>
+<span class="nc" id="L612">    cei.setBooleanField(fname, val);</span>
+<span class="nc" id="L613">  }</span>
+  
+  public boolean getStaticBooleanField (String clsName, String fname) {
+<span class="nc" id="L616">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L617">    return ci.getStaticElementInfo().getBooleanField(fname);</span>
+  }
+
+  public void setStaticByteField (String clsName, String fname, byte value) {
+<span class="fc" id="L621">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="fc" id="L622">    ci.getStaticElementInfo().setByteField(fname, value);  }</span>
+
+  public byte getStaticByteField (String clsName, String fname) {
+<span class="nc" id="L625">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L626">    return ci.getStaticElementInfo().getByteField(fname);</span>
+  }
+
+  public void setStaticCharField (String clsName, String fname, char value) {
+<span class="fc" id="L630">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="fc" id="L631">    ci.getStaticElementInfo().setCharField(fname, value);  }</span>
+
+  public char getStaticCharField (String clsName, String fname) {
+<span class="nc" id="L634">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L635">    return ci.getStaticElementInfo().getCharField(fname);</span>
+  }
+
+  public void setStaticDoubleField (String clsName, String fname, double val) {
+<span class="nc" id="L639">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L640">    ci.getStaticElementInfo().setDoubleField(fname, val);</span>
+<span class="nc" id="L641">  }</span>
+
+  public double getStaticDoubleField (String clsName, String fname) {
+<span class="nc" id="L644">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L645">    return ci.getStaticElementInfo().getDoubleField(fname);</span>
+  }
+  
+  public double getStaticDoubleField (int clsObjRef, String fname) {
+<span class="nc" id="L649">    ElementInfo cei = getStaticElementInfo(clsObjRef);</span>
+<span class="nc" id="L650">    return cei.getDoubleField(fname);</span>
+  }
+
+  public double getStaticDoubleField (ClassInfo ci, String fname) {
+<span class="nc" id="L654">    ElementInfo ei = ci.getStaticElementInfo();</span>
+<span class="nc" id="L655">    return ei.getDoubleField(fname);</span>
+  }
+  
+  public void setStaticFloatField (String clsName, String fname, float val) {
+<span class="nc" id="L659">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L660">    ci.getStaticElementInfo().setFloatField(fname, val);</span>
+<span class="nc" id="L661">  }</span>
+
+  public float getStaticFloatField (String clsName, String fname) {
+<span class="nc" id="L664">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L665">    return ci.getStaticElementInfo().getFloatField(fname);</span>
+  }
+
+  public void setStaticIntField (String clsName, String fname, int val) {
+<span class="fc" id="L669">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="fc" id="L670">    ci.getStaticElementInfo().setIntField(fname, val);</span>
+<span class="fc" id="L671">  }</span>
+
+  public void setStaticIntField (int clsObjRef, String fname, int val) {
+<span class="fc" id="L674">    ElementInfo cei = getStaticElementInfo(clsObjRef);</span>
+<span class="fc" id="L675">    cei.setIntField(fname, val);</span>
+<span class="fc" id="L676">  }</span>
+
+  public int getStaticIntField (String clsName, String fname) {
+<span class="nc" id="L679">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L680">    return ci.getStaticElementInfo().getIntField(fname);</span>
+  }
+  
+  public int getStaticIntField (int clsObjRef, String fname) {
+<span class="nc" id="L684">    ElementInfo cei = getStaticElementInfo(clsObjRef);</span>
+<span class="nc" id="L685">    return cei.getIntField(fname);</span>
+  }
+
+  public int getStaticIntField (ClassInfo ci, String fname) {
+<span class="nc" id="L689">    ElementInfo ei = ci.getStaticElementInfo();</span>
+<span class="nc" id="L690">    return ei.getIntField(fname);</span>
+  }
+
+  public void setStaticLongField (String clsName, String fname, long value) {
+<span class="nc" id="L694">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L695">    ci.getStaticElementInfo().setLongField(fname, value);</span>
+<span class="nc" id="L696">  }</span>
+
+  public void setStaticLongField (int clsObjRef, String fname, long val) {
+<span class="nc" id="L699">    ElementInfo cei = getModifiableStaticElementInfo(clsObjRef);</span>
+<span class="nc" id="L700">    cei.setLongField(fname, val);</span>
+<span class="nc" id="L701">  }</span>
+
+  public long getStaticLongField (int clsRef, String fname) {
+<span class="nc" id="L704">    ClassInfo ci = getReferredClassInfo(clsRef);</span>
+<span class="nc" id="L705">    return getStaticLongField(ci, fname);</span>
+  }
+
+  public long getStaticLongField (String clsName, String fname) {
+<span class="nc" id="L709">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L710">    return getStaticLongField(ci, fname);</span>
+  }
+
+  public long getStaticLongField (ClassInfo ci, String fname){
+<span class="nc" id="L714">    ElementInfo ei = ci.getStaticElementInfo();</span>
+<span class="nc" id="L715">    return ei.getLongField(fname);</span>
+  }
+
+  public void setStaticReferenceField (String clsName, String fname, int objref) {
+<span class="fc" id="L719">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+
+    // &lt;2do&gt; - we should REALLY check for type compatibility here
+<span class="fc" id="L722">    ci.getModifiableStaticElementInfo().setReferenceField(fname, objref);</span>
+<span class="fc" id="L723">  }</span>
+
+  public void setStaticReferenceField (int clsObjRef, String fname, int objref) {
+<span class="nc" id="L726">    ElementInfo cei = getModifiableStaticElementInfo(clsObjRef);</span>
+
+    // &lt;2do&gt; - we should REALLY check for type compatibility here
+<span class="nc" id="L729">    cei.setReferenceField(fname, objref);</span>
+<span class="nc" id="L730">  }</span>
+
+  public int getStaticReferenceField (String clsName, String fname) {
+<span class="fc" id="L733">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="fc" id="L734">    return ci.getStaticElementInfo().getReferenceField(fname);</span>
+  }
+
+  public int getStaticReferenceField (int clsObjRef, String fname) {
+<span class="nc" id="L738">    ElementInfo cei = getStaticElementInfo(clsObjRef);</span>
+<span class="nc" id="L739">    return cei.getReferenceField(fname);</span>
+  }
+
+  public int getStaticReferenceField (ClassInfo ci, String fname){
+<span class="nc" id="L743">    return ci.getStaticElementInfo().getReferenceField(fname);</span>
+  }
+
+  public short getStaticShortField (String clsName, String fname) {
+<span class="nc" id="L747">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="nc" id="L748">    return ci.getStaticElementInfo().getShortField(fname);</span>
+  }
+
+  public char[] getStringChars (int objRef){
+<span class="pc bpc" id="L752" title="1 of 2 branches missed.">    if (objRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L753">      ElementInfo ei = getElementInfo(objRef);</span>
+<span class="fc" id="L754">      return ei.getStringChars();</span>
+      
+    } else {
+<span class="nc" id="L757">      return null;</span>
+    }
+    
+  }
+  
+  /**
+   * turn JPF String object into a VM String object
+   * (this is a method available for non gov..jvm NativePeer classes)
+   */
+  public String getStringObject (int objRef) {
+<span class="fc bfc" id="L767" title="All 2 branches covered.">    if (objRef != MJIEnv.NULL) {</span>
+<span class="fc" id="L768">      ElementInfo ei = getElementInfo(objRef);</span>
+<span class="fc" id="L769">      return ei.asString();</span>
+      
+    } else {
+<span class="fc" id="L772">      return null;</span>
+    }
+  }
+
+  public String[] getStringArrayObject (int aRef){
+<span class="fc" id="L777">    String[] sa = null;</span>
+     
+<span class="pc bpc" id="L779" title="1 of 2 branches missed.">    if (aRef == NULL) return sa;</span>
+
+<span class="fc" id="L781">    ClassInfo aci = getClassInfo(aRef);</span>
+<span class="pc bpc" id="L782" title="1 of 2 branches missed.">    if (aci.isArray()){</span>
+<span class="fc" id="L783">      ClassInfo eci = aci.getComponentClassInfo();</span>
+<span class="pc bpc" id="L784" title="1 of 2 branches missed.">      if (eci.getName().equals(&quot;java.lang.String&quot;)){</span>
+<span class="fc" id="L785">        int len = getArrayLength(aRef);</span>
+<span class="fc" id="L786">        sa = new String[len];</span>
+
+<span class="fc bfc" id="L788" title="All 2 branches covered.">        for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L789">          int sRef = getReferenceArrayElement(aRef,i);</span>
+<span class="fc" id="L790">          sa[i] = getStringObject(sRef);</span>
+        }
+
+<span class="fc" id="L793">        return sa;</span>
+        
+      } else {
+<span class="nc" id="L796">        throw new IllegalArgumentException(&quot;not a String[] array: &quot; + aci.getName());</span>
+      }
+    } else {
+<span class="nc" id="L799">      throw new IllegalArgumentException(&quot;not an array reference: &quot; + aci.getName());</span>
+    }
+  }
+  
+  public Date getDateObject (int objref) {
+<span class="pc bpc" id="L804" title="1 of 2 branches missed.">    if (objref != MJIEnv.NULL) {</span>
+<span class="fc" id="L805">      ElementInfo ei = getElementInfo(objref);</span>
+<span class="pc bpc" id="L806" title="1 of 2 branches missed.">      if (ei.getClassInfo().getName().equals(&quot;java.util.Date&quot;)) {</span>
+        // &lt;2do&gt; this is not complete yet
+<span class="fc" id="L808">        long fastTime = ei.getLongField(&quot;fastTime&quot;);</span>
+<span class="fc" id="L809">        Date d = new Date(fastTime);</span>
+<span class="fc" id="L810">        return d;</span>
+      } else {
+<span class="nc" id="L812">        throw new JPFException(&quot;not a Date object reference: &quot; + ei);</span>
+      }
+    } else {
+<span class="nc" id="L815">      return null;</span>
+    }
+    
+  }
+
+  public Object[] getArgumentArray (int argRef) {
+<span class="nc" id="L821">    Object[] args = null;</span>
+<span class="nc bnc" id="L822" title="All 2 branches missed.">    if (argRef == NULL) return args;</span>
+
+<span class="nc" id="L824">    int nArgs = getArrayLength(argRef);</span>
+<span class="nc" id="L825">    args = new Object[nArgs];</span>
+
+<span class="nc bnc" id="L827" title="All 2 branches missed.">    for (int i=0; i&lt;nArgs; i++){</span>
+<span class="nc" id="L828">      int aref = getReferenceArrayElement(argRef,i);</span>
+<span class="nc" id="L829">      ClassInfo ci = getClassInfo(aref);</span>
+<span class="nc" id="L830">      String clsName = ci.getName();</span>
+<span class="nc bnc" id="L831" title="All 2 branches missed.">      if (clsName.equals(&quot;java.lang.Boolean&quot;)){</span>
+<span class="nc" id="L832">        args[i] = Boolean.valueOf(getBooleanField(aref,&quot;value&quot;));</span>
+<span class="nc bnc" id="L833" title="All 2 branches missed.">      } else if (clsName.equals(&quot;java.lang.Integer&quot;)){</span>
+<span class="nc" id="L834">        args[i] = Integer.valueOf(getIntField(aref,&quot;value&quot;));</span>
+<span class="nc bnc" id="L835" title="All 2 branches missed.">      } else if (clsName.equals(&quot;java.lang.Double&quot;)){</span>
+<span class="nc" id="L836">        args[i] = Double.valueOf(getDoubleField(aref,&quot;value&quot;));</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">      } else if (clsName.equals(&quot;java.lang.String&quot;)){</span>
+<span class="nc" id="L838">        args[i] = getStringObject(aref);</span>
+      }
+    }
+
+<span class="nc" id="L842">    return args;</span>
+  }
+
+  public Boolean getBooleanObject (int objref){
+<span class="fc" id="L846">    return Boolean.valueOf(getBooleanField(objref, &quot;value&quot;));</span>
+  }
+
+  public Byte getByteObject (int objref){
+<span class="nc" id="L850">    return new Byte(getByteField(objref, &quot;value&quot;));</span>
+  }
+
+  public Character getCharObject (int objref){
+<span class="nc" id="L854">    return new Character(getCharField(objref, &quot;value&quot;));</span>
+  }
+
+  public Short getShortObject (int objref){
+<span class="nc" id="L858">    return new Short(getShortField(objref, &quot;value&quot;));</span>
+  }
+
+  public Integer getIntegerObject (int objref){
+<span class="fc" id="L862">    return new Integer(getIntField(objref, &quot;value&quot;));</span>
+  }
+
+  public Long getLongObject (int objref){
+<span class="fc" id="L866">    return new Long(getLongField(objref, &quot;value&quot;));</span>
+  }
+
+  public Float getFloatObject (int objref){
+<span class="nc" id="L870">    return new Float(getFloatField(objref, &quot;value&quot;));</span>
+  }
+
+  public Double getDoubleObject (int objref){
+<span class="fc" id="L874">    return new Double(getDoubleField(objref, &quot;value&quot;));</span>
+  }
+
+  // danger - the returned arrays could be used to modify contents of stored objects
+
+  public byte[] getByteArrayObject (int objref) {
+<span class="fc" id="L880">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc" id="L881">    byte[] a = ei.asByteArray();</span>
+
+<span class="fc" id="L883">    return a;</span>
+  }
+
+  public char[] getCharArrayObject (int objref) {
+<span class="fc" id="L887">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc" id="L888">    char[] a = ei.asCharArray();</span>
+
+<span class="fc" id="L890">    return a;</span>
+  }
+
+  public short[] getShortArrayObject (int objref) {
+<span class="nc" id="L894">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="nc" id="L895">    short[] a = ei.asShortArray();</span>
+
+<span class="nc" id="L897">    return a;</span>
+  }
+
+  public int[] getIntArrayObject (int objref) {
+<span class="fc" id="L901">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc" id="L902">    int[] a = ei.asIntArray();</span>
+
+<span class="fc" id="L904">    return a;</span>
+  }
+
+  public long[] getLongArrayObject (int objref) {
+<span class="nc" id="L908">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="nc" id="L909">    long[] a = ei.asLongArray();</span>
+
+<span class="nc" id="L911">    return a;</span>
+  }
+
+  public float[] getFloatArrayObject (int objref) {
+<span class="nc" id="L915">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="nc" id="L916">    float[] a = ei.asFloatArray();</span>
+
+<span class="nc" id="L918">    return a;</span>
+  }
+
+  public double[] getDoubleArrayObject (int objref) {
+<span class="fc" id="L922">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc" id="L923">    double[] a = ei.asDoubleArray();</span>
+
+<span class="fc" id="L925">    return a;</span>
+  }
+
+  public boolean[] getBooleanArrayObject (int objref) {
+<span class="nc" id="L929">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="nc" id="L930">    boolean[] a = ei.asBooleanArray();</span>
+
+<span class="nc" id="L932">    return a;</span>
+  }
+  
+  public int[] getReferenceArrayObject (int objref){
+<span class="fc" id="L936">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc" id="L937">    int[] a = ei.asReferenceArray();</span>
+
+<span class="fc" id="L939">    return a;    </span>
+  }
+
+  public boolean canLock (int objref) {
+<span class="nc" id="L943">    ElementInfo ei = getElementInfo(objref);</span>
+
+<span class="nc" id="L945">    return ei.canLock(ti);</span>
+  }
+
+  public int newBooleanArray (int size) {
+<span class="fc" id="L949">    return heap.newArray(&quot;Z&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newByteArray (int size) {
+<span class="fc" id="L953">    return heap.newArray(&quot;B&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newByteArray (byte[] buf){
+<span class="fc" id="L957">    ElementInfo eiArray = heap.newArray(&quot;B&quot;, buf.length, ti);</span>
+<span class="fc bfc" id="L958" title="All 2 branches covered.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="fc" id="L959">      eiArray.setByteElement( i, buf[i]);</span>
+    }
+<span class="fc" id="L961">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newCharArray (int size) {
+<span class="fc" id="L965">    return heap.newArray(&quot;C&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newCharArray (char[] buf){
+<span class="fc" id="L969">    ElementInfo eiArray = heap.newArray(&quot;C&quot;, buf.length, ti);</span>
+<span class="fc bfc" id="L970" title="All 2 branches covered.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="fc" id="L971">      eiArray.setCharElement( i, buf[i]);</span>
+    }
+<span class="fc" id="L973">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newShortArray (int size) {
+<span class="fc" id="L977">    return heap.newArray(&quot;S&quot;, size, ti).getObjectRef();</span>
+  }
+  
+  public int newShortArray (short[] buf){
+<span class="nc" id="L981">    ElementInfo eiArray = heap.newArray(&quot;S&quot;, buf.length, ti);</span>
+<span class="nc bnc" id="L982" title="All 2 branches missed.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="nc" id="L983">      eiArray.setShortElement(i, buf[i]);</span>
+    }
+<span class="nc" id="L985">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newDoubleArray (int size) {
+<span class="fc" id="L989">    return heap.newArray(&quot;D&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newDoubleArray (double[] buf){
+<span class="nc" id="L993">    ElementInfo eiArray =  heap.newArray(&quot;D&quot;, buf.length, ti);</span>
+<span class="nc bnc" id="L994" title="All 2 branches missed.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="nc" id="L995">      eiArray.setDoubleElement(i, buf[i]);</span>
+    }
+<span class="nc" id="L997">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newFloatArray (int size) {
+<span class="fc" id="L1001">    return heap.newArray(&quot;F&quot;, size, ti).getObjectRef();</span>
+  }
+  
+  public int newFloatArray (float[] buf){
+<span class="nc" id="L1005">    ElementInfo eiArray =  heap.newArray(&quot;F&quot;, buf.length, ti);</span>
+<span class="nc bnc" id="L1006" title="All 2 branches missed.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="nc" id="L1007">      eiArray.setFloatElement( i, buf[i]);</span>
+    }
+<span class="nc" id="L1009">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newIntArray (int size) {
+<span class="fc" id="L1013">    return heap.newArray(&quot;I&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newIntArray (int[] buf){
+<span class="fc" id="L1017">    ElementInfo eiArray = heap.newArray(&quot;I&quot;, buf.length, ti);</span>
+<span class="fc bfc" id="L1018" title="All 2 branches covered.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="fc" id="L1019">      eiArray.setIntElement( i, buf[i]);</span>
+    }
+<span class="fc" id="L1021">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newLongArray (int size) {
+<span class="fc" id="L1025">    return heap.newArray(&quot;J&quot;, size, ti).getObjectRef();</span>
+  }
+
+  public int newLongArray (long[] buf){
+<span class="nc" id="L1029">    ElementInfo eiArray = heap.newArray(&quot;J&quot;, buf.length, ti);</span>
+<span class="nc bnc" id="L1030" title="All 2 branches missed.">    for (int i=0; i&lt;buf.length; i++){</span>
+<span class="nc" id="L1031">      eiArray.setLongElement( i, buf[i]);</span>
+    }
+<span class="nc" id="L1033">    return eiArray.getObjectRef();</span>
+  }
+
+  public int newObjectArray (String elementClsName, int size) {
+<span class="fc bfc" id="L1037" title="All 2 branches covered.">    if (!elementClsName.endsWith(&quot;;&quot;)) {</span>
+<span class="fc" id="L1038">      elementClsName = Types.getTypeSignature(elementClsName, false);</span>
+    }
+
+<span class="fc" id="L1041">    return heap.newArray(elementClsName, size, ti).getObjectRef();</span>
+  }
+
+  public ElementInfo newElementInfo (ClassInfo ci) throws ClinitRequired {
+<span class="fc bfc" id="L1045" title="All 2 branches covered.">    if (ci.initializeClass(ti)){</span>
+<span class="fc" id="L1046">      throw new ClinitRequired(ci);</span>
+    }
+
+<span class="fc" id="L1049">    return heap.newObject(ci, ti);</span>
+  }
+  
+  /**
+   * check if the ClassInfo is properly initialized
+   * if yes, create a new instance of it but don't call any ctor
+   * if no, throw a ClinitRequired exception
+   */
+  public int newObject (ClassInfo ci)  throws ClinitRequired {
+<span class="fc" id="L1058">    ElementInfo ei = newElementInfo(ci);</span>
+<span class="fc" id="L1059">    return ei.getObjectRef();</span>
+  }
+
+  /**
+   * this creates a new object without checking if the ClassInfo needs
+   * initialization. This is useful in a context that already
+   * is aware and handles re-execution
+   */
+  public int newObjectOfUncheckedClass (ClassInfo ci){
+<span class="fc" id="L1068">    ElementInfo ei = heap.newObject(ci, ti);</span>
+<span class="fc" id="L1069">    return ei.getObjectRef();    </span>
+  }
+  
+  public ElementInfo newElementInfo (String clsName)  throws ClinitRequired, UnknownJPFClass {
+<span class="fc" id="L1073">    ClassInfo ci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="pc bpc" id="L1074" title="1 of 2 branches missed.">    if (ci != null){</span>
+<span class="fc" id="L1075">      return newElementInfo(ci);</span>
+    } else {
+<span class="nc" id="L1077">      throw new UnknownJPFClass(clsName);</span>
+    }
+  }
+  
+  public int newObject (String clsName)   throws ClinitRequired, UnknownJPFClass {
+<span class="fc" id="L1082">    ElementInfo ei = newElementInfo(clsName);</span>
+<span class="pc bpc" id="L1083" title="1 of 2 branches missed.">    return (ei != null) ? ei.getObjectRef() : NULL;</span>
+  }
+  
+  public int newString (String s) {
+<span class="fc bfc" id="L1087" title="All 2 branches covered.">    if (s == null){</span>
+<span class="fc" id="L1088">      return NULL;</span>
+    } else {
+<span class="fc" id="L1090">      return heap.newString(s, ti).getObjectRef();</span>
+    }
+  }
+
+  public int newStringArray (String[] a){
+<span class="fc" id="L1095">    int aref = newObjectArray(&quot;Ljava/lang/String;&quot;, a.length);</span>
+
+<span class="fc bfc" id="L1097" title="All 2 branches covered.">    for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1098">      setReferenceArrayElement(aref, i, newString(a[i]));</span>
+    }
+
+<span class="fc" id="L1101">    return aref;</span>
+  }
+
+  public int newString (int arrayRef) {
+<span class="nc" id="L1105">    String t = getArrayType(arrayRef);</span>
+<span class="nc" id="L1106">    String s = null;</span>
+
+<span class="nc bnc" id="L1108" title="All 2 branches missed.">    if (&quot;C&quot;.equals(t)) {          // character array</span>
+<span class="nc" id="L1109">      char[] ca = getCharArrayObject(arrayRef);</span>
+<span class="nc" id="L1110">      s = new String(ca);</span>
+<span class="nc bnc" id="L1111" title="All 2 branches missed.">    } else if (&quot;B&quot;.equals(t)) {   // byte array</span>
+<span class="nc" id="L1112">      byte[] ba = getByteArrayObject(arrayRef);</span>
+<span class="nc" id="L1113">      s = new String(ba);</span>
+    }
+
+<span class="nc bnc" id="L1116" title="All 2 branches missed.">    if (s == null) {</span>
+<span class="nc" id="L1117">      return NULL;</span>
+    }
+
+<span class="nc" id="L1120">    return newString(s);</span>
+  }
+  
+  public String format (int fmtRef, int argRef){
+<span class="fc" id="L1124">    String format = getStringObject(fmtRef);</span>
+<span class="fc" id="L1125">    int len = getArrayLength(argRef);</span>
+<span class="fc" id="L1126">    Object[] arg = new Object[len];</span>
+
+<span class="fc bfc" id="L1128" title="All 2 branches covered.">    for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L1129">      int ref = getReferenceArrayElement(argRef,i);</span>
+<span class="pc bpc" id="L1130" title="1 of 2 branches missed.">      if (ref != NULL) {</span>
+<span class="fc" id="L1131">        String clsName = getClassName(ref);</span>
+<span class="fc bfc" id="L1132" title="All 2 branches covered.">        if (clsName.equals(&quot;java.lang.String&quot;)) {</span>
+<span class="fc" id="L1133">          arg[i] = getStringObject(ref);</span>
+<span class="fc bfc" id="L1134" title="All 2 branches covered.">        } else if (clsName.equals(&quot;java.lang.Boolean&quot;)){</span>
+<span class="fc" id="L1135">          arg[i] = getBooleanObject(ref);</span>
+<span class="pc bpc" id="L1136" title="1 of 2 branches missed.">        } else if (clsName.equals(&quot;java.lang.Byte&quot;)) {</span>
+<span class="nc" id="L1137">          arg[i] = getByteObject(ref);</span>
+<span class="pc bpc" id="L1138" title="1 of 2 branches missed.">        } else if (clsName.equals(&quot;java.lang.Character&quot;)) {</span>
+<span class="nc" id="L1139">          arg[i] = getCharObject(ref);</span>
+<span class="pc bpc" id="L1140" title="1 of 2 branches missed.">        } else if (clsName.equals(&quot;java.lang.Short&quot;)) {</span>
+<span class="nc" id="L1141">          arg[i] = getShortObject(ref);</span>
+<span class="fc bfc" id="L1142" title="All 2 branches covered.">        } else if (clsName.equals(&quot;java.lang.Integer&quot;)) {</span>
+<span class="fc" id="L1143">          arg[i] = getIntegerObject(ref);</span>
+<span class="fc bfc" id="L1144" title="All 2 branches covered.">        } else if (clsName.equals(&quot;java.lang.Long&quot;)) {</span>
+<span class="fc" id="L1145">          arg[i] = getLongObject(ref);</span>
+<span class="pc bpc" id="L1146" title="1 of 2 branches missed.">        } else if (clsName.equals(&quot;java.lang.Float&quot;)) {</span>
+<span class="nc" id="L1147">          arg[i] = getFloatObject(ref);</span>
+<span class="pc bpc" id="L1148" title="1 of 2 branches missed.">        } else if (clsName.equals(&quot;java.lang.Double&quot;)) {</span>
+<span class="fc" id="L1149">          arg[i] = getDoubleObject(ref);</span>
+        } else {
+          // need a toString() here
+<span class="nc" id="L1152">          arg[i] = &quot;??&quot;;</span>
+        }
+      }
+    }
+<span class="fc" id="L1156">    return String.format(format,arg);</span>
+  }
+
+  public String format (Locale l,int fmtRef, int argRef){
+<span class="fc" id="L1160">	    String format = getStringObject(fmtRef);</span>
+<span class="fc" id="L1161">	    int len = getArrayLength(argRef);</span>
+<span class="fc" id="L1162">	    Object[] arg = new Object[len];</span>
+
+<span class="fc bfc" id="L1164" title="All 2 branches covered.">	    for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L1165">	      int ref = getReferenceArrayElement(argRef,i);</span>
+<span class="pc bpc" id="L1166" title="1 of 2 branches missed.">	      if (ref != NULL) {</span>
+<span class="fc" id="L1167">	        String clsName = getClassName(ref);</span>
+<span class="pc bpc" id="L1168" title="1 of 2 branches missed.">	        if (clsName.equals(&quot;java.lang.String&quot;)) {</span>
+<span class="fc" id="L1169">	          arg[i] = getStringObject(ref);</span>
+<span class="nc bnc" id="L1170" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Byte&quot;)) {</span>
+<span class="nc" id="L1171">	          arg[i] = getByteObject(ref);</span>
+<span class="nc bnc" id="L1172" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Character&quot;)) {</span>
+<span class="nc" id="L1173">	          arg[i] = getCharObject(ref);</span>
+<span class="nc bnc" id="L1174" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Short&quot;)) {</span>
+<span class="nc" id="L1175">	          arg[i] = getShortObject(ref);</span>
+<span class="nc bnc" id="L1176" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Integer&quot;)) {</span>
+<span class="nc" id="L1177">	          arg[i] = getIntegerObject(ref);</span>
+<span class="nc bnc" id="L1178" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Long&quot;)) {</span>
+<span class="nc" id="L1179">	          arg[i] = getLongObject(ref);</span>
+<span class="nc bnc" id="L1180" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Float&quot;)) {</span>
+<span class="nc" id="L1181">	          arg[i] = getFloatObject(ref);</span>
+<span class="nc bnc" id="L1182" title="All 2 branches missed.">	        } else if (clsName.equals(&quot;java.lang.Double&quot;)) {</span>
+<span class="nc" id="L1183">	          arg[i] = getDoubleObject(ref);</span>
+	        } else {
+	          // need a toString() here
+<span class="nc" id="L1186">	          arg[i] = &quot;??&quot;;</span>
+	        }
+	      }
+	    }
+
+<span class="fc" id="L1191">	    return String.format(l,format,arg);</span>
+	  }
+
+
+  public int newBoolean (boolean b){
+<span class="nc bnc" id="L1196" title="All 2 branches missed.">    return getStaticReferenceField(&quot;java.lang.Boolean&quot;, b ? &quot;TRUE&quot; : &quot;FALSE&quot;);</span>
+  }
+
+  public int newInteger (int n){
+<span class="nc" id="L1200">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Integer&quot;), ti);</span>
+<span class="nc" id="L1201">    ei.setIntField(&quot;value&quot;,n);</span>
+<span class="nc" id="L1202">    return ei.getObjectRef();</span>
+  }
+
+  public int newLong (long l){
+<span class="fc" id="L1206">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Long&quot;), ti);</span>
+<span class="fc" id="L1207">    ei.setLongField(&quot;value&quot;,l);</span>
+<span class="fc" id="L1208">    return ei.getObjectRef();</span>
+  }
+
+  public int newDouble (double d){
+<span class="fc" id="L1212">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Double&quot;), ti);</span>
+<span class="fc" id="L1213">    ei.setDoubleField(&quot;value&quot;,d);</span>
+<span class="fc" id="L1214">    return ei.getObjectRef();</span>
+  }
+
+  public int newFloat (float f){
+<span class="fc" id="L1218">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Float&quot;), ti);</span>
+<span class="fc" id="L1219">    ei.setFloatField(&quot;value&quot;,f);</span>
+<span class="fc" id="L1220">    return ei.getObjectRef();</span>
+  }
+
+  public int newByte (byte b){
+<span class="nc" id="L1224">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Byte&quot;), ti);</span>
+<span class="nc" id="L1225">    ei.setByteField(&quot;value&quot;,b);</span>
+<span class="nc" id="L1226">    return ei.getObjectRef();</span>
+  }
+
+  public int newShort (short s){
+<span class="fc" id="L1230">    ElementInfo ei = heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Short&quot;), ti);</span>
+<span class="fc" id="L1231">    ei.setShortField(&quot;value&quot;,s);</span>
+<span class="fc" id="L1232">    return ei.getObjectRef();</span>
+  }
+
+  public int newCharacter (char c){
+<span class="nc" id="L1236">    ElementInfo ei =  heap.newObject(ClassLoaderInfo.getSystemResolvedClassInfo(&quot;java.lang.Character&quot;), ti);</span>
+<span class="nc" id="L1237">    ei.setCharField(&quot;value&quot;,c);</span>
+<span class="nc" id="L1238">    return ei.getObjectRef();</span>
+  }
+
+
+  public boolean notify (int objref) {
+    // objref can't be NULL since the corresponding INVOKE would have failed
+<span class="nc" id="L1244">    ElementInfo ei = getModifiableElementInfo(objref);</span>
+<span class="nc" id="L1245">    return notify(ei);</span>
+  }
+
+  public boolean notify (ElementInfo ei) {
+<span class="pc bpc" id="L1249" title="1 of 2 branches missed.">    if (!ei.isLockedBy(ti)){</span>
+<span class="nc" id="L1250">      throwException(&quot;java.lang.IllegalMonitorStateException&quot;,</span>
+                                 &quot;un-synchronized notify&quot;);
+<span class="nc" id="L1252">      return false;</span>
+    }
+
+<span class="fc" id="L1255">    return ei.notifies(getSystemState(), ti); </span>
+  }
+  
+  public boolean notifyAll (int objref) {
+    // objref can't be NULL since the corresponding INVOKE would have failed
+<span class="nc" id="L1260">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="nc" id="L1261">    return notifyAll(ei);</span>
+  }
+
+  public boolean notifyAll (ElementInfo ei) {
+<span class="pc bpc" id="L1265" title="1 of 2 branches missed.">    if (!ei.isLockedBy(ti)){</span>
+<span class="nc" id="L1266">      throwException(&quot;java.lang.IllegalMonitorStateException&quot;,</span>
+                                 &quot;un-synchronized notifyAll&quot;);
+<span class="nc" id="L1268">      return false;</span>
+    }
+
+<span class="fc" id="L1271">    return ei.notifiesAll();    </span>
+  }
+  
+  public void registerPinDown(int objref){
+<span class="fc" id="L1275">    heap.registerPinDown(objref);</span>
+<span class="fc" id="L1276">  }</span>
+  public void registerPinDown (ElementInfo ei){
+<span class="fc" id="L1278">    registerPinDown(ei.getObjectRef());</span>
+<span class="fc" id="L1279">  }</span>
+  
+  public void releasePinDown(int objref){
+<span class="fc" id="L1282">    heap.releasePinDown(objref);</span>
+<span class="fc" id="L1283">  }</span>
+  public void releasePinDown (ElementInfo ei){
+<span class="fc" id="L1285">    releasePinDown(ei.getObjectRef());</span>
+<span class="fc" id="L1286">  }</span>
+  
+  /**
+   *  use this whenever a peer performs an operation on a class that might not be initialized yet
+   *  Do a repeatInvocation() in this case 
+   */
+  public boolean requiresClinitExecution(ClassInfo ci) {
+<span class="fc" id="L1293">    return ci.initializeClass(ti);</span>
+  }
+  
+  /**
+   * repeat execution of the instruction that caused a native method call
+   * NOTE - this does NOT mean it's the NEXT executed insn, since the native method
+   * might have pushed direct call frames on the stack before asking us to repeat it.
+   */
+  public void repeatInvocation () {
+<span class="fc" id="L1302">    repeat = true;</span>
+<span class="fc" id="L1303">  }</span>
+
+  public boolean isInvocationRepeated() {
+<span class="fc" id="L1306">    return repeat;</span>
+  }
+
+
+  public boolean setNextChoiceGenerator (ChoiceGenerator&lt;?&gt; cg){
+<span class="nc" id="L1311">    return vm.getSystemState().setNextChoiceGenerator(cg);</span>
+  }
+
+  public void setMandatoryNextChoiceGenerator(ChoiceGenerator&lt;?&gt; cg, String failMsg){
+<span class="nc" id="L1315">    vm.getSystemState().setMandatoryNextChoiceGenerator(cg, failMsg);</span>
+<span class="nc" id="L1316">  }</span>
+
+  public ChoiceGenerator&lt;?&gt; getChoiceGenerator () {
+<span class="nc" id="L1319">    return vm.getSystemState().getChoiceGenerator();</span>
+  }
+
+  // note this only makes sense if we actually do return something
+  public void setReturnAttribute (Object attr) {
+<span class="fc" id="L1324">    returnAttr = attr;</span>
+<span class="fc" id="L1325">  }</span>
+
+  /**
+   * return attr list of all arguments. Use ObjectList to retrieve values
+   * from this list
+   * 
+   * NOTE - this can only be called from a native method context, since
+   * otherwise the top frame is the callee
+   */
+  public Object[] getArgAttributes () {
+<span class="fc" id="L1335">    StackFrame caller = getCallerStackFrame();</span>
+<span class="fc" id="L1336">    return caller.getArgumentAttrs(mi);</span>
+  }
+
+  public Object getReturnAttribute() {
+<span class="fc" id="L1340">    return returnAttr;</span>
+  }
+
+  // if any of the next methods is called from the bottom
+  // half of a CG method, you might want to check if another thread
+  // or a listener has already set an exception you don't want to override
+  // (this is for instance used in Thread.stop())
+
+  public void throwException (int xRef){
+<span class="pc bpc" id="L1349" title="2 of 4 branches missed.">    assert isInstanceOf(xRef, &quot;java.lang.Throwable&quot;);</span>
+<span class="fc" id="L1350">    exceptionRef = xRef;</span>
+<span class="fc" id="L1351">  }</span>
+
+  public void throwException (String clsName) {
+<span class="fc" id="L1354">    ClassInfo ciX = ClassInfo.getInitializedClassInfo(clsName, ti);</span>
+<span class="pc bpc" id="L1355" title="2 of 4 branches missed.">    assert ciX.isInstanceOf(&quot;java.lang.Throwable&quot;) : ciX;</span>
+<span class="fc" id="L1356">    exceptionRef = ti.createException(ciX, null, NULL);</span>
+<span class="fc" id="L1357">  }</span>
+
+  public void throwException (String clsName, String details) {
+<span class="fc" id="L1360">    ClassInfo ciX = ClassInfo.getInitializedClassInfo(clsName, ti);</span>
+<span class="pc bpc" id="L1361" title="2 of 4 branches missed.">    assert ciX.isInstanceOf(&quot;java.lang.Throwable&quot;);</span>
+<span class="fc" id="L1362">    exceptionRef = ti.createException(ciX, details, NULL);</span>
+<span class="fc" id="L1363">  }</span>
+
+  public void throwAssertion (String details) {
+<span class="nc" id="L1366">    throwException(&quot;java.lang.AssertionError&quot;, details);</span>
+<span class="nc" id="L1367">  }</span>
+
+  public void throwInterrupt(){
+<span class="fc" id="L1370">    throwException(&quot;java.lang.InterruptedException&quot;);</span>
+<span class="fc" id="L1371">  }</span>
+
+  public void stopThread(){
+<span class="nc" id="L1374">    stopThreadWithException(MJIEnv.NULL);</span>
+<span class="nc" id="L1375">  }</span>
+
+  public void stopThreadWithException (int xRef){
+    // this will call throwException(xRef) with the proper Throwable
+<span class="nc" id="L1379">    ti.setStopped(xRef);</span>
+<span class="nc" id="L1380">  }</span>
+
+  void setCallEnvironment (MethodInfo mi) {
+<span class="fc" id="L1383">    this.mi = mi;</span>
+
+<span class="pc bpc" id="L1385" title="1 of 2 branches missed.">    if (mi != null){</span>
+<span class="fc" id="L1386">      ciMth = mi.getClassInfo();</span>
+    } else {
+      //ciMth = null;
+      //mi = null;
+    }
+
+<span class="fc" id="L1392">    repeat = false;</span>
+<span class="fc" id="L1393">    returnAttr = null;</span>
+
+    // we should NOT reset exceptionRef here because it might have been set
+    // at the beginning of the transition. It gets reset upon return from the
+    // native method
+    //exceptionRef = NULL;
+<span class="fc" id="L1399">  }</span>
+
+  void clearCallEnvironment () {
+<span class="nc" id="L1402">    setCallEnvironment(null);</span>
+<span class="nc" id="L1403">  }</span>
+
+  ElementInfo getStaticElementInfo (int clsObjRef) {
+<span class="fc" id="L1406">    ClassInfo ci = getReferredClassInfo( clsObjRef);</span>
+<span class="pc bpc" id="L1407" title="1 of 2 branches missed.">    if (ci != null) {</span>
+<span class="fc" id="L1408">      return ci.getStaticElementInfo();</span>
+    }
+    
+<span class="nc" id="L1411">    return null;</span>
+  }
+  
+  ElementInfo getModifiableStaticElementInfo (int clsObjRef) {
+<span class="nc" id="L1415">    ClassInfo ci = getReferredClassInfo( clsObjRef);</span>
+<span class="nc bnc" id="L1416" title="All 2 branches missed.">    if (ci != null) {</span>
+<span class="nc" id="L1417">      return ci.getModifiableStaticElementInfo();</span>
+    }
+    
+<span class="nc" id="L1420">    return null;</span>
+  }
+  
+
+  ClassInfo getClassInfo () {
+<span class="fc" id="L1425">    return ciMth;</span>
+  }
+
+  public ClassInfo getReferredClassInfo (int clsObjRef) {
+<span class="fc" id="L1429">    ElementInfo ei = getElementInfo(clsObjRef);</span>
+<span class="pc bpc" id="L1430" title="1 of 2 branches missed.">    if (ei.getClassInfo().getName().equals(&quot;java.lang.Class&quot;)) {</span>
+<span class="fc" id="L1431">      int ciId = ei.getIntField( ClassInfo.ID_FIELD);</span>
+<span class="fc" id="L1432">      int clref = ei.getReferenceField(&quot;classLoader&quot;);</span>
+      
+<span class="fc" id="L1434">      ElementInfo eiCl = getElementInfo(clref);</span>
+<span class="fc" id="L1435">      int cliId = eiCl.getIntField(ClassLoaderInfo.ID_FIELD);</span>
+      
+<span class="fc" id="L1437">      ClassLoaderInfo cli = getVM().getClassLoader(cliId);</span>
+<span class="fc" id="L1438">      ClassInfo referredCi = cli.getClassInfo(ciId);</span>
+      
+<span class="fc" id="L1440">      return referredCi;</span>
+      
+    } else {
+<span class="nc" id="L1443">      throw new JPFException(&quot;not a java.lang.Class object: &quot; + ei);</span>
+    }
+  }
+
+  public ClassInfo getClassInfo (int objref) {
+<span class="fc" id="L1448">    ElementInfo ei = getElementInfo(objref);</span>
+<span class="fc bfc" id="L1449" title="All 2 branches covered.">    if (ei != null){</span>
+<span class="fc" id="L1450">      return ei.getClassInfo();</span>
+    } else {
+<span class="fc" id="L1452">      return null;</span>
+    }
+  }
+
+  public String getClassName (int objref) {
+<span class="fc" id="L1457">    return getClassInfo(objref).getName();</span>
+  }
+
+  public Heap getHeap () {
+<span class="fc" id="L1461">    return vm.getHeap();</span>
+  }
+
+  public ElementInfo getElementInfo (int objref) {
+<span class="fc" id="L1465">    return heap.get(objref);</span>
+  }
+
+  public ElementInfo getModifiableElementInfo (int objref) {
+<span class="fc" id="L1469">    return heap.getModifiable(objref);</span>
+  }
+
+  
+  public int getStateId () {
+<span class="nc" id="L1474">    return VM.getVM().getStateId();</span>
+  }
+
+  void clearException(){
+<span class="nc" id="L1478">    exceptionRef = MJIEnv.NULL;</span>
+<span class="nc" id="L1479">  }</span>
+
+  public int peekException () {
+<span class="nc" id="L1482">    return exceptionRef;</span>
+  }
+
+  public int popException () {
+<span class="fc" id="L1486">    int ret = exceptionRef;</span>
+<span class="fc" id="L1487">    exceptionRef = NULL;</span>
+<span class="fc" id="L1488">    return ret;</span>
+  }
+
+  public boolean hasException(){
+<span class="fc bfc" id="L1492" title="All 2 branches covered.">    return (exceptionRef != NULL);</span>
+  }
+
+  public boolean hasPendingInterrupt(){
+<span class="nc bnc" id="L1496" title="All 4 branches missed.">    return (exceptionRef != NULL &amp;&amp; isInstanceOf(exceptionRef, &quot;java.lang.InterruptedException&quot;));</span>
+  }
+
+  //-- time is managed by the VM
+  public long currentTimeMillis(){
+<span class="fc" id="L1501">    return vm.currentTimeMillis();</span>
+  }
+  
+  public long nanoTime(){
+<span class="nc" id="L1505">    return vm.nanoTime();</span>
+  }
+  
+  //--- those are not public since they refer to JPF internals
+  public KernelState getKernelState () {
+<span class="nc" id="L1510">    return VM.getVM().getKernelState();</span>
+  }
+
+  public MethodInfo getMethodInfo () {
+<span class="nc" id="L1514">    return mi;</span>
+  }
+
+  public Instruction getInstruction () {
+<span class="nc" id="L1518">    return ti.getPC();</span>
+  }
+
+  /**
+   * It returns the ClassLoaderInfo corresponding to the given classloader object
+   * reference
+   */
+  public ClassLoaderInfo getClassLoaderInfo(int clObjRef) {
+<span class="fc bfc" id="L1526" title="All 2 branches covered.">    if(clObjRef == MJIEnv.NULL) {</span>
+<span class="fc" id="L1527">      return null;</span>
+    }
+
+<span class="fc" id="L1530">    int cliId = heap.get(clObjRef).getIntField(ClassLoaderInfo.ID_FIELD);</span>
+<span class="fc" id="L1531">    return getVM().getClassLoader(cliId);</span>
+  }
+
+  // &lt;2do&gt; that's not correct - it should return the current SystemClassLoader, NOT the startup SystemClassLoader
+  // (we can instantiate them explicitly)
+  public ClassLoaderInfo getSystemClassLoaderInfo() {
+<span class="fc" id="L1537">    return ti.getSystemClassLoaderInfo();</span>
+  }
+  
+  public SystemState getSystemState () {
+<span class="fc" id="L1541">    return ti.getVM().getSystemState();</span>
+  }
+  
+  public ApplicationContext getApplicationContext (){
+<span class="nc" id="L1545">    return ti.getApplicationContext();</span>
+  }
+
+  public ThreadInfo getThreadInfo () {
+<span class="fc" id="L1549">    return ti;</span>
+  }
+
+  /**
+   * NOTE - callers have to be prepared this might return null in case
+   * the thread got already terminated
+   */
+  public ThreadInfo getThreadInfoForId (int id){
+<span class="nc" id="L1557">    return vm.getThreadList().getThreadInfoForId(id);</span>
+  }
+
+  public ThreadInfo getLiveThreadInfoForId (int id){
+<span class="nc" id="L1561">    ThreadInfo ti = vm.getThreadList().getThreadInfoForId(id);</span>
+<span class="nc bnc" id="L1562" title="All 4 branches missed.">    if (ti != null &amp;&amp; ti.isAlive()){</span>
+<span class="nc" id="L1563">      return ti;</span>
+    }
+    
+<span class="nc" id="L1566">    return null;</span>
+  }
+  
+  /**
+   * NOTE - callers have to be prepared this might return null in case
+   * the thread got already terminated
+   */
+  public ThreadInfo getThreadInfoForObjRef (int id){
+<span class="fc" id="L1574">    return vm.getThreadList().getThreadInfoForObjRef(id);</span>
+  }
+  
+  public ThreadInfo getLiveThreadInfoForObjRef (int id){
+<span class="nc" id="L1578">    ThreadInfo ti = vm.getThreadList().getThreadInfoForObjRef(id);</span>
+<span class="nc bnc" id="L1579" title="All 4 branches missed.">    if (ti != null &amp;&amp; ti.isAlive()){</span>
+<span class="nc" id="L1580">      return ti;</span>
+    }
+    
+<span class="nc" id="L1583">    return null;</span>
+  }
+
+  
+  
+  public ThreadInfo[] getLiveThreads(){
+<span class="nc" id="L1589">    return getVM().getLiveThreads();</span>
+  }
+  
+  // &lt;2do&gt; - naming? not very intuitive
+  void lockNotified (int objref) {
+<span class="fc" id="L1594">    ElementInfo ei = getModifiableElementInfo(objref);</span>
+<span class="fc" id="L1595">    ei.lockNotified(ti);</span>
+<span class="fc" id="L1596">  }</span>
+  
+  public int liftNativeAnnotationValue(String ftype, Object v) {
+<span class="fc bfc" id="L1599" title="All 2 branches covered.">    if (v instanceof String){</span>
+<span class="fc" id="L1600">      return newString((String)v);</span>
+<span class="fc bfc" id="L1601" title="All 2 branches covered.">    } else if (v instanceof Boolean){</span>
+<span class="fc" id="L1602">      return valueOfBoolean((Boolean)v);</span>
+<span class="fc bfc" id="L1603" title="All 2 branches covered.">    } else if (v instanceof Integer) {</span>
+<span class="fc" id="L1604">      return valueOfInteger((Integer)v);</span>
+<span class="fc bfc" id="L1605" title="All 2 branches covered.">    } else if (v instanceof Long){</span>
+<span class="fc" id="L1606">      return valueOfLong((Long)v);</span>
+<span class="fc bfc" id="L1607" title="All 2 branches covered.">    } else if (v instanceof Float){</span>
+<span class="fc" id="L1608">      return newFloat((Float) v);</span>
+<span class="fc bfc" id="L1609" title="All 2 branches covered.">    } else if (v instanceof Short){</span>
+<span class="fc" id="L1610">      return valueOfShort((Short)v);</span>
+<span class="fc bfc" id="L1611" title="All 2 branches covered.">    } else if (v instanceof Character){</span>
+<span class="fc" id="L1612">      return valueOfCharacter((Character)v);</span>
+<span class="fc bfc" id="L1613" title="All 2 branches covered.">    } else if (v instanceof Byte){</span>
+<span class="fc" id="L1614">      return valueOfByte((Byte)v);</span>
+<span class="fc bfc" id="L1615" title="All 2 branches covered.">    } else if (v instanceof Double){</span>
+<span class="fc" id="L1616">      return newDouble((Double)v);</span>
+    } else {
+<span class="fc" id="L1618">      Optional&lt;Integer&gt; ref = liftAnnotationReferenceValue(v, ftype);</span>
+<span class="pc bpc" id="L1619" title="1 of 2 branches missed.">      if(ref.isPresent()) {</span>
+<span class="fc" id="L1620">        return ref.get();</span>
+      } else {
+<span class="nc" id="L1622">        throwException(&quot;java.lang.InternalError&quot;, &quot;AnnotationElement type not supported: &quot; + ftype);</span>
+<span class="nc" id="L1623">        return -1;</span>
+      }
+    }
+  }
+  
+  Optional&lt;Integer&gt; liftAnnotationReferenceValue(Object v, String ftype) {
+<span class="fc bfc" id="L1629" title="All 2 branches covered.">    if (v instanceof AnnotationInfo.EnumValue){ // an enum constant</span>
+<span class="fc" id="L1630">      int eref = makeAnnotationEnumRef((EnumValue) v);</span>
+<span class="fc" id="L1631">      return Optional.of(eref);</span>
+
+<span class="fc bfc" id="L1633" title="All 2 branches covered.">    } else if (v instanceof AnnotationInfo.ClassValue){ // a class</span>
+<span class="fc" id="L1634">      String clsName = v.toString();</span>
+<span class="fc" id="L1635">      ClassInfo cci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+      // &lt;2do&gt; should throw ClassNotFoundError here if cci is null
+
+<span class="fc bfc" id="L1638" title="All 2 branches covered.">      if (!cci.isInitialized()){</span>
+<span class="fc" id="L1639">        throw new ClinitRequired(cci);</span>
+      }
+
+<span class="fc" id="L1642">      int cref = cci.getClassObjectRef();</span>
+<span class="fc" id="L1643">      return Optional.of(cref);</span>
+
+<span class="fc bfc" id="L1645" title="All 2 branches covered.">    } else if (v.getClass().isArray()){ // ..or arrays thereof</span>
+<span class="fc" id="L1646">      Object[] a = (Object[])v;</span>
+<span class="fc" id="L1647">      int aref = NULL;</span>
+
+<span class="fc bfc" id="L1649" title="All 2 branches covered.">      if (ftype.equals(&quot;java.lang.String[]&quot;)){</span>
+<span class="fc" id="L1650">        aref = newObjectArray(&quot;Ljava/lang/String;&quot;, a.length);</span>
+<span class="fc bfc" id="L1651" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1652">          setReferenceArrayElement(aref,i,newString(a[i].toString()));</span>
+        }
+<span class="fc bfc" id="L1654" title="All 2 branches covered.">      } else if (ftype.equals(&quot;int[]&quot;)){</span>
+<span class="fc" id="L1655">        aref = newIntArray(a.length);</span>
+<span class="fc bfc" id="L1656" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1657">          setIntArrayElement(aref,i,((Number)a[i]).intValue());</span>
+        }
+<span class="fc bfc" id="L1659" title="All 2 branches covered.">      } else if (ftype.equals(&quot;boolean[]&quot;)){</span>
+<span class="fc" id="L1660">        aref = newBooleanArray(a.length);</span>
+<span class="fc bfc" id="L1661" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1662">          setBooleanArrayElement(aref,i,((Boolean)a[i]).booleanValue());</span>
+        }
+<span class="fc bfc" id="L1664" title="All 2 branches covered.">      } else if (ftype.equals(&quot;long[]&quot;)){</span>
+<span class="fc" id="L1665">        aref = newLongArray(a.length);</span>
+<span class="fc bfc" id="L1666" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1667">          setLongArrayElement(aref,i,((Number)a[i]).longValue());</span>
+        }
+<span class="fc bfc" id="L1669" title="All 2 branches covered.">      } else if (ftype.equals(&quot;double[]&quot;)){</span>
+<span class="fc" id="L1670">        aref = newDoubleArray(a.length);</span>
+<span class="fc bfc" id="L1671" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1672">          setDoubleArrayElement(aref,i,((Number)a[i]).doubleValue());</span>
+        }
+<span class="fc bfc" id="L1674" title="All 2 branches covered.">      } else if(ftype.equals(&quot;char[]&quot;)) {</span>
+<span class="fc" id="L1675">        aref = newCharArray(a.length);</span>
+<span class="fc bfc" id="L1676" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1677">          setCharArrayElement(aref,i,((Character)a[i]).charValue());</span>
+        }
+<span class="fc bfc" id="L1679" title="All 2 branches covered.">      } else if(ftype.equals(&quot;short[]&quot;)) {</span>
+<span class="fc" id="L1680">        aref = newShortArray(a.length);</span>
+<span class="fc bfc" id="L1681" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1682">          setShortArrayElement(aref,i,((Number)a[i]).shortValue());</span>
+        }
+<span class="fc bfc" id="L1684" title="All 2 branches covered.">      } else if(ftype.equals(&quot;byte[]&quot;)) {</span>
+<span class="fc" id="L1685">        aref = newByteArray(a.length);</span>
+<span class="fc bfc" id="L1686" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1687">          setByteArrayElement(aref,i,((Number)a[i]).byteValue());</span>
+        }
+<span class="fc bfc" id="L1689" title="All 2 branches covered.">      } else if(ftype.equals(&quot;float[]&quot;)) {</span>
+<span class="fc" id="L1690">        aref = newFloatArray(a.length);</span>
+<span class="fc bfc" id="L1691" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1692">          setFloatArrayElement(aref,i,((Number)a[i]).floatValue());</span>
+        }
+<span class="fc bfc" id="L1694" title="All 2 branches covered.">      } else if (ftype.equals(&quot;java.lang.Class[]&quot;)){</span>
+<span class="fc" id="L1695">        aref = newObjectArray(&quot;java.lang.Class&quot;, a.length);</span>
+<span class="fc bfc" id="L1696" title="All 2 branches covered.">        for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L1697">          String clsName = ((AnnotationInfo.ClassValue)a[i]).getName();</span>
+<span class="fc" id="L1698">          ClassInfo cci = ClassLoaderInfo.getCurrentResolvedClassInfo(clsName);</span>
+<span class="pc bpc" id="L1699" title="1 of 2 branches missed.">          if (!cci.isInitialized()){</span>
+<span class="nc" id="L1700">            throw new ClinitRequired(cci);</span>
+          }
+<span class="fc" id="L1702">          int cref = cci.getClassObjectRef();</span>
+<span class="fc" id="L1703">          setReferenceArrayElement(aref,i,cref);</span>
+        }
+      } else {
+<span class="fc" id="L1706">        String typeName = ftype.substring(0, ftype.length() - 2);</span>
+<span class="fc" id="L1707">        ClassInfo elemType = ClassLoaderInfo.getCurrentResolvedClassInfo(typeName);</span>
+<span class="fc" id="L1708">        aref = newObjectArray(typeName, a.length);</span>
+<span class="fc bfc" id="L1709" title="All 2 branches covered.">        if(elemType.isEnum()) {</span>
+<span class="fc bfc" id="L1710" title="All 2 branches covered.">          for(int i = 0; i &lt; a.length; i++) {</span>
+<span class="fc" id="L1711">            setReferenceArrayElement(aref, i, makeAnnotationEnumRef((EnumValue) a[i]));</span>
+          }
+          
+        } else {
+<span class="fc bfc" id="L1715" title="All 2 branches covered.">          for(int i = 0; i &lt; a.length; i++) {</span>
+<span class="fc" id="L1716">            setReferenceArrayElement(aref, i, makeAnnotationProxy((AnnotationInfo) a[i]));</span>
+          }
+        }
+      }
+
+<span class="pc bpc" id="L1721" title="1 of 2 branches missed.">      if (aref != NULL){</span>
+<span class="fc" id="L1722">        return Optional.of(aref);</span>
+      } else {
+<span class="nc" id="L1724">        return Optional.empty();</span>
+      }
+
+<span class="pc bpc" id="L1727" title="1 of 2 branches missed.">    } else if(v instanceof AnnotationInfo) {</span>
+<span class="fc" id="L1728">      return Optional.of(makeAnnotationProxy((AnnotationInfo) v));</span>
+    } else {
+<span class="nc" id="L1730">      return Optional.empty();</span>
+    }
+  }
+
+  void initAnnotationProxyField (int proxyRef, FieldInfo fi, Object v) throws ClinitRequired {
+<span class="fc" id="L1735">    String fname = fi.getName();</span>
+<span class="fc" id="L1736">    String ftype = fi.getType();</span>
+
+<span class="fc bfc" id="L1738" title="All 2 branches covered.">    if (v instanceof String){</span>
+<span class="fc" id="L1739">      setReferenceField(proxyRef, fname, newString((String)v));</span>
+<span class="fc bfc" id="L1740" title="All 2 branches covered.">    } else if (v instanceof Boolean){</span>
+<span class="fc" id="L1741">      setBooleanField(proxyRef, fname, ((Boolean)v).booleanValue());</span>
+<span class="fc bfc" id="L1742" title="All 2 branches covered.">    } else if (v instanceof Integer){</span>
+<span class="fc" id="L1743">      setIntField(proxyRef, fname, ((Integer)v).intValue());</span>
+<span class="fc bfc" id="L1744" title="All 2 branches covered.">    } else if (v instanceof Long){</span>
+<span class="fc" id="L1745">      setLongField(proxyRef, fname, ((Long)v).longValue());</span>
+<span class="fc bfc" id="L1746" title="All 2 branches covered.">    } else if (v instanceof Float){</span>
+<span class="fc" id="L1747">      setFloatField(proxyRef, fname, ((Float)v).floatValue());</span>
+<span class="fc bfc" id="L1748" title="All 2 branches covered.">    } else if (v instanceof Short){</span>
+<span class="fc" id="L1749">      setShortField(proxyRef, fname, ((Short)v).shortValue());</span>
+<span class="fc bfc" id="L1750" title="All 2 branches covered.">    } else if (v instanceof Character){</span>
+<span class="fc" id="L1751">      setCharField(proxyRef, fname, ((Character)v).charValue());</span>
+<span class="fc bfc" id="L1752" title="All 2 branches covered.">    } else if (v instanceof Byte){</span>
+<span class="fc" id="L1753">      setByteField(proxyRef, fname, ((Byte)v).byteValue());</span>
+<span class="fc bfc" id="L1754" title="All 2 branches covered.">    } else if (v instanceof Double){</span>
+<span class="fc" id="L1755">      setDoubleField(proxyRef, fname, ((Double)v).doubleValue());</span>
+    } else {
+<span class="fc" id="L1757">      Optional&lt;Integer&gt; ref = liftAnnotationReferenceValue(v, ftype);</span>
+<span class="pc bpc" id="L1758" title="1 of 2 branches missed.">      if(ref.isPresent()) {</span>
+<span class="fc" id="L1759">        setReferenceField(proxyRef, fname, ref.get());</span>
+      } else {
+<span class="nc" id="L1761">        throwException(&quot;java.lang.InternalError&quot;, &quot;AnnotationElement type not supported: &quot; + ftype);</span>
+      }
+    }
+<span class="fc" id="L1764">  }</span>
+
+  private int makeAnnotationEnumRef(AnnotationInfo.EnumValue v) {
+<span class="fc" id="L1767">    AnnotationInfo.EnumValue ev = (AnnotationInfo.EnumValue)v;</span>
+<span class="fc" id="L1768">    String eCls = ev.getEnumClassName();</span>
+<span class="fc" id="L1769">    String eConst = ev.getEnumConstName();</span>
+
+<span class="fc" id="L1771">    ClassInfo eci = ClassLoaderInfo.getCurrentResolvedClassInfo(eCls);</span>
+<span class="fc bfc" id="L1772" title="All 2 branches covered.">    if (!eci.isInitialized()){</span>
+<span class="fc" id="L1773">      throw new ClinitRequired(eci);</span>
+    }
+
+<span class="fc" id="L1776">    StaticElementInfo sei = eci.getStaticElementInfo();</span>
+<span class="fc" id="L1777">    int eref = sei.getReferenceField(eConst);</span>
+<span class="fc" id="L1778">    return eref;</span>
+  }
+
+  int newAnnotationProxy (ClassInfo aciProxy, AnnotationInfo ai) throws ClinitRequired {
+
+<span class="fc" id="L1783">    int proxyRef = newObject(aciProxy);</span>
+
+    // init fields of the new object from the AnnotationInfo
+<span class="fc bfc" id="L1786" title="All 2 branches covered.">    for (AnnotationInfo.Entry e : ai.getEntries()){</span>
+<span class="fc" id="L1787">      Object v = e.getValue();</span>
+<span class="fc" id="L1788">      String fname = e.getKey();</span>
+<span class="fc" id="L1789">      FieldInfo fi = aciProxy.getInstanceField(fname);</span>
+<span class="fc" id="L1790">      initAnnotationProxyField(proxyRef, fi, v);</span>
+    }
+
+<span class="fc" id="L1793">    return proxyRef;</span>
+  }
+
+  int newAnnotationProxies (AnnotationInfo[] ai) throws ClinitRequired {
+
+<span class="pc bpc" id="L1798" title="1 of 4 branches missed.">    if ((ai != null) &amp;&amp; (ai.length &gt; 0)){</span>
+<span class="fc" id="L1799">      int aref = newObjectArray(&quot;Ljava/lang/annotation/Annotation;&quot;, ai.length);</span>
+<span class="fc bfc" id="L1800" title="All 2 branches covered.">      for (int i=0; i&lt;ai.length; i++){</span>
+<span class="fc" id="L1801">        int ar = makeAnnotationProxy(ai[i]);</span>
+<span class="fc" id="L1802">        setReferenceArrayElement(aref, i, ar);</span>
+      }
+<span class="fc" id="L1804">      return aref;</span>
+
+    } else {
+      // on demand init (not too many programs use annotation reflection)
+<span class="fc" id="L1808">      int aref = getStaticReferenceField(&quot;java.lang.Class&quot;, &quot;emptyAnnotations&quot;);</span>
+<span class="pc bpc" id="L1809" title="1 of 2 branches missed.">      if (aref == NULL) {</span>
+<span class="fc" id="L1810">        aref = newObjectArray(&quot;Ljava/lang/annotation/Annotation;&quot;, 0);</span>
+<span class="fc" id="L1811">        setStaticReferenceField(&quot;java.lang.Class&quot;, &quot;emptyAnnotations&quot;, aref);</span>
+      }
+<span class="fc" id="L1813">      return aref;</span>
+    }
+  }
+
+  private int makeAnnotationProxy(AnnotationInfo annotationInfo) {
+<span class="fc" id="L1818">    ClassInfo aci = ClassLoaderInfo.getCurrentResolvedClassInfo(annotationInfo.getName());</span>
+<span class="fc" id="L1819">    ClassInfo aciProxy = aci.getAnnotationProxy();</span>
+
+<span class="fc" id="L1821">    int ar = newAnnotationProxy(aciProxy, annotationInfo);</span>
+<span class="fc" id="L1822">    return ar;</span>
+  }
+
+  public void handleClinitRequest (ClassInfo ci) {
+<span class="fc" id="L1826">    ThreadInfo ti = getThreadInfo();</span>
+
+    // NOTE: we have to repeat no matter what, since this is called from
+    // a handler context (if we only had to create a class object w/o
+    // calling clinit, we can't just go on)
+<span class="fc" id="L1831">    ci.initializeClass(ti);</span>
+<span class="fc" id="L1832">    repeatInvocation();</span>
+<span class="fc" id="L1833">  }</span>
+
+  public StackFrame getCallerStackFrame() {
+    // since native methods are now executed within their own stack frames
+    // we provide a little helper to get the caller
+<span class="fc" id="L1838">    return ti.getLastNonSyntheticStackFrame();</span>
+  }
+
+  public StackFrame getModifiableCallerStackFrame() {
+    // since native methods are now executed within their own stack frames
+    // we provide a little helper to get the caller
+<span class="fc" id="L1844">    return ti.getModifiableLastNonSyntheticStackFrame();</span>
+  }
+
+  
+  public int valueOfBoolean(boolean b) {
+<span class="fc" id="L1849">    return BoxObjectCacheManager.valueOfBoolean(ti, b);</span>
+  }
+
+  public int valueOfByte(byte b) {
+<span class="fc" id="L1853">    return BoxObjectCacheManager.valueOfByte(ti, b);</span>
+  }
+
+  public int valueOfCharacter(char c) {
+<span class="fc" id="L1857">    return BoxObjectCacheManager.valueOfCharacter(ti, c);</span>
+  }
+
+  public int valueOfShort(short s) {
+<span class="fc" id="L1861">    return BoxObjectCacheManager.valueOfShort(ti, s);</span>
+  }
+
+  public int valueOfInteger(int i) {
+<span class="fc" id="L1865">    return BoxObjectCacheManager.valueOfInteger(ti, i);</span>
+  }
+
+  public int valueOfLong(long l) {
+<span class="fc" id="L1869">    return BoxObjectCacheManager.valueOfLong(ti, l);</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

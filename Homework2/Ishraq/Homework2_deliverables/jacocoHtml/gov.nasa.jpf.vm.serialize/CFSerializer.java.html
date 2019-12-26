@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CFSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.serialize</a> &gt; <span class="el_source">CFSerializer.java</span></div><h1>CFSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.serialize;
+
+import java.util.Iterator;
+
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.ThreadList;
+
+/**
+ * a FilteringSerializer that performs on-the-fly heap canonicalization to
+ * achieve heap symmetry. It does so by storing the order in which
+ * objects are referenced, not the reference values themselves.
+ *
+ * Use this serializer if the Heap implementation does not provide
+ * sufficient symmetry, i.e. reference values depend on the order of
+ * thread scheduling.
+ *
+ * Ad hoc heap symmetry is hard to achieve in the heap because of static initialization.
+ * Each time a thread loads a class all the static init (at least the class object and
+ * its fields) are associated with this thread, hence thread reference
+ * values depend on which classes are already loaded by other threads. Associating
+ * all allocations from inside of clinits to one address range doesn't help either
+ * because then this range will experience scheduling dependent orders. A hybrid
+ * approach in which only this segment is canonicalized might work, but it is
+ * questionable if the overhead is worth the effort.
+ */
+<span class="fc" id="L48">public class CFSerializer extends FilteringSerializer {</span>
+
+  // we flip this on every serialization, which helps us to avoid passes
+  // over the serialized objects to reset their sids. This works by resetting
+  // the sid to 0 upon backtrack, and counting either upwards from 1 or downwards
+  // from -1, but store the absolute value in the serialization stream
+  boolean positiveSid;
+
+  int sidCount;
+
+  @Override
+  protected void initReferenceQueue() {
+<span class="fc" id="L60">    super.initReferenceQueue();</span>
+
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    if (positiveSid){</span>
+<span class="fc" id="L63">      positiveSid = false;</span>
+<span class="fc" id="L64">      sidCount = -1;</span>
+    } else {
+<span class="fc" id="L66">      positiveSid = true;</span>
+<span class="fc" id="L67">      sidCount = 1;</span>
+    }
+<span class="fc" id="L69">  }</span>
+
+  // might be overriden in subclasses to conditionally queue objects
+  protected void queueReference(ElementInfo ei){
+<span class="fc" id="L73">    refQueue.add(ei);</span>
+<span class="fc" id="L74">  }</span>
+
+  @Override
+  public void processReference(int objref) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">    if (objref == MJIEnv.NULL) {</span>
+<span class="fc" id="L79">      buf.add(MJIEnv.NULL);</span>
+
+    } else {
+<span class="fc" id="L82">      ElementInfo ei = heap.get(objref);</span>
+<span class="fc" id="L83">      int sid = ei.getSid();</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">      if (positiveSid){ // count sid upwards from 1</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if (sid &lt;= 0){  // not seen before in this serialization run</span>
+<span class="fc" id="L87">          sid = sidCount++;</span>
+<span class="fc" id="L88">          ei.setSid(sid);</span>
+<span class="fc" id="L89">          queueReference(ei);</span>
+        }
+      } else { // count sid downwards from -1
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (sid &gt;= 0){ // not seen before in this serialization run</span>
+<span class="fc" id="L93">          sid = sidCount--;</span>
+<span class="fc" id="L94">          ei.setSid(sid);</span>
+<span class="fc" id="L95">          queueReference(ei);</span>
+        }
+<span class="fc" id="L97">        sid = -sid;</span>
+      }
+
+      // note that we always add the absolute sid value
+<span class="fc" id="L101">      buf.add(sid);</span>
+    }
+<span class="fc" id="L103">  }</span>
+  
+  @Override
+  protected void serializeStackFrames() {
+<span class="fc" id="L107">    ThreadList tl = ks.getThreadList();</span>
+
+<span class="fc bfc" id="L109" title="All 2 branches covered.">    for (Iterator&lt;ThreadInfo&gt; it = tl.canonicalLiveIterator(); it.hasNext(); ) {</span>
+<span class="fc" id="L110">      serializeStackFrames(it.next());</span>
+    }
+<span class="fc" id="L112">  }</span>
+  
+  @Override
+  protected void serializeFrame(StackFrame frame){
+<span class="fc" id="L116">    buf.add(frame.getMethodInfo().getGlobalId());</span>
+
+<span class="fc" id="L118">    Instruction pc = frame.getPC();</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">    buf.add( pc != null ? pc.getInstructionIndex() : -1);</span>
+
+<span class="fc" id="L121">    int len = frame.getTopPos()+1;</span>
+<span class="fc" id="L122">    buf.add(len);</span>
+
+    // unfortunately we can't do this as a block operation because that
+    // would use concrete reference values as hash data, i.e. break heap symmetry
+<span class="fc" id="L126">    int[] slots = frame.getSlots();</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">    for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">      if (frame.isReferenceSlot(i)) {</span>
+<span class="fc" id="L129">        processReference(slots[i]);</span>
+      } else {
+<span class="fc" id="L131">        buf.add(slots[i]);</span>
+      }
+    }
+<span class="fc" id="L134">  }</span>
+
+  @Override
+  protected void processReferenceQueue() {
+<span class="fc" id="L138">    refQueue.process(this);</span>
+<span class="fc" id="L139">  }</span>
+  
+  @Override
+  protected int getSerializedReferenceValue (ElementInfo ei){
+<span class="fc" id="L143">    return Math.abs(ei.getSid());</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

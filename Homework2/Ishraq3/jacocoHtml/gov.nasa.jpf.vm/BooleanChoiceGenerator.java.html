@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BooleanChoiceGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">BooleanChoiceGenerator.java</span></div><h1>BooleanChoiceGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+
+/**
+ * a pretty simple ChoiceGenerator that returns a boolean
+ * there is not much use in having a CG type interface (such as
+ * IntChoiceGenerator) since there is hardly a need for a generic type hierarchy
+ * of BooleanChoiceGenerator subtypes - what else can you do with true/false
+ */
+public class BooleanChoiceGenerator extends ChoiceGeneratorBase&lt;Boolean&gt; {
+
+  // do we evaluate [false, true] or [true, false]
+<span class="fc" id="L31">  protected boolean falseFirst = true;</span>
+
+<span class="fc" id="L33">  protected int count = -1;</span>
+  protected boolean next;
+  
+  public BooleanChoiceGenerator(Config conf, String id) {
+<span class="fc" id="L37">    super(id);</span>
+
+<span class="fc" id="L39">    falseFirst = conf.getBoolean(&quot;cg.boolean.false_first&quot;, true);</span>
+<span class="fc" id="L40">    next = falseFirst;</span>
+<span class="fc" id="L41">  }</span>
+
+  public BooleanChoiceGenerator (String id) {
+<span class="fc" id="L44">    super(id);</span>
+<span class="fc" id="L45">    next = falseFirst;</span>
+<span class="fc" id="L46">  }</span>
+
+  public BooleanChoiceGenerator( String id, boolean falseFirst ){
+<span class="fc" id="L49">    super(id);</span>
+    
+<span class="fc" id="L51">    this.falseFirst = falseFirst;</span>
+<span class="fc" id="L52">    next = falseFirst;</span>
+<span class="fc" id="L53">  }</span>
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">    return !isDone &amp;&amp; (count &lt; 1);</span>
+  }
+
+  @Override
+  public Boolean getNextChoice () {
+<span class="fc bfc" id="L62" title="All 2 branches covered.">    return next ? Boolean.TRUE : Boolean.FALSE;</span>
+  }
+  
+  @Override
+  public Class&lt;Boolean&gt; getChoiceType() {
+<span class="nc" id="L67">    return Boolean.class;</span>
+  }
+
+  @Override
+  public void advance () {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">    if (count &lt; 1) {</span>
+<span class="fc" id="L73">      count++;</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">      next = !next;</span>
+    }
+<span class="fc" id="L76">  }</span>
+  
+  @Override
+  public Boolean getChoice (int idx){
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    if (idx == 0){</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">      return falseFirst ? Boolean.FALSE : Boolean.TRUE;</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">    } else if (idx == 1){</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">      return falseFirst ? Boolean.TRUE : Boolean.FALSE;      </span>
+    } else {
+<span class="nc" id="L85">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+
+  @Override
+  public void reset () {
+<span class="fc" id="L91">    count = -1;</span>
+<span class="fc" id="L92">    next = falseFirst;</span>
+
+<span class="fc" id="L94">    isDone = false;</span>
+<span class="fc" id="L95">  }</span>
+  
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="fc" id="L99">    return 2;</span>
+  }
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="fc" id="L104">    return (count+1);</span>
+  }
+  
+  // that is pretty stupid, but for the sake of consistency we make it available
+  Boolean[] getChoices(){
+<span class="nc" id="L109">    Boolean[] vals = new Boolean[2];</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">    vals[0] = !falseFirst;</span>
+<span class="nc" id="L111">    vals[1] = falseFirst;</span>
+    
+<span class="nc" id="L113">    return vals;</span>
+  }
+
+  // not much use to support reordering, we just have two elements so reverse() will do
+  
+  public boolean isFalseFirst(){
+<span class="nc" id="L119">    return falseFirst;</span>
+  }
+  
+  /**
+   *  note this should only be called before the first advance since it resets
+   *  the enumeration state 
+   */
+  public void reverse(){
+<span class="nc bnc" id="L127" title="All 2 branches missed.">    falseFirst = !falseFirst;</span>
+<span class="nc" id="L128">    reset();</span>
+<span class="nc" id="L129">  }</span>
+  
+  @Override
+  public String toString () {
+<span class="fc" id="L133">    StringBuilder sb = new StringBuilder(getClass().getName());</span>
+<span class="fc" id="L134">    sb.append('[');</span>
+<span class="fc" id="L135">    sb.append(&quot;[id=\&quot;&quot;);</span>
+<span class="fc" id="L136">    sb.append(id);</span>
+<span class="fc" id="L137">    sb.append('&quot;');</span>
+
+<span class="fc" id="L139">    sb.append(&quot;,isCascaded:&quot;);</span>
+<span class="fc" id="L140">    sb.append(isCascaded);</span>
+
+<span class="fc" id="L142">    sb.append(&quot;,{&quot;);</span>
+
+<span class="fc bfc" id="L144" title="All 2 branches covered.">    if (count &lt; 0){</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">      sb.append(!next);</span>
+<span class="fc" id="L146">      sb.append(',');</span>
+<span class="fc" id="L147">      sb.append(next);</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">    } else if (count == 0) {</span>
+<span class="fc" id="L149">      sb.append(MARKER);</span>
+<span class="fc" id="L150">      sb.append(next);</span>
+<span class="fc" id="L151">      sb.append(',');</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">      sb.append(!next);</span>
+    } else {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">      sb.append(!next);</span>
+<span class="fc" id="L155">      sb.append(',');</span>
+<span class="fc" id="L156">      sb.append(MARKER);</span>
+<span class="fc" id="L157">      sb.append(next);</span>
+    }
+<span class="fc" id="L159">    sb.append(&quot;}]&quot;);</span>
+<span class="fc" id="L160">    return sb.toString();</span>
+  }
+  
+  @Override
+  public BooleanChoiceGenerator randomize () {
+<span class="nc" id="L165">    next = random.nextBoolean();</span>
+<span class="nc" id="L166">    return this;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,485 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FilteringSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.serialize</a> &gt; <span class="el_source">FilteringSerializer.java</span></div><h1>FilteringSerializer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm.serialize;
+
+
+import gov.nasa.jpf.util.ArrayObjectQueue;
+import gov.nasa.jpf.util.BitArray;
+import gov.nasa.jpf.util.FinalBitSet;
+import gov.nasa.jpf.util.IntVector;
+import gov.nasa.jpf.util.ObjVector;
+import gov.nasa.jpf.util.ObjectQueue;
+import gov.nasa.jpf.util.Processor;
+import gov.nasa.jpf.vm.AbstractSerializer;
+import gov.nasa.jpf.vm.ArrayFields;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ClassLoaderInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Fields;
+import gov.nasa.jpf.vm.Heap;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.NativeStateHolder;
+import gov.nasa.jpf.vm.ReferenceProcessor;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.StaticElementInfo;
+import gov.nasa.jpf.vm.Statics;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.ThreadList;
+
+import java.util.HashMap;
+import java.util.List;
+
+
+/**
+ * serializer that can ignore marked fields and stackframes for state matching
+ *
+ * &lt;2do&gt; rework filter policies
+ */
+<span class="fc" id="L57">public class FilteringSerializer extends AbstractSerializer implements ReferenceProcessor, Processor&lt;ElementInfo&gt; {</span>
+
+  // indexed by method globalId
+<span class="fc" id="L60">  final ObjVector&lt;FramePolicy&gt; methodCache = new ObjVector&lt;FramePolicy&gt;();</span>
+
+  //--- search global bitmask caches
+<span class="fc" id="L63">  final HashMap&lt;ClassInfo,FinalBitSet&gt; instanceRefMasks = new HashMap&lt;ClassInfo,FinalBitSet&gt;();</span>
+<span class="fc" id="L64">  final HashMap&lt;ClassInfo,FinalBitSet&gt; staticRefMasks   = new HashMap&lt;ClassInfo,FinalBitSet&gt;();</span>
+
+<span class="fc" id="L66">  final HashMap&lt;ClassInfo,FinalBitSet&gt; instanceFilterMasks = new HashMap&lt;ClassInfo,FinalBitSet&gt;();</span>
+<span class="fc" id="L67">  final HashMap&lt;ClassInfo,FinalBitSet&gt; staticFilterMasks   = new HashMap&lt;ClassInfo,FinalBitSet&gt;();</span>
+
+  protected FilterConfiguration filter;
+
+<span class="fc" id="L71">  protected transient IntVector buf = new IntVector(4096);</span>
+
+  // the reference queue for heap traversal
+  protected ObjectQueue&lt;ElementInfo&gt; refQueue;
+  
+  Heap heap;
+
+
+  @Override
+  public void attach(VM vm) {
+<span class="fc" id="L81">    super.attach(vm);</span>
+    
+<span class="fc" id="L83">    filter = vm.getConfig().getInstance(&quot;filter.class&quot;, FilterConfiguration.class);</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">    if (filter == null) {</span>
+<span class="fc" id="L85">      filter = new DefaultFilterConfiguration();</span>
+    }
+<span class="fc" id="L87">    filter.init(vm.getConfig());</span>
+<span class="fc" id="L88">  }</span>
+
+  protected FramePolicy getFramePolicy(MethodInfo mi) {
+<span class="nc" id="L91">    FramePolicy p = null;</span>
+
+<span class="nc" id="L93">    int mid = mi.getGlobalId();</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">    if (mid &gt;= 0){</span>
+<span class="nc" id="L95">      p = methodCache.get(mid);</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">    if (p == null) {</span>
+<span class="nc" id="L97">      p = filter.getFramePolicy(mi);</span>
+<span class="nc" id="L98">      methodCache.set(mid, p);</span>
+    }
+    } else {
+<span class="nc" id="L101">      p = filter.getFramePolicy(mi);</span>
+    }
+
+<span class="nc" id="L104">    return p;</span>
+  }
+
+  protected FinalBitSet getInstanceRefMask(ClassInfo ci) {
+<span class="fc" id="L108">    FinalBitSet v = instanceRefMasks.get(ci);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">    if (v == null) {</span>
+<span class="fc" id="L110">      BitArray b = new BitArray(ci.getInstanceDataSize());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">      for (FieldInfo fi : filter.getMatchedInstanceFields(ci)) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (fi.isReference()) {</span>
+<span class="fc" id="L113">          b.set(fi.getStorageOffset());</span>
+        }
+<span class="fc" id="L115">      }</span>
+<span class="fc" id="L116">      v = FinalBitSet.create(b);</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">      if (v == null) throw new IllegalStateException(&quot;Null BitArray returned.&quot;);</span>
+<span class="fc" id="L118">      instanceRefMasks.put(ci, v);</span>
+    }
+<span class="fc" id="L120">    return v;</span>
+  }
+
+  protected FinalBitSet getStaticRefMask(ClassInfo ci) {
+<span class="fc" id="L124">    FinalBitSet v = staticRefMasks.get(ci);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    if (v == null) {</span>
+<span class="fc" id="L126">      BitArray b = new BitArray(ci.getStaticDataSize());</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">      for (FieldInfo fi : filter.getMatchedStaticFields(ci)) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (fi.isReference()) {</span>
+<span class="fc" id="L129">          b.set(fi.getStorageOffset());</span>
+        }
+<span class="fc" id="L131">      }</span>
+<span class="fc" id="L132">      v = FinalBitSet.create(b);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">      if (v == null) throw new IllegalStateException(&quot;Null BitArray returned.&quot;);</span>
+<span class="fc" id="L134">      staticRefMasks.put(ci, v);</span>
+    }
+<span class="fc" id="L136">    return v;</span>
+  }
+
+  protected FinalBitSet getInstanceFilterMask(ClassInfo ci) {
+<span class="fc" id="L140">    FinalBitSet v = instanceFilterMasks.get(ci);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">    if (v == null) {</span>
+<span class="fc" id="L142">      BitArray b = new BitArray(ci.getInstanceDataSize());</span>
+<span class="fc" id="L143">      b.setAll();</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">      for (FieldInfo fi : filter.getMatchedInstanceFields(ci)) {</span>
+<span class="fc" id="L145">        int start = fi.getStorageOffset();</span>
+<span class="fc" id="L146">        int end = start + fi.getStorageSize();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (int i = start; i &lt; end; i++) {</span>
+<span class="fc" id="L148">          b.clear(i);</span>
+        }
+<span class="fc" id="L150">      }</span>
+<span class="fc" id="L151">      v = FinalBitSet.create(b);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">      if (v == null) throw new IllegalStateException(&quot;Null BitArray returned.&quot;);</span>
+<span class="fc" id="L153">      instanceFilterMasks.put(ci, v);</span>
+    }
+<span class="fc" id="L155">    return v;</span>
+  }
+
+  protected FinalBitSet getStaticFilterMask(ClassInfo ci) {
+<span class="fc" id="L159">    FinalBitSet v = staticFilterMasks.get(ci);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">    if (v == null) {</span>
+<span class="fc" id="L161">      BitArray b = new BitArray(ci.getStaticDataSize());</span>
+<span class="fc" id="L162">      b.setAll();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">      for (FieldInfo fi : filter.getMatchedStaticFields(ci)) {</span>
+<span class="fc" id="L164">        int start = fi.getStorageOffset();</span>
+<span class="fc" id="L165">        int end = start + fi.getStorageSize();</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (int i = start; i &lt; end; i++) {</span>
+<span class="fc" id="L167">          b.clear(i);</span>
+        }
+<span class="fc" id="L169">      }</span>
+<span class="fc" id="L170">      v = FinalBitSet.create(b);</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">      if (v == null) throw new IllegalStateException(&quot;Null BitArray returned.&quot;);</span>
+<span class="fc" id="L172">      staticFilterMasks.put(ci, v);</span>
+    }
+<span class="fc" id="L174">    return v;</span>
+  }
+
+  protected void initReferenceQueue() {
+    // note - this assumes all heap objects are in an unmarked state, but this
+    // is true if we enter outside the gc
+
+<span class="fc bfc" id="L181" title="All 2 branches covered.">    if (refQueue == null){</span>
+<span class="fc" id="L182">      refQueue = new ArrayObjectQueue&lt;ElementInfo&gt;();</span>
+    } else {
+<span class="fc" id="L184">      refQueue.clear();</span>
+    }
+<span class="fc" id="L186">  }</span>
+
+
+  //--- those are the methods that can be overridden by subclasses to implement abstractions
+
+  // needs to be public because of ReferenceProcessor interface
+  @Override
+  public void processReference(int objref) {
+<span class="nc bnc" id="L194" title="All 2 branches missed.">    if (objref != MJIEnv.NULL) {</span>
+<span class="nc" id="L195">      ElementInfo ei = heap.get(objref);</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">      if (!ei.isMarked()) { // only add objects once</span>
+<span class="nc" id="L197">        ei.setMarked();</span>
+<span class="nc" id="L198">        refQueue.add(ei);</span>
+      }
+    }
+
+<span class="nc" id="L202">    buf.add(objref);</span>
+<span class="nc" id="L203">  }</span>
+
+  
+  protected void processArrayFields (ArrayFields afields){
+<span class="fc" id="L207">    buf.add(afields.arrayLength());</span>
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">    if (afields.isReferenceArray()) {</span>
+<span class="fc" id="L210">      int[] values = afields.asReferenceArray();</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">      for (int i = 0; i &lt; values.length; i++) {</span>
+<span class="fc" id="L212">        processReference(values[i]);</span>
+      }
+<span class="fc" id="L214">    } else {</span>
+<span class="fc" id="L215">      afields.appendTo(buf);</span>
+    }
+<span class="fc" id="L217">  }</span>
+    
+  protected void processNamedFields (ClassInfo ci, Fields fields){
+<span class="fc" id="L220">    FinalBitSet filtered = getInstanceFilterMask(ci);</span>
+<span class="fc" id="L221">    FinalBitSet refs = getInstanceRefMask(ci);</span>
+
+    // using a block operation probably doesn't buy us much here since
+    // we would have to blank the filtered slots and then visit the
+    // non-filtered reference slots, i.e. do two iterations over
+    // the mask bit sets
+<span class="fc" id="L227">    int[] values = fields.asFieldSlots();</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">    for (int i = 0; i &lt; values.length; i++) {</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">      if (!filtered.get(i)) {</span>
+<span class="fc" id="L230">        int v = values[i];</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (refs.get(i)) {</span>
+<span class="fc" id="L232">          processReference(v);</span>
+        } else {
+<span class="fc" id="L234">          buf.add(v);</span>
+        }
+      }
+    }
+<span class="fc" id="L238">  }</span>
+
+  // needs to be public because of ElementInfoProcessor interface
+  // NOTE: we don't serialize the monitor state here since this is
+  // redundant to the thread locking state (which we will do after the heap).
+  // &lt;2do&gt; we don't strictly need the lockCount since this has to show in the
+  // stack frames. However, we should probably add monitor serialization to
+  // better support specialized subclasses
+  @Override
+  public void process (ElementInfo ei) {
+<span class="fc" id="L248">    Fields fields = ei.getFields();</span>
+<span class="fc" id="L249">    ClassInfo ci = ei.getClassInfo();</span>
+<span class="fc" id="L250">    buf.add(ci.getUniqueId());</span>
+
+<span class="fc bfc" id="L252" title="All 2 branches covered.">    if (fields instanceof ArrayFields) { // not filtered</span>
+<span class="fc" id="L253">      processArrayFields((ArrayFields)fields);</span>
+
+    } else { // named fields, filtered
+<span class="fc" id="L256">      processNamedFields(ci, fields);</span>
+    }
+<span class="fc" id="L258">  }</span>
+  
+  protected void processReferenceQueue () {
+<span class="fc" id="L261">    refQueue.process(this);</span>
+    
+    // this sucks, but we can't do the 'isMarkedOrLive' trick used in gc here
+    // because gc depends on live bit integrity, and we only mark non-filtered live
+    // objects here, i.e. we can't just set the Heap liveBitValue subsequently.
+<span class="fc" id="L266">    heap.unmarkAll();</span>
+<span class="fc" id="L267">  }</span>
+
+  protected void serializeStackFrames() {
+<span class="fc" id="L270">    ThreadList tl = ks.getThreadList();</span>
+
+<span class="fc bfc" id="L272" title="All 2 branches covered.">    for (ThreadInfo ti : tl) {</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">      if (ti.isAlive()) {</span>
+<span class="fc" id="L274">        serializeStackFrames(ti);</span>
+      }
+<span class="fc" id="L276">    }</span>
+<span class="fc" id="L277">  }</span>
+
+  protected void serializeStackFrames(ThreadInfo ti){
+    // we need to add the thread object itself as a root
+<span class="fc" id="L281">    processReference( ti.getThreadObjectRef());</span>
+    
+<span class="fc bfc" id="L283" title="All 2 branches covered.">    for (StackFrame frame = ti.getTopFrame(); frame != null; frame = frame.getPrevious()){</span>
+<span class="fc" id="L284">      serializeFrame(frame);</span>
+    }
+<span class="fc" id="L286">  }</span>
+
+  /** more generic, but less efficient because it can't use block operations
+  protected void _serializeFrame(StackFrame frame){
+    buf.add(frame.getMethodInfo().getGlobalId());
+    buf.add(frame.getPC().getInstructionIndex());
+
+    int len = frame.getTopPos()+1;
+    buf.add(len);
+
+    // this looks like something we can push into the frame
+    int[] slots = frame.getSlots();
+    for (int i = 0; i &lt; len; i++) {
+      if (frame.isReferenceSlot(i)) {
+        processReference(slots[i]);
+      } else {
+        buf.add(slots[i]);
+      }
+    }
+  }
+  **/
+
+  protected void serializeFrame(StackFrame frame){
+<span class="fc" id="L309">    buf.add(frame.getMethodInfo().getGlobalId());</span>
+
+    // there can be (rare) cases where a listener sets a null nextPc in
+    // a frame that is still on the stack
+<span class="fc" id="L313">    Instruction pc = frame.getPC();</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">    if (pc != null){</span>
+<span class="fc" id="L315">      buf.add(pc.getInstructionIndex());</span>
+    } else {
+<span class="nc" id="L317">      buf.add(-1);</span>
+    }
+
+<span class="fc" id="L320">    int len = frame.getTopPos()+1;</span>
+<span class="fc" id="L321">    buf.add(len);</span>
+
+<span class="fc" id="L323">    int[] slots = frame.getSlots();</span>
+<span class="fc" id="L324">    buf.append(slots,0,len);</span>
+
+<span class="fc" id="L326">    frame.visitReferenceSlots(this);</span>
+<span class="fc" id="L327">  }</span>
+
+  // this is called after the heap got serialized, i.e. we should not use
+  // processReference() anymore. 
+  protected void serializeThreadState (ThreadInfo ti){
+    
+<span class="fc" id="L333">    buf.add( ti.getId());</span>
+<span class="fc" id="L334">    buf.add( ti.getState().ordinal());</span>
+<span class="fc" id="L335">    buf.add( ti.getStackDepth());</span>
+    
+    //--- the lock state
+    // NOTE: both lockRef and lockedObjects can only refer to live objects
+    // which are already heap-processed at this point (i.e. have a valid 'sid'
+    // in case we don't want to directly serialize the reference values)
+    
+    // the object we are waiting for 
+<span class="fc" id="L343">    ElementInfo eiLock = ti.getLockObject();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">    if (eiLock != null){</span>
+<span class="fc" id="L345">      buf.add(getSerializedReferenceValue( eiLock));</span>
+    }
+    
+    // the objects we hold locks for
+    // NOTE: this should be independent of lockedObjects order, hence we
+    // have to factor this out
+<span class="fc" id="L351">    serializeLockedObjects( ti.getLockedObjects());</span>
+<span class="fc" id="L352">  }</span>
+
+  // NOTE: this should not be called before all live references have been processed
+  protected int getSerializedReferenceValue (ElementInfo ei){
+<span class="nc" id="L356">    return ei.getObjectRef();</span>
+  }
+  
+  protected void serializeLockedObjects(List&lt;ElementInfo&gt; lockedObjects){
+    // lockedObjects are already a set since we don't have multiple entries
+    // (that would just increase the lock count), but our serialization should
+    // NOT produce different values depending on order of entry. We could achieve this by using
+    // a canonical order (based on reference or sid values), but this would require
+    // System.arraycopys and object allocation, which is too much overhead
+    // given that the number of lockedObjects is small for all but the most
+    // pathological systems under test. 
+    // We could spend all day to compute the perfect order-independent hash function,
+    // but since our StateSet isn't guaranteed to be collision free anyway, we
+    // rather shoot for something that can be nicely JITed
+<span class="fc" id="L370">    int n = lockedObjects.size();</span>
+<span class="fc" id="L371">    buf.add(n);</span>
+    
+<span class="fc bfc" id="L373" title="All 2 branches covered.">    if (n &gt; 0){</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">      if (n == 1){ // no order involved</span>
+<span class="fc" id="L375">        buf.add( getSerializedReferenceValue( lockedObjects.get(0)));</span>
+        
+      } else {
+        // don't burn an iterator on this, 'n' is supposed to be small
+<span class="fc" id="L379">        int h = (n &lt;&lt; 16) + (n % 3);</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">        for (int i=0; i&lt;n; i++){</span>
+<span class="fc" id="L381">          int rot = (getSerializedReferenceValue( lockedObjects.get(i))) % 31;</span>
+<span class="fc" id="L382">          h ^= (h &lt;&lt; rot) | (h &gt;&gt;&gt; (32 - rot)); // rotate left</span>
+        }        
+<span class="fc" id="L384">        buf.add( h);</span>
+      }
+    }
+<span class="fc" id="L387">  }</span>
+  
+  protected void serializeThreadStates (){
+<span class="fc" id="L390">    ThreadList tl = ks.getThreadList();</span>
+
+<span class="fc bfc" id="L392" title="All 2 branches covered.">    for (ThreadInfo ti : tl) {</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">      if (ti.isAlive()) {</span>
+<span class="fc" id="L394">        serializeThreadState(ti);</span>
+      }
+<span class="fc" id="L396">    }    </span>
+<span class="fc" id="L397">  }</span>
+  
+  protected void serializeClassLoaders(){
+<span class="fc" id="L400">    buf.add(ks.classLoaders.size());</span>
+
+<span class="fc bfc" id="L402" title="All 2 branches covered.">    for (ClassLoaderInfo cl : ks.classLoaders) {</span>
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">      if(cl.isAlive()) {</span>
+<span class="fc" id="L404">        serializeStatics(cl.getStatics());</span>
+      }
+<span class="fc" id="L406">    }</span>
+<span class="fc" id="L407">  }</span>
+
+  protected void serializeStatics(Statics statics){
+<span class="fc" id="L410">    buf.add(statics.size());</span>
+
+<span class="fc bfc" id="L412" title="All 2 branches covered.">    for (StaticElementInfo sei : statics.liveStatics()) {</span>
+<span class="fc" id="L413">      serializeClass(sei);</span>
+<span class="fc" id="L414">    }</span>
+<span class="fc" id="L415">  }</span>
+
+  protected void serializeClass (StaticElementInfo sei){
+<span class="fc" id="L418">    buf.add(sei.getStatus());</span>
+
+<span class="fc" id="L420">    Fields fields = sei.getFields();</span>
+<span class="fc" id="L421">    ClassInfo ci = sei.getClassInfo();</span>
+<span class="fc" id="L422">    FinalBitSet filtered = getStaticFilterMask(ci);</span>
+<span class="fc" id="L423">    FinalBitSet refs = getStaticRefMask(ci);</span>
+<span class="fc" id="L424">    int max = ci.getStaticDataSize();</span>
+<span class="fc bfc" id="L425" title="All 2 branches covered.">    for (int i = 0; i &lt; max; i++) {</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">      if (!filtered.get(i)) {</span>
+<span class="fc" id="L427">        int v = fields.getIntValue(i);</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">        if (refs.get(i)) {</span>
+<span class="fc" id="L429">          processReference(v);</span>
+        } else {
+<span class="fc" id="L431">          buf.add(v);</span>
+        }
+      }
+    }
+<span class="fc" id="L435">  }</span>
+  
+  protected void serializeNativeStateHolders(){
+<span class="fc bfc" id="L438" title="All 2 branches covered.">    for (NativeStateHolder nsh : nativeStateHolders){</span>
+<span class="fc" id="L439">      serializeNativeStateHolder(nsh);</span>
+    }
+<span class="fc" id="L441">  }</span>
+  
+  protected void serializeNativeStateHolder (NativeStateHolder nsh){
+<span class="fc" id="L444">    buf.add(nsh.getHash());</span>
+<span class="fc" id="L445">  }</span>
+  
+  //--- our main purpose in life
+
+  @Override
+  protected int[] computeStoringData() {
+
+<span class="fc" id="L452">    buf.clear();</span>
+<span class="fc" id="L453">    heap = ks.getHeap();</span>
+<span class="fc" id="L454">    initReferenceQueue();</span>
+
+    //--- serialize all live objects and loaded classes
+<span class="fc" id="L457">    serializeStackFrames();</span>
+<span class="fc" id="L458">    serializeClassLoaders();</span>
+<span class="fc" id="L459">    processReferenceQueue();</span>
+    
+    //--- now serialize the thread states (which might refer to live objects)
+    // we do this last because threads contain some internal references
+    // (locked objects etc) that should NOT set the canonical reference serialization
+    // values (if they are encountered before their first explicit heap reference)
+<span class="fc" id="L465">    serializeThreadStates();</span>
+
+    //--- last is serialization of native state holders
+<span class="fc" id="L468">    serializeNativeStateHolders();</span>
+    
+<span class="fc" id="L470">    return buf.toArray();</span>
+  }
+
+  protected void dumpData() {
+<span class="nc" id="L474">    int n = buf.size();</span>
+<span class="nc" id="L475">    System.out.print(&quot;serialized data: [&quot;);</span>
+<span class="nc bnc" id="L476" title="All 2 branches missed.">    for (int i=0; i&lt;n; i++) {</span>
+<span class="nc bnc" id="L477" title="All 2 branches missed.">      if (i&gt;0) {</span>
+<span class="nc" id="L478">        System.out.print(',');</span>
+      }
+<span class="nc" id="L480">      System.out.print(buf.get(i));</span>
+    }
+<span class="nc" id="L482">    System.out.println(']');</span>
+<span class="nc" id="L483">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

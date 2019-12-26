@@ -1,0 +1,39 @@
+  Fetch URL: https://github.com/mih475/jpf-core.git
+SHA: d6e58c0bca78cf4ec1c87a5e3a0d98604ded4e6b
+> Task :copyLibs
+> Task :compileAnnotationsJava
+> Task :processAnnotationsResources NO-SOURCE
+> Task :annotationsClasses
+
+> Task :compileJava
+
+> Task :processResources NO-SOURCE
+> Task :classes
+> Task :compileExamplesJava
+
+> Task :compileClassesJava
+
+> Task :processClassesResources NO-SOURCE
+> Task :classesClasses
+
+> Task :compilePeersJava
+
+> Task :processPeersResources NO-SOURCE
+> Task :peersClasses
+
+> Task :compileTestJava
+
+> Task :compile
+> Task :generateBuildInfo
+> Task :generateVersion
+> Task :copyResources
+> Task :createAnnotationsJar
+> Task :createClassloaderSpecificTestsJar
+> Task :createJpfClassesJar
+> Task :createJpfJar
+> Task :createRunJpfJar
+> Task :createRunTestJar
+> Task :buildJars
+
+BUILD SUCCESSFUL in 11s
+16 actionable tasks: 16 executed

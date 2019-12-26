@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TypedObjectChoice.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.choice</a> &gt; <span class="el_source">TypedObjectChoice.java</span></div><h1>TypedObjectChoice.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.choice;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.*;
+
+import java.util.ArrayList;
+
+/**
+ * a choice generator that enumerates the set of all objects of a certain type. This
+ * is a replacement for the old 'Verify.randomObject'
+ */
+public class TypedObjectChoice extends ChoiceGeneratorBase&lt;Integer&gt; implements ReferenceChoiceGenerator {
+
+  // the requested object type
+  protected String type;
+  
+  // the object references
+  protected int[] values;
+  
+  // our enumeration state
+  protected int count;
+
+  
+  public TypedObjectChoice (Config conf, String id)  {
+<span class="fc" id="L43">    super(id);</span>
+    
+<span class="fc" id="L45">    Heap heap = VM.getVM().getHeap();</span>
+    
+<span class="fc" id="L47">    type = conf.getString(id + &quot;.type&quot;);</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">    if (type == null) {</span>
+<span class="nc" id="L49">      throw conf.exception(&quot;missing 'type' property for TypedObjectChoice &quot; + id);</span>
+    }
+
+<span class="fc" id="L52">    ArrayList&lt;ElementInfo&gt; list = new ArrayList&lt;ElementInfo&gt;();</span>
+    
+<span class="fc bfc" id="L54" title="All 2 branches covered.">    for ( ElementInfo ei : heap.liveObjects()) {</span>
+<span class="fc" id="L55">      ClassInfo ci = ei.getClassInfo();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">      if (ci.isInstanceOf(type)) {</span>
+<span class="fc" id="L57">        list.add(ei);</span>
+      }
+<span class="fc" id="L59">    }</span>
+
+<span class="fc bfc" id="L61" title="All 2 branches covered.">    if (conf.getBoolean(id + &quot;.include_null&quot;, true)){</span>
+<span class="fc" id="L62">      list.add(null);</span>
+    }
+
+<span class="fc" id="L65">    values = new int[list.size()];</span>
+<span class="fc" id="L66">    int i = 0;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    for ( ElementInfo ei : list) {</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">      if (ei != null) {</span>
+<span class="fc" id="L69">        values[i++] = ei.getObjectRef();</span>
+      } else {
+<span class="fc" id="L71">        values[i++] = MJIEnv.NULL;</span>
+      }
+<span class="fc" id="L73">    }</span>
+    
+<span class="fc" id="L75">    count = -1;</span>
+<span class="fc" id="L76">  }</span>
+  
+  @Override
+  public Integer getChoice (int idx){
+<span class="nc bnc" id="L80" title="All 4 branches missed.">    if (idx &gt;= 0 &amp;&amp; idx &lt; values.length){</span>
+<span class="nc" id="L81">      return values[idx];</span>
+    } else {
+<span class="nc" id="L83">      throw new IllegalArgumentException(&quot;choice index out of range: &quot; + idx);</span>
+    }
+  }
+
+  
+  @Override
+  public void advance () {
+<span class="fc" id="L90">    count++;</span>
+<span class="fc" id="L91">  }</span>
+
+  @Override
+  public int getProcessedNumberOfChoices () {
+<span class="nc" id="L95">    return count+1;</span>
+  }
+
+  @Override
+  public int getTotalNumberOfChoices () {
+<span class="fc" id="L100">    return values.length;</span>
+  }
+
+  @Override
+  public boolean hasMoreChoices () {
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">    return !isDone &amp;&amp; (count &lt; values.length-1);</span>
+  }
+
+  @Override
+  public void reset () {
+<span class="nc" id="L110">    count = -1;</span>
+
+<span class="nc" id="L112">    isDone = false;</span>
+<span class="nc" id="L113">  }</span>
+
+  @Override
+  public Integer getNextChoice () {
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">    if ((count &gt;= 0) &amp;&amp; (count &lt; values.length)) {</span>
+<span class="fc" id="L118">      return new Integer(values[count]);</span>
+    } else {
+<span class="nc" id="L120">      return new Integer(-1);</span>
+    }
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L126">    StringBuilder sb = new StringBuilder(&quot;TypedObjectChoice [id=&quot;);</span>
+<span class="nc" id="L127">    sb.append(id);</span>
+<span class="nc" id="L128">    sb.append(&quot;,type=&quot;);</span>
+<span class="nc" id="L129">    sb.append(type);</span>
+<span class="nc" id="L130">    sb.append(&quot;,values=&quot;);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">    for (int i=0; i&lt; values.length; i++) {</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">      if (i&gt;0) {</span>
+<span class="nc" id="L133">        sb.append(',');</span>
+      }
+<span class="nc bnc" id="L135" title="All 2 branches missed.">      if (i == count) {</span>
+<span class="nc" id="L136">        sb.append(&quot;=&gt;&quot;);</span>
+      }
+<span class="nc" id="L138">      sb.append(values[i]);</span>
+    }
+<span class="nc" id="L140">    sb.append(']');</span>
+    
+<span class="nc" id="L142">    return sb.toString();</span>
+  }
+  
+  @Override
+  public TypedObjectChoice randomize() {
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    for (int i = values.length - 1; i &gt; 0; i--) {</span>
+<span class="nc" id="L148">      int j = random.nextInt(i + 1);</span>
+<span class="nc" id="L149">      int tmp = values[i];</span>
+<span class="nc" id="L150">      values[i] = values[j];</span>
+<span class="nc" id="L151">      values[j] = tmp;</span>
+    }
+<span class="nc" id="L153">    return this;</span>
+  }
+
+  @Override
+  public Class&lt;Integer&gt; getChoiceType() {
+<span class="nc" id="L158">    return Integer.class;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

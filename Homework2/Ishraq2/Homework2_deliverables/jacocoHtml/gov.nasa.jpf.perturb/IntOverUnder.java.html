@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IntOverUnder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.perturb</a> &gt; <span class="el_source">IntOverUnder.java</span></div><h1>IntOverUnder.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.perturb;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.IntChoiceGenerator;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.choice.IntChoiceFromSet;
+
+/**
+ * simple +/- delta perturbation of integer operand values
+ */
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">public class IntOverUnder implements OperandPerturbator {</span>
+
+  protected int delta;
+  protected int offset;
+
+<span class="fc" id="L35">  public IntOverUnder (Config conf, String keyPrefix) {</span>
+<span class="fc" id="L36">    delta = conf.getInt(keyPrefix + &quot;.delta&quot;, 0);</span>
+<span class="fc" id="L37">    offset = 0;</span>
+<span class="fc" id="L38">  }</span>
+
+<span class="nc" id="L40">  public IntOverUnder (int delta){</span>
+<span class="nc" id="L41">    this.delta = delta;</span>
+<span class="nc" id="L42">    offset = 0;</span>
+<span class="nc" id="L43">  }</span>
+  
+  @Override
+  public ChoiceGenerator&lt;?&gt; createChoiceGenerator (String id, StackFrame frame, Object refObject){
+<span class="fc" id="L47">    int val = frame.peek(offset);</span>
+
+<span class="fc" id="L49">    int[] values = new int[3];</span>
+
+<span class="fc" id="L51">    values[0] = val + delta;</span>
+<span class="fc" id="L52">    values[1] = val;</span>
+<span class="fc" id="L53">    values[2] = val - delta;</span>
+    
+    // set offset from refObject
+<span class="fc" id="L56">    offset = (Integer)refObject;</span>
+
+<span class="fc" id="L58">    return new IntChoiceFromSet(id, values);</span>
+  }
+
+  @Override
+  public boolean perturb(ChoiceGenerator&lt;?&gt;cg, StackFrame frame) {
+<span class="pc bpc" id="L63" title="2 of 4 branches missed.">  	assert cg instanceof IntChoiceGenerator : &quot;wrong choice generator type for IntOverUnder: &quot; + cg.getClass().getName();</span>
+
+<span class="fc" id="L65">    int val = ((IntChoiceGenerator)cg).getNextChoice();</span>
+<span class="fc" id="L66">  	frame.setOperand(offset, val, false);</span>
+<span class="fc" id="L67">  	return cg.hasMoreChoices();</span>
+  }
+  
+  @Override
+  public Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; getChoiceGeneratorType(){
+<span class="fc" id="L72">    return IntChoiceFromSet.class;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

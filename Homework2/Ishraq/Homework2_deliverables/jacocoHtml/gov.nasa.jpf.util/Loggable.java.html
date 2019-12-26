@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Loggable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">Loggable.java</span></div><h1>Loggable.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2015, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.logging.Level;
+
+/**
+ * convenience interface that mixes in JPFLogger interface methods
+ */
+public interface Loggable {
+
+  // the primitive method used by the defaults
+  JPFLogger getLogger();
+
+  default void setLogLevel (Level newLevel){
+<span class="nc" id="L32">    getLogger().setLevel(newLevel);</span>
+<span class="nc" id="L33">  }</span>
+
+  default void severe (String msg){
+<span class="nc" id="L36">    getLogger().severe(msg);</span>
+<span class="nc" id="L37">  }</span>
+  default void severe (String a1, String a2){
+<span class="nc" id="L39">    getLogger().severe(a1, a2);</span>
+<span class="nc" id="L40">  }</span>
+  default void severe (String a1, String a2, String a3){
+<span class="nc" id="L42">    getLogger().severe(a1, a2, a3);</span>
+<span class="nc" id="L43">  }</span>
+  default void severe (String a1, String a2, String a3, String a4){
+<span class="nc" id="L45">    getLogger().severe(a1, a2, a3, a4);</span>
+<span class="nc" id="L46">  }</span>
+  default void severe (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L48">    getLogger().severe(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L49">  }</span>
+  default void severe (String... a) {
+<span class="nc" id="L51">    getLogger().severe((Object[])a);</span>
+<span class="nc" id="L52">  }</span>
+
+  default void severe (Object msg){
+<span class="nc" id="L55">    getLogger().severe(msg);</span>
+<span class="nc" id="L56">  }</span>
+  default void severe (Object a1, Object a2){
+<span class="nc" id="L58">    getLogger().severe(a1, a2);</span>
+<span class="nc" id="L59">  }</span>
+  default void severe (Object a1, Object a2, Object a3){
+<span class="nc" id="L61">    getLogger().severe(a1, a2, a3);</span>
+<span class="nc" id="L62">  }</span>
+  default void severe (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L64">    getLogger().severe(a1, a2, a3, a4);</span>
+<span class="nc" id="L65">  }</span>
+  default void severe (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L67">    getLogger().severe(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L68">  }</span>
+  default void severe (Object... a) {
+<span class="nc" id="L70">    getLogger().severe((Object[])a);</span>
+<span class="nc" id="L71">  }</span>
+  default void fsevere (String format, Object... a) {
+<span class="nc" id="L73">    getLogger().fsevere(format, a);</span>
+<span class="nc" id="L74">  }</span>
+
+
+  default void warning (String msg){
+<span class="nc" id="L78">    getLogger().warning(msg);</span>
+<span class="nc" id="L79">  }</span>
+  default void warning (String a1, String a2){
+<span class="nc" id="L81">    getLogger().warning(a1, a2);</span>
+<span class="nc" id="L82">  }</span>
+  default void warning (String a1, String a2, String a3){
+<span class="nc" id="L84">    getLogger().warning(a1, a2, a3);</span>
+<span class="nc" id="L85">  }</span>
+  default void warning (String a1, String a2, String a3, String a4){
+<span class="nc" id="L87">    getLogger().warning(a1, a2, a3, a4);</span>
+<span class="nc" id="L88">  }</span>
+  default void warning (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L90">    getLogger().warning(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L91">  }</span>
+  default void warning (String... a) {
+<span class="nc" id="L93">    getLogger().warning((Object[]) a);</span>
+<span class="nc" id="L94">  }</span>
+
+  default void warning (Object msg){
+<span class="nc" id="L97">    getLogger().warning(msg);</span>
+<span class="nc" id="L98">  }</span>
+  default void warning (Object a1, Object a2){
+<span class="nc" id="L100">    getLogger().warning(a1, a2);</span>
+<span class="nc" id="L101">  }</span>
+  default void warning (Object a1, Object a2, Object a3){
+<span class="nc" id="L103">    getLogger().warning(a1, a2, a3);</span>
+<span class="nc" id="L104">  }</span>
+  default void warning (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L106">    getLogger().warning(a1, a2, a3, a4);</span>
+<span class="nc" id="L107">  }</span>
+  default void warning (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L109">    getLogger().warning(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L110">  }</span>
+  default void warning (Object... a) {
+<span class="nc" id="L112">    getLogger().warning((Object[]) a);</span>
+<span class="nc" id="L113">  }</span>
+  default void fwarning (String format, Object... a) {
+<span class="nc" id="L115">    getLogger().fwarning(format, a);</span>
+<span class="nc" id="L116">  }</span>
+
+
+  default void info (String msg){
+<span class="nc" id="L120">    getLogger().info(msg);</span>
+<span class="nc" id="L121">  }</span>
+  default void info (String a1, String a2){
+<span class="nc" id="L123">    getLogger().info(a1, a2);</span>
+<span class="nc" id="L124">  }</span>
+  default void info (String a1, String a2, String a3){
+<span class="nc" id="L126">    getLogger().info(a1, a2, a3);</span>
+<span class="nc" id="L127">  }</span>
+  default void info (String a1, String a2, String a3, String a4){
+<span class="nc" id="L129">    getLogger().info(a1, a2, a3, a4);</span>
+<span class="nc" id="L130">  }</span>
+  default void info (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L132">    getLogger().info(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L133">  }</span>
+  default void info (String... a) {
+<span class="nc" id="L135">    getLogger().info((Object[]) a);</span>
+<span class="nc" id="L136">  }</span>
+
+  default void info (Object msg){
+<span class="nc" id="L139">    getLogger().info(msg);</span>
+<span class="nc" id="L140">  }</span>
+  default void info (Object a1, Object a2){
+<span class="nc" id="L142">    getLogger().info(a1, a2);</span>
+<span class="nc" id="L143">  }</span>
+  default void info (Object a1, Object a2, Object a3){
+<span class="nc" id="L145">    getLogger().info(a1, a2, a3);</span>
+<span class="nc" id="L146">  }</span>
+  default void info (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L148">    getLogger().info(a1, a2, a3, a4);</span>
+<span class="nc" id="L149">  }</span>
+  default void info (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L151">    getLogger().info(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L152">  }</span>
+  default void info (Object... a) {
+<span class="nc" id="L154">    getLogger().info((Object[]) a);</span>
+<span class="nc" id="L155">  }</span>
+  default void finfo (String format, Object... a) {
+<span class="nc" id="L157">    getLogger().finfo(format, a);</span>
+<span class="nc" id="L158">  }</span>
+
+
+  default void fine (String msg){
+<span class="nc" id="L162">    getLogger().fine(msg);</span>
+<span class="nc" id="L163">  }</span>
+  default void fine (String a1, String a2){
+<span class="nc" id="L165">    getLogger().fine(a1, a2);</span>
+<span class="nc" id="L166">  }</span>
+  default void fine (String a1, String a2, String a3){
+<span class="nc" id="L168">    getLogger().fine(a1, a2, a3);</span>
+<span class="nc" id="L169">  }</span>
+  default void fine (String a1, String a2, String a3, String a4){
+<span class="nc" id="L171">    getLogger().fine(a1, a2, a3, a4);</span>
+<span class="nc" id="L172">  }</span>
+  default void fine (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L174">    getLogger().fine(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L175">  }</span>
+  default void fine (String... a) {
+<span class="nc" id="L177">    getLogger().fine((Object[]) a);</span>
+<span class="nc" id="L178">  }</span>
+
+  default void fine (Object msg){
+<span class="nc" id="L181">    getLogger().fine(msg);</span>
+<span class="nc" id="L182">  }</span>
+  default void fine (Object a1, Object a2){
+<span class="nc" id="L184">    getLogger().fine(a1, a2);</span>
+<span class="nc" id="L185">  }</span>
+  default void fine (Object a1, Object a2, Object a3){
+<span class="nc" id="L187">    getLogger().fine(a1, a2, a3);</span>
+<span class="nc" id="L188">  }</span>
+  default void fine (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L190">    getLogger().fine(a1, a2, a3, a4);</span>
+<span class="nc" id="L191">  }</span>
+  default void fine (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L193">    getLogger().fine(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L194">  }</span>
+  default void fine (Object... a) {
+<span class="nc" id="L196">    getLogger().fine((Object[]) a);</span>
+<span class="nc" id="L197">  }</span>
+  default void ffine (String format, Object... a) {
+<span class="nc" id="L199">    getLogger().ffine(format, a);</span>
+<span class="nc" id="L200">  }</span>
+
+
+  default void finer (String msg){
+<span class="nc" id="L204">    getLogger().finer(msg);</span>
+<span class="nc" id="L205">  }</span>
+  default void finer (String a1, String a2){
+<span class="nc" id="L207">    getLogger().finer(a1, a2);</span>
+<span class="nc" id="L208">  }</span>
+  default void finer (String a1, String a2, String a3){
+<span class="nc" id="L210">    getLogger().finer(a1, a2, a3);</span>
+<span class="nc" id="L211">  }</span>
+  default void finer (String a1, String a2, String a3, String a4){
+<span class="nc" id="L213">    getLogger().finer(a1, a2, a3, a4);</span>
+<span class="nc" id="L214">  }</span>
+  default void finer (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L216">    getLogger().finer(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L217">  }</span>
+  default void finer (String... a) {
+<span class="nc" id="L219">    getLogger().finer((Object[]) a);</span>
+<span class="nc" id="L220">  }</span>
+
+  default void finer (Object msg){
+<span class="nc" id="L223">    getLogger().finer(msg);</span>
+<span class="nc" id="L224">  }</span>
+  default void finer (Object a1, Object a2){
+<span class="nc" id="L226">    getLogger().finer(a1, a2);</span>
+<span class="nc" id="L227">  }</span>
+  default void finer (Object a1, Object a2, Object a3){
+<span class="nc" id="L229">    getLogger().finer(a1, a2, a3);</span>
+<span class="nc" id="L230">  }</span>
+  default void finer (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L232">    getLogger().finer(a1, a2, a3, a4);</span>
+<span class="nc" id="L233">  }</span>
+  default void finer (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L235">    getLogger().finer(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L236">  }</span>
+  default void finer (Object... a) {
+<span class="nc" id="L238">    getLogger().finer((Object[]) a);</span>
+<span class="nc" id="L239">  }</span>
+  default void ffiner (String format, Object... a) {
+<span class="nc" id="L241">    getLogger().ffiner(format, a);</span>
+<span class="nc" id="L242">  }</span>
+
+
+  default void finest (String msg){
+<span class="nc" id="L246">    getLogger().finest(msg);</span>
+<span class="nc" id="L247">  }</span>
+  default void finest (String a1, String a2){
+<span class="nc" id="L249">    getLogger().finest(a1, a2);</span>
+<span class="nc" id="L250">  }</span>
+  default void finest (String a1, String a2, String a3){
+<span class="nc" id="L252">    getLogger().finest(a1, a2, a3);</span>
+<span class="nc" id="L253">  }</span>
+  default void finest (String a1, String a2, String a3, String a4){
+<span class="nc" id="L255">    getLogger().finest(a1, a2, a3, a4);</span>
+<span class="nc" id="L256">  }</span>
+  default void finest (String a1, String a2, String a3, String a4, String a5){
+<span class="nc" id="L258">    getLogger().finest(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L259">  }</span>
+  default void finest (String... a) {
+<span class="nc" id="L261">    getLogger().finest((Object[]) a);</span>
+<span class="nc" id="L262">  }</span>
+
+  default void finest (Object msg){
+<span class="nc" id="L265">    getLogger().finest(msg);</span>
+<span class="nc" id="L266">  }</span>
+  default void finest (Object a1, Object a2){
+<span class="nc" id="L268">    getLogger().finest(a1, a2);</span>
+<span class="nc" id="L269">  }</span>
+  default void finest (Object a1, Object a2, Object a3){
+<span class="nc" id="L271">    getLogger().finest(a1, a2, a3);</span>
+<span class="nc" id="L272">  }</span>
+  default void finest (Object a1, Object a2, Object a3, Object a4){
+<span class="nc" id="L274">    getLogger().finest(a1, a2, a3, a4);</span>
+<span class="nc" id="L275">  }</span>
+  default void finest (Object a1, Object a2, Object a3, Object a4, Object a5){
+<span class="nc" id="L277">    getLogger().finest(a1, a2, a3, a4, a5);</span>
+<span class="nc" id="L278">  }</span>
+  default void finest (Object... a) {
+<span class="nc" id="L280">    getLogger().finest((Object[]) a);</span>
+<span class="nc" id="L281">  }</span>
+  default void ffinest (String format, Object... a) {
+<span class="nc" id="L283">    getLogger().ffinest(format, a);</span>
+<span class="nc" id="L284">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

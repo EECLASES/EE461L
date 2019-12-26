@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StaticFieldInstruction.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm.bytecode</a> &gt; <span class="el_source">StaticFieldInstruction.java</span></div><h1>StaticFieldInstruction.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm.bytecode;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.StaticElementInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * common machine independent type for static field accessors
+ */
+public abstract class StaticFieldInstruction extends FieldInstruction {
+
+  protected StaticFieldInstruction(String fieldName, String clsDescriptor, String fieldDescriptor){
+<span class="fc" id="L33">    super(fieldName, clsDescriptor, fieldDescriptor);</span>
+<span class="fc" id="L34">  }</span>
+
+  /**
+   * on-demand initialize the ClassInfo and FieldInfo fields. Note that
+   * classinfo might not correspond with the static className, but can be one of
+   * the super classes. Rather than checking for this on each subsequent access,
+   * we get the right one that declares the field here
+   */
+  protected void initialize() {
+<span class="fc" id="L43">    ClassInfo ciRef = mi.getClassInfo().resolveReferencedClass(className);</span>
+    
+<span class="fc" id="L45">    FieldInfo f = ciRef.getStaticField(fname);</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">    if (f != null){</span>
+<span class="fc" id="L47">      ClassInfo ciField = f.getClassInfo();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">      if (!ciField.isRegistered()){</span>
+        // classLoaded listeners might change/remove this field
+<span class="fc" id="L50">        ciField.registerClass(ThreadInfo.getCurrentThread());</span>
+<span class="fc" id="L51">        f = ciField.getStaticField(fname);</span>
+      }
+
+<span class="fc" id="L54">      fi = f;</span>
+    }
+    // otherwise the referenced class has changed since compilation, which
+    // should throw a NoSuchFieldError in the caller
+<span class="fc" id="L58">  }</span>
+
+  /**
+   * who owns the field?
+   * NOTE: this should only be used from a executeInstruction()/instructionExecuted() context
+   */
+  @Override
+  public ElementInfo getElementInfo(ThreadInfo ti){
+<span class="fc" id="L66">    return getFieldInfo().getClassInfo().getStaticElementInfo();</span>
+  }
+  
+  @Override
+  public String toPostExecString(){
+<span class="nc" id="L71">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L72">    sb.append(getMnemonic());</span>
+<span class="nc" id="L73">    sb.append(' ');</span>
+<span class="nc" id="L74">    sb.append( fi.getFullName());</span>
+    
+<span class="nc" id="L76">    return sb.toString();</span>
+  }
+
+  public ClassInfo getClassInfo() {
+<span class="nc bnc" id="L80" title="All 2 branches missed.">    if (fi == null) {</span>
+<span class="nc" id="L81">      initialize();</span>
+    }
+<span class="nc" id="L83">    return fi.getClassInfo();</span>
+  }
+
+  @Override
+  public FieldInfo getFieldInfo() {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">    if (fi == null) {</span>
+<span class="fc" id="L89">      initialize();</span>
+    }
+<span class="fc" id="L91">    return fi;</span>
+  }
+
+  /**
+   *  that's invariant, as opposed to InstanceFieldInstruction, so it's
+   *  not really a peek
+   */
+  @Override
+  public ElementInfo peekElementInfo (ThreadInfo ti) {
+<span class="fc" id="L100">    return getLastElementInfo();</span>
+  }
+
+  @Override
+  public StaticElementInfo getLastElementInfo() {
+<span class="fc" id="L105">    return getFieldInfo().getClassInfo().getStaticElementInfo();</span>
+  }
+
+  // this can be different than ciField - the field might be in one of its
+  // superclasses
+  public ClassInfo getLastClassInfo(){
+<span class="nc" id="L111">    return getFieldInfo().getClassInfo();</span>
+  }
+
+  public String getLastClassName() {
+<span class="nc" id="L115">    return getLastClassInfo().getName();</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

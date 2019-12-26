@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SearchListenerAdapter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search</a> &gt; <span class="el_source">SearchListenerAdapter.java</span></div><h1>SearchListenerAdapter.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.search;
+
+/**
+ * The {@code SearchListenerAdapter} abstract class instantiates the methods from {@code SearchListener} in order to create an adapter design pattern.
+ * 
+ * &lt;p&gt;Any desired methods will require implementing logic in child classes, however unwanted methods can be left uninstantiated in order to aid in
+ * code readability.
+ * 
+ *  &lt;p&gt;This class is to be used alongside classes that extend {@code Search} class functionality. {@code SearchListenerAdapter} is capable of gauging 
+ *  Search attributes through the implemented methods and can receive information such as depth, configured properties, and other important {@code Search}
+ *  attributes.
+ */
+<span class="fc" id="L31">public class SearchListenerAdapter implements SearchListener {</span>
+
+  @Override
+<span class="nc" id="L34">  public void stateAdvanced(Search search) {}</span>
+
+  @Override
+<span class="fc" id="L37">  public void stateProcessed(Search search) {}</span>
+
+  @Override
+<span class="fc" id="L40">  public void stateBacktracked(Search search) {}</span>
+
+  @Override
+<span class="nc" id="L43">  public void statePurged(Search search) {}</span>
+
+  @Override
+<span class="fc" id="L46">  public void stateStored(Search search) {}</span>
+
+  @Override
+<span class="fc" id="L49">  public void stateRestored(Search search) {}</span>
+
+  @Override
+<span class="nc" id="L52">  public void searchProbed(Search search) {}</span>
+  
+  @Override
+<span class="nc" id="L55">  public void propertyViolated(Search search) {}</span>
+
+  @Override
+<span class="nc" id="L58">  public void searchStarted(Search search) {}</span>
+
+  @Override
+<span class="nc" id="L61">  public void searchConstraintHit(Search search) {}</span>
+
+  @Override
+<span class="nc" id="L64">  public void searchFinished(Search search) {}</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

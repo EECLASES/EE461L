@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Fields.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">Fields.java</span></div><h1>Fields.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.IntVector;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.ObjectList;
+
+
+/**
+ * Represents the variable, hash-collapsed pooled data associated with an object
+ * that is related to the object values (as opposed to synchronization -&gt;Monitor).
+ * Contains the values of the fields, not their descriptors.  Descriptors are represented
+ * by gov.nasa.jpf.vm.FieldInfo objects, which are stored in the ClassInfo structure.
+ *
+ * @see gov.nasa.jpf.vm.FieldInfo
+ * @see gov.nasa.jpf.vm.Monitor
+ */
+public abstract class Fields implements Cloneable {
+
+  /**
+   * we use this to store arbitrary field attributes (like symbolic values),
+   * but only create this on demand
+   */
+  protected Object[] fieldAttrs;
+
+  /**
+   * attribute attached to the object as a whole
+   */
+  protected Object objectAttr;
+
+
+<span class="fc" id="L49">  protected Fields() {}</span>
+
+  public boolean hasFieldAttr() {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">    return fieldAttrs != null;</span>
+  }
+
+  public boolean hasFieldAttr (Class&lt;?&gt; attrType){    
+<span class="nc" id="L56">    Object[] fa = fieldAttrs;</span>
+<span class="nc bnc" id="L57" title="All 2 branches missed.">    if (fa != null){</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">      for (int i=0; i&lt;fa.length; i++){</span>
+<span class="nc" id="L59">        Object a = fa[i];</span>
+<span class="nc bnc" id="L60" title="All 4 branches missed.">        if (a != null &amp;&amp; ObjectList.containsType(a, attrType)){</span>
+<span class="nc" id="L61">          return true;</span>
+        }
+      }
+    }
+<span class="nc" id="L65">    return false;</span>
+  }
+
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getFieldAttr(int fieldOrElementIndex){
+<span class="fc bfc" id="L74" title="All 2 branches covered.">    if (fieldAttrs != null){</span>
+<span class="fc" id="L75">      return fieldAttrs[fieldOrElementIndex];</span>
+    }
+<span class="fc" id="L77">    return null;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setFieldAttr (int nFieldsOrElements, int fieldOrElementIndex, Object attr){
+<span class="fc bfc" id="L87" title="All 2 branches covered.">    if (fieldAttrs == null){</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">      if (attr == null){</span>
+<span class="fc" id="L89">        return; // no need to waste an array object for storing null</span>
+      }
+<span class="fc" id="L91">      fieldAttrs = new Object[nFieldsOrElements];</span>
+    }
+<span class="fc" id="L93">    fieldAttrs[fieldOrElementIndex] = attr;</span>
+<span class="fc" id="L94">  }</span>
+  
+  public void addFieldAttr (int nFieldsOrElements, int fieldOrElementIndex, Object attr){
+<span class="nc bnc" id="L97" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">      if (fieldAttrs == null) {</span>
+<span class="nc" id="L99">        fieldAttrs = new Object[nFieldsOrElements];</span>
+      }
+<span class="nc" id="L101">      fieldAttrs[fieldOrElementIndex] = ObjectList.add(fieldAttrs[fieldOrElementIndex], attr);</span>
+    }
+<span class="nc" id="L103">  }</span>
+  
+  public void removeFieldAttr (int fieldOrElementIndex, Object attr){
+<span class="nc bnc" id="L106" title="All 2 branches missed.">    if (fieldAttrs != null){</span>
+<span class="nc" id="L107">     fieldAttrs[fieldOrElementIndex] = ObjectList.remove(fieldAttrs[fieldOrElementIndex], attr);</span>
+    }
+<span class="nc" id="L109">  }</span>
+  
+  public void replaceFieldAttr (int fieldOrElementIndex, Object oldAttr, Object newAttr){
+<span class="nc bnc" id="L112" title="All 2 branches missed.">    if (fieldAttrs != null){</span>
+<span class="nc" id="L113">     fieldAttrs[fieldOrElementIndex] = ObjectList.replace(fieldAttrs[fieldOrElementIndex], oldAttr, newAttr);</span>
+    }
+<span class="nc" id="L115">  }</span>
+  
+  public boolean hasFieldAttr (int fieldOrElementIndex, Class&lt;?&gt; type){
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    if (fieldAttrs != null){</span>
+<span class="nc" id="L119">     return ObjectList.containsType(fieldAttrs[fieldOrElementIndex], type);</span>
+    }
+<span class="nc" id="L121">    return false;</span>
+  }
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getFieldAttr (int fieldOrElementIndex, Class&lt;T&gt; type){
+<span class="nc bnc" id="L129" title="All 2 branches missed.">    if (fieldAttrs != null){</span>
+<span class="nc" id="L130">     return ObjectList.getFirst(fieldAttrs[fieldOrElementIndex], type);</span>
+    }
+<span class="nc" id="L132">    return null;    </span>
+  }
+  
+  public &lt;T&gt; T getNextFieldAttr (int fieldOrElementIndex, Class&lt;T&gt; type, Object prev){
+<span class="nc bnc" id="L136" title="All 2 branches missed.">    if (fieldAttrs != null){</span>
+<span class="nc" id="L137">     return ObjectList.getNext(fieldAttrs[fieldOrElementIndex], type, prev);</span>
+    }
+<span class="nc" id="L139">    return null;    </span>
+  }
+  
+  public ObjectList.Iterator fieldAttrIterator(int fieldOrElementIndex){
+<span class="nc bnc" id="L143" title="All 2 branches missed.">    Object a = (fieldAttrs != null) ? fieldAttrs[fieldOrElementIndex] : null;</span>
+<span class="nc" id="L144">    return ObjectList.iterator(a);</span>
+  }
+  
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; fieldAttrIterator(int fieldOrElementIndex, Class&lt;T&gt; type){
+<span class="nc bnc" id="L148" title="All 2 branches missed.">    Object a = (fieldAttrs != null) ? fieldAttrs[fieldOrElementIndex] : null;</span>
+<span class="nc" id="L149">    return ObjectList.typedIterator(a, type);</span>
+  }
+  
+
+  //--- object attributes
+  public boolean hasObjectAttr () {
+<span class="fc bfc" id="L155" title="All 2 branches covered.">    return (objectAttr != null);</span>
+  }
+
+  public boolean hasObjectAttr (Class&lt;?&gt; attrType){
+<span class="nc" id="L159">    return ObjectList.containsType(objectAttr, attrType);</span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at a time, or check/process result with ObjectList
+   */
+  public Object getObjectAttr(){
+<span class="fc" id="L167">    return objectAttr;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at a time
+   *  - you obtained the value you set by a previous getXAttr()
+   *  - you constructed a multi value list with ObjectList.createList()
+   */
+  public void setObjectAttr (Object attr){
+<span class="fc" id="L177">    objectAttr = attr;    </span>
+<span class="fc" id="L178">  }</span>
+
+  public void addObjectAttr (Object attr){
+<span class="nc" id="L181">    objectAttr = ObjectList.add(objectAttr, attr);</span>
+<span class="nc" id="L182">  }</span>
+
+  public void removeObjectAttr (Object attr){
+<span class="nc" id="L185">    objectAttr = ObjectList.remove(objectAttr, attr);</span>
+<span class="nc" id="L186">  }</span>
+
+  public void replaceObjectAttr (Object oldAttr, Object newAttr){
+<span class="nc" id="L189">    objectAttr = ObjectList.replace(objectAttr, oldAttr, newAttr);</span>
+<span class="nc" id="L190">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getObjectAttr (Class&lt;T&gt; attrType) {
+<span class="nc" id="L197">    return ObjectList.getFirst(objectAttr, attrType);</span>
+  }
+
+  public &lt;T&gt; T getNextObjectAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L201">    return ObjectList.getNext(objectAttr, attrType, prev);</span>
+  }
+
+  public ObjectList.Iterator objectAttrIterator(){
+<span class="nc" id="L205">    return ObjectList.iterator(objectAttr);</span>
+  }
+  
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; objectAttrIterator(Class&lt;T&gt; attrType){
+<span class="fc" id="L209">    return ObjectList.typedIterator(objectAttr, attrType);</span>
+  }
+
+
+  public abstract int[] asFieldSlots();
+
+  /**
+   * give an approximation of the heap size in bytes - we assume fields are word
+   * aligned, hence the number of values*4 should be good. Note that this is
+   * overridden by ArrayFields (arrays would be packed)
+   */
+  public abstract int getHeapSize ();
+
+
+  public boolean isReferenceArray () {
+<span class="nc" id="L224">    return false;</span>
+  }
+
+  // our low level getters and setters
+  public abstract int getIntValue (int index);
+
+  // same as getIntValue(), just here to make intentions clear
+  public abstract int getReferenceValue (int index);
+
+  public abstract long getLongValue (int index);
+
+  public abstract boolean getBooleanValue (int index);
+
+  public abstract byte getByteValue (int index);
+
+  public abstract char getCharValue (int index);
+
+  public abstract short getShortValue (int index);
+
+  public abstract float getFloatValue (int index);
+
+  public abstract double getDoubleValue (int index);
+
+  //--- the field modifier methods (both instance and static)
+
+  public abstract void setReferenceValue (int index, int newValue);
+
+  public abstract void setBooleanValue (int index, boolean newValue);
+
+  public abstract void setByteValue (int index, byte newValue);
+
+  public abstract void setCharValue (int index, char newValue);
+
+  public abstract void setShortValue (int index, short newValue);
+
+  public abstract void setFloatValue (int index, float newValue);
+
+  public abstract void setIntValue (int index, int newValue);
+
+  public abstract void setLongValue (int index, long newValue);
+
+  public abstract void setDoubleValue (int index, double newValue);
+
+  @Override
+  public abstract Fields clone ();
+
+  protected Fields cloneFields() {
+    try {
+<span class="fc" id="L272">      Fields f = (Fields)super.clone();</span>
+
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">      if (fieldAttrs != null) {</span>
+<span class="nc" id="L275">        f.fieldAttrs = fieldAttrs.clone();</span>
+      }
+
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">      if (objectAttr != null) {</span>
+<span class="nc" id="L279">        f.objectAttr = objectAttr; //</span>
+      }
+
+<span class="fc" id="L282">      return f;</span>
+<span class="nc" id="L283">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L284">      return null;</span>
+    }
+  }
+
+  @Override
+  public abstract boolean equals(Object o);
+
+  // &lt;2do&gt; not multi-attr aware yet
+  protected boolean compareAttrs(Fields f) {
+<span class="nc bnc" id="L293" title="All 4 branches missed.">    if (fieldAttrs != null || f.fieldAttrs != null) {</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">      if (!Misc.equals(fieldAttrs, f.fieldAttrs)) {</span>
+<span class="nc" id="L295">        return false;</span>
+      }
+    }
+
+<span class="nc bnc" id="L299" title="All 2 branches missed.">    if (!ObjectList.equals(objectAttr, f.objectAttr)){</span>
+<span class="nc" id="L300">      return false;</span>
+    }
+
+<span class="nc" id="L303">    return true;</span>
+  }
+
+  // serialization interface
+  public abstract void appendTo(IntVector v);
+
+
+  @Override
+  public int hashCode () {
+<span class="nc" id="L312">    HashData hd = new HashData();</span>
+<span class="nc" id="L313">    hash(hd);</span>
+<span class="nc" id="L314">    hashAttrs(hd);</span>
+<span class="nc" id="L315">    return hd.getValue();</span>
+  }
+
+  public abstract void hash(HashData hd);
+
+  /**
+   * Adds some data to the computation of an hashcode.
+   */
+  public void hashAttrs (HashData hd) {
+
+    // it's debatable if we add the attributes to the state, but whatever it
+    // is, it should be kept consistent with the StackFrame.hash()
+<span class="nc" id="L327">    Object[] a = fieldAttrs;</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">    if (a != null) {</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">      for (int i=0, l=a.length; i &lt; l; i++) {</span>
+<span class="nc" id="L330">        ObjectList.hash(a[i], hd);</span>
+      }
+    }
+
+<span class="nc bnc" id="L334" title="All 2 branches missed.">    if (objectAttr != null){</span>
+<span class="nc" id="L335">      ObjectList.hash(objectAttr, hd);</span>
+    }
+<span class="nc" id="L337">  }</span>
+
+
+  // &lt;2do&gt; not multi-attr aware yet
+  public void copyAttrs(Fields other) {
+<span class="nc bnc" id="L342" title="All 2 branches missed.">    if (other.fieldAttrs != null){</span>
+<span class="nc bnc" id="L343" title="All 2 branches missed.">      if (fieldAttrs == null){</span>
+<span class="nc" id="L344">        fieldAttrs = other.fieldAttrs.clone();</span>
+      } else {
+<span class="nc" id="L346">        System.arraycopy(other.fieldAttrs, 0, fieldAttrs, 0, fieldAttrs.length);</span>
+      }
+    }
+
+<span class="nc" id="L350">    objectAttr = other.objectAttr;</span>
+<span class="nc" id="L351">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

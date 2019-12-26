@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BitSet256.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">BitSet256.java</span></div><h1>BitSet256.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+
+/**
+ * a fixed size BitSet with 256 bits.
+ *
+ * The main motivation for this class is to minimize memory size while maximizing
+ * performance and keeping a java.util.BitSet compatible interface. The only
+ * deviation from the standard BitSet is that we assume more cardinality() calls
+ * than set()/clear() calls, i.e. we want to cache this value
+ *
+ * Instances of this class do not allocate any additional memory, we keep all
+ * data in builtin type fields
+ */
+public class BitSet256 extends AbstractFixedBitSet {
+
+  public static final int INDEX_MASK = 0xffffff00;
+
+  long l0, l1, l2, l3;
+
+<span class="fc" id="L39">  public BitSet256 (){</span>
+    // nothing in here
+<span class="fc" id="L41">  }</span>
+
+<span class="nc" id="L43">  public BitSet256 (int i){</span>
+<span class="nc" id="L44">    set(i);</span>
+<span class="nc" id="L45">  }</span>
+
+<span class="nc" id="L47">  public BitSet256 (int... idx){</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">    for (int i : idx){</span>
+<span class="nc" id="L49">      set(i);</span>
+    }
+<span class="nc" id="L51">  }</span>
+
+  private final int computeCardinality (){
+<span class="nc" id="L54">    int n= Long.bitCount(l0);</span>
+<span class="nc" id="L55">    n += Long.bitCount(l1);</span>
+<span class="nc" id="L56">    n += Long.bitCount(l2);</span>
+<span class="nc" id="L57">    n += Long.bitCount(l3);</span>
+<span class="nc" id="L58">    return n;</span>
+  }
+
+  //--- public interface (much like java.util.BitSet)
+
+  @Override
+  public void set (int i){
+<span class="fc bfc" id="L65" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L66">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L68" title="1 of 5 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">          if ((l0 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L71">            cardinality++;</span>
+<span class="fc" id="L72">            l0 |= bitPattern;</span>
+          }
+          break;
+        case 1:
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">          if ((l1 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L77">            cardinality++;</span>
+<span class="fc" id="L78">            l1 |= bitPattern;</span>
+          }
+          break;
+        case 2:
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">          if ((l2 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L83">            cardinality++;</span>
+<span class="fc" id="L84">            l2 |= bitPattern;</span>
+          }
+          break;
+        case 3:
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">          if ((l3 &amp; bitPattern) == 0L) {</span>
+<span class="fc" id="L89">            cardinality++;</span>
+<span class="fc" id="L90">            l3 |= bitPattern;</span>
+          }
+      }
+<span class="fc" id="L93">    } else {</span>
+<span class="fc" id="L94">      throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L96">  }</span>
+
+  @Override
+  public void clear (int i){
+<span class="fc bfc" id="L100" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L101">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L103" title="3 of 5 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">          if ((l0 &amp; bitPattern) != 0L) {</span>
+<span class="fc" id="L106">            cardinality--;</span>
+<span class="fc" id="L107">            l0 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 1:
+<span class="nc bnc" id="L111" title="All 2 branches missed.">          if ((l1 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L112">            cardinality--;</span>
+<span class="nc" id="L113">            l1 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 2:
+<span class="nc bnc" id="L117" title="All 2 branches missed.">          if ((l2 &amp; bitPattern) != 0L) {</span>
+<span class="nc" id="L118">            cardinality--;</span>
+<span class="nc" id="L119">            l2 &amp;= ~bitPattern;</span>
+          }
+          break;
+        case 3:
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">          if ((l3 &amp; bitPattern) != 0L) {</span>
+<span class="fc" id="L124">            cardinality--;</span>
+<span class="fc" id="L125">            l3 &amp;= ~bitPattern;</span>
+          }
+      }
+<span class="fc" id="L128">    } else {</span>
+<span class="fc" id="L129">      throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + i);</span>
+    }
+<span class="fc" id="L131">  }</span>
+
+  @Override
+  public boolean get (int i){
+<span class="fc bfc" id="L135" title="All 2 branches covered.">    if ((i &amp; INDEX_MASK) == 0) {</span>
+<span class="fc" id="L136">      long bitPattern = (1L &lt;&lt; i);</span>
+
+<span class="pc bpc" id="L138" title="1 of 5 branches missed.">      switch (i &gt;&gt; 6) {</span>
+        case 0:
+<span class="fc bfc" id="L140" title="All 2 branches covered.">          return ((l0 &amp; bitPattern) != 0);</span>
+        case 1:
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">          return ((l1 &amp; bitPattern) != 0);</span>
+        case 2:
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">          return ((l2 &amp; bitPattern) != 0);</span>
+        case 3:
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">          return ((l3 &amp; bitPattern) != 0);</span>
+      }
+    }
+
+<span class="fc" id="L150">    throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + i);</span>
+  }
+
+  @Override
+  public int size() {
+<span class="nc" id="L155">    return 256;</span>
+  }
+
+  
+  /**
+   * number of bits we can store
+   */
+  @Override
+  public int capacity() {
+<span class="nc" id="L164">    return 256;</span>
+  }
+
+  /**
+   * index of highest set bit + 1
+   */
+  @Override
+  public int length() {
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">    if (l3 != 0){</span>
+<span class="fc" id="L173">      return 256 - Long.numberOfLeadingZeros(l3);</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">    } else if (l2 != 0){</span>
+<span class="nc" id="L175">      return 192 - Long.numberOfLeadingZeros(l2);</span>
+<span class="nc bnc" id="L176" title="All 2 branches missed.">    } else if (l1 != 0){</span>
+<span class="nc" id="L177">      return 128 - Long.numberOfLeadingZeros(l1);</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    } else if (l1 != 0){</span>
+<span class="nc" id="L179">      return 64 - Long.numberOfLeadingZeros(l0);</span>
+    } else {
+<span class="nc" id="L181">      return 0;</span>
+    }
+  }
+
+  @Override
+  public void clear() {
+<span class="fc" id="L187">    l0 = l1 = l2 = l3 = 0L;</span>
+<span class="fc" id="L188">    cardinality = 0;</span>
+<span class="fc" id="L189">  }</span>
+
+
+  @Override
+  public int nextSetBit (int fromIdx){
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0) {</span>
+      int i;
+<span class="fc" id="L196">      int i0 = fromIdx &amp; 0x3f;</span>
+<span class="pc bpc" id="L197" title="3 of 5 branches missed.">      switch (fromIdx &gt;&gt; 6){</span>
+        case 0:
+<span class="fc bfc" id="L199" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l0 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i;</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l1)) &lt;64) return i + 64;</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2)) &lt;64) return i + 128;</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+          break;
+        case 1:
+<span class="nc bnc" id="L205" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l1 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+          break;
+        case 2:
+<span class="nc bnc" id="L210" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l2 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3)) &lt;64) return i + 192;</span>
+          break;
+        case 3:
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(l3 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 192;</span>
+      }
+
+<span class="fc" id="L217">      return -1;</span>
+
+    } else {
+      //throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + fromIdx);
+<span class="nc" id="L221">      return -1;</span>
+    }
+  }
+
+  @Override
+  public int nextClearBit (int fromIdx){
+<span class="nc bnc" id="L227" title="All 2 branches missed.">    if ((fromIdx &amp; INDEX_MASK) == 0) {</span>
+      int i;
+<span class="nc" id="L229">      int i0 = fromIdx &amp; 0x3f;</span>
+<span class="nc bnc" id="L230" title="All 5 branches missed.">      switch (fromIdx &gt;&gt; 6){</span>
+        case 0:
+<span class="nc bnc" id="L232" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l0 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i;</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l1)) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+          break;
+        case 1:
+<span class="nc bnc" id="L238" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l1 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 64;</span>
+<span class="nc bnc" id="L239" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2)) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+          break;
+        case 2:
+<span class="nc bnc" id="L243" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l2 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 128;</span>
+<span class="nc bnc" id="L244" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3)) &lt;64) return i + 192;</span>
+          break;
+        case 3:
+<span class="nc bnc" id="L247" title="All 2 branches missed.">          if ((i=Long.numberOfTrailingZeros(~l3 &amp; (0xffffffffffffffffL &lt;&lt; i0))) &lt;64) return i + 192;</span>
+      }
+
+<span class="nc" id="L250">      return -1;</span>
+
+    } else {
+      //throw new IndexOutOfBoundsException(&quot;BitSet256 index out of range: &quot; + fromIdx);
+<span class="nc" id="L254">      return -1;</span>
+    }
+  }
+
+  public void and (BitSet256 other){
+<span class="nc" id="L259">    l0 &amp;= other.l0;</span>
+<span class="nc" id="L260">    l1 &amp;= other.l1;</span>
+<span class="nc" id="L261">    l2 &amp;= other.l2;</span>
+<span class="nc" id="L262">    l3 &amp;= other.l3;</span>
+
+<span class="nc" id="L264">    cardinality = computeCardinality();</span>
+<span class="nc" id="L265">  }</span>
+
+  public void andNot (BitSet256 other){
+<span class="nc" id="L268">    l0 &amp;= ~other.l0;</span>
+<span class="nc" id="L269">    l1 &amp;= ~other.l1;</span>
+<span class="nc" id="L270">    l2 &amp;= ~other.l2;</span>
+<span class="nc" id="L271">    l3 &amp;= ~other.l3;</span>
+
+<span class="nc" id="L273">    cardinality = computeCardinality();</span>
+<span class="nc" id="L274">  }</span>
+
+  public void or (BitSet256 other){
+<span class="nc" id="L277">    l0 |= other.l0;</span>
+<span class="nc" id="L278">    l1 |= other.l1;</span>
+<span class="nc" id="L279">    l2 |= other.l2;</span>
+<span class="nc" id="L280">    l3 |= other.l3;</span>
+
+<span class="nc" id="L282">    cardinality = computeCardinality();</span>
+<span class="nc" id="L283">  }</span>
+
+  @Override
+  public boolean equals (Object o){
+<span class="nc bnc" id="L287" title="All 2 branches missed.">    if (o instanceof BitSet256){</span>
+<span class="nc" id="L288">      BitSet256 other = (BitSet256)o;</span>
+<span class="nc bnc" id="L289" title="All 2 branches missed.">      if (l0 != other.l0) return false;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">      if (l1 != other.l1) return false;</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">      if (l2 != other.l2) return false;</span>
+<span class="nc bnc" id="L292" title="All 2 branches missed.">      if (l3 != other.l3) return false;</span>
+<span class="nc" id="L293">      return true;</span>
+    } else {
+      // &lt;2do&gt; we could compare to a normal java.util.BitSet here
+<span class="nc" id="L296">      return false;</span>
+    }
+  }
+
+  /**
+   * answer the same hashCodes as java.util.BitSet
+   */
+  @Override
+  public int hashCode() {
+<span class="nc" id="L305">    long hc = 1234;</span>
+<span class="nc" id="L306">    hc ^= l0;</span>
+<span class="nc" id="L307">    hc ^= l1*2;</span>
+<span class="nc" id="L308">    hc ^= l2*3;</span>
+<span class="nc" id="L309">    hc ^= l3*4;</span>
+<span class="nc" id="L310">    return (int) ((hc &gt;&gt;32) ^ hc);</span>
+  }
+
+  @Override
+  public void hash (HashData hd){
+<span class="nc" id="L315">    hd.add(l0);</span>
+<span class="nc" id="L316">    hd.add(l1);</span>
+<span class="nc" id="L317">    hd.add(l2);</span>
+<span class="nc" id="L318">    hd.add(l3);</span>
+<span class="nc" id="L319">  }</span>
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L323">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L324">    sb.append('{');</span>
+
+<span class="nc" id="L326">    boolean first = true;</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">    for (int i=nextSetBit(0); i&gt;= 0; i = nextSetBit(i+1)){</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">      if (!first){</span>
+<span class="nc" id="L329">        sb.append(',');</span>
+      } else {
+<span class="nc" id="L331">        first = false;</span>
+      }
+<span class="nc" id="L333">      sb.append(i);</span>
+    }
+
+<span class="nc" id="L336">    sb.append('}');</span>
+
+<span class="nc" id="L338">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

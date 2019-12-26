@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>NativeStackFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">NativeStackFrame.java</span></div><h1>NativeStackFrame.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.jvm.bytecode.NATIVERETURN;
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.Misc;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
+/**
+ * a stack frame for MJI methods
+ * 
+ * This is a special Stackframe to execute NativeMethodInfos, which are just a wrapper around Java reflection
+ * calls. As required by the Java reflection API, they can store argument and return values as object references
+ *
+ * NOTE: operands and locals can be, but are not automatically used during
+ * native method execution.
+ */
+public abstract class NativeStackFrame extends StackFrame {
+
+
+  // we don't use the operand stack or locals for arguments and return value
+  // because (1) they don't have the right representation (host VM),
+  // (2) for performance reasons (no array alloc), and (3) because there is no
+  // choice point once we enter a native method, so there is no need to do
+  // copy-on-write on the ThreadInfo callstack. Native method execution is
+  // atomic (leave alone roundtrips of course)
+
+  // return value registers
+  protected Object ret;
+  protected Object retAttr;
+
+  // our argument registers
+  protected Object[] args;
+
+  public NativeStackFrame (NativeMethodInfo mi){
+<span class="fc" id="L56">    super( mi, 0, 0);</span>
+<span class="fc" id="L57">  }</span>
+  
+  public void setArgs (Object[] args){
+<span class="fc" id="L60">    this.args = args; </span>
+<span class="fc" id="L61">  }</span>
+
+  @Override
+  public StackFrame clone () {
+<span class="fc" id="L65">    NativeStackFrame sf = (NativeStackFrame) super.clone();</span>
+
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">    if (args != null) {</span>
+<span class="fc" id="L68">      sf.args = args.clone();</span>
+    }
+
+<span class="fc" id="L71">    return sf;</span>
+  }
+
+  @Override
+  public boolean isNative() {
+<span class="fc" id="L76">    return true;</span>
+  }
+
+  @Override
+  public boolean isSynthetic() {
+<span class="fc" id="L81">    return true;</span>
+  }
+
+  @Override
+  public boolean modifiesState() {
+    // native stackframes don't do anything with their operands or locals per se
+    // they are executed atomically, so there is no need to ever restore them
+<span class="nc" id="L88">    return false;</span>
+  }
+
+  @Override
+  public boolean hasAnyRef() {
+<span class="fc" id="L93">    return false;</span>
+  }
+
+  public void setReturnAttr (Object a){
+<span class="fc" id="L97">    retAttr = a;</span>
+<span class="fc" id="L98">  }</span>
+
+  public void setReturnValue(Object r){
+<span class="fc" id="L101">    ret = r;</span>
+<span class="fc" id="L102">  }</span>
+
+  public void clearReturnValue() {
+<span class="nc" id="L105">    ret = null;</span>
+<span class="nc" id="L106">    retAttr = null;</span>
+<span class="nc" id="L107">  }</span>
+
+  public Object getReturnValue() {
+<span class="fc" id="L110">    return ret;</span>
+  }
+
+  public Object getReturnAttr() {
+<span class="fc" id="L114">    return retAttr;</span>
+  }
+
+  public Object[] getArguments() {
+<span class="fc" id="L118">    return args;</span>
+  }
+
+  @Override
+  public void markThreadRoots (Heap heap, int tid) {
+    // what if some listener creates a CG post-EXECUTENATIVE or pre-NATIVERETURN?
+    // and the native method returned an object?
+    // on the other hand, we have to make sure we don't mark a return value from
+    // a previous transition
+
+<span class="fc bfc" id="L128" title="All 2 branches covered.">    if (pc instanceof NATIVERETURN){</span>
+<span class="pc bpc" id="L129" title="5 of 6 branches missed.">      if (ret != null &amp;&amp; ret instanceof Integer &amp;&amp; mi.isReferenceReturnType()) {</span>
+<span class="nc" id="L130">        int ref = ((Integer) ret).intValue();</span>
+<span class="nc" id="L131">        heap.markThreadRoot(ref, tid);</span>
+      }
+    }
+<span class="fc" id="L134">  }</span>
+
+  @Override
+  protected void hash (HashData hd) {
+<span class="nc" id="L138">    super.hash(hd);</span>
+
+<span class="nc bnc" id="L140" title="All 2 branches missed.">    if (ret != null){</span>
+<span class="nc" id="L141">      hd.add(ret);</span>
+    }
+<span class="nc bnc" id="L143" title="All 2 branches missed.">    if (retAttr != null){</span>
+<span class="nc" id="L144">      hd.add(retAttr);</span>
+    }
+
+<span class="nc bnc" id="L147" title="All 2 branches missed.">    for (Object a : args){</span>
+<span class="nc" id="L148">      hd.add(a);</span>
+    }
+<span class="nc" id="L150">  }</span>
+
+  @Override
+  public boolean equals (Object object) {
+<span class="nc bnc" id="L154" title="All 4 branches missed.">    if (object == null || !(object instanceof NativeStackFrame)){</span>
+<span class="nc" id="L155">      return false;</span>
+    }
+
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    if (!super.equals(object)){</span>
+<span class="nc" id="L159">      return false;</span>
+    }
+
+<span class="nc" id="L162">    NativeStackFrame o = (NativeStackFrame)object;</span>
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">    if (ret != o.ret){</span>
+<span class="nc" id="L165">      return false;</span>
+    }
+<span class="nc bnc" id="L167" title="All 2 branches missed.">    if (retAttr != o.retAttr){</span>
+<span class="nc" id="L168">      return false;</span>
+    }
+
+<span class="nc bnc" id="L171" title="All 2 branches missed.">    if (args.length != o.args.length){</span>
+<span class="nc" id="L172">      return false;</span>
+    }
+
+<span class="nc bnc" id="L175" title="All 2 branches missed.">    if (!Misc.compare(args.length, args, o.args)){</span>
+<span class="nc" id="L176">      return false;</span>
+    }
+
+<span class="nc" id="L179">    return true;</span>
+  }
+
+  @Override
+  public String toString () {
+<span class="nc" id="L184">    StringWriter sw = new StringWriter(128);</span>
+<span class="nc" id="L185">    PrintWriter pw = new PrintWriter(sw);</span>
+
+<span class="nc" id="L187">    pw.print(&quot;NativeStackFrame@&quot;);</span>
+<span class="nc" id="L188">    pw.print(Integer.toHexString(objectHashCode()));</span>
+<span class="nc" id="L189">    pw.print(&quot;{ret=&quot;);</span>
+<span class="nc" id="L190">    pw.print(ret);</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">    if (retAttr != null){</span>
+<span class="nc" id="L192">      pw.print('(');</span>
+<span class="nc" id="L193">      pw.print(retAttr);</span>
+<span class="nc" id="L194">      pw.print(')');</span>
+    }
+<span class="nc" id="L196">    pw.print(',');</span>
+<span class="nc" id="L197">    printContentsOn(pw);</span>
+<span class="nc" id="L198">    pw.print('}');</span>
+
+<span class="nc" id="L200">    return sw.toString();</span>
+  }
+  
+  //--- NativeStackFrames aren't called directly and have special return value processing (in NATIVERETURN.execute())
+  @Override
+  public void setArgumentLocal (int idx, int value, Object attr){
+<span class="nc" id="L206">    throw new JPFException(&quot;NativeStackFrames don't support setting argument locals&quot;);</span>
+  }
+  @Override
+  public void setLongArgumentLocal (int idx, long value, Object attr){
+<span class="nc" id="L210">    throw new JPFException(&quot;NativeStackFrames don't support setting argument locals&quot;);    </span>
+  }
+  @Override
+  public void setReferenceArgumentLocal (int idx, int ref, Object attr){
+<span class="nc" id="L214">    throw new JPFException(&quot;NativeStackFrames don't support setting argument locals&quot;);</span>
+  }
+  
+  //--- exception refs
+  @Override
+  public void setExceptionReference (int exRef){
+<span class="nc" id="L220">    throw new JPFException(&quot;NativeStackFrames don't support exception handlers&quot;);    </span>
+  }
+
+  @Override
+  public int getExceptionReference (){
+<span class="nc" id="L225">    throw new JPFException(&quot;NativeStackFrames don't support exception handlers&quot;);    </span>
+  }
+
+  @Override
+  public void setExceptionReferenceAttribute (Object attr){
+<span class="nc" id="L230">    throw new JPFException(&quot;NativeStackFrames don't support exception handlers&quot;);    </span>
+  }
+  
+  @Override
+  public Object getExceptionReferenceAttribute (){
+<span class="nc" id="L235">    throw new JPFException(&quot;NativeStackFrames don't support exception handlers&quot;);    </span>
+  }
+  
+  @Override
+  public int getResult(){
+<span class="nc" id="L240">    Object r = ret;</span>
+    
+<span class="nc bnc" id="L242" title="All 2 branches missed.">    if (r instanceof Number){</span>
+<span class="nc bnc" id="L243" title="All 2 branches missed.">      if (r instanceof Double){</span>
+<span class="nc" id="L244">        throw new JPFException(&quot;result &quot; + ret + &quot; can't be converted into int&quot;);    </span>
+<span class="nc bnc" id="L245" title="All 2 branches missed.">      } else if (r instanceof Float){</span>
+<span class="nc" id="L246">        return Float.floatToIntBits((Float)r);</span>
+      } else {
+<span class="nc" id="L248">        return ((Number)r).intValue();</span>
+      }
+<span class="nc bnc" id="L250" title="All 2 branches missed.">    } else if (r instanceof Boolean){</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">      return (r == Boolean.TRUE) ? 1 : 0;</span>
+    } else {
+<span class="nc" id="L253">      throw new JPFException(&quot;result &quot; + ret + &quot; can't be converted into raw int value&quot;);</span>
+    }
+  }
+  
+  @Override
+  public int getReferenceResult(){
+<span class="nc bnc" id="L259" title="All 2 branches missed.">    if (ret instanceof Integer){</span>
+<span class="nc" id="L260">      return (Integer)ret; // MJI requires references to be returned as 'int'</span>
+    } else {
+<span class="nc" id="L262">      throw new JPFException(&quot;result &quot; + ret + &quot; can't be converted into JPF refrence value&quot;);      </span>
+    }
+  }
+  
+  @Override
+  public long getLongResult(){
+<span class="nc" id="L268">    Object r = ret;</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">    if (r instanceof Long){</span>
+<span class="nc" id="L270">      return (Long)r;</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">    } else if (r instanceof Double){</span>
+<span class="nc" id="L272">      return Double.doubleToLongBits((Double)r);</span>
+    } else {
+<span class="nc" id="L274">      throw new JPFException(&quot;result &quot; + ret + &quot; can't be converted into raw long value&quot;);      </span>
+    }
+  }
+  
+  @Override
+  public Object getResultAttr(){
+<span class="nc" id="L280">    return retAttr;</span>
+  }
+  @Override
+  public Object getLongResultAttr(){
+<span class="nc" id="L284">    return retAttr;    </span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

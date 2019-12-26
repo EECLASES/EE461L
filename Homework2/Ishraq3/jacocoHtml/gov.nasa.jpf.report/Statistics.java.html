@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Statistics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.report</a> &gt; <span class="el_source">Statistics.java</span></div><h1>Statistics.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.report;
+
+import gov.nasa.jpf.ListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.EXECUTENATIVE;
+import gov.nasa.jpf.jvm.bytecode.JVMFieldInstruction;
+import gov.nasa.jpf.jvm.bytecode.JVMInvokeInstruction;
+import gov.nasa.jpf.jvm.bytecode.LockInstruction;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadChoiceGenerator;
+
+/**
+ * simple structure to hold statistics info created by Reporters/Publishers
+ * this is kind of a second tier SearchListener, which does not
+ * explicitly have to be registered
+ * 
+ * &lt;2do&gt; this should get generic and accessible enough to replace all the
+ * other statistics collectors, otherwise there is too much redundancy.
+ * If users have special requirements, they should subclass Statistics
+ * and set jpf.report.statistics.class accordingly
+ * 
+ * Note that Statistics might be accessed by a background thread
+ * reporting JPF progress, hence we have to synchronize
+ */
+<span class="fc" id="L49">public class Statistics extends ListenerAdapter implements Cloneable {</span>
+    
+  // we make these public since we don't want to add a gazillion of
+  // getters for these purely informal numbers
+  
+<span class="fc" id="L54">  public long maxUsed = 0;</span>
+<span class="fc" id="L55">  public long newStates = 0;</span>
+<span class="fc" id="L56">  public long backtracked = 0;</span>
+<span class="fc" id="L57">  public long restored = 0;</span>
+<span class="fc" id="L58">  public int processed = 0;</span>
+<span class="fc" id="L59">  public int constraints = 0;</span>
+<span class="fc" id="L60">  public long visitedStates = 0;</span>
+<span class="fc" id="L61">  public long endStates = 0;</span>
+<span class="fc" id="L62">  public int maxDepth = 0;</span>
+  
+<span class="fc" id="L64">  public int gcCycles = 0;</span>
+<span class="fc" id="L65">  public long insns = 0;</span>
+<span class="fc" id="L66">  public int threadCGs = 0;</span>
+<span class="fc" id="L67">  public int sharedAccessCGs = 0;</span>
+<span class="fc" id="L68">  public int monitorCGs = 0;</span>
+<span class="fc" id="L69">  public int signalCGs = 0;</span>
+<span class="fc" id="L70">  public int threadApiCGs = 0;</span>
+<span class="fc" id="L71">  public int breakTransitionCGs = 0;</span>
+<span class="fc" id="L72">  public int dataCGs = 0;</span>
+<span class="fc" id="L73">  public long nNewObjects = 0;</span>
+<span class="fc" id="L74">  public long nReleasedObjects = 0;</span>
+<span class="fc" id="L75">  public int maxLiveObjects = 0;</span>
+
+  @Override
+  public Statistics clone() {
+    try {
+<span class="nc" id="L80">      return (Statistics)super.clone();</span>
+<span class="nc" id="L81">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L82">      return null; // can't happen</span>
+    }
+  }
+  
+  @Override
+  public void gcBegin (VM vm) {
+<span class="nc" id="L88">    int heapSize = vm.getHeap().size();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">    if (heapSize &gt; maxLiveObjects){</span>
+<span class="nc" id="L90">      maxLiveObjects = heapSize;</span>
+    }
+
+<span class="nc" id="L93">    gcCycles++;</span>
+<span class="nc" id="L94">  }</span>
+  
+  @Override
+  public void instructionExecuted (VM vm, ThreadInfo ti, Instruction nextInsn, Instruction executedInsn){
+<span class="nc" id="L98">    insns++;</span>
+<span class="nc" id="L99">  }</span>
+
+  @Override
+  public void choiceGeneratorSet (VM vm, ChoiceGenerator&lt;?&gt; newCG){
+<span class="nc" id="L103">    ChoiceGenerator&lt;?&gt; cg = VM.getVM().getChoiceGenerator();</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">    if (cg instanceof ThreadChoiceGenerator){</span>
+<span class="nc" id="L105">      threadCGs++;</span>
+
+<span class="nc" id="L107">      Instruction insn = cg.getInsn();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">      if (insn instanceof JVMFieldInstruction) {</span>
+<span class="nc" id="L109">        sharedAccessCGs++;</span>
+<span class="nc bnc" id="L110" title="All 4 branches missed.">      } else if (insn instanceof LockInstruction || insn instanceof JVMInvokeInstruction) {</span>
+<span class="nc" id="L111">        monitorCGs++;</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">      } else if (insn instanceof EXECUTENATIVE) {</span>
+<span class="nc" id="L113">        MethodInfo mi = insn.getMethodInfo();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        if (mi != null) {</span>
+<span class="nc" id="L115">          ClassInfo ci = mi.getClassInfo();</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">          if (ci != null) {</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">            if (ci.isObjectClassInfo()) {</span>
+              // its got to be either a wait or a notify since we know the java.lang.Object methods
+<span class="nc" id="L119">              signalCGs++;</span>
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            } else if (ci.isThreadClassInfo()) {</span>
+<span class="nc" id="L121">              threadApiCGs++;</span>
+            }
+          } else {
+            // Hmm - a CG from a synthetic method?
+          }
+        } else {
+          // even more Hmmm - a GC from a synthesized instruction 
+        }
+<span class="nc" id="L129">      } else {</span>
+<span class="nc" id="L130">        breakTransitionCGs++; // e.g. max_transition_length or idleLoop breakers</span>
+      }
+<span class="nc" id="L132">    } else {</span>
+<span class="nc" id="L133">      dataCGs++;</span>
+    }
+<span class="nc" id="L135">  }</span>
+  
+  @Override
+  public void objectCreated (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="fc" id="L139">    nNewObjects++;</span>
+<span class="fc" id="L140">  }</span>
+  
+  @Override
+  public void objectReleased (VM vm, ThreadInfo ti, ElementInfo ei){
+<span class="nc" id="L144">    nReleasedObjects++;</span>
+<span class="nc" id="L145">  }</span>
+  
+  @Override
+  public void stateAdvanced (Search search){
+<span class="nc" id="L149">    long m = Runtime.getRuntime().totalMemory();</span>
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (m &gt; maxUsed) {</span>
+<span class="nc" id="L151">      maxUsed = m;</span>
+    }
+
+<span class="nc bnc" id="L154" title="All 2 branches missed.">    if (search.isNewState()){</span>
+<span class="nc" id="L155">      newStates++;</span>
+<span class="nc" id="L156">      int depth = search.getDepth();</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">      if (depth &gt; maxDepth){</span>
+<span class="nc" id="L158">        maxDepth = depth;</span>
+      }
+<span class="nc" id="L160">    } else {</span>
+<span class="nc" id="L161">      visitedStates++;</span>
+    }
+<span class="nc bnc" id="L163" title="All 2 branches missed.">    if (search.isEndState()){</span>
+<span class="nc" id="L164">      endStates++;</span>
+    }
+<span class="nc" id="L166">  }</span>
+  
+  @Override
+  public void stateBacktracked (Search search){
+<span class="nc" id="L170">    backtracked++;</span>
+<span class="nc" id="L171">  }</span>
+  
+  @Override
+  public void stateProcessed (Search search){
+<span class="nc" id="L175">    processed++;</span>
+<span class="nc" id="L176">  }</span>
+
+  @Override
+  public void stateRestored (Search search){
+<span class="nc" id="L180">    restored++;</span>
+<span class="nc" id="L181">  }</span>
+  
+  @Override
+  public void searchConstraintHit (Search search){
+<span class="nc" id="L185">    constraints++;</span>
+<span class="nc" id="L186">  }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

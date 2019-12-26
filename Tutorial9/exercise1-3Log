@@ -1,0 +1,685 @@
+Script started on 2019-10-28 15:45:26-0500
+bash: /home/miguel/catkin_ws/devel/setup.bash: No such file or directory
+[01;32mmiguel@home-miguel[00m:[01;34m~[00m$ ls
+[0m[01;34mAndroid[0m         [01;34mAndroidStudioProjects[0m  [01;34mDocuments[0m  [01;34mgit[0m    [01;34mPictures[0m  [01;34msnap[0m
+[01;34mandroid-studio[0m  [01;34mDesktop[0m                [01;34mDownloads[0m  [01;34mMusic[0m  [01;34mPublic[0m    [01;34mVideos[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~[00m$ cd [Klastpane 
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ ls
+pom.xml  [0m[01;34msrc[0m  [01;34mtarget[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ c[Kcd .[K[K[K[Kmvn vi[Kalidate
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.177 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:45:50-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn compile
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  1.001 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:45:55-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn test
+[[1;34mINFO[m] Scanning for projects...
+m[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+v[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+n[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s - in com.mycompany.app.[1mAppTest[m
+pa[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+c[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.162 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:01-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvnpackage[K[K[K[K[K[K[K package
+mvn[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+ i[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+nt[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.038 s - in com.mycompany.app.[1mAppTest[m
+e[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+g[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.385 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:11-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn integration-test
+m[[1;34mINFO[m] Scanning for projects...
+vn[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+ [[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+v[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+er[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+if[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+y[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.045 s - in com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.899 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:18-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn verify
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+mv[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+n[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+ [[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.056 s - in com.mycompany.app.[1mAppTest[m
+in[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+st[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.271 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:22-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn install
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s - in com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-install-plugin:2.4:install[m [1m(default-install)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Installing /home/miguel/Documents/EE461L/Tutorial9/app-name/target/tutmaven-1.0.jar to /home/miguel/.m2/repository/org/ee461l/tutorial/tutmaven/1.0/tutmaven-1.0.jar
+[[1;34mINFO[m] Installing /home/miguel/Documents/EE461L/Tutorial9/app-name/pom.xml to /home/miguel/.m2/repository/org/ee461l/tutorial/tutmaven/1.0/tutmaven-1.0.pom
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.262 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:27-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn clean
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-clean-plugin:3.1.0:clean[m [1m(default-clean)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Deleting /home/miguel/Documents/EE461L/Tutorial9/app-name/target
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.420 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:33-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn site
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-site-plugin:3.7.1:site[m [1m(default-site)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] configuring report plugin org.apache.maven.plugins:maven-project-info-reports-plugin:3.0.0
+[[1;34mINFO[m] 15 reports detected for maven-project-info-reports-plugin:3.0.0: ci-management, dependencies, dependency-info, dependency-management, distribution-management, index, issue-management, licenses, mailing-lists, modules, plugin-management, plugins, scm, summary, team
+[[1;34mINFO[m] [1mRendering site with default locale English (en)[m
+[[1;34mINFO[m] Relativizing decoration links with respect to localized project URL: http://www.example.com
+[[1;34mINFO[m] Rendering content with [1morg.apache.maven.skins:maven-default-skin:jar:1.2 skin[m.
+[[1;34mINFO[m] Generating "[1mDependencies[m" report [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:dependencies[m
+[[1;34mINFO[m] Generating "[1mDependency Information[m" report[1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:dependency-info[m
+[[1;34mINFO[m] Generating "[1mAbout[m" report        [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:index[m
+[[1;34mINFO[m] Generating "[1mPlugin Management[m" report[1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:plugin-management[m
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-webdav/1.0-beta-2/wagon-webdav-1.0-beta-2.pom
+Progress (1): 1.5 kB                    Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-webdav/1.0-beta-2/wagon-webdav-1.0-beta-2.pom (1.5 kB at 4.8 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-providers/1.0-beta-2/wagon-providers-1.0-beta-2.pom
+Progress (1): 1.8 kB                    Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-providers/1.0-beta-2/wagon-providers-1.0-beta-2.pom (1.8 kB at 63 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon/1.0-beta-2/wagon-1.0-beta-2.pom
+Progress (1): 2.2/5.9 kBProgress (1): 5.0/5.9 kBProgress (1): 5.9 kB                        Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon/1.0-beta-2/wagon-1.0-beta-2.pom (5.9 kB at 168 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/maven-parent/4/maven-parent-4.pom
+Progress (1): 2.2/10.0 kBProgress (1): 5.0/10.0 kBProgress (1): 7.8/10.0 kBProgress (1): 10.0 kB                         Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/maven-parent/4/maven-parent-4.pom (10.0 kB at 294 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/slide/slide-webdavlib/2.1/slide-webdavlib-2.1.pom
+Progress (1): 648 B                   Downloaded from central: https://repo.maven.apache.org/maven2/slide/slide-webdavlib/2.1/slide-webdavlib-2.1.pom (648 B at 16 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/commons-httpclient/commons-httpclient/2.0.2/commons-httpclient-2.0.2.pom
+Progress (1): 2.2/7.1 kBProgress (1): 5.0/7.1 kBProgress (1): 7.1 kB                        Downloaded from central: https://repo.maven.apache.org/maven2/commons-httpclient/commons-httpclient/2.0.2/commons-httpclient-2.0.2.pom (7.1 kB at 208 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/de/zeigermann/xml/xml-im-exporter/1.1/xml-im-exporter-1.1.pom
+Progress (1): 248 B                   Downloaded from central: https://repo.maven.apache.org/maven2/de/zeigermann/xml/xml-im-exporter/1.1/xml-im-exporter-1.1.pom (248 B at 11 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-provider-api/1.0-beta-2/wagon-provider-api-1.0-beta-2.pom
+Progress (1): 680 B                   Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-provider-api/1.0-beta-2/wagon-provider-api-1.0-beta-2.pom (680 B at 28 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-webdav/1.0-beta-2/wagon-webdav-1.0-beta-2.jar
+Downloading from central: https://repo.maven.apache.org/maven2/slide/slide-webdavlib/2.1/slide-webdavlib-2.1.jar
+Downloading from central: https://repo.maven.apache.org/maven2/commons-httpclient/commons-httpclient/2.0.2/commons-httpclient-2.0.2.jar
+Downloading from central: https://repo.maven.apache.org/maven2/de/zeigermann/xml/xml-im-exporter/1.1/xml-im-exporter-1.1.jar
+Downloading from central: https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.0.4/commons-logging-1.0.4.jar
+Progress (1): 2.2/17 kBProgress (1): 5.0/17 kBProgress (1): 7.7/17 kBProgress (1): 10/17 kB Progress (1): 13/17 kBProgress (1): 16/17 kBProgress (1): 17 kB                      Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-webdav/1.0-beta-2/wagon-webdav-1.0-beta-2.jar (17 kB at 346 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-provider-api/1.0-beta-2/wagon-provider-api-1.0-beta-2.jar
+Progress (1): 2.2/46 kBProgress (1): 5.0/46 kBProgress (1): 7.7/46 kBProgress (2): 7.7/46 kB | 2.2/225 kBProgress (3): 7.7/46 kB | 2.2/225 kB | 2.2/24 kBProgress (3): 7.7/46 kB | 5.0/225 kB | 2.2/24 kBProgress (4): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 2.2/173 kBProgress (5): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 2.2/173 kB | 2.2/38 kBProgress (5): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 2.2/173 kB | 5.0/38 kBProgress (5): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 2.2/173 kB | 7.7/38 kBProgress (5): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 5.0/173 kB | 7.7/38 kBProgress (5): 7.7/46 kB | 5.0/225 kB | 2.2/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 10/46 kB | 5.0/225 kB | 2.2/24 kB | 7.7/173 kB | 7.7/38 kB Progress (5): 10/46 kB | 7.7/225 kB | 2.2/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 10/46 kB | 7.7/225 kB | 5.0/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 10/46 kB | 7.7/225 kB | 7.7/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 13/46 kB | 7.7/225 kB | 7.7/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 16/46 kB | 7.7/225 kB | 7.7/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 16/46 kB | 7.7/225 kB | 10/24 kB | 7.7/173 kB | 7.7/38 kB Progress (5): 16/46 kB | 7.7/225 kB | 13/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 16/46 kB | 7.7/225 kB | 16/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 16/46 kB | 7.7/225 kB | 19/24 kB | 7.7/173 kB | 7.7/38 kBProgress (5): 16/46 kB | 7.7/225 kB | 19/24 kB | 7.7/173 kB | 10/38 kB Progress (5): 16/46 kB | 10/225 kB | 19/24 kB | 7.7/173 kB | 10/38 kB Progress (5): 16/46 kB | 10/225 kB | 21/24 kB | 7.7/173 kB | 10/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 7.7/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 10/173 kB | 13/38 kB Progress (5): 16/46 kB | 10/225 kB | 21/24 kB | 13/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 16/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 19/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 21/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 24/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 27/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 30/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 21/24 kB | 32/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 24/24 kB | 32/173 kB | 13/38 kBProgress (5): 16/46 kB | 10/225 kB | 24 kB | 32/173 kB | 13/38 kB   Progress (5): 16/46 kB | 13/225 kB | 24 kB | 32/173 kB | 13/38 kBProgress (5): 16/46 kB | 13/225 kB | 24 kB | 32/173 kB | 16/38 kBProgress (5): 19/46 kB | 13/225 kB | 24 kB | 32/173 kB | 16/38 kBProgress (5): 19/46 kB | 16/225 kB | 24 kB | 32/173 kB | 16/38 kBProgress (5): 19/46 kB | 16/225 kB | 24 kB | 32/173 kB | 19/38 kBProgress (5): 21/46 kB | 16/225 kB | 24 kB | 32/173 kB | 19/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 19/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 21/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 24/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 27/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 30/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 32/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 35/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 38/38 kBProgress (5): 21/46 kB | 19/225 kB | 24 kB | 32/173 kB | 38 kB   Progress (5): 21/46 kB | 19/225 kB | 24 kB | 36/173 kB | 38 kBProgress (5): 24/46 kB | 19/225 kB | 24 kB | 36/173 kB | 38 kBProgress (5): 24/46 kB | 21/225 kB | 24 kB | 36/173 kB | 38 kBProgress (5): 24/46 kB | 21/225 kB | 24 kB | 40/173 kB | 38 kBProgress (5): 24/46 kB | 21/225 kB | 24 kB | 45/173 kB | 38 kBProgress (5): 24/46 kB | 21/225 kB | 24 kB | 49/173 kB | 38 kBProgress (5): 24/46 kB | 24/225 kB | 24 kB | 49/173 kB | 38 kBProgress (5): 24/46 kB | 27/225 kB | 24 kB | 49/173 kB | 38 kBProgress (5): 27/46 kB | 27/225 kB | 24 kB | 49/173 kB | 38 kBProgress (5): 27/46 kB | 30/225 kB | 24 kB | 49/173 kB | 38 kBProgress (5): 27/46 kB | 30/225 kB | 24 kB | 53/173 kB | 38 kBProgress (5): 30/46 kB | 30/225 kB | 24 kB | 53/173 kB | 38 kBProgress (5): 30/46 kB | 32/225 kB | 24 kB | 53/173 kB | 38 kBProgress (5): 30/46 kB | 32/225 kB | 24 kB | 57/173 kB | 38 kBProgress (5): 32/46 kB | 32/225 kB | 24 kB | 57/173 kB | 38 kBProgress (5): 32/46 kB | 32/225 kB | 24 kB | 61/173 kB | 38 kBProgress (5): 32/46 kB | 32/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 36/46 kB | 32/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 40/46 kB | 32/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 45/46 kB | 32/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 32/225 kB | 24 kB | 65/173 kB | 38 kB   Progress (5): 46 kB | 36/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 40/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 45/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 49/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 53/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 57/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 61/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 65/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 69/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 73/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 77/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 81/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 85/173 kB | 38 kBProgress (5): 46 kB | 65/225 kB | 24 kB | 90/173 kB | 38 kB                                                           Downloaded from central: https://repo.maven.apache.org/maven2/de/zeigermann/xml/xml-im-exporter/1.1/xml-im-exporter-1.1.jar (24 kB at 187 kB/s)
+Downloading from central: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/1.0.4/plexus-utils-1.0.4.jar
+Progress (4): 46 kB | 65/225 kB | 94/173 kB | 38 kBProgress (4): 46 kB | 65/225 kB | 98/173 kB | 38 kBProgress (4): 46 kB | 65/225 kB | 102/173 kB | 38 kBProgress (4): 46 kB | 65/225 kB | 106/173 kB | 38 kBProgress (4): 46 kB | 65/225 kB | 110/173 kB | 38 kBProgress (4): 46 kB | 65/225 kB | 114/173 kB | 38 kBProgress (4): 46 kB | 69/225 kB | 114/173 kB | 38 kBProgress (4): 46 kB | 73/225 kB | 114/173 kB | 38 kBProgress (4): 46 kB | 73/225 kB | 118/173 kB | 38 kBProgress (4): 46 kB | 77/225 kB | 118/173 kB | 38 kBProgress (4): 46 kB | 81/225 kB | 118/173 kB | 38 kB                                                    Downloaded from central: https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.0.4/commons-logging-1.0.4.jar (38 kB at 290 kB/s)
+Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/wagon/wagon-provider-api/1.0-beta-2/wagon-provider-api-1.0-beta-2.jar (46 kB at 338 kB/s)
+Progress (2): 81/225 kB | 122/173 kBProgress (2): 85/225 kB | 122/173 kBProgress (2): 85/225 kB | 126/173 kBProgress (2): 90/225 kB | 126/173 kBProgress (2): 90/225 kB | 131/173 kBProgress (2): 94/225 kB | 131/173 kBProgress (2): 98/225 kB | 131/173 kBProgress (2): 98/225 kB | 135/173 kBProgress (2): 98/225 kB | 139/173 kBProgress (2): 98/225 kB | 143/173 kBProgress (2): 98/225 kB | 147/173 kBProgress (2): 102/225 kB | 147/173 kBProgress (2): 102/225 kB | 151/173 kBProgress (2): 102/225 kB | 155/173 kBProgress (2): 106/225 kB | 155/173 kBProgress (2): 106/225 kB | 159/173 kBProgress (2): 110/225 kB | 159/173 kBProgress (2): 110/225 kB | 163/173 kBProgress (2): 114/225 kB | 163/173 kBProgress (2): 114/225 kB | 167/173 kBProgress (2): 114/225 kB | 171/173 kBProgress (2): 114/225 kB | 173 kB    Progress (2): 118/225 kB | 173 kBProgress (2): 122/225 kB | 173 kBProgress (2): 126/225 kB | 173 kBProgress (2): 131/225 kB | 173 kBProgress (2): 135/225 kB | 173 kBProgress (2): 139/225 kB | 173 kBProgress (2): 143/225 kB | 173 kBProgress (2): 147/225 kB | 173 kBProgress (2): 151/225 kB | 173 kBProgress (2): 155/225 kB | 173 kBProgress (2): 159/225 kB | 173 kBProgress (2): 163/225 kB | 173 kBProgress (2): 167/225 kB | 173 kBProgress (2): 171/225 kB | 173 kBProgress (2): 176/225 kB | 173 kBProgress (2): 180/225 kB | 173 kBProgress (2): 184/225 kB | 173 kBProgress (2): 188/225 kB | 173 kBProgress (2): 192/225 kB | 173 kBProgress (2): 196/225 kB | 173 kBProgress (2): 200/225 kB | 173 kBProgress (2): 204/225 kB | 173 kBProgress (2): 208/225 kB | 173 kBProgress (2): 212/225 kB | 173 kBProgress (3): 212/225 kB | 173 kB | 2.2/164 kB                                              Downloaded from central: https://repo.maven.apache.org/maven2/slide/slide-webdavlib/2.1/slide-webdavlib-2.1.jar (173 kB at 1.0 MB/s)
+Progress (2): 212/225 kB | 5.0/164 kBProgress (2): 212/225 kB | 7.7/164 kBProgress (2): 212/225 kB | 10/164 kB Progress (2): 212/225 kB | 13/164 kBProgress (2): 212/225 kB | 16/164 kBProgress (2): 212/225 kB | 19/164 kBProgress (2): 212/225 kB | 21/164 kBProgress (2): 212/225 kB | 24/164 kBProgress (2): 212/225 kB | 27/164 kBProgress (2): 212/225 kB | 30/164 kBProgress (2): 217/225 kB | 30/164 kBProgress (2): 221/225 kB | 30/164 kBProgress (2): 225/225 kB | 30/164 kBProgress (2): 225 kB | 30/164 kB    Progress (2): 225 kB | 32/164 kBProgress (2): 225 kB | 36/164 kBProgress (2): 225 kB | 40/164 kBProgress (2): 225 kB | 45/164 kBProgress (2): 225 kB | 49/164 kBProgress (2): 225 kB | 53/164 kBProgress (2): 225 kB | 57/164 kBProgress (2): 225 kB | 61/164 kBProgress (2): 225 kB | 65/164 kBProgress (2): 225 kB | 69/164 kBProgress (2): 225 kB | 73/164 kBProgress (2): 225 kB | 77/164 kBProgress (2): 225 kB | 81/164 kBProgress (2): 225 kB | 85/164 kBProgress (2): 225 kB | 90/164 kBProgress (2): 225 kB | 94/164 kBProgress (2): 225 kB | 98/164 kB                                Downloaded from central: https://repo.maven.apache.org/maven2/commons-httpclient/commons-httpclient/2.0.2/commons-httpclient-2.0.2.jar (225 kB at 1.1 MB/s)
+Progress (1): 102/164 kBProgress (1): 106/164 kBProgress (1): 110/164 kBProgress (1): 114/164 kBProgress (1): 118/164 kBProgress (1): 122/164 kBProgress (1): 126/164 kBProgress (1): 131/164 kBProgress (1): 135/164 kBProgress (1): 139/164 kBProgress (1): 143/164 kBProgress (1): 147/164 kBProgress (1): 151/164 kBProgress (1): 155/164 kBProgress (1): 159/164 kBProgress (1): 163/164 kBProgress (1): 164 kB                        Downloaded from central: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-utils/1.0.4/plexus-utils-1.0.4.jar (164 kB at 773 kB/s)
+[[1;34mINFO[m] Generating "[1mPlugins[m" report      [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:plugins[m
+[[1;34mINFO[m] Generating "[1mSummary[m" report      [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:summary[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  4.309 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:46:41-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ cd ..
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ ls
+[0m[01;34mapp-name[0m  [01;34mCircle[0m  exercise1  README.txt
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ cd app-name/
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn compile
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 1 source file to /home/miguel/Documents/EE461L/Tutorial9/app-name/target/classes
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  1.276 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:47:02-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn package[K[K[Kage
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 1 source file to /home/miguel/Documents/EE461L/Tutorial9/app-name/target/test-classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s - in com.mycompany.app.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Building jar: /home/miguel/Documents/EE461L/Tutorial9/app-name/target/tutmaven-1.0.jar
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.706 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:47:20-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ java -jar target/
+classes/                maven-archiver/         surefire-reports/
+generated-sources/      maven-status/           test-classes/
+generated-test-sources/ site/                   tutmaven-1.0.jar
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ java -jar target/ap[K[K
+classes/                maven-archiver/         surefire-reports/
+generated-sources/      maven-status/           test-classes/
+generated-test-sources/ site/                   tutmaven-1.0.jar
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ java -jar target/app[K[K[Ktutmaven-1.00.jar 
+Hello World!
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn compile
+mvn[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+ [[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.863 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:47:52-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn exec:java[K[K[K[K[K[K[K[K[K[K[K[K[Kmvn exec:java -Dexec.mainClasss="com.mycompany.app.App"
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m>>> [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[0;1m > [0;1mvalidate[m @ [36mtutmaven[0;1m >>>[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m<<< [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[0;1m < [0;1mvalidate[m @ [36mtutmaven[0;1m <<<[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[m @ [36mtutmaven[0;1m ---[m
+Hello World!
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.659 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:08-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ man[K[Kvn compile
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/app-name/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.841 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:17-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ mvn exec:java
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding app-name 1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m>>> [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[0;1m > [0;1mvalidate[m @ [36mtutmaven[0;1m >>>[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m<<< [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[0;1m < [0;1mvalidate[m @ [36mtutmaven[0;1m <<<[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mexec-maven-plugin:1.2.1:java[m [1m(default-cli)[m @ [36mtutmaven[0;1m ---[m
+Hello World!
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.791 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:23-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/app-name[00m$ cd ..
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ ls
+[0m[01;34mapp-name[0m  [01;34mCircle[0m  exercise1  README.txt
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ cd Circle/
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle[00m$ ls
+[0m[01;34mtutmaven[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle[00m$ cd tutmaven/
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ ls
+pom.xml  [0m[01;34msrc[0m  [01;34mtarget[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ v[Kmvn valide[Kate
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  0.112 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:39-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ mvn compile
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 3 source files to /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/classes
+m[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  1.536 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:45-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+v[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ mvn test
+mv[[1;34mINFO[m] Scanning for projects...
+n[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 3 source files to /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+ [[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+v[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+e[[1;34mINFO[m] Running org.ee461l.tutorial.[1mAppTest[m
+r[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.058 s - in org.ee461l.tutorial.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+i[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.650 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:51-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ mvn verit[Kfy
+mvn[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+ [[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+pa[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 3 source files to /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/classes
+cka[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+ge[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running org.ee461l.tutorial.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.041 s - in org.ee461l.tutorial.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Building jar: /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/tutmaven-1.0-SNAPSHOT.jar
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.772 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:48:58-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ mvn package
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:resources[m [1m(default-resources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:compile[m [1m(default-compile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 3 source files to /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/classes
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:3.0.2:testResources[m [1m(default-testResources)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.0:testCompile[m [1m(default-testCompile)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Nothing to compile - all classes are up to date
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:2.22.1:test[m [1m(default-test)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running org.ee461l.tutorial.[1mAppTest[m
+[[1;34mINFO[m] [1;32mTests run: [0;1;32m1[m, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.053 s - in org.ee461l.tutorial.[1mAppTest[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] Results:
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1;32mTests run: 1, Failures: 0, Errors: 0, Skipped: 0[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-jar-plugin:3.0.2:jar[m [1m(default-jar)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] Building jar: /home/miguel/Documents/EE461L/Tutorial9/Circle/tutmaven/target/tutmaven-1.0-SNAPSHOT.jar
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  2.750 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:49:03-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ mvn site
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--------------------< [0;36morg.ee461l.tutorial:tutmaven[0;1m >--------------------[m
+[[1;34mINFO[m] [1mBuilding tutmaven 1.0-SNAPSHOT[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-site-plugin:3.7.1:site[m [1m(default-site)[m @ [36mtutmaven[0;1m ---[m
+[[1;34mINFO[m] configuring report plugin org.apache.maven.plugins:maven-project-info-reports-plugin:3.0.0
+[[1;34mINFO[m] 15 reports detected for maven-project-info-reports-plugin:3.0.0: ci-management, dependencies, dependency-info, dependency-management, distribution-management, index, issue-management, licenses, mailing-lists, modules, plugin-management, plugins, scm, summary, team
+[[1;34mINFO[m] [1mRendering site with default locale English (en)[m
+[[1;34mINFO[m] Relativizing decoration links with respect to localized project URL: http://www.example.com
+[[1;34mINFO[m] Rendering content with [1morg.apache.maven.skins:maven-default-skin:jar:1.2 skin[m.
+[[1;34mINFO[m] Generating "[1mDependencies[m" report [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:dependencies[m
+[[1;34mINFO[m] Generating "[1mDependency Information[m" report[1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:dependency-info[m
+[[1;34mINFO[m] Generating "[1mAbout[m" report        [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:index[m
+[[1;34mINFO[m] Generating "[1mPlugin Management[m" report[1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:plugin-management[m
+[[1;34mINFO[m] Generating "[1mPlugins[m" report      [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:plugins[m
+[[1;34mINFO[m] Generating "[1mSummary[m" report      [1m --- [0;32mmaven-project-info-reports-plugin:3.0.0:summary[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] [1;32mBUILD SUCCESS[m
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[[1;34mINFO[m] Total time:  3.764 s
+[[1;34mINFO[m] Finished at: 2019-10-28T15:49:21-05:00
+[[1;34mINFO[m] [1m------------------------------------------------------------------------[m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ ls
+pom.xml  [0m[01;34msrc[0m  [01;34mtarget[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ cd src/
+main/ test/ 
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ cd src/
+main/ test/ 
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven[00m$ cd src/main/java/org/ ee461l/tutorial/
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/java/org/ee4611l/tutorial[00m$ ls
+App.java  Circle.java  MyMath.java
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven/src/main/java/org/ee4611l/tutorial[00m$ cd ../../../../../
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven/src[00m$ ls
+[0m[01;34mmain[0m  [01;34mtest[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle/tutmaven/src[00m$ cd ../..
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle[00m$ ls
+[0m[01;34mtutmaven[0m
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9/Circle[00m$ ..[K[Kcd [K[K[Kcd..[K[K ..\[K
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ ls
+[0m[01;34mapp-name[0m  [01;34mCircle[0m  exercise1  README.txt
+[01;32mmiguel@home-miguel[00m:[01;34m~/Documents/EE461L/Tutorial9[00m$ exit
+exit
+
+Script done on 2019-10-28 15:49:49-0500

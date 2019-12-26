@@ -1,0 +1,8 @@
+INDEX VERSION 1.4+/home/miguel/Documents/EE461L/Tutorial5-6/redoTutorial/.metadata/.plugins/org.eclipse.wst.jsdt.core/indexes
+4008143763.index
+2079748636.index
+2975131422.index
+3962138137.index
+1895645025.index
+3068307769.index
+2319938366.index

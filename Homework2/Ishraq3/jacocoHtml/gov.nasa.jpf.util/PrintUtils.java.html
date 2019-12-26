@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PrintUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">PrintUtils.java</span></div><h1>PrintUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.MJIEnv;
+
+import java.io.PrintStream;
+
+<span class="nc" id="L25">public class PrintUtils {</span>
+
+  public static void printChar (PrintStream ps, char c){
+<span class="nc bnc" id="L28" title="All 9 branches missed.">    switch (c) {</span>
+<span class="nc" id="L29">    case '\n': ps.print(&quot;\\n&quot;); break;</span>
+<span class="nc" id="L30">    case '\r': ps.print(&quot;\\r&quot;); break;</span>
+<span class="nc" id="L31">    case '\t': ps.print(&quot;\\t&quot;); break;</span>
+<span class="nc" id="L32">    case '\b': ps.print(&quot;\\b&quot;); break;</span>
+<span class="nc" id="L33">    case '\f': ps.print(&quot;\\f&quot;); break;</span>
+<span class="nc" id="L34">    case '\'': ps.print(&quot;\\'&quot;); break;</span>
+<span class="nc" id="L35">    case '\&quot;': ps.print(&quot;\\\&quot;&quot;); break;</span>
+<span class="nc" id="L36">    case '\\': ps.print(&quot;\\&quot;); break;</span>
+<span class="nc" id="L37">    default: ps.print(c);</span>
+    }
+<span class="nc" id="L39">  }</span>
+  
+  public static void printCharLiteral (PrintStream ps, char c){
+<span class="nc" id="L42">    ps.print('\'');</span>
+<span class="nc" id="L43">    printChar(ps, c);</span>
+<span class="nc" id="L44">    ps.print('\'');</span>
+<span class="nc" id="L45">  }</span>
+  
+  public static void printStringLiteral (PrintStream ps, char[] data, int max){
+    int i;
+<span class="nc bnc" id="L49" title="All 2 branches missed.">    if (max &lt; 0){</span>
+<span class="nc" id="L50">      max = data.length;</span>
+    }
+    
+<span class="nc" id="L53">    ps.print('&quot;');</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">    for (i=0; i&lt;max; i++){</span>
+<span class="nc" id="L55">      printChar(ps, data[i]);</span>
+    }
+    
+<span class="nc bnc" id="L58" title="All 2 branches missed.">    if (i&lt; data.length){</span>
+<span class="nc" id="L59">      ps.print(&quot;...&quot;);</span>
+    }
+    
+<span class="nc" id="L62">    ps.print('&quot;');</span>
+<span class="nc" id="L63">  }</span>
+  
+  // this is mostly here so that we use the same convention
+  public static void printReference (PrintStream ps, int ref){
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (ref == MJIEnv.NULL){</span>
+<span class="nc" id="L68">      ps.print(&quot;null&quot;);</span>
+    } else {
+<span class="nc" id="L70">      ps.print('@');</span>
+<span class="nc" id="L71">      ps.printf(&quot;%x&quot;, ref);</span>
+    }
+<span class="nc" id="L73">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

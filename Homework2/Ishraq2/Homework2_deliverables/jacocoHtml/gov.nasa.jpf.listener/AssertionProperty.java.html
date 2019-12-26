@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AssertionProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">AssertionProperty.java</span></div><h1>AssertionProperty.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.listener;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.jvm.bytecode.ATHROW;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Heap;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * this is a property listener that turns thrown AssertionErrors into
+ * property violations before they are caught (i.e. potentially
+ * change the stack).
+ * Besides serving the purpose of eliminating the &quot;catch(Throwable)&quot; case,
+ * it can be used in conjunction with &quot;search.multiple_errors=true&quot; to
+ * report assertions but otherwise ignore them and go on searching the
+ * same path (otherwise, multiple_errors would cause a backtrack)
+ */
+public class AssertionProperty extends PropertyListenerAdapter {
+
+<span class="nc" id="L45">  static JPFLogger log = JPF.getLogger(&quot;gov.nasa.jpf.listener.AssertionProperty&quot;);</span>
+  
+  boolean goOn;
+  String msg;
+  
+<span class="nc" id="L50">  public AssertionProperty (Config config) {</span>
+<span class="nc" id="L51">    goOn = config.getBoolean(&quot;ap.go_on&quot;,false);</span>
+<span class="nc" id="L52">  }</span>
+  
+  @Override
+  public boolean check(Search search, VM vm) {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">    return (msg == null);</span>
+  }
+
+  @Override
+  public String getErrorMessage() {
+<span class="nc" id="L61">    return msg;</span>
+  }
+
+  protected String getMessage (String details, Instruction insn){
+<span class="nc" id="L65">    String s = &quot;failed assertion&quot;;</span>
+    
+<span class="nc bnc" id="L67" title="All 2 branches missed.">    if (details != null){</span>
+<span class="nc" id="L68">      s += &quot;: \&quot;&quot;;</span>
+<span class="nc" id="L69">      s += details;</span>
+<span class="nc" id="L70">      s += '&quot;';</span>
+    }
+
+<span class="nc" id="L73">    s += &quot; at &quot;;</span>
+<span class="nc" id="L74">    s += insn.getSourceLocation();</span>
+    
+<span class="nc" id="L76">    return s;</span>
+  }
+
+  @Override
+  public void executeInstruction (VM vm, ThreadInfo ti, Instruction insn){
+    
+<span class="nc bnc" id="L82" title="All 2 branches missed.">    if (insn instanceof ATHROW) {</span>
+      
+<span class="nc" id="L84">      Heap heap = vm.getHeap();</span>
+<span class="nc" id="L85">      StackFrame frame = ti.getTopFrame();</span>
+<span class="nc" id="L86">      int xobjref = frame.peek();</span>
+<span class="nc" id="L87">      ElementInfo ei = heap.get(xobjref);</span>
+<span class="nc" id="L88">      ClassInfo ci = ei.getClassInfo();</span>
+      
+<span class="nc bnc" id="L90" title="All 2 branches missed.">      if (ci.getName().equals(&quot;java.lang.AssertionError&quot;)) {</span>
+<span class="nc" id="L91">        int msgref = ei.getReferenceField(&quot;detailMessage&quot;);</span>
+<span class="nc" id="L92">        ElementInfo eiMsg = heap.get(msgref);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        String details = eiMsg != null ? eiMsg.asString() : null;</span>
+
+        // Ok, arm ourselves
+<span class="nc" id="L96">        msg = getMessage( details, insn.getNext());</span>
+        
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (goOn) {</span>
+<span class="nc" id="L99">          log.warning(msg);</span>
+
+<span class="nc" id="L101">          frame = ti.getModifiableTopFrame();</span>
+<span class="nc" id="L102">          frame.pop(); // ensure operand stack integrity (ATHROW pops)</span>
+          
+<span class="nc" id="L104">          ti.skipInstruction(insn.getNext());</span>
+
+        } else {
+<span class="nc" id="L107">          ti.skipInstruction(insn);</span>
+<span class="nc" id="L108">          ti.breakTransition(&quot;assertion&quot;);</span>
+        }
+      }
+    }
+<span class="nc" id="L112">  }</span>
+  
+  @Override
+  public void reset() {
+<span class="nc" id="L116">    msg = null;</span>
+<span class="nc" id="L117">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

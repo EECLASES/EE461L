@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GetHelper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">GetHelper.java</span></div><h1>GetHelper.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MethodInfo;
+
+/**
+ * helper class to factor out common GET code
+ * 
+ * &lt;2do&gt; This is going to be moved into a Java 8 interface with default methods
+ */
+<span class="nc" id="L29">public class GetHelper {</span>
+
+  /**
+   * do a little bytecode pattern analysis on the fly, to find out if a
+   * GETFIELD or GETSTATIC is just part of a &quot;..synchronized (obj) {..} ..&quot;
+   * pattern, which usually translates into the following pattern:
+   *   ...
+   *   getfield / getstatic
+   *   dup
+   *   [astore]
+   *   monitorenter
+   *   ...
+   *
+   * If it does, there is no need to break the transition since the object
+   * reference is not used for anything that can cause violations between
+   * the get and the monitorenter.
+   *
+   * &lt;2do&gt; We might want to extend this in the future to also cover sync on
+   * local vars, like &quot;Object o = myField; synchronized(o){..}..&quot;, but then
+   * the check becomes more expensive since we get interspersed aload/astore
+   * insns, and some of the locals could be used outside the sync block. Not
+   * sure if it buys much on the bottom line
+   *   
+   * &lt;2do&gt; this relies on javac code patterns. The dup/astore could
+   * lead to subsequent use of the object reference w/o corresponding get/putfield
+   * insns (if it's not a volatile), but this access would be either a call
+   * or a get/putfield on a share object, i.e. would be checked separately 
+   */
+  protected static boolean isMonitorEnterPrologue(MethodInfo mi, int insnIndex){
+<span class="nc" id="L58">    Instruction[] code = mi.getInstructions();</span>
+<span class="nc" id="L59">    int off = insnIndex+1;</span>
+
+<span class="nc bnc" id="L61" title="All 2 branches missed.">    if (off &lt; code.length-3) {</span>
+      // we don't reach out further than 3 instructions
+<span class="nc bnc" id="L63" title="All 2 branches missed.">      if (code[off] instanceof DUP) {</span>
+<span class="nc" id="L64">        off++;</span>
+
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (code[off] instanceof ASTORE) {</span>
+<span class="nc" id="L67">          off++;</span>
+        }
+
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (code[off] instanceof MONITORENTER) {</span>
+<span class="nc" id="L71">          return true;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L76">    return false; // if in doubt, we assume it is not part of a monitorenter code pattern</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

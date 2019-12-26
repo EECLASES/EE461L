@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocationSpec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">LocationSpec.java</span></div><h1>LocationSpec.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.io.File;
+
+/**
+ * support for specification of source locations
+ *
+ * This maps sourcefile:line1-range strings into instructions that can be efficiently
+ * checked for by listeners. Example formats are:
+ *
+ *  X.java                (the whole of file X.java)
+ *  MyClass.java:42       (file MyClass.java, line1 42)
+ *  FooBar.java:42-48     (file FooBar.java, lines 42 to 48)
+ *  FooBar.java:42+3      (range of lines from 42 to 45)
+ *  x/y/z/whatever:42+    (file with pathname x/y/z/whatever, lines 42 to end)
+ * 
+ *
+ * NOTE path names are given in Unix notation, to avoid the usual Java string
+ * quoting problem with backslashes
+ */
+public class LocationSpec {
+
+  public static final int ANYLINE = -1;
+
+  protected StringMatcher pathSpec;
+  protected StringMatcher fileSpec;
+<span class="fc" id="L45">  protected int fromLine = ANYLINE;   // inclusive</span>
+<span class="fc" id="L46">  protected int toLine = ANYLINE;     // inclusive</span>
+
+  /**
+   * factory method that includes the parser
+   */
+  public static LocationSpec createLocationSpec (String s){
+<span class="fc" id="L52">    s = s.replace('\\', '/');</span>
+
+<span class="fc" id="L54">    String pspec = null, fspec;</span>
+<span class="fc" id="L55">    int line1 = -1, line2 = -1;</span>
+
+<span class="fc" id="L57">    int idx = s.lastIndexOf(':');</span>
+    // check if it is just a dreaded &quot;drive letter&quot;
+<span class="pc bpc" id="L59" title="2 of 4 branches missed.">    if (idx == s.length()-1 || s.charAt(idx + 1) == '/') {</span>
+<span class="nc" id="L60">      idx = -1;</span>
+    }
+
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">    if (idx &lt; 0){ // no line1 spec</span>
+<span class="nc" id="L64">      fspec = s.trim();</span>
+
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">    } else if (idx &gt; 0){ // line1 spec present</span>
+<span class="fc" id="L67">      fspec = s.substring(0, idx).trim();</span>
+
+      // now get the line1 (range)
+<span class="fc" id="L70">      s = s.substring(idx+1).trim();</span>
+<span class="fc" id="L71">      int len = s.length();</span>
+
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">      if (len &gt; 0){</span>
+<span class="fc" id="L74">        int i = 0;</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (; i &lt; len; i++) {</span>
+<span class="fc" id="L76">          char c = s.charAt(i);</span>
+<span class="fc bfc" id="L77" title="All 4 branches covered.">          if (c == '-' || c == '+') {</span>
+<span class="fc" id="L78">            line1 = Integer.parseInt(s.substring(0, i));</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (i == len - 1) { // open interval</span>
+<span class="fc" id="L81">              line2 = Integer.MAX_VALUE;</span>
+            } else {
+<span class="fc" id="L83">              line2 = Integer.parseInt(s.substring(i + 1));</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">              if (c == '+') {</span>
+<span class="fc" id="L85">                line2 = line1 + line2;</span>
+              }
+            }
+            break;
+          }
+        }
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (i == len) { // single line</span>
+<span class="fc" id="L93">          line1 = Integer.parseInt(s);</span>
+        }
+      }
+
+<span class="fc" id="L97">    } else {</span>
+<span class="nc" id="L98">      throw new RuntimeException(&quot;no filename in LocationSpec: &quot; + s);</span>
+    }
+
+<span class="fc" id="L101">    idx = fspec.lastIndexOf('/');</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">    if (idx &gt; 0){</span>
+<span class="fc" id="L103">      pspec = fspec.substring(0, idx);</span>
+<span class="fc" id="L104">      fspec = fspec.substring(idx+1);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">    } else if (idx == 0){</span>
+<span class="nc" id="L106">      pspec = &quot;/&quot;;</span>
+<span class="nc" id="L107">      fspec = fspec.substring(1);</span>
+    } else {
+<span class="fc" id="L109">      pspec = null;</span>
+    }
+
+<span class="fc" id="L112">    return new LocationSpec(pspec, fspec, line1, line2);</span>
+  }
+
+<span class="fc" id="L115">  public LocationSpec (String pspec, String fspec, int line1, int line2){</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">    if (pspec != null){</span>
+<span class="fc" id="L117">      pathSpec = new StringMatcher(pspec);</span>
+    }
+<span class="fc" id="L119">    fileSpec = new StringMatcher(fspec);</span>
+
+<span class="fc" id="L121">    fromLine = line1;</span>
+<span class="fc" id="L122">    toLine = line2;</span>
+<span class="fc" id="L123">  }</span>
+
+  @Override
+  public String toString(){
+<span class="fc" id="L127">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc bfc" id="L129" title="All 2 branches covered.">    if (pathSpec != null){</span>
+<span class="fc" id="L130">      sb.append(pathSpec);</span>
+<span class="fc" id="L131">      sb.append('/');</span>
+    }
+
+<span class="fc" id="L134">    sb.append(fileSpec);</span>
+
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">    if (fromLine != ANYLINE){</span>
+<span class="fc" id="L137">      sb.append(':');</span>
+<span class="fc" id="L138">      sb.append(fromLine);</span>
+    }
+<span class="fc bfc" id="L140" title="All 2 branches covered.">    if (toLine != ANYLINE){</span>
+<span class="fc" id="L141">      sb.append('-');</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">      if (toLine != Integer.MAX_VALUE){</span>
+<span class="fc" id="L143">        sb.append(toLine);</span>
+      }
+    }
+
+<span class="fc" id="L147">    return sb.toString();</span>
+  }
+
+  public boolean matchesFile (File f){
+<span class="nc bnc" id="L151" title="All 2 branches missed.">    if (fileSpec.matches(f.getName())){</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">      if (pathSpec != null){</span>
+<span class="nc" id="L153">        String pspec = f.getParent();</span>
+<span class="nc" id="L154">        pspec = pspec.replace('\\', '/'); // use Unix '/' to avoid quoting issue</span>
+
+<span class="nc" id="L156">        return pathSpec.matches(pspec);</span>
+
+      } else { // no path
+<span class="nc" id="L159">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L163">    return false;</span>
+  }
+
+  public boolean isAnyLine(){
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">    return fromLine == ANYLINE;</span>
+  }
+
+  public boolean isLineInterval(){
+<span class="fc bfc" id="L171" title="All 2 branches covered.">    return toLine != ANYLINE;</span>
+  }
+
+  public int getLine(){ // for specs that are single locations
+<span class="fc" id="L175">    return fromLine;</span>
+  }
+
+  public int getFromLine() {
+<span class="fc" id="L179">    return fromLine;</span>
+  }
+
+  // note - this is &lt; 0 if there was only a
+  public int getToLine() {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">    if (toLine &lt; 0){</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">      if (fromLine &gt;= 0){</span>
+<span class="fc" id="L186">        return fromLine;</span>
+      }
+    }
+
+<span class="fc" id="L190">    return toLine;</span>
+  }
+
+  /**
+   * 'pathName' has to use '/' as separators
+   */
+  public boolean matchesFile (String pathName){
+<span class="fc bfc" id="L197" title="All 2 branches covered.">    if (pathName != null){</span>
+<span class="fc" id="L198">      pathName = pathName.replace('\\', '/');</span>
+<span class="fc" id="L199">      int idx = pathName.lastIndexOf('/');</span>
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">      if (idx &gt;= 0) {</span>
+<span class="fc" id="L202">        String fname = pathName.substring(idx + 1);</span>
+
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (fileSpec.matches(fname)) {</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">          if (pathSpec != null) {</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">            String pname = idx &gt; 0 ? pathName.substring(0, idx) : &quot;/&quot;;</span>
+<span class="fc" id="L207">            return pathSpec.matches(pname);</span>
+          } else {
+<span class="fc" id="L209">            return true;</span>
+          }
+        }
+
+<span class="fc" id="L213">      } else { // no path</span>
+<span class="fc" id="L214">        return fileSpec.matches(pathName);</span>
+      }
+    }
+
+<span class="fc" id="L218">    return false;</span>
+  }
+  
+  public boolean includesLine (int line){
+<span class="nc bnc" id="L222" title="All 2 branches missed.">    if (fromLine == ANYLINE){</span>
+<span class="nc" id="L223">      return true;</span>
+
+    } else {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">      if (fromLine == line){</span>
+<span class="nc" id="L227">        return true;</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">      } else if (fromLine &lt; line){</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (toLine == ANYLINE){ // single location</span>
+<span class="nc" id="L230">          return false;</span>
+        } else {
+<span class="nc bnc" id="L232" title="All 2 branches missed.">          return (line &lt;= toLine);</span>
+        }
+      }
+    }
+
+<span class="nc" id="L237">    return false;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

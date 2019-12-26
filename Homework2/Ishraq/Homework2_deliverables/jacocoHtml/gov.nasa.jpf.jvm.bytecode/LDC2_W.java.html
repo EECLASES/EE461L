@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LDC2_W.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">LDC2_W.java</span></div><h1>LDC2_W.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+
+/**
+ * Push long or double from runtime constant pool (wide index)
+ * ... =&gt; ..., value
+ */
+public class LDC2_W extends Instruction implements JVMInstruction {
+
+<span class="fc" id="L31">  public enum Type {LONG, DOUBLE};</span>
+
+  protected Type type;
+  protected long value;
+
+<span class="fc" id="L36">  public LDC2_W(long l){</span>
+<span class="fc" id="L37">    value = l;</span>
+<span class="fc" id="L38">    type = Type.LONG;</span>
+<span class="fc" id="L39">  }</span>
+
+<span class="fc" id="L41">  public LDC2_W(double d){</span>
+<span class="fc" id="L42">    value = Double.doubleToLongBits(d);</span>
+<span class="fc" id="L43">    type = Type.DOUBLE;</span>
+<span class="fc" id="L44">  }</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L48">    StackFrame frame = ti.getModifiableTopFrame();</span>
+    
+<span class="fc" id="L50">    frame.pushLong(value);</span>
+<span class="fc" id="L51">    return getNext(ti);</span>
+  }
+
+  @Override
+  public int getLength() {
+<span class="nc" id="L56">    return 3; // opcode, index1, index2</span>
+  }
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L61">    return 0x14;</span>
+  }
+  
+  public Type getType() {
+<span class="nc" id="L65">    return type;</span>
+  }
+  
+  public double getDoubleValue(){
+<span class="nc bnc" id="L69" title="All 2 branches missed.">	  if(type!=Type.DOUBLE){</span>
+<span class="nc" id="L70">		  throw new IllegalStateException();</span>
+	  }
+    
+<span class="nc" id="L73">	  return Double.longBitsToDouble(value);</span>
+  }
+  
+  public long getValue() {
+<span class="nc" id="L77">    return value;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L82">	  insVisitor.visit(this);</span>
+<span class="fc" id="L83">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

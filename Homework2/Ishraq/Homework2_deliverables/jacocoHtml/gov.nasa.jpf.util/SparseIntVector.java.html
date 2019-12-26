@@ -1,0 +1,409 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SparseIntVector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SparseIntVector.java</span></div><h1>SparseIntVector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import static java.lang.Integer.MIN_VALUE;
+
+import java.util.Arrays;
+
+/**
+ * This has approximately the interface of IntVector but uses a hash table
+ * instead of an array.  Also, does not require allocation with each add.
+ * Configurable default value. 
+ */
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">public class SparseIntVector implements Cloneable {</span>
+  private static final boolean DEBUG = false;
+  
+  static final double MAX_LOAD_WIPE = 0.6;
+  static final double MAX_LOAD_REHASH = 0.4;
+  static final int DEFAULT_POW = 10;
+  static final int DEFAULT_VAL = 0;
+
+  /**
+   * a simplistic snapshot implementation that stores set indices/values in order to save space
+   */
+  public static class Snapshot {
+    private final int length;
+    private final int pow, mask, nextWipe, nextRehash;
+    
+    private final int[] positions;
+    private final int[] indices;
+    private final int[] values;
+    
+<span class="fc" id="L48">    Snapshot (SparseIntVector v){</span>
+<span class="fc" id="L49">      int len = v.idxTable.length;</span>
+      
+<span class="fc" id="L51">      length = len;</span>
+<span class="fc" id="L52">      pow = v.pow;</span>
+<span class="fc" id="L53">      mask = v.mask;</span>
+<span class="fc" id="L54">      nextWipe = v.nextWipe;</span>
+<span class="fc" id="L55">      nextRehash = v.nextRehash;</span>
+      
+<span class="fc" id="L57">      int size = v.count;</span>
+<span class="fc" id="L58">      positions = new int[size];</span>
+<span class="fc" id="L59">      indices = new int[size];</span>
+<span class="fc" id="L60">      values = new int[size];</span>
+      
+<span class="fc" id="L62">      int[] idxTable = v.idxTable;</span>
+<span class="fc" id="L63">      int[] valTable = v.valTable;</span>
+<span class="fc" id="L64">      int j=0;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">      for (int i=0; i&lt;len; i++) {</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (idxTable[i] != MIN_VALUE) {</span>
+<span class="fc" id="L67">          positions[j] = i;</span>
+<span class="fc" id="L68">          indices[j] = idxTable[i];</span>
+<span class="fc" id="L69">          values[j] = valTable[i];</span>
+<span class="fc" id="L70">          j++;</span>
+        }
+      }
+<span class="fc" id="L73">    }</span>
+    
+    void restore (SparseIntVector v) {
+<span class="fc" id="L76">      int size = indices.length;</span>
+      
+<span class="fc" id="L78">      v.count = size;</span>
+<span class="fc" id="L79">      v.pow = pow;</span>
+<span class="fc" id="L80">      v.mask = mask;</span>
+<span class="fc" id="L81">      v.nextWipe = nextWipe;</span>
+<span class="fc" id="L82">      v.nextRehash = nextRehash;</span>
+      
+<span class="fc" id="L84">      int len = length;</span>
+<span class="fc" id="L85">      int[] idxTable = new int[len];</span>
+<span class="fc" id="L86">      int[] valTable = new int[len];</span>
+      
+<span class="fc" id="L88">      Arrays.fill(idxTable, MIN_VALUE);</span>
+      
+<span class="fc bfc" id="L90" title="All 2 branches covered.">      for (int i=0; i&lt;size; i++) {</span>
+<span class="fc" id="L91">        int j = positions[i];        </span>
+<span class="fc" id="L92">        idxTable[j] = indices[i];</span>
+<span class="fc" id="L93">        valTable[j] = values[i];</span>
+      }
+      
+<span class="fc" id="L96">      v.idxTable = idxTable;</span>
+<span class="fc" id="L97">      v.valTable = valTable;</span>
+<span class="fc" id="L98">    }</span>
+  }
+  
+  int[] idxTable;  // MIN_VALUE =&gt; unoccupied
+  int[] valTable;  // can be bound to null
+  
+  int count;
+  int pow;
+  int mask;
+  int nextWipe;
+  int nextRehash;
+  
+  int defaultValue;
+    
+  /**
+   * Creates a SimplePool that holds about 716 elements before first
+   * rehash.
+   */
+  public SparseIntVector() {
+<span class="fc" id="L117">    this(DEFAULT_POW,DEFAULT_VAL);</span>
+<span class="fc" id="L118">  }</span>
+  
+  /**
+   * Creates a SimplePool that holds about 0.7 * 2**pow elements before
+   * first rehash.
+   */
+<span class="fc" id="L124">  public SparseIntVector(int pow, int defValue) {</span>
+<span class="fc" id="L125">    this.pow = pow;</span>
+<span class="fc" id="L126">    newTable();</span>
+<span class="fc" id="L127">    count = 0;</span>
+<span class="fc" id="L128">    mask = valTable.length - 1;</span>
+<span class="fc" id="L129">    nextWipe = (int)(MAX_LOAD_WIPE * mask);</span>
+<span class="fc" id="L130">    nextRehash = (int)(MAX_LOAD_REHASH * mask);</span>
+<span class="fc" id="L131">    defaultValue = defValue;</span>
+<span class="fc" id="L132">  }  </span>
+  
+  // INTERNAL //
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  protected void newTable() {
+<span class="fc" id="L138">    valTable = new int[1 &lt;&lt; pow];</span>
+<span class="fc" id="L139">    idxTable = new int[1 &lt;&lt; pow];</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">    if (defaultValue != 0) {</span>
+<span class="nc" id="L141">      Arrays.fill(valTable, defaultValue);</span>
+    }
+<span class="fc" id="L143">    Arrays.fill(idxTable, MIN_VALUE);</span>
+<span class="fc" id="L144">  }</span>
+  
+  protected int mix(int x) {
+<span class="fc" id="L147">    int y = 0x9e3779b9;</span>
+<span class="fc" id="L148">    x ^= 0x510fb60d;</span>
+<span class="fc" id="L149">    y += (x &gt;&gt; 8) + (x &lt;&lt; 3);</span>
+<span class="fc" id="L150">    x ^= (y &gt;&gt; 5) + (y &lt;&lt; 2);</span>
+<span class="fc" id="L151">    return y - x;</span>
+  }
+  
+  
+  // ********************* Public API ******************** //
+
+  public Snapshot getSnapshot() {
+<span class="fc" id="L158">    return new Snapshot(this);</span>
+  }
+  
+  public void restore (Snapshot snap) {
+<span class="fc" id="L162">    snap.restore(this);</span>
+<span class="fc" id="L163">  }</span>
+  
+  @Override
+  public SparseIntVector clone() {
+    try {
+<span class="fc" id="L168">      SparseIntVector o = (SparseIntVector) super.clone();</span>
+<span class="fc" id="L169">      o.idxTable = idxTable.clone();</span>
+<span class="fc" id="L170">      o.valTable = valTable.clone();</span>
+      
+<span class="fc" id="L172">      return o;</span>
+      
+<span class="nc" id="L174">    } catch (CloneNotSupportedException cnsx) {</span>
+      // can't happen
+<span class="nc" id="L176">      return null;</span>
+    }
+  }
+  
+  public int size() {
+<span class="fc" id="L181">    return count;</span>
+  }
+  
+  public void clear() {
+<span class="fc" id="L185">    Arrays.fill(valTable, defaultValue);</span>
+<span class="fc" id="L186">    Arrays.fill(idxTable, MIN_VALUE);</span>
+<span class="fc" id="L187">    count = 0;</span>
+<span class="fc" id="L188">  }</span>
+  
+  public void clear(int idx) {
+<span class="fc" id="L191">    int code = mix(idx);</span>
+<span class="fc" id="L192">    int pos = code &amp; mask;</span>
+<span class="fc" id="L193">    int delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="fc" id="L194">    int oidx = pos;</span>
+
+    for(;;) {
+<span class="fc" id="L197">      int tidx = idxTable[pos];</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">      if (tidx == MIN_VALUE) {</span>
+<span class="nc" id="L199">        return; // nothing to clear</span>
+      }
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">      if (tidx == idx) {</span>
+<span class="fc" id="L202">        count--;</span>
+<span class="fc" id="L203">        idxTable[pos] = MIN_VALUE;</span>
+<span class="fc" id="L204">        valTable[pos] = defaultValue;</span>
+<span class="fc" id="L205">        return;</span>
+      }
+<span class="nc" id="L207">      pos = (pos + delta) &amp; mask;</span>
+<span class="nc bnc" id="L208" title="All 4 branches missed.">      assert (pos != oidx); // should never wrap around</span>
+<span class="nc" id="L209">    }</span>
+  }
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public int get(int idx) {
+<span class="fc" id="L214">    int code = mix(idx);</span>
+<span class="fc" id="L215">    int pos = code &amp; mask;</span>
+<span class="fc" id="L216">    int delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="fc" id="L217">    int oidx = pos;</span>
+
+    for(;;) {
+<span class="fc" id="L220">      int tidx = idxTable[pos];</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">      if (tidx == MIN_VALUE) {</span>
+<span class="fc" id="L222">        return defaultValue;</span>
+      }
+<span class="fc bfc" id="L224" title="All 2 branches covered.">      if (tidx == idx) {</span>
+<span class="fc" id="L225">        return valTable[pos];</span>
+      }
+<span class="fc" id="L227">      pos = (pos + delta) &amp; mask;</span>
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">      assert (pos != oidx); // should never wrap around</span>
+<span class="fc" id="L229">    }</span>
+  }
+
+  // for debug only
+  int count() {
+<span class="nc" id="L234">    int count = 0;</span>
+<span class="nc bnc" id="L235" title="All 2 branches missed.">    for (int i = 0; i &lt; idxTable.length; i++) {</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">      if (idxTable[i] != MIN_VALUE /*&amp;&amp; valTable[i] != defaultValue*/) {</span>
+<span class="nc" id="L237">        count++;</span>
+      }
+    }
+<span class="nc" id="L240">    return count;</span>
+  }
+  
+  public void set(int idx, int val) {
+<span class="fc" id="L244">    int code = mix(idx);</span>
+<span class="fc" id="L245">    int pos = code &amp; mask;</span>
+<span class="fc" id="L246">    int delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="fc" id="L247">    int oidx = pos;</span>
+
+    for(;;) {
+<span class="fc" id="L250">      int tidx = idxTable[pos];</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">      if (tidx == MIN_VALUE) {</span>
+<span class="fc" id="L252">        break;</span>
+      }
+<span class="fc bfc" id="L254" title="All 2 branches covered.">      if (tidx == idx) {</span>
+<span class="fc" id="L255">        valTable[pos] = val; // update</span>
+<span class="fc" id="L256">        return;            // and we're done</span>
+      }
+<span class="fc" id="L258">      pos = (pos + delta) &amp; mask;</span>
+<span class="pc bpc" id="L259" title="2 of 4 branches missed.">      assert (pos != oidx); // should never wrap around</span>
+<span class="fc" id="L260">    }</span>
+    // idx not in table; add it
+    
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">    if ((count+1) &gt;= nextWipe) { // too full</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">      if (count &gt;= nextRehash) {</span>
+<span class="nc" id="L265">        pow++;</span>
+      }
+      
+      /**
+      // determine if size needs to be increased or just wipe null blocks
+      int oldCount = count;
+      count = 0;
+      for (int i = 0; i &lt; idxTable.length; i++) {
+        //if (idxTable[i] != MIN_VALUE &amp;&amp; valTable[i] != defaultValue) {
+        if (idxTable[i] != MIN_VALUE) {
+          count++;
+        }
+      }
+      if (count &gt;= nextRehash) {
+        pow++; // needs to be increased in size
+        if (DEBUG) {
+          System.out.println(&quot;Rehash to capacity: 2**&quot; + pow);
+        }
+      } else {
+        if (DEBUG) {
+          System.out.println(&quot;Rehash reclaiming this many nulls: &quot; + (oldCount - count));
+        }
+      }
+      **/
+      
+<span class="nc" id="L290">      int[] oldValTable = valTable;</span>
+<span class="nc" id="L291">      int[] oldIdxTable = idxTable;</span>
+<span class="nc" id="L292">      newTable();</span>
+<span class="nc" id="L293">      mask = idxTable.length - 1;</span>
+<span class="nc" id="L294">      nextWipe = (int)(MAX_LOAD_WIPE * mask);</span>
+<span class="nc" id="L295">      nextRehash = (int)(MAX_LOAD_REHASH * mask);</span>
+
+<span class="nc" id="L297">      int oldLen = oldIdxTable.length;</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">      for (int i = 0; i &lt; oldLen; i++) {</span>
+<span class="nc" id="L299">        int tidx = oldIdxTable[i];</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">        if (tidx == MIN_VALUE) continue;</span>
+<span class="nc" id="L301">        int o = oldValTable[i];</span>
+        //if (o == defaultValue) continue;
+        // otherwise:
+<span class="nc" id="L304">        code = mix(tidx);</span>
+<span class="nc" id="L305">        pos = code &amp; mask;</span>
+<span class="nc" id="L306">        delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        while (idxTable[pos] != MIN_VALUE) { // we know enough slots exist</span>
+<span class="nc" id="L308">          pos = (pos + delta) &amp; mask;</span>
+        }
+<span class="nc" id="L310">        idxTable[pos] = tidx;</span>
+<span class="nc" id="L311">        valTable[pos] = o;</span>
+      }
+      // done with rehash; now get idx to empty slot
+<span class="nc" id="L314">      code = mix(idx);</span>
+<span class="nc" id="L315">      pos = code &amp; mask;</span>
+<span class="nc" id="L316">      delta = (code &gt;&gt; (pow - 1)) | 1; // must be odd!</span>
+<span class="nc bnc" id="L317" title="All 2 branches missed.">      while (idxTable[pos] != MIN_VALUE) { // we know enough slots exist</span>
+<span class="nc" id="L318">        pos = (pos + delta) &amp; mask;</span>
+      }
+            
+    } else {
+      // pos already pointing to empty slot
+    }
+
+<span class="fc" id="L325">    count++;</span>
+
+<span class="fc" id="L327">    idxTable[pos] = idx;</span>
+<span class="fc" id="L328">    valTable[pos] = val;</span>
+<span class="fc" id="L329">  }</span>
+  
+  
+  public void setRange (int fromIndex, int toIndex, int val) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">    for (int i=fromIndex; i&lt;toIndex; i++) {</span>
+<span class="fc" id="L334">      set(i, val);</span>
+    }
+<span class="fc" id="L336">  }</span>
+  
+  // ************************** Test main ************************ //
+  
+  public static void main(String[] args) {
+<span class="nc" id="L341">    SparseIntVector vect = new SparseIntVector(3, MIN_VALUE);</span>
+    
+    // add some
+<span class="nc bnc" id="L344" title="All 2 branches missed.">    for (int i = -4200; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L345">      vect.set(i, i);</span>
+    }
+    
+    // check for added &amp; non-added
+<span class="nc bnc" id="L349" title="All 2 branches missed.">    for (int i = -4200; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L350">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">      if (v != i) {</span>
+<span class="nc" id="L352">        throw new IllegalStateException();</span>
+      }
+    }
+<span class="nc bnc" id="L355" title="All 2 branches missed.">    for (int i = -4205; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L356">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">      if (v != MIN_VALUE) {</span>
+<span class="nc" id="L358">        throw new IllegalStateException();</span>
+      }
+    }
+    
+    // add some more
+<span class="nc bnc" id="L363" title="All 2 branches missed.">    for (int i = -4201; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L364">      vect.set(i, i);</span>
+    }
+
+    // check all added
+<span class="nc bnc" id="L368" title="All 2 branches missed.">    for (int i = -4200; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L369">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">      if (v != i) {</span>
+<span class="nc" id="L371">        throw new IllegalStateException();</span>
+      }
+    }
+<span class="nc bnc" id="L374" title="All 2 branches missed.">    for (int i = -4201; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L375">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">      if (v != i) {</span>
+<span class="nc" id="L377">        throw new IllegalStateException();</span>
+      }
+    }
+    
+    // &quot;remove&quot; some
+<span class="nc bnc" id="L382" title="All 2 branches missed.">    for (int i = -4200; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L383">      vect.set(i,MIN_VALUE);</span>
+    }
+    
+    // check for added &amp; non-added
+<span class="nc bnc" id="L387" title="All 2 branches missed.">    for (int i = -4201; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L388">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L389" title="All 2 branches missed.">      if (v != i) {</span>
+<span class="nc" id="L390">        throw new IllegalStateException();</span>
+      }
+    }
+<span class="nc bnc" id="L393" title="All 2 branches missed.">    for (int i = -4200; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L394">      int v = vect.get(i);</span>
+<span class="nc bnc" id="L395" title="All 2 branches missed.">      if (v != MIN_VALUE) {</span>
+<span class="nc" id="L396">        throw new IllegalStateException();</span>
+      }
+    }
+
+    // add even more
+<span class="nc bnc" id="L401" title="All 2 branches missed.">    for (int i = -4203; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L402">      vect.set(i, i);</span>
+    }
+<span class="nc bnc" id="L404" title="All 2 branches missed.">    for (int i = -4204; i &lt; 4200; i += 10) {</span>
+<span class="nc" id="L405">      vect.set(i, i);</span>
+    }
+<span class="nc" id="L407">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

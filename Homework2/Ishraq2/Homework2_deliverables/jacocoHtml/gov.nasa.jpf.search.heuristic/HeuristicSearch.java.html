@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HeuristicSearch.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.search.heuristic</a> &gt; <span class="el_source">HeuristicSearch.java</span></div><h1>HeuristicSearch.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.search.heuristic;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.VM;
+
+import java.util.ArrayList;
+import java.util.List;
+
+
+/**
+ * a search strategy class that computes all immediate successors of a given
+ * state, puts them into a priority queue (the priority is provided by a
+ * Heuristic strategy object), and processes states in the sequence of
+ * highest priorities. Note that the queue can be search-global, i.e. we might hop
+ * between search levels.
+ */
+public abstract class HeuristicSearch extends Search {
+  
+  static final String DEFAULT_HEURISTIC_PACKAGE = &quot;gov.nasa.jpf.search.heuristic.&quot;;
+  
+  protected HeuristicState parentState;
+  protected List&lt;HeuristicState&gt; childStates;
+  
+<span class="fc" id="L42">  protected boolean isPathSensitive = false;  </span>
+  
+  /*
+   * do we use A* adaptation of state priorities, i.e. have a
+   * distance + cost heuristic (in this context, we just use the
+   * path length as the &quot;distance&quot;)
+   */
+  protected boolean useAstar;
+  
+  /*
+   * a beam search is a HeuristicSearch with a state queue that is reset at each
+   * search level (i.e. it doesn't hop between search levels when fetching the
+   * next state from the queue)
+   */
+  protected boolean isBeamSearch;
+
+  
+  public HeuristicSearch (Config config, VM vm) {
+<span class="fc" id="L60">    super(config, vm);</span>
+    
+<span class="fc" id="L62">    useAstar = config.getBoolean(&quot;search.heuristic.astar&quot;);</span>
+<span class="fc" id="L63">    isBeamSearch = config.getBoolean(&quot;search.heuristic.beam_search&quot;);</span>
+<span class="fc" id="L64">  }</span>
+
+  
+  // add the current state to the queue
+  protected abstract HeuristicState queueCurrentState ();
+  
+  // return the next queued state, which becomes the new parentState
+  // implementors can also reset or modify the queue
+  protected abstract HeuristicState getNextQueuedState ();
+
+  public abstract int getQueueSize();
+  public abstract boolean isQueueLimitReached();
+  
+  public HeuristicState getParentState() {
+<span class="nc" id="L78">    return parentState;</span>
+  }
+  
+  public List&lt;HeuristicState&gt; getChildStates() {
+<span class="nc" id="L82">    return childStates;</span>
+  }
+  
+  public void setPathSensitive (boolean isPathSensitive) {
+<span class="nc" id="L86">    this.isPathSensitive = isPathSensitive;</span>
+<span class="nc" id="L87">  }  </span>
+  
+  void backtrackToParent () {
+<span class="fc" id="L90">    backtrack();</span>
+
+<span class="fc" id="L92">    depth--;</span>
+<span class="fc" id="L93">    notifyStateBacktracked();    </span>
+<span class="fc" id="L94">  }</span>
+  
+  /*
+   * generate the set of all child states for the current parent state
+   * 
+   * overriding methods can use the return value to determine if they
+   * have to process the childStates, e.g. to compute priorities
+   * that require the whole set
+   * 
+   * @returns false if this is cut short by a property termination or
+   * explicit termination request
+   */
+  protected boolean generateChildren () {
+
+<span class="fc" id="L108">    childStates = new ArrayList&lt;HeuristicState&gt;();</span>
+    
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">    while (!done) {</span>
+      
+<span class="fc bfc" id="L112" title="All 2 branches covered.">      if (!forward()) {</span>
+<span class="fc" id="L113">        notifyStateProcessed();</span>
+<span class="fc" id="L114">        return true;</span>
+      }
+
+<span class="fc" id="L117">      depth++;</span>
+<span class="fc" id="L118">      notifyStateAdvanced();</span>
+
+<span class="fc bfc" id="L120" title="All 2 branches covered.">      if (currentError != null){</span>
+<span class="fc" id="L121">        notifyPropertyViolated();</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (hasPropertyTermination()) {</span>
+<span class="fc" id="L123">          return false;</span>
+        }
+        
+        // note that we don't store the error state anymore, which means we
+        // might encounter it along different paths. However, this is probably
+        // what we want for search.multiple_errors.
+        
+      } else {
+      
+<span class="fc bfc" id="L132" title="All 4 branches covered.">        if (!isEndState() &amp;&amp; !isIgnoredState()) {</span>
+<span class="fc" id="L133">          boolean isNewState = isNewState();</span>
+
+<span class="pc bpc" id="L135" title="1 of 4 branches missed.">          if (isNewState &amp;&amp; depth &gt;= depthLimit) {</span>
+            // we can't do this before we actually generated the VM child state
+            // since we don't want to report DEPTH_CONSTRAINTs for parents
+            // that have only visited or end state children
+<span class="nc" id="L139">            notifySearchConstraintHit(&quot;depth limit reached: &quot; + depthLimit);</span>
+
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">          } else if (isNewState || isPathSensitive) {</span>
+
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">            if (isQueueLimitReached()) {</span>
+<span class="nc" id="L144">              notifySearchConstraintHit(&quot;queue limit reached: &quot; + getQueueSize());</span>
+            }
+          
+<span class="fc" id="L147">            HeuristicState newHState = queueCurrentState();            </span>
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">            if (newHState != null) { </span>
+<span class="fc" id="L149">              childStates.add(newHState);</span>
+<span class="fc" id="L150">              notifyStateStored();</span>
+            }
+          }
+        
+        } else {
+          // end state or ignored transition
+        }
+      }
+      
+<span class="fc" id="L159">      backtrackToParent();</span>
+    }
+    
+<span class="nc" id="L162">    return false;</span>
+  }
+
+  
+  private void restoreState (HeuristicState hState) {    
+<span class="fc" id="L167">    vm.restoreState(hState.getVMState());</span>
+
+    // note we have to query the depth from the VM because the state is taken from the queue
+    // and we have no idea when it was entered there
+<span class="fc" id="L171">    depth = vm.getPathLength();</span>
+<span class="fc" id="L172">    notifyStateRestored();</span>
+<span class="fc" id="L173">  }</span>
+   
+  @Override
+  public void search () {
+        
+<span class="fc" id="L178">    queueCurrentState();</span>
+<span class="fc" id="L179">    notifyStateStored();</span>
+    
+    // kind of stupid, but we need to get it out of the queue, and we
+    // don't have to restore it since it's the first one
+<span class="fc" id="L183">    parentState = getNextQueuedState();</span>
+    
+<span class="fc" id="L185">    done = false;</span>
+<span class="fc" id="L186">    notifySearchStarted();</span>
+    
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">    if (!hasPropertyTermination()) {</span>
+<span class="fc" id="L189">      generateChildren();</span>
+
+<span class="fc bfc" id="L191" title="All 4 branches covered.">      while (!done &amp;&amp; (parentState = getNextQueuedState()) != null) {</span>
+<span class="fc" id="L192">        restoreState(parentState);</span>
+        
+<span class="fc" id="L194">        generateChildren();</span>
+      }
+    }
+    
+<span class="fc" id="L198">    notifySearchFinished();</span>
+<span class="fc" id="L199">  }</span>
+
+  @Override
+  public boolean supportsBacktrack () {
+    // we don't do multi-level backtracks, but automatically do backtrackToParent()
+    // after each child state generation
+<span class="nc" id="L205">    return false;</span>
+  }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

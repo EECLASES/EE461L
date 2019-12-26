@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">LogHandler.java</span></div><h1>LogHandler.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.Config;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.net.ConnectException;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.util.logging.Formatter;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+
+/**
+ * log handler class that deals with output selection and formatting. This is the
+ * only handler we use for our own logging. We do our own little formatting
+ * on the fly
+ */
+public class LogHandler extends Handler {
+
+  static class DefaultFormatter extends Formatter {
+    boolean format;
+    boolean showName;
+    boolean showLevel;
+    //..and potentially more
+    
+<span class="fc" id="L48">    DefaultFormatter (Config conf) {</span>
+<span class="fc" id="L49">      showName = conf.getBoolean(&quot;log.show_name&quot;, false);</span>
+<span class="fc" id="L50">      showLevel = conf.getBoolean(&quot;log.show_level&quot;, true);</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">      format = showName || showLevel;</span>
+<span class="fc" id="L52">    }</span>
+
+<span class="fc" id="L54">    DefaultFormatter (boolean showName, boolean showLevel){</span>
+<span class="fc" id="L55">      this.showName = showName;</span>
+<span class="fc" id="L56">      this.showLevel = showLevel;</span>
+<span class="pc bpc" id="L57" title="2 of 4 branches missed.">      format = showName || showLevel;</span>
+<span class="fc" id="L58">    }</span>
+
+    // we might want to parameterize this
+    @Override
+	public String format (LogRecord r) {
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">      if (format) {</span>
+<span class="fc" id="L64">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L65">        sb.append('[');</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (showLevel) {          </span>
+<span class="fc" id="L67">          sb.append(r.getLevel().getName());</span>
+        }
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        if (showName) {</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">          if (showLevel) {</span>
+<span class="nc" id="L71">            sb.append(&quot;:&quot;);</span>
+          }
+<span class="nc" id="L73">          sb.append(r.getLoggerName());</span>
+        }
+<span class="fc" id="L75">        sb.append(&quot;] &quot;);</span>
+        
+<span class="fc" id="L77">        String msg = r.getMessage();</span>
+<span class="fc" id="L78">        Object[] params = r.getParameters();</span>
+        
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (params == null){</span>
+<span class="fc" id="L81">          sb.append(msg);</span>
+        } else {
+<span class="nc" id="L83">          sb.append(String.format(msg,params));</span>
+        }
+        
+<span class="fc" id="L86">        return sb.toString();</span>
+        
+      } else { // raw
+<span class="nc" id="L89">        return r.getMessage();</span>
+      }
+    }
+  }
+  
+<span class="fc" id="L94">  public static String LOG_HOST = &quot;localhost&quot;;</span>
+<span class="fc" id="L95">  public static int LOG_PORT = 20000;</span>
+  
+  File file;
+  Socket socket;
+  OutputStream ostream;
+  
+  PrintWriter out;
+  
+<span class="fc" id="L103">  public LogHandler (Config conf) {</span>
+<span class="fc" id="L104">    LOG_HOST = conf.getString(&quot;log.host&quot;, LOG_HOST);</span>
+<span class="fc" id="L105">    LOG_PORT = conf.getInt(&quot;log.port&quot;, LOG_PORT);</span>
+    
+<span class="fc" id="L107">    String output = conf.getString(&quot;log.output&quot;, &quot;out&quot;);</span>
+    
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">    if (output.matches(&quot;[a-zA-Z0-9.]*:[0-9]*&quot;)) { // we assume that's a hostname:port spec</span>
+<span class="nc" id="L110">      int idx = output.indexOf(':');</span>
+<span class="nc" id="L111">      String host = output.substring(0, idx);</span>
+<span class="nc" id="L112">      String port = output.substring(idx+1, output.length());</span>
+<span class="nc" id="L113">      ostream = connectSocket( host, port);</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">    } else if (output.equalsIgnoreCase(&quot;socket&quot;)){</span>
+<span class="nc" id="L115">      ostream = connectSocket( LOG_HOST, Integer.toString(LOG_PORT));</span>
+<span class="pc bpc" id="L116" title="3 of 4 branches missed.">    } else if (output.equalsIgnoreCase(&quot;out&quot;) || output.equals(&quot;System.out&quot;)) {</span>
+<span class="fc" id="L117">      ostream = System.out;</span>
+<span class="nc bnc" id="L118" title="All 4 branches missed.">    } else if (output.equalsIgnoreCase(&quot;err&quot;) || output.equals(&quot;System.err&quot;)) {</span>
+<span class="nc" id="L119">      ostream = System.err;</span>
+    } else {
+<span class="nc" id="L121">      ostream = openFile(output);</span>
+    }
+    
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">    if (ostream == null) {</span>
+<span class="nc" id="L125">      ostream = System.out;</span>
+    }
+    
+<span class="fc" id="L128">    setFormatter(new DefaultFormatter(conf));</span>
+<span class="fc" id="L129">    setOutput(ostream);</span>
+<span class="fc" id="L130">  }</span>
+
+<span class="fc" id="L132">  protected LogHandler() {</span>
+    // for derived classes
+<span class="fc" id="L134">  }</span>
+
+  OutputStream connectSocket (String host, String portSpec) {
+<span class="nc" id="L137">    int port = -1;</span>
+    
+<span class="nc bnc" id="L139" title="All 4 branches missed.">    if ((host == null) || (host.length() == 0)) {</span>
+<span class="nc" id="L140">      host = LOG_HOST;</span>
+    }
+    
+<span class="nc bnc" id="L143" title="All 2 branches missed.">    if (portSpec != null) {</span>
+      try {
+<span class="nc" id="L145">        port = Integer.parseInt(portSpec);</span>
+<span class="nc" id="L146">      } catch (NumberFormatException x) {</span>
+        // just catch it
+<span class="nc" id="L148">      }</span>
+    }
+<span class="nc bnc" id="L150" title="All 2 branches missed.">    if (port == -1) {</span>
+<span class="nc" id="L151">      port = LOG_PORT;</span>
+    }
+    
+    
+    try {
+<span class="nc" id="L156">      socket = new Socket(host, port);</span>
+<span class="nc" id="L157">      return socket.getOutputStream();</span>
+<span class="nc" id="L158">    } catch (UnknownHostException uhx) {</span>
+      //System.err.println(&quot;unknown log host: &quot; + host);
+<span class="nc" id="L160">    } catch (ConnectException cex) {</span>
+      //System.err.println(&quot;no log host detected);
+<span class="nc" id="L162">    } catch (IOException iox) {</span>
+      //System.err.println(iox);
+<span class="nc" id="L164">    }</span>
+
+<span class="nc" id="L166">    return null;</span>
+  }
+  
+  OutputStream openFile (String fileName) {
+<span class="nc" id="L170">    file = new File(fileName);</span>
+    
+    try {
+<span class="nc bnc" id="L173" title="All 2 branches missed.">      if (file.exists()) {</span>
+<span class="nc" id="L174">        file.delete();</span>
+      }
+<span class="nc" id="L176">      file.createNewFile();</span>
+<span class="nc" id="L177">      return new FileOutputStream(file);</span>
+<span class="nc" id="L178">    } catch (IOException iox) {</span>
+      // just catch it
+    }
+    
+<span class="nc" id="L182">    return null;</span>
+  }
+  
+  public void setOutput (OutputStream ostream) {
+<span class="fc" id="L186">    out = new PrintWriter(ostream, true);</span>
+<span class="fc" id="L187">  }</span>
+  
+  @Override
+  public void close () throws SecurityException {
+<span class="pc bpc" id="L191" title="2 of 4 branches missed.">    if ((ostream != System.err) &amp;&amp; (ostream != System.out)) {</span>
+<span class="fc" id="L192">      out.close();</span>
+    }
+    
+<span class="pc bpc" id="L195" title="1 of 2 branches missed.">    if (socket != null) {</span>
+      try {
+<span class="nc" id="L197">        socket.close();</span>
+<span class="nc" id="L198">      } catch (IOException iox) {</span>
+        // not much we can do
+<span class="nc" id="L200">      }</span>
+    }
+<span class="fc" id="L202">  }</span>
+
+  @Override
+  public void flush () {
+<span class="nc" id="L206">    out.flush();</span>
+<span class="nc" id="L207">  }</span>
+
+  @Override
+  public void publish (LogRecord r) {
+<span class="fc" id="L211">    String msg = getFormatter().format(r);</span>
+<span class="fc" id="L212">    out.println(msg);</span>
+<span class="fc" id="L213">  }</span>
+
+  public void printStatus (Logger log) {   
+<span class="nc bnc" id="L216" title="All 2 branches missed.">    if (socket != null) {</span>
+<span class="nc" id="L217">      log.config(&quot;logging to socket: &quot; + socket);</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">    } else if (file != null) {</span>
+<span class="nc" id="L219">      log.config(&quot;logging to file: &quot; + file.getAbsolutePath());</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">    } else if (ostream == System.err) {</span>
+<span class="nc" id="L221">      log.config(&quot;logging to System.err&quot;);</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">    } else if (ostream == System.out) {</span>
+<span class="nc" id="L223">      log.config(&quot;logging to System.out&quot;);</span>
+    } else {
+<span class="nc" id="L225">      log.warning(&quot;unknown log destination&quot;);</span>
+    }
+<span class="nc" id="L227">  }</span>
+
+
+  // a dfault handler that doesn't need Config
+  public static class DefaultConsoleHandler extends LogHandler {
+<span class="fc" id="L232">    public DefaultConsoleHandler() {</span>
+<span class="fc" id="L233">      ostream = System.out;</span>
+
+<span class="fc" id="L235">      setFormatter(new DefaultFormatter(false,true));</span>
+<span class="fc" id="L236">      setOutput(ostream);</span>
+<span class="fc" id="L237">    }</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JarClassFileContainer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm</a> &gt; <span class="el_source">JarClassFileContainer.java</span></div><h1>JarClassFileContainer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.jvm;
+
+import gov.nasa.jpf.util.FileUtils;
+import gov.nasa.jpf.vm.ClassFileMatch;
+import gov.nasa.jpf.vm.ClassParseException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+/**
+ * a ClassFileContainer that loads classes from jar files
+ */
+public class JarClassFileContainer extends JVMClassFileContainer {
+  protected JarFile jar;
+  protected String pathPrefix; // optional
+
+  static String getContainerUrl (File file){
+    try {
+<span class="fc" id="L40">      return &quot;jar:&quot; + file.toURI().toURL().toString() + &quot;!/&quot;;</span>
+<span class="nc" id="L41">    } catch (MalformedURLException x) {</span>
+<span class="nc" id="L42">      return &quot;jar:&quot; + file.getAbsolutePath() + &quot;!/&quot;;</span>
+    }
+  }
+
+  public JarClassFileContainer (File file) throws IOException {
+<span class="nc" id="L47">    super(file.getPath(), getContainerUrl(file));</span>
+<span class="nc" id="L48">    jar = new JarFile(file);</span>
+<span class="nc" id="L49">  }</span>
+
+  public JarClassFileContainer (File file, String pathPrefix) throws IOException {
+<span class="fc" id="L52">    super(getPath(file, pathPrefix), getContainerUrl(file));</span>
+
+<span class="fc" id="L54">    jar = new JarFile(file);</span>
+<span class="fc" id="L55">    this.pathPrefix = getNormalizedPathPrefix(pathPrefix);</span>
+<span class="fc" id="L56">  }</span>
+  
+  /**
+   * make sure the return value ends with '/', and does NOT start with '/'. If
+   * the supplied pathPrefix only contains '/' or an empty string, return null
+   */
+  static String getNormalizedPathPrefix(String pathPrefix){
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">    if (pathPrefix != null){</span>
+<span class="nc" id="L64">      int len = pathPrefix.length();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">      if (len &gt; 0){</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">        if (pathPrefix.charAt(0) == '/'){</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">          if (len == 1){</span>
+<span class="nc" id="L68">            return null; // no need for storing a single '/' prefix</span>
+          } else {
+<span class="nc" id="L70">            pathPrefix = pathPrefix.substring(1); // skip the heading '/'</span>
+<span class="nc" id="L71">            len--;</span>
+          }
+        }
+        
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (pathPrefix.charAt(len-1) != '/'){</span>
+<span class="nc" id="L76">          pathPrefix += '/';</span>
+        }
+        
+<span class="nc" id="L79">        return pathPrefix;</span>
+        
+      } else {
+<span class="nc" id="L82">        return null; // empty prefix</span>
+      }
+    } else {
+<span class="fc" id="L85">      return null; // null prefix</span>
+    }
+  }
+
+  /**
+   * return our string representation of the complete spec, which is
+   * 
+   *   &lt;jar-pathname&gt;/pathPrefix
+   */
+  static String getPath(File file, String pathPrefix){
+<span class="fc" id="L95">    String pn = file.getPath();</span>
+   
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">    if (pathPrefix != null){</span>
+<span class="nc" id="L98">      int len = pathPrefix.length();</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      if (len &gt; 0){</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (pathPrefix.charAt(0) == '/'){</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">          if (len == 1){</span>
+<span class="nc" id="L102">            return pn; // no need to store a single '/'</span>
+          }
+        } else {
+<span class="nc" id="L105">          pn += '/';</span>
+        }
+        
+<span class="nc" id="L108">        pn += pathPrefix;</span>
+      }
+    }
+    
+<span class="fc" id="L112">    return pn;</span>
+  }
+    
+  @Override
+  public ClassFileMatch getMatch(String clsName) throws ClassParseException {
+<span class="fc" id="L117">    String pn = clsName.replace('.', '/') + &quot;.class&quot;;</span>
+    
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">    if (pathPrefix != null){</span>
+<span class="nc" id="L120">      pn = pathPrefix + pn;</span>
+    }
+    
+<span class="fc" id="L123">    JarEntry e = jar.getJarEntry(pn);</span>
+
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    if (e != null) {</span>
+<span class="fc" id="L126">      InputStream is = null;</span>
+      try {
+<span class="fc" id="L128">        long len = e.getSize();</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (len &gt; Integer.MAX_VALUE) {</span>
+<span class="nc" id="L130">          error(&quot;classfile too big: &quot; + e.getName());</span>
+        }
+
+<span class="fc" id="L133">        is = jar.getInputStream(e);</span>
+
+<span class="fc" id="L135">        byte[] data = new byte[(int) len];</span>
+<span class="fc" id="L136">        FileUtils.getContents(is, data);</span>
+
+<span class="fc" id="L138">        return new JVMClassFileMatch(clsName, getClassURL(clsName), data);</span>
+
+<span class="nc" id="L140">      } catch (IOException iox) {</span>
+<span class="nc" id="L141">        error(&quot;error reading jar entry &quot; + e.getName());</span>
+
+      } finally {
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (is != null) {</span>
+          try {
+<span class="fc" id="L146">            is.close();</span>
+<span class="nc" id="L147">          } catch (IOException iox) {</span>
+<span class="nc" id="L148">            error(&quot;cannot close input stream for file &quot; + e.getName());</span>
+<span class="fc" id="L149">          }</span>
+        }
+      }
+    }
+
+<span class="fc" id="L154">    return null;</span>
+  }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,59 @@
+package assignment7;
+
+import org.teamapps.icon.fontawesome.FontAwesomeIconProvider;
+
+import de.jensd.fx.glyphs.fontawesome.FontAwesomeIcon;
+import de.jensd.fx.glyphs.fontawesome.FontAwesomeIconView;
+
+public class ReactIcon {
+
+//	public enum IconString {
+//        HEART,
+//        LAUGH,
+//        DISLIKE,
+//        LIKE,
+//        SAD
+//    }
+//	public IconString icon;
+	private FontAwesomeIconProvider pictureIcon;
+	
+	 
+	
+	public ReactIcon(String name) {
+		pictureIcon = getNewIcon(name);
+		 
+	}
+	
+	
+	public FontAwesomeIconProvider getPictureIcon() {
+		return pictureIcon;
+	}
+
+
+	public void setPictureIcon(FontAwesomeIconProvider pictureIcon) {
+		this.pictureIcon = pictureIcon;
+	}
+
+
+	public FontAwesomeIconProvider getNewIcon(String icon) {
+		switch(icon)
+		{
+		case "HEART":
+			FontAwesomeIconProvider heart = new FontAwesomeIconProvider(FontAwesomeIconProvider.HEART);
+		    return heart;
+		case "LAUGH":
+			FontAwesomeIconView laugh = new FontAwesomeIconView(FontAwesomeIcon.SMILE_ALT);
+		    return laugh;
+		case "DISLIKE":
+			 FontAwesomeIconView dislike = new FontAwesomeIconView(FontAwesomeIcon.THUMBS_DOWN);
+			 return dislike;
+		case "LIKE":
+			 FontAwesomeIconView like = new FontAwesomeIconView(FontAwesomeIcon.THUMBS_UP);
+			 return like;
+		case "SAD":
+			 FontAwesomeIconView sad = new FontAwesomeIconView(FontAwesomeIcon.FROWN_ALT);
+			 return sad;
+		}
+		return null;
+	}
+}

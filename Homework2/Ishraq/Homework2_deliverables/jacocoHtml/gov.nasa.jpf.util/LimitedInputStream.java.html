@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LimitedInputStream.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">LimitedInputStream.java</span></div><h1>LimitedInputStream.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+public class LimitedInputStream extends InputStream {
+
+  private final InputStream m_source;
+  private int m_limit;
+
+<span class="fc" id="L28">  public LimitedInputStream(InputStream source) {</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">    if (source == null) {</span>
+<span class="fc" id="L30">      throw new NullPointerException(&quot;source == null&quot;);</span>
+    }
+
+<span class="fc" id="L33">    m_source = source;</span>
+<span class="fc" id="L34">  }</span>
+
+  public int getLimit() {
+<span class="fc" id="L37">    return (m_limit);</span>
+  }
+
+  public void setLimit(int length) {
+<span class="fc bfc" id="L41" title="All 2 branches covered.">    if (length &lt; 0) {</span>
+<span class="fc" id="L42">      throw new IllegalArgumentException(&quot;length &lt; 0 : &quot; + length);</span>
+    }
+
+<span class="fc" id="L45">    m_limit = length;</span>
+<span class="fc" id="L46">  }</span>
+
+  @Override
+  public int read() throws IOException {
+    int result;
+
+<span class="fc bfc" id="L52" title="All 2 branches covered.">    if (m_limit &lt;= 0) {</span>
+<span class="fc" id="L53">      return (-1);</span>
+    }
+
+<span class="fc" id="L56">    result = m_source.read();</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">    if (result &gt;= 0) {</span>
+<span class="fc" id="L59">      m_limit--;</span>
+    }
+
+<span class="fc" id="L62">    return (result);</span>
+  }
+
+  @Override
+  public int read(byte buffer[], int offset, int length) throws IOException {
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    if (buffer == null) {</span>
+<span class="fc" id="L68">      throw new NullPointerException(&quot;buffer == null&quot;);</span>
+    }
+
+<span class="fc bfc" id="L71" title="All 2 branches covered.">    if (offset &lt; 0) {</span>
+<span class="fc" id="L72">      throw new IndexOutOfBoundsException(&quot;offset &lt; 0 : &quot; + offset);</span>
+    }
+
+<span class="fc bfc" id="L75" title="All 2 branches covered.">    if (length &lt; 0) {</span>
+<span class="fc" id="L76">      throw new IndexOutOfBoundsException(&quot;length &lt; 0 : &quot; + length);</span>
+    }
+
+<span class="fc bfc" id="L79" title="All 2 branches covered.">    if (offset + length &gt; buffer.length) {</span>
+<span class="fc" id="L80">      throw new IndexOutOfBoundsException(&quot;offset + length &gt; buffer.length : &quot; + offset + &quot; + &quot; + length + &quot; &gt; &quot; + buffer.length);</span>
+    }
+
+<span class="fc bfc" id="L83" title="All 2 branches covered.">    if (length == 0) {</span>
+<span class="fc" id="L84">      return (0);</span>
+    }
+
+<span class="fc" id="L87">    length = Math.min(m_limit, length);</span>
+
+<span class="fc bfc" id="L89" title="All 2 branches covered.">    if (length == 0) {</span>
+<span class="fc" id="L90">      return (-1);</span>
+    }
+
+<span class="fc" id="L93">    length = m_source.read(buffer, offset, length);</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">    if (length &gt; 0) {</span>
+<span class="fc" id="L96">      m_limit -= length;</span>
+    }
+
+<span class="fc" id="L99">    return (length);</span>
+  }
+
+  @Override
+  public long skip(long n) throws IOException {
+<span class="fc" id="L104">    n = Math.min(n, m_limit);</span>
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">    if (n &lt;= 0) {</span>
+<span class="fc" id="L107">      return (0);</span>
+    }
+
+<span class="fc" id="L110">    n = m_source.skip(n);</span>
+
+<span class="fc bfc" id="L112" title="All 2 branches covered.">    if (n &gt; 0) {</span>
+<span class="fc" id="L113">      m_limit -= n;</span>
+    }
+
+<span class="fc" id="L116">    return (n);</span>
+  }
+
+  @Override
+  public int available() throws IOException {
+    int result;
+
+<span class="fc bfc" id="L123" title="All 2 branches covered.">    if (m_limit &lt;= 0) {</span>
+<span class="fc" id="L124">      return (0);</span>
+    }
+
+<span class="fc" id="L127">    result = m_source.available();</span>
+<span class="fc" id="L128">    result = Math.min(result, m_limit);</span>
+
+<span class="fc" id="L130">    return (result);</span>
+  }
+
+  @Override
+  public void close() throws IOException {
+<span class="fc" id="L135">    m_limit = 0;</span>
+
+<span class="fc" id="L137">    m_source.close();</span>
+<span class="fc" id="L138">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

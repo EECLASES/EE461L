@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FieldInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">FieldInfo.java</span></div><h1>FieldInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import java.lang.reflect.Modifier;
+
+
+/**
+ * type, name and attribute information of a field.
+ */
+public abstract class FieldInfo extends InfoObject implements GenericSignatureHolder {
+
+  //--- FieldInfo attributes
+  // don't break transitions on get/putXX insns of this field, even if shared
+  static final int NEVER_BREAK = 0x10000;
+  
+  // always break on this field's access if object is shared
+  // (ignored if NEVER_BREAK is set)
+  static final int BREAK_SHARED = 0x20000;
+
+  // those might relate to sticky ElementInto.ATTR_*
+  protected int attributes;
+
+  
+  protected final String name;
+  protected String type;  // lazy initialized fully qualified type name as per JLS 6.7 (&quot;int&quot;, &quot;x.Y[]&quot;)
+  protected final String signature; // &quot;I&quot;, &quot;[Lx/Y;&quot; etc.
+  protected int storageSize;
+
+  protected ClassInfo ci; // class this field belongs to
+  protected int fieldIndex; // declaration ordinal
+
+  // where in the corresponding Fields object do we store the value
+  // (note this works because of the wonderful single inheritance)
+  protected int storageOffset;
+
+  // optional initializer for this field, can't be final because it is set from
+  // classfile field_info attributes (i.e. after construction)
+  protected  Object cv;
+
+  protected String genericSignature;
+
+  protected int modifiers;
+  
+  public static FieldInfo create (String name, String signature, int modifiers){
+<span class="fc bfc" id="L61" title="All 9 branches covered.">    switch(signature.charAt(0)){</span>
+      case 'Z':
+<span class="fc" id="L63">        return new BooleanFieldInfo(name, modifiers);</span>
+      case 'B':
+<span class="fc" id="L65">        return new ByteFieldInfo(name, modifiers);</span>
+      case 'S':
+<span class="fc" id="L67">        return new ShortFieldInfo(name, modifiers);</span>
+      case 'C':
+<span class="fc" id="L69">        return new CharFieldInfo(name, modifiers);</span>
+      case 'I':
+<span class="fc" id="L71">        return new IntegerFieldInfo(name, modifiers);</span>
+      case 'J':
+<span class="fc" id="L73">        return new LongFieldInfo(name, modifiers);</span>
+      case 'F':
+<span class="fc" id="L75">        return new FloatFieldInfo(name, modifiers);</span>
+      case 'D':
+<span class="fc" id="L77">        return new DoubleFieldInfo(name, modifiers);</span>
+      default:
+<span class="fc" id="L79">        return new ReferenceFieldInfo(name, signature, modifiers);</span>
+    }
+  }
+  
+<span class="fc" id="L83">  protected FieldInfo(String name, String signature, int modifiers) {</span>
+<span class="fc" id="L84">    this.name = name;</span>
+<span class="fc" id="L85">    this.signature = signature;</span>
+<span class="fc" id="L86">    this.modifiers = modifiers;</span>
+<span class="fc" id="L87">  }</span>
+
+  protected void linkToClass (ClassInfo ci, int idx, int off){
+<span class="fc" id="L90">    this.ci = ci;</span>
+<span class="fc" id="L91">    this.fieldIndex = idx;</span>
+<span class="fc" id="L92">    this.storageOffset = off;</span>
+<span class="fc" id="L93">  }</span>
+  
+  // those are set subsequently from classfile attributes
+  public void setConstantValue(Object constValue){
+<span class="nc" id="L97">    cv = constValue;</span>
+<span class="nc" id="L98">  }</span>
+
+  public abstract String valueToString (Fields f);
+
+  public boolean is1SlotField(){
+<span class="fc" id="L103">    return false;</span>
+  }
+  public boolean is2SlotField(){
+<span class="nc" id="L106">    return false;</span>
+  }
+
+  public boolean isBooleanField() {
+<span class="fc" id="L110">    return false;</span>
+  }
+  public boolean isByteField() {
+<span class="fc" id="L113">    return false;</span>
+  }
+  public boolean isCharField() {
+<span class="fc" id="L116">    return false;</span>
+  }
+  public boolean isShortField() {
+<span class="fc" id="L119">    return false;</span>
+  }
+  public boolean isIntField() {
+<span class="fc" id="L122">    return false;</span>
+  }
+  public boolean isLongField() {
+<span class="fc" id="L125">    return false;</span>
+  }
+  public boolean isFloatField(){
+<span class="fc" id="L128">    return false;</span>
+  }
+  public boolean isDoubleField(){
+<span class="fc" id="L131">    return false;</span>
+  }
+
+  public boolean isNumericField(){
+<span class="nc" id="L135">    return false;</span>
+  }
+
+  public boolean isFloatingPointField(){
+<span class="nc" id="L139">    return false;</span>
+  }
+
+  public boolean isReference () {
+<span class="fc" id="L143">    return false;</span>
+  }
+
+  public boolean isArrayField () {
+<span class="nc" id="L147">    return false;</span>
+  }
+
+  /**
+   * Returns the class that this field is associated with.
+   */
+  public ClassInfo getClassInfo () {
+<span class="fc" id="L154">    return ci;</span>
+  }
+
+  public Object getConstantValue () {
+<span class="fc" id="L158">    return cv;</span>
+  }
+
+  public abstract Object getValueObject (Fields data);
+
+  public int getModifiers() {
+<span class="fc" id="L164">    return modifiers;</span>
+  }
+
+  public int getFieldIndex () {
+<span class="fc" id="L168">    return fieldIndex;</span>
+  }
+
+  /**
+   * is this a static field? Counter productive to the current class struct,
+   * but at some point we want to get rid of the Dynamic/Static branch (it's
+   * really just a field attribute)
+   */
+  public boolean isStatic () {
+<span class="fc bfc" id="L177" title="All 2 branches covered.">    return (modifiers &amp; Modifier.STATIC) != 0;</span>
+  }
+
+  /**
+   * is this field declared `final'?
+   */
+  public boolean isFinal () {
+<span class="fc bfc" id="L184" title="All 2 branches covered.">    return (modifiers &amp; Modifier.FINAL) != 0;</span>
+  }
+
+  public boolean isVolatile () {
+<span class="nc bnc" id="L188" title="All 2 branches missed.">    return (modifiers &amp; Modifier.VOLATILE) != 0;</span>
+  }
+
+  public boolean isTransient () {
+<span class="nc bnc" id="L192" title="All 2 branches missed.">    return (modifiers &amp; Modifier.TRANSIENT) != 0;</span>
+  }
+
+  public boolean isPublic () {
+<span class="fc bfc" id="L196" title="All 2 branches covered.">    return (modifiers &amp; Modifier.PUBLIC) != 0;</span>
+  }
+
+  public boolean isPrivate () {
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">    return (modifiers &amp; Modifier.PRIVATE) != 0;</span>
+  }
+
+  public boolean isProtected () {
+<span class="nc bnc" id="L204" title="All 2 branches missed.">    return (modifiers &amp; Modifier.PROTECTED) != 0;</span>
+  }
+
+  public boolean isPackagePrivate() {
+<span class="nc bnc" id="L208" title="All 2 branches missed.">    return (modifiers &amp; (Modifier.PUBLIC | Modifier.PROTECTED | Modifier.PRIVATE)) == 0;</span>
+  }
+  
+  /**
+   * Returns the name of the field.
+   */
+  public String getName () {
+<span class="fc" id="L215">    return name;</span>
+  }
+
+  /**
+   * @return the storage size of this field, @see Types.getTypeSize
+   */
+  public int getStorageSize () {
+<span class="fc" id="L222">    return 1;</span>
+  }
+
+  /**
+   * Returns the type of the field as a fully qualified type name according to JLS 6.7
+   * (&quot;int&quot;, &quot;x.Y[]&quot;)
+   */
+  public String getType () {
+<span class="fc bfc" id="L230" title="All 2 branches covered.">    if (type == null){</span>
+<span class="fc" id="L231">      type = Types.getTypeName(signature);</span>
+    }
+<span class="fc" id="L233">    return type;</span>
+  }
+  
+  public byte getTypeCode (){
+<span class="nc" id="L237">    return Types.getTypeCode(signature);</span>
+  }
+
+  public String getSignature(){
+<span class="fc" id="L241">    return signature;</span>
+  }
+
+  @Override
+  public String getGenericSignature() {
+<span class="nc" id="L246">    return genericSignature; </span>
+  }
+
+  @Override
+  public void setGenericSignature(String sig){
+<span class="fc" id="L251">    genericSignature = sig;</span>
+<span class="fc" id="L252">  }</span>
+
+  public ClassInfo getTypeClassInfo () {
+<span class="fc" id="L255">    return ClassLoaderInfo.getCurrentResolvedClassInfo(getType());</span>
+  }
+
+  public Class&lt;? extends ChoiceGenerator&lt;?&gt;&gt; getChoiceGeneratorType (){
+<span class="nc" id="L259">    return null;</span>
+  }
+
+  /**
+   * pushClinit the corresponding data in the provided Fields instance
+   */
+  public abstract void initialize (ElementInfo ei, ThreadInfo ti);
+
+
+  /**
+   * Returns a string representation of the field.
+   */
+  @Override
+  public String toString () {
+<span class="nc" id="L273">    StringBuilder sb = new StringBuilder();</span>
+
+<span class="nc bnc" id="L275" title="All 2 branches missed.">    if (isStatic()) {</span>
+<span class="nc" id="L276">      sb.append(&quot;static &quot;);</span>
+    }
+<span class="nc bnc" id="L278" title="All 2 branches missed.">    if (isFinal()) {</span>
+<span class="nc" id="L279">      sb.append(&quot;final &quot;);</span>
+    }
+
+    //sb.append(Types.getTypeName(type));
+<span class="nc" id="L283">    sb.append(getType());</span>
+<span class="nc" id="L284">    sb.append(' ');</span>
+<span class="nc bnc" id="L285" title="All 2 branches missed.">    if (ci != null){ // maybe the fieldinfo isn't linked yet</span>
+<span class="nc" id="L286">      sb.append(ci.getName());</span>
+    }
+<span class="nc" id="L288">    sb.append('.');</span>
+<span class="nc" id="L289">    sb.append(name);</span>
+
+<span class="nc" id="L291">    return sb.toString();</span>
+  }
+  
+  //--- those are the JPF internal attribute flags (not to mix with free user attrs)
+
+  void setAttributes (int a) {
+<span class="nc" id="L297">    attributes = a;</span>
+<span class="nc" id="L298">  }</span>
+
+  public void addAttribute (int a){
+<span class="nc" id="L301">    attributes |= a;</span>
+<span class="nc" id="L302">  }</span>
+
+  public int getAttributes () {
+<span class="nc" id="L305">    return attributes;</span>
+  }
+
+  public boolean breakShared() {
+<span class="nc bnc" id="L309" title="All 2 branches missed.">    return ((attributes &amp; BREAK_SHARED) != 0);</span>
+  }
+  
+  public boolean neverBreak() {
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    return ((attributes &amp; NEVER_BREAK) != 0);    </span>
+  }
+  
+  public int getStorageOffset () {
+<span class="fc" id="L317">    return storageOffset;</span>
+  }
+
+  public String getFullName() {
+<span class="fc" id="L321">    return ci.getName() + '.' + name;</span>
+  }
+
+  /**
+   * Creates a field for a given class, by cloning this FieldInfo
+   * and reseting the class that the field belongs to
+   */
+  public FieldInfo getInstanceFor(ClassInfo ci) {
+    FieldInfo clone;
+
+    try {
+<span class="fc" id="L332">      clone = (FieldInfo)clone();</span>
+<span class="fc" id="L333">      clone.ci = ci;</span>
+<span class="nc" id="L334">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L335">      cnsx.printStackTrace();</span>
+<span class="nc" id="L336">      return null;</span>
+<span class="fc" id="L337">    }</span>
+
+<span class="fc" id="L339">    return clone;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

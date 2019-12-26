@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GETFIELD.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">GETFIELD.java</span></div><h1>GETFIELD.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.FieldInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MJIEnv;
+import gov.nasa.jpf.vm.Scheduler;
+import gov.nasa.jpf.vm.StackFrame;
+import gov.nasa.jpf.vm.ThreadInfo;
+import gov.nasa.jpf.vm.bytecode.ReadInstruction;
+
+
+/**
+ * Fetch field from object
+ * ..., objectref =&gt; ..., value
+ */
+public class GETFIELD extends JVMInstanceFieldInstruction implements ReadInstruction {
+
+  public GETFIELD (String fieldName, String classType, String fieldDescriptor){
+<span class="fc" id="L37">    super(fieldName, classType, fieldDescriptor);</span>
+<span class="fc" id="L38">  }</span>
+  
+  
+  @Override
+  public int getObjectSlot (StackFrame frame){
+<span class="fc" id="L43">    return frame.getTopPos();</span>
+  }
+  
+  @Override
+  public Instruction execute (ThreadInfo ti) {
+<span class="fc" id="L48">    StackFrame frame = ti.getModifiableTopFrame();</span>
+<span class="fc" id="L49">    int objRef = frame.peek(); // don't pop yet, we might re-enter</span>
+<span class="fc" id="L50">    lastThis = objRef;</span>
+
+    //--- check for obvious exceptions
+<span class="fc bfc" id="L53" title="All 2 branches covered.">    if (objRef == MJIEnv.NULL) {</span>
+<span class="fc" id="L54">      return ti.createAndThrowException(&quot;java.lang.NullPointerException&quot;,</span>
+              &quot;referencing field '&quot; + fname + &quot;' on null object&quot;);
+    }
+
+<span class="fc" id="L58">    ElementInfo eiFieldOwner = ti.getElementInfo(objRef);</span>
+<span class="fc" id="L59">    FieldInfo fieldInfo = getFieldInfo();</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">    if (fieldInfo == null) {</span>
+<span class="nc" id="L61">      return ti.createAndThrowException(&quot;java.lang.NoSuchFieldError&quot;,</span>
+              &quot;referencing field '&quot; + fname + &quot;' in &quot; + eiFieldOwner);
+    }
+
+    //--- check for potential transition breaks (be aware everything above gets re-executed)
+<span class="fc" id="L66">    Scheduler scheduler = ti.getScheduler();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">    if (scheduler.canHaveSharedObjectCG( ti, this, eiFieldOwner, fieldInfo)){</span>
+<span class="fc" id="L68">      eiFieldOwner = scheduler.updateObjectSharedness( ti, eiFieldOwner, fieldInfo);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">      if (scheduler.setsSharedObjectCG( ti, this, eiFieldOwner, fieldInfo)){</span>
+<span class="fc" id="L70">        return this; // re-execute</span>
+      }
+    }
+    
+<span class="fc" id="L74">    frame.pop(); // Ok, now we can remove the object ref from the stack</span>
+<span class="fc" id="L75">    Object fieldAttr = eiFieldOwner.getFieldAttr(fieldInfo);</span>
+
+    // We could encapsulate the push in ElementInfo, but not the GET, so we keep it at the same level
+<span class="fc bfc" id="L78" title="All 2 branches covered.">    if (fieldInfo.getStorageSize() == 1) { // 1 slotter</span>
+<span class="fc" id="L79">      int ival = eiFieldOwner.get1SlotField(fieldInfo);</span>
+<span class="fc" id="L80">      lastValue = ival;</span>
+      
+<span class="fc bfc" id="L82" title="All 2 branches covered.">      if (fieldInfo.isReference()){</span>
+<span class="fc" id="L83">        frame.pushRef(ival);</span>
+        
+      } else {
+<span class="fc" id="L86">        frame.push(ival);</span>
+      }
+      
+<span class="fc bfc" id="L89" title="All 2 branches covered.">      if (fieldAttr != null) {</span>
+<span class="fc" id="L90">        frame.setOperandAttr(fieldAttr);</span>
+      }
+
+<span class="fc" id="L93">    } else {  // 2 slotter</span>
+<span class="fc" id="L94">      long lval = eiFieldOwner.get2SlotField(fieldInfo);</span>
+<span class="fc" id="L95">      lastValue = lval;</span>
+
+<span class="fc" id="L97">      frame.pushLong( lval);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">      if (fieldAttr != null) {</span>
+<span class="fc" id="L99">        frame.setLongOperandAttr(fieldAttr);</span>
+      }
+    }
+
+<span class="fc" id="L103">    return getNext(ti);</span>
+  }
+
+  @Override
+  public ElementInfo peekElementInfo (ThreadInfo ti) {
+<span class="fc" id="L108">    StackFrame frame = ti.getTopFrame();</span>
+<span class="fc" id="L109">    int objRef = frame.peek();</span>
+<span class="fc" id="L110">    ElementInfo ei = ti.getElementInfo(objRef);</span>
+<span class="fc" id="L111">    return ei;</span>
+  }
+
+  @Override
+  public boolean isMonitorEnterPrologue(){
+<span class="nc" id="L116">    return GetHelper.isMonitorEnterPrologue(mi, insnIndex);</span>
+  }
+  
+  @Override
+  public int getLength() {
+<span class="nc" id="L121">    return 3; // opcode, index1, index2</span>
+  }
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L126">    return 0xB4;</span>
+  }
+
+  @Override
+  public boolean isRead() {
+<span class="nc" id="L131">    return true;</span>
+  }
+
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L136">	  insVisitor.visit(this);</span>
+<span class="fc" id="L137">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

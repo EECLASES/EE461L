@@ -1,0 +1,57 @@
+.parent{
+	-fx-background-color:#fff;
+	
+}
+.exit-pane{
+	-fx-background-color:#333645;
+}
+.sidebar{
+	-fx-background-color:#333645;
+}
+.btns{
+	-fx-background-color:transparent;
+}
+.btns:hover{
+	-fx-background-color: #00A2D3;
+}
+.box{
+	-fx-border-color: #7C8184;
+	-fx-border-width: 1.0px 0.0px 0.0px 0.0px 0.0px;
+}
+.round-lbl{
+	-fx-background-color: #FE7a70;
+	-fx-background-radius: 100.0%;
+}
+.card-01{
+	-fx-background-color: rgba(0.0, 162.0, 211.0, 0.3);
+}
+.card-02{
+	-fx-background-color:  rgba(255.0,198.0,108.0,0.3);
+}
+.card-03{
+	-fx-background-color:  rgba(69.0,183.0,175.0,0.3);
+}
+.round-box{
+	-fx-background-radius: 100.0%;
+	-fx-border-radius: 100.0%;
+	-fx-border-width: 5.0px;
+}
+
+.chatbox{
+	-fx-border-color: #7C8184;
+	-fx-border-width: 0.0px 1.0px 0.0px 1.0px 1.0px;
+}
+.bottom-border{
+	-fx-border-color: #7C8184;
+	-fx-border-width: 0.0px 0.0px 1.0px 0.0px 0.0px;
+	
+}
+.top-border{
+	-fx-border-color: #7C8184;
+	-fx-border-width: 1.0px 1.0px 1.0px 1.0px 1.0px;
+	
+}
+.second-Progress-bar .bar{
+	-fx-background-color:  #f5b942;
+    
+}

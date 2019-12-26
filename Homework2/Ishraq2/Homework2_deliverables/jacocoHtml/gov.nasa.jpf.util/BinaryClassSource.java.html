@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BinaryClassSource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">BinaryClassSource.java</span></div><h1>BinaryClassSource.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.ClassParseException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+
+/**
+ * common root for classes that read classes from binary data
+ */
+public class BinaryClassSource {
+
+  protected byte[] data;
+  
+  protected int pos; // temp index value during parsing
+  protected int pc; // bytecode pos relative to method code start
+  
+  protected int[] posStack;
+  protected int top;
+  
+  protected ByteReader byteReader;
+  
+  //--------------------------------------------------------- variable endian support 
+  
+  public interface ByteReader {
+    int peekI2();
+    int peekU2();
+    int peekI4();
+    long peekU4();
+    
+    int readI2();
+    int readU2();
+    int readI4();
+    long readU4();
+    
+    void makeLittleEndian (short[] data);
+  }
+
+<span class="nc" id="L59">  public class LittleEndianReader implements ByteReader {</span>
+    
+    @Override
+	public final int peekI2 () {
+<span class="nc" id="L63">      int idx = pos;</span>
+<span class="nc" id="L64">      return (data[idx++] &amp; 0xff) | (data[idx] &lt;&lt; 8);</span>
+    }
+
+    @Override
+	public final int peekU2 () {
+<span class="nc" id="L69">      int idx = pos;</span>
+<span class="nc" id="L70">      return (data[idx++] &amp; 0xff) | ((data[idx] &amp; 0xff)&lt;&lt; 8);</span>
+    }
+    
+    @Override
+	public final int peekI4 () {
+<span class="nc" id="L75">      int idx = pos;</span>
+<span class="nc" id="L76">      byte[] data = BinaryClassSource.this.data;</span>
+<span class="nc" id="L77">      return (data[idx++] &amp; 0xff) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | (data[idx] &lt;&lt; 24);</span>
+    }
+
+    @Override
+	public final long peekU4 () {
+<span class="nc" id="L82">      int idx = pos;</span>
+<span class="nc" id="L83">      byte[] data = BinaryClassSource.this.data;</span>
+<span class="nc" id="L84">      return (data[idx++] &amp; 0xff) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx] &amp; 0xff) &lt;&lt; 24);</span>
+    }
+    
+    
+    @Override
+	public final int readI2 () {
+<span class="nc" id="L90">      int idx = pos;</span>
+<span class="nc" id="L91">      pos += 2;</span>
+<span class="nc" id="L92">      return (data[idx++] &amp; 0xff) | (data[idx] &lt;&lt; 8);</span>
+    }
+
+    @Override
+	public final int readU2 () {
+<span class="nc" id="L97">      int idx = pos;</span>
+<span class="nc" id="L98">      pos += 2;</span>
+<span class="nc" id="L99">      return (data[idx++] &amp; 0xff) | ((data[idx] &amp; 0xff)&lt;&lt; 8);</span>
+    }
+    
+    @Override
+	public final int readI4 () {
+<span class="nc" id="L104">      int idx = pos;</span>
+<span class="nc" id="L105">      pos += 4;</span>
+<span class="nc" id="L106">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L108">      return (data[idx++] &amp; 0xff) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | (data[idx] &lt;&lt; 24);</span>
+    }
+
+    @Override
+	public final long readU4 () {
+<span class="nc" id="L113">      int idx = pos;</span>
+<span class="nc" id="L114">      pos += 4;</span>
+<span class="nc" id="L115">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L117">      return (data[idx++] &amp; 0xff) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx] &amp; 0xff) &lt;&lt; 24);</span>
+    }
+    
+    @Override
+	public final void makeLittleEndian (short[] data){
+      // nothing - we already are
+<span class="nc" id="L123">    }</span>
+  }
+
+  
+<span class="fc" id="L127">  public class BigEndianReader implements ByteReader {</span>
+    
+    @Override
+	public final int peekI2 () {
+<span class="nc" id="L131">      int idx = pos;</span>
+<span class="nc" id="L132">      return (data[idx++] &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+
+    @Override
+	public final int peekU2 () {
+<span class="nc" id="L137">      int idx = pos;</span>
+<span class="nc" id="L138">      return ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+    
+    @Override
+	public final int peekI4 () {
+<span class="nc" id="L143">      int idx = pos;</span>
+<span class="nc" id="L144">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L146">      return (data[idx++] &lt;&lt; 24) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+
+    @Override
+	public final long peekU4 () {
+<span class="nc" id="L151">      int idx = pos;</span>
+<span class="nc" id="L152">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L154">      return ((data[idx++] &amp; 0xff) &lt;&lt; 24) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+
+    
+    @Override
+	public final int readI2 () {
+<span class="nc" id="L160">      int idx = pos;</span>
+<span class="nc" id="L161">      pos += 2;</span>
+<span class="nc" id="L162">      return (data[idx++] &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+
+    @Override
+	public final int readU2 () {
+<span class="nc" id="L167">      int idx = pos;</span>
+<span class="nc" id="L168">      pos += 2;</span>
+<span class="nc" id="L169">      return ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+    
+    @Override
+	public final int readI4 () {
+<span class="nc" id="L174">      int idx = pos;</span>
+<span class="nc" id="L175">      pos += 4;</span>
+<span class="nc" id="L176">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L178">      return (data[idx++] &lt;&lt; 24) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+
+    @Override
+	public final long readU4 () {
+<span class="nc" id="L183">      int idx = pos;</span>
+<span class="nc" id="L184">      pos += 4;</span>
+<span class="nc" id="L185">      byte[] data = BinaryClassSource.this.data;</span>
+
+<span class="nc" id="L187">      return ((data[idx++] &amp; 0xff) &lt;&lt; 24) | ((data[idx++] &amp; 0xff) &lt;&lt; 16) | ((data[idx++] &amp; 0xff) &lt;&lt; 8) | (data[idx] &amp; 0xff);</span>
+    }
+    
+    @Override
+	public final void makeLittleEndian (short[] data){
+<span class="nc bnc" id="L192" title="All 2 branches missed.">      for (int i=0; i&lt;data.length; i++){</span>
+<span class="nc" id="L193">        short s = data[i];</span>
+<span class="nc" id="L194">        s = (short) (((s &amp; 0xFF00) &gt;&gt; 8) | (s &lt;&lt; 8));</span>
+<span class="nc" id="L195">        data[i] = s;</span>
+      }
+<span class="nc" id="L197">    }</span>
+  }
+  
+  //----------------------------------- BinaryClassSource methods
+
+  
+<span class="fc" id="L203">  protected BinaryClassSource (byte[] data, int pos){</span>
+<span class="fc" id="L204">   this.data = data;</span>
+<span class="fc" id="L205">   this.pos = pos;</span>
+   
+<span class="fc" id="L207">   this.byteReader = initializeByteReader();</span>
+<span class="fc" id="L208">  }</span>
+  
+<span class="fc" id="L210">  protected BinaryClassSource (File file) throws ClassParseException {</span>
+<span class="fc" id="L211">    FileInputStream is = null;</span>
+    try {
+<span class="fc" id="L213">      is = new FileInputStream(file);</span>
+<span class="fc" id="L214">      long len = file.length();</span>
+<span class="pc bpc" id="L215" title="2 of 4 branches missed.">      if (len &gt; Integer.MAX_VALUE || len &lt;= 0){   // classfile of size &gt; 2GB not supported</span>
+<span class="nc" id="L216">        error(&quot;cannot read file of size: &quot; + len);</span>
+      }
+<span class="fc" id="L218">      data = new byte[(int)len];</span>
+<span class="fc" id="L219">      readData(is);</span>
+      
+<span class="nc" id="L221">    } catch (FileNotFoundException fnfx) {</span>
+<span class="nc" id="L222">      error(&quot;classfile not found: &quot; + file.getPath());</span>
+
+    } finally {
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">      if (is != null) {</span>
+        try {
+<span class="fc" id="L227">          is.close();</span>
+<span class="nc" id="L228">        } catch (IOException iox) {</span>
+<span class="nc" id="L229">          error(&quot;failed to close file: &quot; + file.getPath());</span>
+<span class="fc" id="L230">        }</span>
+      }
+    }
+    
+<span class="fc" id="L234">    this.byteReader = initializeByteReader();</span>
+<span class="fc" id="L235">  }</span>
+  
+  protected ByteReader initializeByteReader(){
+    // Java classfiles are big endian
+<span class="fc" id="L239">    return new BigEndianReader();</span>
+  }
+  
+  protected void readData (InputStream is) throws ClassParseException {
+    try {
+<span class="fc" id="L244">      int nRead = 0;</span>
+
+<span class="fc bfc" id="L246" title="All 2 branches covered.">      while (nRead &lt; data.length){</span>
+<span class="fc" id="L247">        int n = is.read(data, nRead, (data.length - nRead));</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (n &lt; 0){</span>
+<span class="nc" id="L249">          error(&quot;premature end of dex file: &quot; + data.length + '/' + nRead);</span>
+        }
+<span class="fc" id="L251">        nRead += n;</span>
+<span class="fc" id="L252">      }</span>
+
+<span class="nc" id="L254">    } catch (IOException iox){</span>
+<span class="nc" id="L255">      error(&quot;failed to read dex file&quot;);</span>
+<span class="fc" id="L256">    }</span>
+<span class="fc" id="L257">  }</span>
+  
+  public void stopParsing(){
+<span class="nc" id="L260">    throw new BailOut();</span>
+  }
+
+  protected void error(String msg) throws ClassParseException {
+<span class="nc" id="L264">    throw new ClassParseException(msg);</span>
+  }
+  
+  /**
+   * obtain current classfile data. This is mainly provided to allow
+   * on-the-fly classfile instrumentation with 3rd party libraries
+   * 
+   * BEWARE - this is not a copy, i.e. any modification of the returned data
+   * might cause the parsing to fail.
+   */
+  public byte[] getData(){
+<span class="nc" id="L275">    return data;</span>
+  }
+  
+  public int getPos(){
+<span class="nc" id="L279">    return pos;</span>
+  }
+  
+  public boolean hasMoreData(){
+<span class="nc bnc" id="L283" title="All 2 branches missed.">    return pos &lt; data.length;</span>
+  }
+  
+  // for selective parsing
+  public void setPos (int newPos){
+<span class="nc" id="L288">    pos = newPos;</span>
+<span class="nc" id="L289">  }</span>
+  
+  public void pushPos(){
+<span class="nc bnc" id="L292" title="All 2 branches missed.">    if (posStack == null){</span>
+<span class="nc" id="L293">      posStack = new int[4];</span>
+<span class="nc" id="L294">      posStack[0] = pos;</span>
+<span class="nc" id="L295">      top = 0;</span>
+    } else {
+<span class="nc" id="L297">      top++;</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">      if (top == posStack.length){</span>
+<span class="nc" id="L299">        int[] newStack = new int[posStack.length * 2];</span>
+<span class="nc" id="L300">        System.arraycopy(posStack, 0, newStack, 0, posStack.length);</span>
+<span class="nc" id="L301">        posStack = newStack;</span>
+      }
+<span class="nc" id="L303">      posStack[top] = pos;</span>
+    }
+<span class="nc" id="L305">  }</span>
+  
+  public void popPos(){
+<span class="nc bnc" id="L308" title="All 2 branches missed.">    if (top &gt;= 0){</span>
+<span class="nc" id="L309">      pos = posStack[top];</span>
+<span class="nc" id="L310">      top--;</span>
+    }
+<span class="nc" id="L312">  }</span>
+  
+  //--- the low level type specific read methods
+  
+  public static String readModifiedUTF8String( byte[] data, int pos, int len) throws ClassParseException {
+    
+<span class="nc" id="L318">    int n = 0; // the number of chars in buf</span>
+<span class="nc" id="L319">    char[] buf = new char[len]; // it can't be more, but it can be less chars</span>
+    
+    // \u0001 - \u007f             : single byte chars:  0xxxxxxx
+    // \u0000 and \u0080 - \u07ff  : double byte chars:  110xxxxx, 10xxxxxx
+    // \u0800 - \uffff             : tripple byte chars: 1110xxxx, 10xxxxxx, 10xxxxxx
+    
+<span class="nc" id="L325">    int max = pos+len;</span>
+<span class="nc bnc" id="L326" title="All 2 branches missed.">    for (int i=pos; i&lt;max; i++){</span>
+<span class="nc" id="L327">      int c = data[i] &amp; 0xff;</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">      if ((c &amp; 0x80) == 0){ // single byte char  0xxxxxxx</span>
+<span class="nc" id="L329">        buf[n++] = (char)c;</span>
+        
+      } else {
+<span class="nc bnc" id="L332" title="All 2 branches missed.">        if ((c &amp; 0x40) != 0){      // 11xxxxxx</span>
+          
+          // for the sake of efficiency, we don't check for the trailing zero bit in the marker,
+          // we just mask it out
+<span class="nc bnc" id="L336" title="All 2 branches missed.">          if ((c &amp; 0x20) == 0) {   // 110xxxxx - double byte char</span>
+<span class="nc" id="L337">            buf[n++] = (char) (((c &amp; 0x1f) &lt;&lt; 6) | (data[++i] &amp; 0x3f));</span>
+            
+          } else {                 // 1110xxxx - tripple byte char
+<span class="nc" id="L340">            buf[n++] = (char) (((c &amp; 0x0f) &lt;&lt; 12) | ((data[++i] &amp; 0x3f) &lt;&lt; 6) | (data[++i] &amp; 0x3f));</span>
+          }
+          
+        } else {
+<span class="nc" id="L344">          throw new ClassParseException(&quot;malformed modified UTF-8 input: &quot;);</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L349">    return new String(buf, 0, n);</span>
+  }
+  
+  public final int readByte(){
+<span class="fc" id="L353">    return data[pos++];</span>
+  }
+
+  public final int readUByte(){
+<span class="fc" id="L357">    return (data[pos++] &amp; 0xff);</span>
+  }
+  
+  public final byte[] read (int n){
+<span class="nc" id="L361">    byte[] b = new byte[n];</span>
+<span class="nc" id="L362">    System.arraycopy(data,pos,b,0,n);</span>
+<span class="nc" id="L363">    pos += n;</span>
+<span class="nc" id="L364">    return b;</span>
+  }
+  
+  public String readByteString(int nChars){
+<span class="nc" id="L368">    char[] buf = new char[nChars];</span>
+<span class="nc bnc" id="L369" title="All 2 branches missed.">    for (int i=0; i&lt;nChars; i++){</span>
+<span class="nc" id="L370">      buf[i] = (char)data[pos++];</span>
+    }
+<span class="nc" id="L372">    return new String(buf);</span>
+  }
+  
+  //--- debugging
+  protected void dumpData (int startPos, int nBytes){
+<span class="nc" id="L377">    System.out.printf(&quot;%d +%d: [&quot;, startPos, nBytes);</span>
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    for (int i=0; i&lt;nBytes; i++){</span>
+<span class="nc" id="L379">      System.out.printf(&quot;%02X &quot;, data[startPos+i]);</span>
+    }
+<span class="nc" id="L381">    System.out.println(']');</span>
+<span class="nc" id="L382">  }</span>
+    
+  protected String dataToString (int startPos, int nBytes){
+<span class="nc" id="L385">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L386">    int i1 = startPos + nBytes;</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">    for (int i=startPos; i&lt;i1; i++){</span>
+<span class="nc" id="L388">      sb.append( Integer.toHexString(data[i]));</span>
+<span class="nc" id="L389">      sb.append(' ');</span>
+    }
+
+<span class="nc" id="L392">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

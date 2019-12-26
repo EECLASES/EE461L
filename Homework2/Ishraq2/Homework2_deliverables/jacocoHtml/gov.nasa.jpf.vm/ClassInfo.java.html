@@ -1,0 +1,2609 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassInfo.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">ClassInfo.java</span></div><h1>ClassInfo.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.JPFConfigException;
+import gov.nasa.jpf.JPFListener;
+import gov.nasa.jpf.util.ImmutableList;
+import gov.nasa.jpf.util.JPFLogger;
+import gov.nasa.jpf.util.LocationSpec;
+import gov.nasa.jpf.util.MethodSpec;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.OATHash;
+import gov.nasa.jpf.util.Source;
+
+import java.io.File;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.logging.Level;
+
+
+/**
+ * Describes the VM's view of a java class.  Contains descriptions of the
+ * static and dynamic fields, declaredMethods, and information relevant to the
+ * class.
+ * 
+ * Note that ClassInfos / classes have three different construction/initialization steps:
+ * (1) construction : recursively via ClassLoaderInfo.getResolvedClassInfo -&gt; ClassFileContainer.createClassInfo
+ *     -&gt; ClassInfo ctor -&gt; resolveClass
+ *     this only creates the ClassInfo object, but it is not visible/usable from SUT code yet and hence not
+ *     observable from classLoaded() listeners
+ * (2) registration : create StaticElementInfo and add it to the respective ClassLoaderInfo statics, then create
+ *     the java.lang.Class companion object in the SUT
+ *     this makes the ClassInfo usable from SUT code
+ * (3) initialization : execute clinit (if the class has one)
+ * 
+ * Note that id/uniqueId are NOT set before registration takes place, and registration is not automatically performed since
+ * listeners/peers might create ClassInfos internally (e.g. for inspection), which should not be visible from the SUT or observable
+ * by other listeners.
+ * 
+ * Automatic registration from the ClassInfo ctors would require to pass a ThreadInfo context throughout the whole ClassLoaderInfo/
+ * ClassFileContainer/ClassInfo chain and could lead to false positives for sharedness based POR, which would record this
+ * thread as referencing even if this is a listener/peer internal request
+ */
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">public class ClassInfo extends InfoObject implements Iterable&lt;MethodInfo&gt;, GenericSignatureHolder {</span>
+
+  //--- ClassInfo states, in chronological order
+  // note the somewhat strange, decreasing values - &gt;= 0 (=thread-id) means 
+  // we are in clinit
+  // ideally, we would have a separate RESOLVED state, but (a) this is somewhat
+  // orthogonal to REGISTERED, and - more importantly - (b) we need the
+  // superClass instance when initializing our Fields (instance field offsets).
+  // Doing the field initialization during resolveReferencedClass() seems awkward and
+  // error prone (there is not much you can do with an unresolved class then)
+  
+  // not registered or clinit'ed (but cached in loadedClasses)
+  public static final int UNINITIALIZED = -1;
+  // 'REGISTERED' simply means 'sei' is set (we have a StaticElementInfo)
+  // 'INITIALIZING' is any number &gt;=0, which is the thread objRef that executes the clinit
+  public static final int INITIALIZED = -2;
+
+  protected static final String ID_FIELD = &quot;nativeId&quot;; 
+
+<span class="fc" id="L89">  protected static JPFLogger logger = JPF.getLogger(&quot;class&quot;);</span>
+
+  protected static int nClassInfos; // for statistics
+  
+  protected static Config config;
+
+  /**
+   * ClassLoader that loaded this class.
+   */
+<span class="fc" id="L98">  protected static final ClassLoader thisClassLoader = ClassInfo.class.getClassLoader();  </span>
+  
+  /**
+   * our abstract factory to createAndInitialize object and class fields
+   */
+  protected static FieldsFactory fieldsFactory;
+
+  
+<span class="fc" id="L106">  protected static final FieldInfo[] EMPTY_FIELDINFO_ARRAY = new FieldInfo[0];</span>
+<span class="fc" id="L107">  protected static final String[] EMPTY_STRING_ARRAY = new String[0];</span>
+  protected static final String UNINITIALIZED_STRING = &quot;UNINITIALIZED&quot;; 
+<span class="fc" id="L109">  protected static final Map&lt;String,MethodInfo&gt; NO_METHODS = Collections.emptyMap();</span>
+<span class="fc" id="L110">  protected static final Set&lt;ClassInfo&gt; NO_INTERFACES = new HashSet&lt;ClassInfo&gt;();</span>
+  
+  /**
+   * support to auto-load listeners from annotations
+   */
+  protected static HashSet&lt;String&gt; autoloadAnnotations;
+  protected static HashSet&lt;String&gt; autoloaded;
+
+  /**
+   * Name of the class. e.g. &quot;java.lang.String&quot;
+   * NOTE - this is the expanded name for builtin types, e.g. &quot;int&quot;, but NOT
+   * for arrays, which are for some reason in Ldot notation, e.g. &quot;[Ljava.lang.String;&quot; or &quot;[I&quot;
+   */
+  protected String name;
+  
+  /** type erased signature of the class. e.g. &quot;Ljava/lang/String;&quot; */
+  protected String signature;
+
+  /** Generic type signatures of the class as per para. 4.4.4 of the revised VM spec */
+  protected String genericSignature;
+
+  /** The classloader that defined (directly loaded) this class */
+  protected ClassLoaderInfo classLoader;
+  
+  // various class attributes
+<span class="pc" id="L135">  protected boolean      isClass = true;</span>
+<span class="pc" id="L136">  protected boolean      isWeakReference = false;</span>
+<span class="pc" id="L137">  protected boolean      isObjectClassInfo = false;</span>
+<span class="pc" id="L138">  protected boolean      isStringClassInfo = false;</span>
+<span class="pc" id="L139">  protected boolean      isThreadClassInfo = false;</span>
+<span class="pc" id="L140">  protected boolean      isRefClassInfo = false;</span>
+<span class="pc" id="L141">  protected boolean      isArray = false;</span>
+<span class="pc" id="L142">  protected boolean      isEnum = false;</span>
+<span class="pc" id="L143">  protected boolean      isReferenceArray = false;</span>
+<span class="pc" id="L144">  protected boolean      isAbstract = false;</span>
+<span class="pc" id="L145">  protected boolean      isBuiltin = false;</span>
+
+  // that's ultimately where we keep the attributes
+  // &lt;2do&gt; this is currently quite redundant, but these are used in reflection
+  protected int modifiers;
+
+<span class="pc" id="L151">  protected MethodInfo   finalizer = null;</span>
+
+  /** type based object attributes (for GC, partial order reduction and
+   * property checks)
+   */
+<span class="pc" id="L156">  protected int elementInfoAttrs = 0;</span>
+
+  /**
+   * all our declared declaredMethods (we don't flatten, this is not
+   * a high-performance VM)
+   */
+  protected Map&lt;String, MethodInfo&gt; methods;
+
+  /**
+   * our instance fields.
+   * Note these are NOT flattened, idx.e. only contain the declared ones
+   */
+  protected FieldInfo[] iFields;
+
+  /** the storage size of instances of this class (stored as an int[]) */
+  protected int instanceDataSize;
+
+  /** where in the instance data array (int[]) do our declared fields start */
+  protected int instanceDataOffset;
+
+  /** total number of instance fields (flattened, not only declared ones) */
+  protected int nInstanceFields;
+
+  /**
+   * our static fields. Again, not flattened
+   */
+  protected FieldInfo[] sFields;
+
+  /** the storage size of static fields of this class (stored as an int[]) */
+  protected int staticDataSize;
+
+  /**
+   * we only set the superClassName upon creation, it is instantiated into
+   * a ClassInfo by resolveReferencedClass(), which is required to be called before
+   * we can createAndInitialize objects of this type
+   */
+  protected ClassInfo  superClass;
+  protected String superClassName;
+
+  protected String enclosingClassName;
+  protected String enclosingMethodName;
+
+<span class="pc" id="L198">  protected String[] innerClassNames = EMPTY_STRING_ARRAY;</span>
+  protected BootstrapMethodInfo[] bootstrapMethods;
+    
+  /** direct ifcs implemented by this class */
+  protected String[] interfaceNames;
+
+<span class="pc" id="L204">  protected Set&lt;ClassInfo&gt; interfaces = new HashSet&lt;ClassInfo&gt;();</span>
+  
+  /** cache of all interfaceNames (parent interfaceNames and interface parents) - lazy eval */
+  protected Set&lt;ClassInfo&gt; allInterfaces;
+  
+  /** Name of the package. */
+  protected String packageName;
+
+  /** this is only set if the classfile has a SourceFile class attribute */
+  protected String sourceFileName;
+
+  /** 
+   * Uniform resource locater for the class file. NOTE: since for builtin classes
+   * there is no class file assigned is set to the typeName 
+   */ 
+  protected String classFileUrl;
+
+  /** from where the corresponding classfile was loaded (if this is not a builtin) */
+  protected gov.nasa.jpf.vm.ClassFileContainer container;
+
+  
+  /**
+   *  a search global numeric id that is only unique within this ClassLoader namespace. Ids are
+   *  computed by the ClassLoaderInfo/Statics implementation during ClassInfo registration
+   */
+<span class="pc" id="L229">  protected int  id = -1;</span>
+
+  /**
+   * A search global unique id associate with this class, which is comprised of the classLoader id
+   * and the (loader-specific) ClassInfo id. This is just a quick way to do search global checks for equality
+   * 
+   * NOTE - since this is based on the classloader-specific id, it can't be used before the ClassInfo is registered
+   */
+<span class="pc" id="L237">  protected long uniqueId = -1;</span>
+
+  /**
+   * this is the object we use to enter declaredMethods in the underlying VM
+   * (it replaces Reflection)
+   */
+  protected NativePeer nativePeer;
+
+  /** Source file associated with the class.*/
+  protected Source source;
+
+  protected boolean enableAssertions;
+
+  /** actions to be taken when an object of this type is gc'ed */
+  protected ImmutableList&lt;ReleaseAction&gt; releaseActions; 
+          
+  
+  static boolean init (Config config) {
+
+<span class="fc" id="L256">    ClassInfo.config = config;</span>
+    
+<span class="fc" id="L258">    setSourceRoots(config);</span>
+    //buildBCELModelClassPath(config);
+
+<span class="fc" id="L261">    fieldsFactory = config.getEssentialInstance(&quot;vm.fields_factory.class&quot;,</span>
+                                                FieldsFactory.class);
+
+<span class="fc" id="L264">    autoloadAnnotations = config.getNonEmptyStringSet(&quot;listener.autoload&quot;);</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">    if (autoloadAnnotations != null) {</span>
+<span class="fc" id="L266">      autoloaded = new HashSet&lt;String&gt;();</span>
+
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">      if (logger.isLoggable(Level.INFO)) {</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">        for (String s : autoloadAnnotations){</span>
+<span class="nc" id="L270">          logger.info(&quot;watching for autoload annotation @&quot; + s);</span>
+<span class="nc" id="L271">        }</span>
+      }
+    }
+
+<span class="fc" id="L275">    return true;</span>
+  }
+
+  public static boolean isObjectClassInfo (ClassInfo ci){
+<span class="nc" id="L279">    return ci.isObjectClassInfo();</span>
+  }
+
+  public static boolean isStringClassInfo (ClassInfo ci){
+<span class="fc" id="L283">    return ci.isStringClassInfo();</span>
+  }
+
+  
+   //--- initialization interface towards parsers (which might reside in other packages)
+    
+  protected void setClass(String clsName, String superClsName, int flags, int cpCount) throws ClassParseException {
+<span class="fc" id="L290">    String parsedName = Types.getClassNameFromTypeName(clsName);</span>
+
+<span class="pc bpc" id="L292" title="2 of 4 branches missed.">    if (name != null &amp;&amp; !name.equals(parsedName)){</span>
+<span class="nc" id="L293">      throw new ClassParseException(&quot;wrong class name (expected: &quot; + name + &quot;, found: &quot; + parsedName + ')');</span>
+    }
+<span class="fc" id="L295">    name = parsedName;</span>
+    
+    // the enclosingClassName is set on demand since it requires loading enclosing class candidates
+    // to verify their innerClass attributes
+
+<span class="fc" id="L300">    int i = name.lastIndexOf('.');</span>
+<span class="fc bfc" id="L301" title="All 2 branches covered.">    packageName = (i &gt; 0) ? name.substring(0, i) : &quot;&quot;;</span>
+
+<span class="fc" id="L303">    modifiers = flags;</span>
+    
+    // annotations are interfaces too (not exposed by Modifier)
+<span class="fc bfc" id="L306" title="All 2 branches covered.">    isClass = ((flags &amp; Modifier.INTERFACE) == 0);</span>
+
+<span class="fc" id="L308">    superClassName = superClsName;</span>
+<span class="fc" id="L309">  }</span>
+
+  public void setInnerClassNames(String[] clsNames) {
+<span class="nc" id="L312">    innerClassNames = clsNames;</span>
+<span class="nc" id="L313">  }</span>
+
+  public void setEnclosingClass (String clsName) {
+<span class="fc" id="L316">    enclosingClassName = clsName;</span>
+<span class="fc" id="L317">  }</span>
+  
+  public void setEnclosingMethod (String mthName){
+<span class="fc" id="L320">    enclosingMethodName = mthName;    </span>
+<span class="fc" id="L321">  }</span>
+
+  public void setInterfaceNames(String[] ifcNames) {
+<span class="nc" id="L324">    interfaceNames = ifcNames;</span>
+<span class="nc" id="L325">  }</span>
+  
+  public void setSourceFile (String fileName){
+    // prepend if we already know the package
+<span class="fc bfc" id="L329" title="All 2 branches covered.">    if (packageName.length() &gt; 0) {</span>
+      // Source will take care of proper separator chars later
+<span class="fc" id="L331">      sourceFileName = packageName.replace('.', '/') + '/' + fileName;</span>
+    } else {
+<span class="fc" id="L333">      sourceFileName = fileName;</span>
+    }
+<span class="fc" id="L335">  }</span>
+
+  public void setFields(FieldInfo[] fields) {
+<span class="fc bfc" id="L338" title="All 2 branches covered.">    if (fields == null){</span>
+<span class="fc" id="L339">      iFields = EMPTY_FIELDINFO_ARRAY;</span>
+<span class="fc" id="L340">      sFields = EMPTY_FIELDINFO_ARRAY;</span>
+      
+    } else { // there are fields, we have to tell them apart
+<span class="fc" id="L343">      int nInstance = 0, nStatic = 0;</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">      for (int i = 0; i &lt; fields.length; i++) {</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        if (fields[i].isStatic()) {</span>
+<span class="fc" id="L346">          nStatic++;</span>
+        } else {
+<span class="fc" id="L348">          nInstance++;</span>
+        }
+      }
+
+<span class="fc bfc" id="L352" title="All 2 branches covered.">      FieldInfo[] instanceFields = (nInstance &gt; 0) ? new FieldInfo[nInstance] : EMPTY_FIELDINFO_ARRAY;</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">      FieldInfo[] staticFields = (nStatic &gt; 0) ? new FieldInfo[nStatic] : EMPTY_FIELDINFO_ARRAY;</span>
+
+<span class="fc" id="L355">      int iInstance = 0;</span>
+<span class="fc" id="L356">      int iStatic = 0;</span>
+<span class="fc bfc" id="L357" title="All 2 branches covered.">      for (int i = 0; i &lt; fields.length; i++) {</span>
+<span class="fc" id="L358">        FieldInfo fi = fields[i];</span>
+
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        if (fi.isStatic()) {</span>
+<span class="fc" id="L361">          staticFields[iStatic++] = fi;</span>
+        } else {
+<span class="fc" id="L363">          instanceFields[iInstance++] = fi;</span>
+        }
+        
+<span class="fc" id="L366">        processJPFAnnotations(fi);</span>
+      }
+
+<span class="fc" id="L369">      iFields = instanceFields;</span>
+<span class="fc" id="L370">      sFields = staticFields;</span>
+
+      // we can't link the fields yet because we need the superclasses to be resolved
+    }
+<span class="fc" id="L374">  }</span>
+
+  protected void setMethod (MethodInfo mi){
+<span class="fc" id="L377">    mi.linkToClass(this);</span>
+<span class="fc" id="L378">    methods.put( mi.getUniqueName(), mi);</span>
+<span class="fc" id="L379">    processJPFAnnotations(mi);</span>
+<span class="fc" id="L380">  }</span>
+  
+  public void setMethods (MethodInfo[] newMethods) {
+<span class="nc bnc" id="L383" title="All 4 branches missed.">    if (newMethods != null &amp;&amp; newMethods.length &gt; 0) {</span>
+<span class="nc" id="L384">      methods = new LinkedHashMap&lt;String, MethodInfo&gt;();</span>
+
+<span class="nc bnc" id="L386" title="All 2 branches missed.">      for (int i = 0; i &lt; newMethods.length; i++) {</span>
+<span class="nc" id="L387">        setMethod( newMethods[i]);</span>
+      }
+    }
+<span class="nc" id="L390">  }</span>
+ 
+  protected void processJPFAttrAnnotation(InfoObject infoObj){
+<span class="fc" id="L393">    AnnotationInfo ai = infoObj.getAnnotation(&quot;gov.nasa.jpf.annotation.JPFAttribute&quot;);</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">    if (ai != null){</span>
+<span class="fc" id="L395">      String[] attrTypes = ai.getValueAsStringArray();</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">      if (attrTypes != null){</span>
+<span class="fc" id="L397">        ClassLoader loader = config.getClassLoader();</span>
+
+<span class="fc bfc" id="L399" title="All 2 branches covered.">        for (String clsName : attrTypes){</span>
+          try {
+<span class="fc" id="L401">            Class&lt;?&gt; attrCls = loader.loadClass(clsName);</span>
+<span class="fc" id="L402">            Object attr = attrCls.newInstance(); // needs to have a default ctor</span>
+<span class="fc" id="L403">            infoObj.addAttr(attr);</span>
+            
+<span class="nc" id="L405">          } catch (ClassNotFoundException cnfx){</span>
+<span class="nc" id="L406">            logger.warning(&quot;attribute class not found: &quot; + clsName);</span>
+            
+<span class="nc" id="L408">          } catch (IllegalAccessException iax){</span>
+<span class="nc" id="L409">            logger.warning(&quot;attribute class has no public default ctor: &quot; + clsName);            </span>
+            
+<span class="nc" id="L411">          } catch (InstantiationException ix){</span>
+<span class="nc" id="L412">            logger.warning(&quot;attribute class has no default ctor: &quot; + clsName);            </span>
+<span class="pc" id="L413">          }</span>
+        }
+      }
+    }    
+<span class="fc" id="L417">  }</span>
+
+  protected void processNoJPFExecutionAnnotation(InfoObject infoObj) {
+<span class="fc" id="L420">    AnnotationInfo ai = infoObj.getAnnotation(&quot;gov.nasa.jpf.annotation.NoJPFExecution&quot;);</span>
+<span class="fc bfc" id="L421" title="All 2 branches covered.">    if (ai != null) {</span>
+<span class="fc" id="L422">      infoObj.addAttr(NoJPFExec.SINGLETON);</span>
+    }
+<span class="fc" id="L424">  }</span>
+
+  protected void processJPFAnnotations(InfoObject infoObj) {
+<span class="fc" id="L427">    processJPFAttrAnnotation(infoObj);</span>
+<span class="fc" id="L428">    processNoJPFExecutionAnnotation(infoObj);</span>
+<span class="fc" id="L429">  }</span>
+
+    public AnnotationInfo getResolvedAnnotationInfo (String typeName){
+<span class="fc" id="L432">    return classLoader.getResolvedAnnotationInfo( typeName);</span>
+  }
+  
+  @Override
+  public void setAnnotations(AnnotationInfo[] annotations) {
+<span class="nc" id="L437">    this.annotations = annotations;</span>
+<span class="nc" id="L438">  }</span>
+  
+  //--- end initialization interface
+ 
+  //--- the overridden annotation accessors (we need these because of inherited superclass annotations)
+  // note that we don't flatten annotations anymore, assuming the prevalent query will be getAnnotation(name)
+  
+  @Override
+  public boolean hasAnnotations(){
+<span class="nc bnc" id="L447" title="All 2 branches missed.">    if (annotations.length &gt; 0){</span>
+<span class="nc" id="L448">      return true;</span>
+    }
+    
+<span class="nc bnc" id="L451" title="All 2 branches missed.">    for (ClassInfo ci = superClass; ci != null; ci = ci.superClass){</span>
+<span class="nc" id="L452">      AnnotationInfo[] a = ci.annotations;</span>
+<span class="nc bnc" id="L453" title="All 2 branches missed.">      for (int j=0; j&lt;a.length; j++){</span>
+<span class="nc bnc" id="L454" title="All 2 branches missed.">        if (a[j].isInherited()){</span>
+<span class="nc" id="L455">          return true;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L460">    return false;</span>
+  }
+  
+  /**
+   * return all annotations, which includes the ones inherited from our superclasses
+   * NOTE - this is not very efficient
+   */
+  @Override
+  public AnnotationInfo[] getAnnotations() {
+<span class="fc" id="L469">    int nAnnotations = annotations.length;</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">    for (ClassInfo ci = superClass; ci != null; ci = ci.superClass){</span>
+<span class="fc" id="L471">      AnnotationInfo[] a = ci.annotations;</span>
+<span class="fc bfc" id="L472" title="All 2 branches covered.">      for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc bfc" id="L473" title="All 2 branches covered.">        if (a[i].isInherited()){</span>
+<span class="fc" id="L474">          nAnnotations++;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L479">    AnnotationInfo[] allAnnotations = new AnnotationInfo[nAnnotations];</span>
+<span class="fc" id="L480">    System.arraycopy(annotations, 0, allAnnotations, 0, annotations.length);</span>
+<span class="fc" id="L481">    int idx=annotations.length;</span>
+<span class="fc bfc" id="L482" title="All 2 branches covered.">    for (ClassInfo ci = superClass; ci != null; ci = ci.superClass){</span>
+<span class="fc" id="L483">      AnnotationInfo[] a = ci.annotations;</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">      for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc bfc" id="L485" title="All 2 branches covered.">        if (a[i].isInherited()){</span>
+<span class="fc" id="L486">          allAnnotations[idx++] = a[i];</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L491">    return allAnnotations;</span>
+  }
+    
+  @Override
+  public AnnotationInfo getAnnotation (String annotationName){
+<span class="fc" id="L496">    AnnotationInfo[] a = annotations;</span>
+<span class="fc bfc" id="L497" title="All 2 branches covered.">    for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc bfc" id="L498" title="All 2 branches covered.">      if (a[i].getName().equals(annotationName)){</span>
+<span class="fc" id="L499">        return a[i];</span>
+      }
+    }
+    
+<span class="fc bfc" id="L503" title="All 2 branches covered.">    for (ClassInfo ci = superClass; ci != null; ci = ci.superClass){</span>
+<span class="fc" id="L504">      a = ci.annotations;</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">      for (int i=0; i&lt;a.length; i++){</span>
+<span class="fc" id="L506">        AnnotationInfo ai = a[i];</span>
+<span class="pc bpc" id="L507" title="1 of 4 branches missed.">        if (ai.getName().equals(annotationName) &amp;&amp; ai.isInherited()){</span>
+<span class="fc" id="L508">          return ai;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L513">    return null;</span>
+  }
+  
+<span class="fc" id="L516">  protected ClassInfo (String name, ClassLoaderInfo cli, String classFileUrl){</span>
+<span class="fc" id="L517">    nClassInfos++;</span>
+    
+<span class="fc" id="L519">    this.name = name;</span>
+<span class="fc" id="L520">    this.classLoader = cli;</span>
+<span class="fc" id="L521">    this.classFileUrl = classFileUrl;</span>
+    
+<span class="fc" id="L523">    this.methods = NO_METHODS;  // yet</span>
+
+    // rest has to be initialized by concrete ctor, which should call resolveAndLink(parser)
+<span class="fc" id="L526">  }</span>
+  
+  /**
+   * the initialization part that has to happen once we have super, fields, methods and annotations
+   * NOTE - this has to be called by concrete ctors after parsing class files
+   */
+  protected void resolveAndLink () throws ClassParseException {
+    
+    //--- these might get streamlined
+<span class="fc" id="L535">    isStringClassInfo = isStringClassInfo0();</span>
+<span class="fc" id="L536">    isThreadClassInfo = isThreadClassInfo0();</span>
+<span class="fc" id="L537">    isObjectClassInfo = isObjectClassInfo0();</span>
+<span class="fc" id="L538">    isRefClassInfo = isRefClassInfo0();</span>
+   // isWeakReference = isWeakReference0();
+<span class="fc bfc" id="L540" title="All 2 branches covered.">    isAbstract = (modifiers &amp; Modifier.ABSTRACT) != 0;</span>
+   // isEnum = isEnum0();
+    
+<span class="fc" id="L543">    finalizer = getFinalizer0();</span>
+
+<span class="fc" id="L545">    resolveClass(); // takes care of super classes and interfaces</span>
+
+    // Used to enter native methods (in the host VM).
+    // This needs to be initialized AFTER we get our  MethodInfos, since it does a reverse lookup to determine which
+    // ones are handled by the peer (by means of setting MethodInfo attributes)
+<span class="fc" id="L550">    nativePeer = loadNativePeer();</span>
+<span class="fc" id="L551">    checkUnresolvedNativeMethods();</span>
+
+<span class="fc" id="L553">    linkFields(); // computes field offsets</span>
+    
+<span class="fc" id="L555">    setAssertionStatus();</span>
+<span class="fc" id="L556">    processJPFConfigAnnotation();</span>
+<span class="fc" id="L557">    processJPFAnnotations(this);</span>
+<span class="fc" id="L558">    loadAnnotationListeners();    </span>
+<span class="fc" id="L559">  }</span>
+  
+<span class="nc" id="L561">  protected ClassInfo(){</span>
+<span class="nc" id="L562">    nClassInfos++;</span>
+    
+    // for explicit subclass initialization
+<span class="nc" id="L565">  }</span>
+  
+  /**
+   * ClassInfo ctor used for builtin types (arrays and primitive types)
+   * idx.e. classes we don't have class files for
+   */
+<span class="fc" id="L571">  protected ClassInfo (String builtinClassName, ClassLoaderInfo classLoader) {</span>
+<span class="fc" id="L572">    nClassInfos++;</span>
+
+<span class="fc" id="L574">    this.classLoader = classLoader;</span>
+
+<span class="fc bfc" id="L576" title="All 2 branches covered.">    isArray = (builtinClassName.charAt(0) == '[');</span>
+<span class="fc bfc" id="L577" title="All 6 branches covered.">    isReferenceArray = isArray &amp;&amp; (builtinClassName.endsWith(&quot;;&quot;) || builtinClassName.charAt(1) == '[');</span>
+<span class="fc" id="L578">    isBuiltin = true;</span>
+
+<span class="fc" id="L580">    name = builtinClassName;</span>
+
+<span class="fc" id="L582">    logger.log(Level.FINE, &quot;generating builtin class: %1$s&quot;, name);</span>
+
+<span class="fc" id="L584">    packageName = &quot;&quot;; // builtin classes don't reside in java.lang !</span>
+<span class="fc" id="L585">    sourceFileName = null;</span>
+<span class="fc" id="L586">    source = null;</span>
+<span class="fc" id="L587">    genericSignature = &quot;&quot;;</span>
+
+    // no fields
+<span class="fc" id="L590">    iFields = EMPTY_FIELDINFO_ARRAY;</span>
+<span class="fc" id="L591">    sFields = EMPTY_FIELDINFO_ARRAY;</span>
+
+<span class="fc bfc" id="L593" title="All 2 branches covered.">    if (isArray) {</span>
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">      if(classLoader.isSystemClassLoader()) {</span>
+<span class="fc" id="L595">        superClass = ((SystemClassLoaderInfo)classLoader).getObjectClassInfo();</span>
+      } else {
+<span class="nc" id="L597">        superClass = ClassLoaderInfo.getCurrentSystemClassLoader().getObjectClassInfo();</span>
+      }
+<span class="fc" id="L599">      interfaceNames = loadArrayInterfaces();</span>
+<span class="fc" id="L600">      methods = loadArrayMethods();</span>
+    } else {
+<span class="fc" id="L602">      superClass = null; // strange, but true, a 'no object' class</span>
+<span class="fc" id="L603">      interfaceNames = loadBuiltinInterfaces(name);</span>
+<span class="fc" id="L604">      methods = loadBuiltinMethods(name);</span>
+    }
+
+<span class="fc" id="L607">    enableAssertions = true; // doesn't really matter - no code associated</span>
+
+<span class="fc" id="L609">    classFileUrl = name;</span>
+    
+    // no fields or declaredMethods, so we don't have to link/resolve anything
+<span class="fc" id="L612">  }</span>
+  
+  public static int getNumberOfLoadedClasses(){
+<span class="nc" id="L615">    return nClassInfos;</span>
+  }
+  
+  //--- the VM type specific methods
+  // &lt;2do&gt; those should be abstract
+  
+  protected void setAnnotationValueGetterCode (MethodInfo pmi, FieldInfo fi){
+    // to be overridden by VM specific class
+<span class="nc" id="L623">  }</span>
+  
+  protected void setDirectCallCode (MethodInfo miCallee, MethodInfo miStub){
+    // to be overridden by VM specific class
+<span class="nc" id="L627">  }</span>
+  
+  protected void setLambdaDirectCallCode (MethodInfo miDirectCall, BootstrapMethodInfo bootstrapMethod){
+    // to be overridden by VM specific class
+<span class="nc" id="L631">  }</span>
+  
+  protected void setNativeCallCode (NativeMethodInfo miNative){
+    // to be overridden by VM specific class
+<span class="nc" id="L635">  }</span>
+  
+  protected void setRunStartCode (MethodInfo miStub, MethodInfo miRun){
+    // to be overridden by VM specific class
+<span class="nc" id="L639">  }</span>
+  
+  /**
+   * createAndInitialize a fully synthetic implementation of an Annotation proxy
+   */
+<span class="fc" id="L644">  protected ClassInfo (ClassInfo annotationCls, String name, ClassLoaderInfo classLoader, String url) {</span>
+<span class="fc" id="L645">    this.classLoader = classLoader;</span>
+    
+<span class="fc" id="L647">    this.name = name;</span>
+<span class="fc" id="L648">    isClass = true;</span>
+
+    //superClass = objectClassInfo;
+<span class="fc" id="L651">    superClass = ClassLoaderInfo.getSystemResolvedClassInfo(&quot;gov.nasa.jpf.AnnotationProxyBase&quot;);</span>
+
+<span class="fc" id="L653">    interfaceNames = new String[]{ annotationCls.name };    </span>
+<span class="fc" id="L654">    packageName = annotationCls.packageName;</span>
+<span class="fc" id="L655">    sourceFileName = annotationCls.sourceFileName;</span>
+<span class="fc" id="L656">    genericSignature = annotationCls.genericSignature;</span>
+
+<span class="fc" id="L658">    sFields = new FieldInfo[0]; // none</span>
+<span class="fc" id="L659">    staticDataSize = 0;</span>
+
+<span class="fc" id="L661">    methods = new HashMap&lt;String, MethodInfo&gt;();</span>
+<span class="fc" id="L662">    iFields = new FieldInfo[annotationCls.methods.size()];</span>
+<span class="fc" id="L663">    nInstanceFields = iFields.length;</span>
+
+    // all accessor declaredMethods of ours make it into iField/method combinations
+<span class="fc" id="L666">    int idx = 0;</span>
+<span class="fc" id="L667">    int off = 0;  // no super class</span>
+<span class="fc bfc" id="L668" title="All 2 branches covered.">    for (MethodInfo mi : annotationCls.getDeclaredMethodInfos()) {</span>
+<span class="fc" id="L669">      String mname = mi.getName();</span>
+<span class="fc" id="L670">      String mtype = mi.getReturnType();</span>
+<span class="fc" id="L671">      String genericSignature = mi.getGenericSignature();</span>
+
+      // create and initialize an instance field for it
+<span class="fc" id="L674">      FieldInfo fi = FieldInfo.create(mname, mtype, 0);</span>
+<span class="fc" id="L675">      fi.linkToClass(this, idx, off);</span>
+<span class="fc" id="L676">      fi.setGenericSignature(genericSignature);</span>
+<span class="fc" id="L677">      iFields[idx++] = fi;</span>
+<span class="fc" id="L678">      off += fi.getStorageSize();</span>
+
+<span class="fc" id="L680">      MethodInfo pmi = new MethodInfo(this, mname, mi.getSignature(), Modifier.PUBLIC, 1, 2);</span>
+<span class="fc" id="L681">      pmi.setGenericSignature(genericSignature);</span>
+      
+<span class="fc" id="L683">      setAnnotationValueGetterCode( pmi, fi);</span>
+<span class="fc" id="L684">      methods.put(pmi.getUniqueName(), pmi);</span>
+    }
+
+<span class="fc" id="L687">    instanceDataSize = computeInstanceDataSize();</span>
+<span class="fc" id="L688">    instanceDataOffset = 0;</span>
+
+<span class="fc" id="L690">    classFileUrl = url;</span>
+<span class="fc" id="L691">    linkFields();</span>
+<span class="fc" id="L692">  }</span>
+  
+  
+  //used to create synthetic classes that implement functional interfaces
+  protected ClassInfo createFuncObjClassInfo (BootstrapMethodInfo bootstrapMethod, String name, String samUniqueName, String[] fieldTypesName) {
+<span class="nc" id="L697">   return null;</span>
+ }
+ 
+<span class="fc" id="L700"> protected ClassInfo (ClassInfo funcInterface, BootstrapMethodInfo bootstrapMethod, String name, String[] fieldTypesName) {</span>
+<span class="fc" id="L701">   ClassInfo enclosingClass = bootstrapMethod.enclosingClass;</span>
+<span class="fc" id="L702">   this.classLoader = enclosingClass.classLoader;</span>
+
+<span class="fc" id="L704">   this.name = name;</span>
+<span class="fc" id="L705">   isClass = true;</span>
+
+<span class="fc" id="L707">   superClassName = &quot;java.lang.Object&quot;;</span>
+
+<span class="fc" id="L709">   interfaceNames = new String[]{ funcInterface.name };    </span>
+<span class="fc" id="L710">   packageName = enclosingClass.getPackageName();</span>
+
+   // creating fields used to capture free variables
+<span class="fc" id="L713">   int n = fieldTypesName.length;</span>
+   
+<span class="fc" id="L715">   iFields = new FieldInfo[n];</span>
+<span class="fc" id="L716">   nInstanceFields = n;</span>
+   
+<span class="fc" id="L718">   sFields = new FieldInfo[0];</span>
+<span class="fc" id="L719">   staticDataSize = 0;</span>
+   
+<span class="fc" id="L721">   int idx = 0;</span>
+<span class="fc" id="L722">   int off = 0;  // no super class</span>
+   
+<span class="fc" id="L724">   int i = 0;</span>
+<span class="fc bfc" id="L725" title="All 2 branches covered.">   for(String type: fieldTypesName) {</span>
+<span class="fc" id="L726">     FieldInfo fi = FieldInfo.create(&quot;arg&quot; + i++, type, 0);</span>
+<span class="fc" id="L727">     fi.linkToClass(this, idx, off);</span>
+<span class="fc" id="L728">     iFields[idx++] = fi;</span>
+<span class="fc" id="L729">     off += fi.getStorageSize();</span>
+   }
+   
+<span class="fc" id="L732">   linkFields();</span>
+<span class="fc" id="L733"> }</span>
+  
+  // since id and hence uniqueId are not set before this class is registered, we can't use them
+  
+  @Override
+  public int hashCode() {
+<span class="fc" id="L739">    return OATHash.hash(name.hashCode(), classLoader.hashCode());</span>
+  }
+  
+  @Override
+  public boolean equals (Object o) {
+<span class="pc bpc" id="L744" title="1 of 2 branches missed.">    if (o instanceof ClassInfo) {</span>
+<span class="fc" id="L745">      ClassInfo other = (ClassInfo)o;</span>
+<span class="pc bpc" id="L746" title="1 of 2 branches missed.">      if (classLoader == other.classLoader) {</span>
+        // beware of ClassInfos that are not registered yet - in this case we have to equals names
+<span class="fc bfc" id="L748" title="All 2 branches covered.">        if (name.equals(other.name)) {</span>
+<span class="fc" id="L749">          return true;</span>
+        }
+      }
+    }
+    
+<span class="fc" id="L754">    return false;</span>
+  }
+
+  protected String computeSourceFileName(){
+<span class="nc" id="L758">    return name.replace('.', '/') + &quot;.java&quot;;</span>
+  }
+
+  protected void checkUnresolvedNativeMethods(){
+<span class="fc bfc" id="L762" title="All 2 branches covered.">    for (MethodInfo mi : methods.values()){</span>
+<span class="fc bfc" id="L763" title="All 2 branches covered.">      if (mi.isUnresolvedNativeMethod()){</span>
+<span class="fc" id="L764">        NativeMethodInfo nmi = new NativeMethodInfo(mi, null, nativePeer);</span>
+<span class="fc" id="L765">        nmi.replace(mi);</span>
+      }
+<span class="fc" id="L767">    }</span>
+<span class="fc" id="L768">  }</span>
+
+  protected void processJPFConfigAnnotation() {
+<span class="fc" id="L771">    AnnotationInfo ai = getAnnotation(&quot;gov.nasa.jpf.annotation.JPFConfig&quot;);</span>
+<span class="pc bpc" id="L772" title="1 of 2 branches missed.">    if (ai != null) {</span>
+<span class="nc bnc" id="L773" title="All 2 branches missed.">      for (String s : ai.getValueAsStringArray()) {</span>
+<span class="nc" id="L774">        config.parse(s);</span>
+      }
+    }
+<span class="fc" id="L777">  }</span>
+
+  protected void loadAnnotationListeners () {
+<span class="fc bfc" id="L780" title="All 2 branches covered.">    if (autoloadAnnotations != null) {</span>
+<span class="fc" id="L781">      autoloadListeners(annotations); // class annotations</span>
+
+<span class="fc bfc" id="L783" title="All 2 branches covered.">      for (int i=0; i&lt;sFields.length; i++) {</span>
+<span class="fc" id="L784">        autoloadListeners(sFields[i].getAnnotations());</span>
+      }
+
+<span class="fc bfc" id="L787" title="All 2 branches covered.">      for (int i=0; i&lt;iFields.length; i++) {</span>
+<span class="fc" id="L788">        autoloadListeners(iFields[i].getAnnotations());</span>
+      }
+
+      // method annotations are checked during method loading
+      // (to avoid extra iteration)
+    }
+<span class="fc" id="L794">  }</span>
+
+  void autoloadListeners(AnnotationInfo[] annos) {
+<span class="pc bpc" id="L797" title="2 of 4 branches missed.">    if ((annos != null) &amp;&amp; (autoloadAnnotations != null)) {</span>
+<span class="fc bfc" id="L798" title="All 2 branches covered.">      for (AnnotationInfo ai : annos) {</span>
+<span class="fc" id="L799">        String aName = ai.getName();</span>
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">        if (autoloadAnnotations.contains(aName)) {</span>
+<span class="nc bnc" id="L801" title="All 2 branches missed.">          if (!autoloaded.contains(aName)) {</span>
+<span class="nc" id="L802">            autoloaded.add(aName);</span>
+<span class="nc" id="L803">            String key = &quot;listener.&quot; + aName;</span>
+<span class="nc" id="L804">            String defClsName = aName + &quot;Checker&quot;;</span>
+            try {
+<span class="nc" id="L806">              JPFListener listener = config.getInstance(key, JPFListener.class, defClsName);</span>
+              
+<span class="nc" id="L808">              JPF jpf = VM.getVM().getJPF(); // &lt;2do&gt; that's a BAD access path</span>
+<span class="nc" id="L809">              jpf.addUniqueTypeListener(listener);</span>
+
+<span class="nc bnc" id="L811" title="All 2 branches missed.">              if (logger.isLoggable(Level.INFO)){</span>
+<span class="nc" id="L812">                logger.info(&quot;autoload annotation listener: @&quot;, aName, &quot; =&gt; &quot;, listener.getClass().getName());</span>
+              }
+
+<span class="nc" id="L815">            } catch (JPFConfigException cx) {</span>
+<span class="nc" id="L816">              logger.warning(&quot;no autoload listener class for annotation &quot; + aName +</span>
+<span class="nc" id="L817">                             &quot; : &quot; + cx.getMessage());</span>
+<span class="nc" id="L818">              autoloadAnnotations.remove(aName);</span>
+<span class="nc" id="L819">            }</span>
+          }
+        }
+      }
+
+<span class="pc bpc" id="L824" title="1 of 2 branches missed.">      if (autoloadAnnotations.isEmpty()) {</span>
+<span class="nc" id="L825">        autoloadAnnotations = null;</span>
+      }
+    }
+<span class="fc" id="L828">  }</span>
+
+  protected NativePeer loadNativePeer(){
+<span class="fc" id="L831">    return NativePeer.getNativePeer(this);</span>
+  }
+  
+  /**
+   * Returns the class loader that 
+   */
+  public ClassLoaderInfo getClassLoaderInfo() {
+<span class="fc" id="L838">    return classLoader;</span>
+  }
+
+  /**
+   * the container this is stored in
+   */
+  public Statics getStatics() {
+<span class="fc" id="L845">    return classLoader.getStatics();</span>
+  }
+  
+  /**
+   * required by InfoObject interface
+   */
+  public ClassInfo getClassInfo() {
+<span class="nc" id="L852">    return this;</span>
+  }
+
+  protected void setAssertionStatus() {
+<span class="pc bpc" id="L856" title="1 of 2 branches missed.">    if(isInitialized()) {</span>
+<span class="nc" id="L857">      return;</span>
+    } else {
+<span class="fc" id="L859">      enableAssertions = classLoader.desiredAssertionStatus(name);</span>
+    }
+<span class="fc" id="L861">  }</span>
+
+  boolean getAssertionStatus () {
+<span class="nc" id="L864">    return enableAssertions;</span>
+  }
+
+  public boolean desiredAssertionStatus() {
+<span class="fc" id="L868">    return classLoader.desiredAssertionStatus(name);</span>
+  }
+
+  @Override
+  public String getGenericSignature() {
+<span class="nc" id="L873">    return genericSignature;</span>
+  }
+
+  @Override
+  public void setGenericSignature(String sig){
+<span class="fc" id="L878">    genericSignature = sig;</span>
+<span class="fc" id="L879">  }</span>
+  
+  public boolean isArray () {
+<span class="fc" id="L882">    return isArray;</span>
+  }
+
+  public boolean isEnum () {
+<span class="fc" id="L886">    return isEnum;</span>
+  }
+
+  public boolean isAbstract() {
+<span class="fc" id="L890">    return isAbstract;</span>
+  }
+
+  public boolean isBuiltin(){
+<span class="nc" id="L894">    return isBuiltin;</span>
+  }
+  
+  public boolean isInterface() {
+<span class="fc bfc" id="L898" title="All 2 branches covered.">    return ((modifiers &amp; Modifier.INTERFACE) != 0);</span>
+  }
+
+  public boolean isReferenceArray () {
+<span class="fc" id="L902">    return isReferenceArray;</span>
+  }
+
+  public boolean isObjectClassInfo() {
+<span class="fc" id="L906">    return isObjectClassInfo;</span>
+  }
+
+  public boolean isStringClassInfo() {
+<span class="fc" id="L910">    return isStringClassInfo;</span>
+  }
+
+  public boolean isThreadClassInfo() {
+<span class="nc" id="L914">    return isThreadClassInfo;</span>
+  }
+
+  protected void checkNoClinitInitialization(){
+<span class="fc bfc" id="L918" title="All 2 branches covered.">    if (!isInitialized()){</span>
+<span class="fc" id="L919">      ThreadInfo ti = ThreadInfo.getCurrentThread();</span>
+<span class="fc" id="L920">      registerClass(ti);</span>
+<span class="fc" id="L921">      setInitialized(); // we might want to check if there is a clinit</span>
+    }
+<span class="fc" id="L923">  }</span>
+  
+  protected ClassInfo createAnnotationProxy (String proxyName){
+    // to be overridden by VM specific ClassInfos
+<span class="nc" id="L927">    return null;</span>
+  }
+  
+  public ClassInfo getAnnotationProxy (){
+    // &lt;2do&gt; test if this is a annotation ClassInfo
+    
+<span class="fc" id="L933">    checkNoClinitInitialization(); // annotation classes don't have clinits</span>
+    
+<span class="fc" id="L935">    ClassInfo ciProxy = classLoader.getResolvedAnnotationProxy(this);</span>
+<span class="fc" id="L936">    ciProxy.checkNoClinitInitialization();</span>
+    
+<span class="fc" id="L938">    return ciProxy;</span>
+  }
+  
+/**
+  public static ClassInfo getAnnotationProxy (ClassInfo ciAnnotation){
+    ThreadInfo ti = ThreadInfo.getCurrentThread();
+
+    // make sure the annotationCls is initialized (no code there)
+    if (!ciAnnotation.isInitialized()) {
+      ciAnnotation.registerClass(ti);
+      ciAnnotation.setInitialized(); // no clinit
+    }
+
+    String url = computeProxyUrl(ciAnnotation);
+    ClassInfo ci = null; // getOriginalClassInfo(url);
+
+    if (ci == null){
+      String cname = ciAnnotation.getName() + &quot;$Proxy&quot;;
+      ci = new ClassInfo(ciAnnotation, cname, ciAnnotation.classLoader, url);
+      ciAnnotation.classLoader.addResolvedClass(ci);
+      if (!ci.isInitialized()){
+        ci.registerClass(ti);
+        ci.setInitialized();
+      }
+    }
+
+    return ci;
+  }
+**/
+
+  public boolean areAssertionsEnabled() {
+<span class="nc" id="L969">    return enableAssertions;</span>
+  }
+
+  public boolean hasInstanceFields () {
+<span class="nc bnc" id="L973" title="All 2 branches missed.">    return (instanceDataSize &gt; 0);</span>
+  }
+
+  public ElementInfo getClassObject(){
+<span class="fc" id="L977">    StaticElementInfo sei = getStaticElementInfo();</span>
+    
+<span class="pc bpc" id="L979" title="1 of 2 branches missed.">    if (sei != null){</span>
+<span class="fc" id="L980">      int objref = sei.getClassObjectRef();</span>
+<span class="fc" id="L981">      return VM.getVM().getElementInfo(objref);</span>
+    }
+
+<span class="nc" id="L984">    return null;</span>
+  }
+  
+  public ElementInfo getModifiableClassObject(){
+<span class="nc" id="L988">    StaticElementInfo sei = getStaticElementInfo();</span>
+    
+<span class="nc bnc" id="L990" title="All 2 branches missed.">    if (sei != null){</span>
+<span class="nc" id="L991">      int objref = sei.getClassObjectRef();</span>
+<span class="nc" id="L992">      return VM.getVM().getModifiableElementInfo(objref);</span>
+    }
+
+<span class="nc" id="L995">    return null;</span>
+  }
+  
+
+  public int getClassObjectRef () {
+<span class="fc" id="L1000">    StaticElementInfo sei = getStaticElementInfo();    </span>
+<span class="pc bpc" id="L1001" title="1 of 2 branches missed.">    return (sei != null) ? sei.getClassObjectRef() : MJIEnv.NULL;</span>
+  }
+
+  public gov.nasa.jpf.vm.ClassFileContainer getContainer(){
+<span class="nc" id="L1005">    return container;</span>
+  }
+  
+  public String getClassFileUrl (){
+<span class="fc" id="L1009">    return classFileUrl;</span>
+  }
+
+  //--- type based object release actions
+  
+  public boolean hasReleaseAction (ReleaseAction action){
+<span class="nc bnc" id="L1015" title="All 4 branches missed.">    return (releaseActions != null) &amp;&amp; releaseActions.contains(action);</span>
+  }
+  
+  /**
+   * NOTE - this can only be set *before* subclasses are loaded (e.g. from classLoaded() notification) 
+   */
+  public void addReleaseAction (ReleaseAction action){
+    // flattened in ctor to super releaseActions
+<span class="fc" id="L1023">    releaseActions = new ImmutableList&lt;ReleaseAction&gt;( action, releaseActions);</span>
+<span class="fc" id="L1024">  }</span>
+  
+  /**
+   * recursively process release actions registered for this type or any of
+   * its super types (only classes). The releaseAction list is flattened during
+   * ClassInfo initialization, to reduce runtime overhead during GC sweep
+   */
+  public void processReleaseActions (ElementInfo ei){
+<span class="fc bfc" id="L1032" title="All 2 branches covered.">    if (superClass != null){</span>
+<span class="fc" id="L1033">      superClass.processReleaseActions(ei);</span>
+    }
+    
+<span class="fc bfc" id="L1036" title="All 2 branches covered.">    if (releaseActions != null) {</span>
+<span class="fc bfc" id="L1037" title="All 2 branches covered.">      for (ReleaseAction action : releaseActions) {</span>
+<span class="fc" id="L1038">        action.release(ei);</span>
+<span class="fc" id="L1039">      }</span>
+    }
+<span class="fc" id="L1041">  }</span>
+  
+  public int getModifiers() {
+<span class="fc" id="L1044">    return modifiers;</span>
+  }
+
+  /**
+   * Note that 'uniqueName' is the name plus the argument type part of the
+   * signature, idx.e. everything that's relevant for overloading
+   * (besides saving some const space, we also ease reverse lookup
+   * of natives that way).
+   * Note also that we don't have to make any difference between
+   * class and instance declaredMethods, because that just matters in the
+   * INVOKExx instruction, when looking up the relevant ClassInfo to start
+   * searching in (either by means of the object type, or by means of the
+   * constpool classname entry).
+   */
+  public MethodInfo getMethod (String uniqueName, boolean isRecursiveLookup) {
+<span class="fc" id="L1059">    MethodInfo mi = methods.get(uniqueName);</span>
+
+<span class="fc bfc" id="L1061" title="All 6 branches covered.">    if ((mi == null) &amp;&amp; isRecursiveLookup &amp;&amp; (superClass != null)) {</span>
+<span class="fc" id="L1062">      mi = superClass.getMethod(uniqueName, true);</span>
+    }
+
+<span class="fc" id="L1065">    return mi;</span>
+  }
+
+  /**
+   * if we don't know the return type
+   * signature is in paren/dot notation
+   */
+  public MethodInfo getMethod (String name, String signature, boolean isRecursiveLookup) {
+<span class="fc" id="L1073">    MethodInfo mi = null;</span>
+<span class="fc" id="L1074">    String matchName = name + signature;</span>
+
+<span class="fc bfc" id="L1076" title="All 2 branches covered.">    for (Map.Entry&lt;String, MethodInfo&gt;e : methods.entrySet()) {</span>
+<span class="fc bfc" id="L1077" title="All 2 branches covered.">      if (e.getKey().startsWith(matchName)){</span>
+<span class="fc" id="L1078">        mi = e.getValue();</span>
+<span class="fc" id="L1079">        break;</span>
+      }
+<span class="fc" id="L1081">    }</span>
+
+<span class="pc bpc" id="L1083" title="3 of 6 branches missed.">    if ((mi == null) &amp;&amp; isRecursiveLookup &amp;&amp; (superClass != null)) {</span>
+<span class="nc" id="L1084">      mi = superClass.getMethod(name, signature, true);</span>
+    }
+
+<span class="fc" id="L1087">    return mi;</span>
+  }
+
+  
+  public MethodInfo getDefaultMethod (String uniqueName) {
+<span class="fc" id="L1092">    MethodInfo mi = null;</span>
+    
+<span class="fc bfc" id="L1094" title="All 2 branches covered.">    for (ClassInfo ciIfc : this.getAllInterfaces()){</span>
+<span class="fc" id="L1095">      MethodInfo miIfc = ciIfc.getMethod(uniqueName, false);</span>
+<span class="pc bpc" id="L1096" title="3 of 8 branches missed.">      if (miIfc != null &amp;&amp; !miIfc.isAbstract() &amp;&amp; !miIfc.isPrivate() &amp;&amp; !miIfc.isStatic()){</span>
+<span class="pc bpc" id="L1097" title="1 of 4 branches missed.">        if (mi != null &amp;&amp; !mi.equals(miIfc)){</span>
+<span class="pc bpc" id="L1098" title="1 of 2 branches missed.">          if(miIfc.getClassInfo().isSubInterfaceOf(mi.getClassInfo())) {</span>
+<span class="nc" id="L1099">            mi = miIfc;</span>
+<span class="pc bpc" id="L1100" title="1 of 2 branches missed.">          } else if(mi.getClassInfo().isSubInterfaceOf(miIfc.getClassInfo())) {</span>
+<span class="fc" id="L1101">            continue;</span>
+          } else {
+            // this has to throw a IncompatibleClassChangeError in the client since Java prohibits ambiguous default methods
+<span class="nc" id="L1104">            String msg = &quot;Conflicting default methods: &quot; + mi.getFullName() + &quot;, &quot; + miIfc.getFullName();</span>
+<span class="nc" id="L1105">            throw new ClassChangeException(msg);</span>
+          }
+        } else {
+<span class="fc" id="L1108">          mi = miIfc;</span>
+        }
+      }
+<span class="fc" id="L1111">    }</span>
+    
+<span class="fc" id="L1113">    return mi;</span>
+  }
+  
+  private boolean isSubInterfaceOf(ClassInfo classInfo) {
+<span class="pc bpc" id="L1117" title="3 of 6 branches missed.">    assert this.isInterface() &amp;&amp; classInfo.isInterface();</span>
+<span class="pc bpc" id="L1118" title="1 of 4 branches missed.">    return this == classInfo || this.getAllInterfaces().contains(classInfo);</span>
+  }
+
+  /**
+   * This retrieves the SAM from this functional interface. Note that this is only
+   * called on functional interface expecting to have a SAM. This shouldn't expect 
+   * this interface to have only one method which is abstract, since:
+   *    1. functional interface can declare the abstract methods from the java.lang.Object 
+   *       class.
+   *    2. functional interface can extend another interface which is functional, but it 
+   *       should not declare any new abstract methods.
+   *    3. functional interface can have one abstract method and any number of default
+   *       methods.
+   * 
+   * To retrieve the SAM, this method iterates over the methods of this interface and its 
+   * superinterfaces, and it returns the first method which is abstract and it does not 
+   * declare a method in java.lang.Object.
+   */
+  public MethodInfo getInterfaceAbstractMethod () {
+<span class="fc" id="L1137">    ClassInfo objCi = ClassLoaderInfo.getCurrentResolvedClassInfo(&quot;java.lang.Object&quot;);</span>
+    
+<span class="fc bfc" id="L1139" title="All 2 branches covered.">    for(MethodInfo mi: this.methods.values()) {</span>
+<span class="fc bfc" id="L1140" title="All 4 branches covered.">      if(mi.isAbstract() &amp;&amp; objCi.getMethod(mi.getUniqueName(), false)==null) {</span>
+<span class="fc" id="L1141">        return mi;</span>
+      }
+<span class="fc" id="L1143">    }</span>
+    
+<span class="pc bpc" id="L1145" title="1 of 2 branches missed.">    for (ClassInfo ifc : this.interfaces){</span>
+<span class="fc" id="L1146">      MethodInfo mi = ifc.getInterfaceAbstractMethod();</span>
+<span class="pc bpc" id="L1147" title="1 of 2 branches missed.">      if(mi!=null) {</span>
+<span class="fc" id="L1148">        return mi;</span>
+      }
+<span class="nc" id="L1150">    }</span>
+    
+<span class="nc" id="L1152">    return null;</span>
+  }
+
+  /**
+   * method lookup for use by reflection methods (java.lang.Class.getXMethod)
+   * 
+   * note this doesn't specify the return type, which means covariant return 
+   * types are not allowed in reflection lookup.
+   * 
+   * note also this includes interface methods, but only after the inheritance
+   * hierarchy has been searched
+   */
+  public MethodInfo getReflectionMethod (String fullName, boolean isRecursiveLookup) {
+        
+    // first look for methods within the class hierarchy
+<span class="fc bfc" id="L1167" title="All 2 branches covered.">    for (ClassInfo ci = this; ci != null; ci = ci.superClass){</span>
+<span class="fc bfc" id="L1168" title="All 2 branches covered.">      for (Map.Entry&lt;String, MethodInfo&gt;e : ci.methods.entrySet()) {</span>
+<span class="fc" id="L1169">        String name = e.getKey();</span>
+<span class="fc bfc" id="L1170" title="All 2 branches covered.">        if (name.startsWith(fullName)) {</span>
+<span class="fc" id="L1171">          return e.getValue();</span>
+        }
+<span class="fc" id="L1173">      }</span>
+<span class="fc bfc" id="L1174" title="All 2 branches covered.">      if (!isRecursiveLookup){</span>
+<span class="fc" id="L1175">        return null;</span>
+      }
+    }
+
+    // this is the recursive case - if none found, look for interface methods
+<span class="pc bpc" id="L1180" title="1 of 2 branches missed.">    for (ClassInfo ci : getAllInterfaces() ){</span>
+<span class="pc bpc" id="L1181" title="1 of 2 branches missed.">      for (Map.Entry&lt;String, MethodInfo&gt;e : ci.methods.entrySet()) {</span>
+<span class="fc" id="L1182">        String name = e.getKey();</span>
+<span class="fc bfc" id="L1183" title="All 2 branches covered.">        if (name.startsWith(fullName)) {</span>
+<span class="fc" id="L1184">          return e.getValue();</span>
+        }
+<span class="fc" id="L1186">      }      </span>
+<span class="nc" id="L1187">    }    </span>
+
+<span class="nc" id="L1189">    return null;</span>
+  }
+  
+  /**
+   * iterate over all declaredMethods of this class (and it's superclasses), until
+   * the provided MethodLocator tells us it's done
+   */
+  public void matchMethods (MethodLocator loc) {
+<span class="nc bnc" id="L1197" title="All 2 branches missed.">    for (MethodInfo mi : methods.values()) {</span>
+<span class="nc bnc" id="L1198" title="All 2 branches missed.">      if (loc.match(mi)) {</span>
+<span class="nc" id="L1199">        return;</span>
+      }
+<span class="nc" id="L1201">    }</span>
+<span class="nc bnc" id="L1202" title="All 2 branches missed.">    if (superClass != null) {</span>
+<span class="nc" id="L1203">      superClass.matchMethods(loc);</span>
+    }
+<span class="nc" id="L1205">  }</span>
+
+  /**
+   * iterate over all declaredMethods declared in this class, until the provided
+   * MethodLocator tells us it's done
+   */
+  public void matchDeclaredMethods (MethodLocator loc) {
+<span class="nc bnc" id="L1212" title="All 2 branches missed.">    for (MethodInfo mi : methods.values()) {</span>
+<span class="nc bnc" id="L1213" title="All 2 branches missed.">      if (loc.match(mi)) {</span>
+<span class="nc" id="L1214">        return;</span>
+      }
+<span class="nc" id="L1216">    }</span>
+<span class="nc" id="L1217">  }</span>
+
+  @Override
+  public Iterator&lt;MethodInfo&gt; iterator() {
+<span class="fc" id="L1221">    return new Iterator&lt;MethodInfo&gt;() {</span>
+<span class="fc" id="L1222">      ClassInfo ci = ClassInfo.this;</span>
+<span class="fc" id="L1223">      Iterator&lt;MethodInfo&gt; it = ci.methods.values().iterator();</span>
+
+      @Override
+	public boolean hasNext() {
+<span class="fc bfc" id="L1227" title="All 2 branches covered.">        if (it.hasNext()) {</span>
+<span class="fc" id="L1228">          return true;</span>
+        } else {
+<span class="pc bpc" id="L1230" title="1 of 2 branches missed.">          if (ci.superClass != null) {</span>
+<span class="nc" id="L1231">            ci = ci.superClass;</span>
+<span class="nc" id="L1232">            it = ci.methods.values().iterator();</span>
+<span class="nc" id="L1233">            return it.hasNext();</span>
+          } else {
+<span class="fc" id="L1235">            return false;</span>
+          }
+        }
+      }
+
+      @Override
+	public MethodInfo next() {
+<span class="pc bpc" id="L1242" title="1 of 2 branches missed.">        if (hasNext()) {</span>
+<span class="fc" id="L1243">          return it.next();</span>
+        } else {
+<span class="nc" id="L1245">          throw new NoSuchElementException();</span>
+        }
+      }
+
+      @Override
+	public void remove() {
+        // not supported
+<span class="nc" id="L1252">        throw new UnsupportedOperationException(&quot;can't remove methods&quot;);</span>
+      }
+    };
+  }
+  
+  public Iterator&lt;MethodInfo&gt; declaredMethodIterator() {
+<span class="nc" id="L1258">    return methods.values().iterator();</span>
+  }
+
+  /**
+   * Search up the class hierarchy to find a static field
+   * @param fName name of field
+   * @return null if field name not found (not declared)
+   */
+  public FieldInfo getStaticField (String fName) {
+    FieldInfo fi;
+<span class="fc" id="L1268">    ClassInfo c = this;</span>
+
+<span class="pc bpc" id="L1270" title="1 of 2 branches missed.">    while (c != null) {</span>
+<span class="fc" id="L1271">      fi = c.getDeclaredStaticField(fName);</span>
+<span class="fc bfc" id="L1272" title="All 2 branches covered.">      if (fi != null) {</span>
+<span class="fc" id="L1273">        return fi;</span>
+      }
+<span class="fc" id="L1275">      c = c.superClass;</span>
+    }
+
+    //interfaceNames can have static fields too
+    // &lt;2do&gt; why would that not be already resolved here ?
+<span class="nc bnc" id="L1280" title="All 2 branches missed.">    for (ClassInfo ci : getAllInterfaces()) {</span>
+<span class="nc" id="L1281">      fi = ci.getDeclaredStaticField(fName);</span>
+<span class="nc bnc" id="L1282" title="All 2 branches missed.">      if (fi != null) {</span>
+<span class="nc" id="L1283">        return fi;</span>
+      }
+<span class="nc" id="L1285">    }</span>
+
+<span class="nc" id="L1287">    return null;</span>
+  }
+
+  public Object getStaticFieldValueObject (String id){
+<span class="nc" id="L1291">    ClassInfo c = this;</span>
+    Object v;
+
+<span class="nc bnc" id="L1294" title="All 2 branches missed.">    while (c != null){</span>
+<span class="nc" id="L1295">      ElementInfo sei = c.getStaticElementInfo();</span>
+<span class="nc" id="L1296">      v = sei.getFieldValueObject(id);</span>
+<span class="nc bnc" id="L1297" title="All 2 branches missed.">      if (v != null){</span>
+<span class="nc" id="L1298">        return v;</span>
+      }
+<span class="nc" id="L1300">      c = c.getSuperClass();</span>
+<span class="nc" id="L1301">    }</span>
+
+<span class="nc" id="L1303">    return null;</span>
+  }
+
+  public FieldInfo[] getDeclaredStaticFields() {
+<span class="fc" id="L1307">    return sFields;</span>
+  }
+
+  public FieldInfo[] getDeclaredInstanceFields() {
+<span class="fc" id="L1311">    return iFields;</span>
+  }
+
+  /**
+   * FieldInfo lookup in the static fields that are declared in this class
+   * &lt;2do&gt; pcm - should employ a map at some point, but it's usually not that
+   * important since we can cash the returned FieldInfo in the PUT/GET_STATIC insns
+   */
+  public FieldInfo getDeclaredStaticField (String fName) {
+<span class="fc bfc" id="L1320" title="All 2 branches covered.">    for (int i=0; i&lt;sFields.length; i++) {</span>
+<span class="fc bfc" id="L1321" title="All 2 branches covered.">      if (sFields[i].getName().equals(fName)) return sFields[i];</span>
+    }
+
+<span class="fc" id="L1324">    return null;</span>
+  }
+
+  /**
+   * base relative FieldInfo lookup - the workhorse
+   * &lt;2do&gt; again, should eventually use Maps
+   * @param fName the field name
+   */
+  public FieldInfo getInstanceField (String fName) {
+    FieldInfo fi;
+<span class="fc" id="L1334">    ClassInfo c = this;</span>
+
+<span class="fc bfc" id="L1336" title="All 2 branches covered.">    while (c != null) {</span>
+<span class="fc" id="L1337">      fi = c.getDeclaredInstanceField(fName);</span>
+<span class="fc bfc" id="L1338" title="All 2 branches covered.">      if (fi != null) return fi;</span>
+<span class="fc" id="L1339">      c = c.superClass;</span>
+    }
+
+<span class="fc" id="L1342">    return null;</span>
+  }
+
+  /**
+   * FieldInfo lookup in the fields that are declared in this class
+   */
+  public FieldInfo getDeclaredInstanceField (String fName) {
+<span class="fc bfc" id="L1349" title="All 2 branches covered.">    for (int i=0; i&lt;iFields.length; i++) {</span>
+<span class="fc bfc" id="L1350" title="All 2 branches covered.">      if (iFields[i].getName().equals(fName)) return iFields[i];</span>
+    }
+
+<span class="fc" id="L1353">    return null;</span>
+  }
+  
+  public String getSignature() {
+<span class="fc bfc" id="L1357" title="All 2 branches covered.">    if (signature == null) {</span>
+<span class="fc" id="L1358">      signature = Types.getTypeSignature(name, false);</span>
+    }
+    
+<span class="fc" id="L1361">    return signature;     </span>
+  }
+
+  /**
+   * Returns the name of the class.  e.g. &quot;java.lang.String&quot;.  similar to
+   * java.lang.Class.getName().
+   */
+  public String getName () {
+<span class="fc" id="L1369">    return name;</span>
+  }
+
+  public String getSimpleName () {
+    int i;
+<span class="nc" id="L1374">    String enclosingClassName = getEnclosingClassName();</span>
+    
+<span class="nc bnc" id="L1376" title="All 2 branches missed.">    if(enclosingClassName!=null){</span>
+<span class="nc" id="L1377">      i = enclosingClassName.length();      </span>
+    } else{
+<span class="nc" id="L1379">      i = name.lastIndexOf('.');</span>
+    }
+    
+<span class="nc" id="L1382">    return name.substring(i+1);</span>
+  }
+
+  public String getPackageName () {
+<span class="fc" id="L1386">    return packageName;</span>
+  }
+
+  public int getId() {
+<span class="nc" id="L1390">    return id;</span>
+  }
+
+  public long getUniqueId() {
+<span class="fc" id="L1394">    return uniqueId;</span>
+  }
+
+  public int getFieldAttrs (int fieldIndex) {
+<span class="nc" id="L1398">    fieldIndex = 0; // Get rid of IDE warning</span>
+     
+<span class="nc" id="L1400">    return 0;</span>
+  }
+
+  public void setElementInfoAttrs (int attrs){
+<span class="nc" id="L1404">    elementInfoAttrs = attrs;</span>
+<span class="nc" id="L1405">  }</span>
+
+  public void addElementInfoAttr (int attr){
+<span class="nc" id="L1408">    elementInfoAttrs |= attr;</span>
+<span class="nc" id="L1409">  }</span>
+
+  public int getElementInfoAttrs () {
+<span class="fc" id="L1412">    return elementInfoAttrs;</span>
+  }
+
+  public Source getSource () {
+<span class="nc bnc" id="L1416" title="All 2 branches missed.">    if (source == null) {</span>
+<span class="nc" id="L1417">      source = loadSource();</span>
+    }
+
+<span class="nc" id="L1420">    return source;</span>
+  }
+
+  public String getSourceFileName () {
+<span class="fc" id="L1424">    return sourceFileName;</span>
+  }
+
+  /**
+   * Returns the information about a static field.
+   */
+  public FieldInfo getStaticField (int index) {
+<span class="fc" id="L1431">    return sFields[index];</span>
+  }
+
+  /**
+   * Returns the name of a static field.
+   */
+  public String getStaticFieldName (int index) {
+<span class="nc" id="L1438">    return getStaticField(index).getName();</span>
+  }
+
+  /**
+   * Checks if a static method call is deterministic, but only for
+   * abtraction based determinism, due to Bandera.choose() calls
+   */
+  public boolean isStaticMethodAbstractionDeterministic (ThreadInfo th,
+                                                         MethodInfo mi) {
+    //    Reflection r = reflection.instantiate();
+    //    return r.isStaticMethodAbstractionDeterministic(th, mi);
+    // &lt;2do&gt; - still has to be implemented
+     
+<span class="nc" id="L1451">    th = null;  // Get rid of IDE warning</span>
+<span class="nc" id="L1452">    mi = null;</span>
+     
+<span class="nc" id="L1454">    return true;</span>
+  }
+
+  public String getSuperClassName() {
+<span class="nc" id="L1458">    return superClassName;</span>
+  }
+
+  /**
+   * Return the super class.
+   */
+  public ClassInfo getSuperClass () {
+<span class="fc" id="L1465">    return superClass;</span>
+  }
+
+  /**
+   * return the ClassInfo for the provided superclass name. If this is equals
+   * to ourself, return this (a little bit strange if we hit it in the first place)
+   */
+  public ClassInfo getSuperClass (String clsName) {
+<span class="nc bnc" id="L1473" title="All 2 branches missed.">    if (clsName.equals(name)) return this;</span>
+
+<span class="nc bnc" id="L1475" title="All 2 branches missed.">    if (superClass != null) {</span>
+<span class="nc" id="L1476">      return superClass.getSuperClass(clsName);</span>
+    } else {
+<span class="nc" id="L1478">      return null;</span>
+    }
+  }
+
+  public int getNumberOfSuperClasses(){
+<span class="fc" id="L1483">    int n = 0;</span>
+<span class="fc bfc" id="L1484" title="All 2 branches covered.">    for (ClassInfo ci = superClass; ci != null; ci = ci.superClass){</span>
+<span class="fc" id="L1485">      n++;</span>
+    }
+<span class="fc" id="L1487">    return n;</span>
+  }
+  
+  /**
+   * beware - this loads (but not yet registers) the enclosing class
+   */
+  public String getEnclosingClassName(){
+<span class="fc" id="L1494">    return enclosingClassName;</span>
+  }
+  
+  /**
+   * beware - this loads (but not yet registers) the enclosing class
+   */
+  public ClassInfo getEnclosingClassInfo() {
+<span class="fc" id="L1501">    String enclName = getEnclosingClassName();</span>
+<span class="fc bfc" id="L1502" title="All 2 branches covered.">    return (enclName == null ? null : classLoader.getResolvedClassInfo(enclName)); // ? is this supposed to use the same classloader</span>
+  }
+
+  public String getEnclosingMethodName(){
+<span class="nc" id="L1506">    return enclosingMethodName;</span>
+  }
+
+  /**
+   * same restriction as getEnclosingClassInfo() - might not be registered/initialized
+   */
+  public MethodInfo getEnclosingMethodInfo(){
+<span class="fc" id="L1513">    MethodInfo miEncl = null;</span>
+    
+<span class="fc bfc" id="L1515" title="All 2 branches covered.">    if (enclosingMethodName != null){</span>
+<span class="fc" id="L1516">      ClassInfo ciIncl = getEnclosingClassInfo();</span>
+<span class="fc" id="L1517">      miEncl = ciIncl.getMethod( enclosingMethodName, false);</span>
+    }
+    
+<span class="fc" id="L1520">    return miEncl;</span>
+  }
+  
+  /**
+   * Returns true if the class is a system class.
+   */
+  public boolean isSystemClass () {
+<span class="nc bnc" id="L1527" title="All 4 branches missed.">    return name.startsWith(&quot;java.&quot;) || name.startsWith(&quot;javax.&quot;);</span>
+  }
+
+  /**
+   * &lt;2do&gt; that's stupid - we should use subclasses for builtin and box types
+   */
+  public boolean isBoxClass () {
+<span class="nc bnc" id="L1534" title="All 2 branches missed.">    if (name.startsWith(&quot;java.lang.&quot;)) {</span>
+<span class="nc" id="L1535">      String rawType = name.substring(10);</span>
+<span class="nc bnc" id="L1536" title="All 2 branches missed.">      if (rawType.startsWith(&quot;Boolean&quot;) ||</span>
+<span class="nc bnc" id="L1537" title="All 2 branches missed.">          rawType.startsWith(&quot;Byte&quot;) ||</span>
+<span class="nc bnc" id="L1538" title="All 2 branches missed.">          rawType.startsWith(&quot;Character&quot;) ||</span>
+<span class="nc bnc" id="L1539" title="All 2 branches missed.">          rawType.startsWith(&quot;Integer&quot;) ||</span>
+<span class="nc bnc" id="L1540" title="All 2 branches missed.">          rawType.startsWith(&quot;Float&quot;) ||</span>
+<span class="nc bnc" id="L1541" title="All 2 branches missed.">          rawType.startsWith(&quot;Long&quot;) ||</span>
+<span class="nc bnc" id="L1542" title="All 2 branches missed.">          rawType.startsWith(&quot;Double&quot;)) {</span>
+<span class="nc" id="L1543">        return true;</span>
+      }
+    }
+<span class="nc" id="L1546">    return false;</span>
+  }
+
+  /**
+   * Returns the type of a class.
+   */
+  public String getType () {
+<span class="fc bfc" id="L1553" title="All 2 branches covered.">    if (!isArray) {</span>
+<span class="fc" id="L1554">      return &quot;L&quot; + name.replace('.', '/') + &quot;;&quot;;</span>
+    } else {
+<span class="fc" id="L1556">      return name;</span>
+    }
+  }
+
+  /**
+   * is this a (subclass of) WeakReference? this must be efficient, since it's
+   * called in the mark phase on all live objects
+   */
+  public boolean isWeakReference () {
+<span class="fc" id="L1565">    return isWeakReference;</span>
+  }
+
+  /**
+   * note this only returns true is this is really the java.lang.ref.Reference classInfo
+   */
+  public boolean isReferenceClassInfo () {
+<span class="fc" id="L1572">    return isRefClassInfo;</span>
+  }
+
+  /**
+   * whether this refers to a primitive type.
+   */
+  public boolean isPrimitive() {
+<span class="fc bfc" id="L1579" title="All 4 branches covered.">    return superClass == null &amp;&amp; !isObjectClassInfo();</span>
+  }
+
+
+  boolean hasRefField (int ref, Fields fv) {
+<span class="nc" id="L1584">    ClassInfo c = this;</span>
+
+    do {
+<span class="nc" id="L1587">      FieldInfo[] fia = c.iFields;</span>
+<span class="nc bnc" id="L1588" title="All 2 branches missed.">      for (int i=0; i&lt;fia.length; i++) {</span>
+<span class="nc" id="L1589">        FieldInfo fi = c.iFields[i];</span>
+<span class="nc bnc" id="L1590" title="All 4 branches missed.">        if (fi.isReference() &amp;&amp; (fv.getIntValue( fi.getStorageOffset()) == ref)) return true;</span>
+      }
+<span class="nc" id="L1592">      c = c.superClass;</span>
+<span class="nc bnc" id="L1593" title="All 2 branches missed.">    } while (c != null);</span>
+
+<span class="nc" id="L1595">    return false;</span>
+  }
+
+  boolean hasImmutableInstances () {
+<span class="nc bnc" id="L1599" title="All 2 branches missed.">    return ((elementInfoAttrs &amp; ElementInfo.ATTR_IMMUTABLE) != 0);</span>
+  }
+
+  public boolean hasInstanceFieldInfoAttr (Class&lt;?&gt; type){
+<span class="nc bnc" id="L1603" title="All 2 branches missed.">    for (int i=0; i&lt;nInstanceFields; i++){</span>
+<span class="nc bnc" id="L1604" title="All 2 branches missed.">      if (getInstanceField(i).hasAttr(type)){</span>
+<span class="nc" id="L1605">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L1609">    return false;</span>
+  }
+  
+  public NativePeer getNativePeer () {
+<span class="nc" id="L1613">    return nativePeer;</span>
+  }
+  
+  /**
+   * Returns true if the given class is an instance of the class
+   * or interface specified.
+   */
+  public boolean isInstanceOf (String cname) {
+<span class="fc bfc" id="L1621" title="All 2 branches covered.">    if (isPrimitive()) {</span>
+<span class="fc" id="L1622">      return Types.getJNITypeCode(name).equals(cname);</span>
+
+    } else {
+<span class="fc" id="L1625">      cname = Types.getClassNameFromTypeName(cname);</span>
+<span class="fc" id="L1626">      ClassInfo ci = this.classLoader.getResolvedClassInfo(cname);</span>
+<span class="fc" id="L1627">      return isInstanceOf(ci);</span>
+    }
+  }
+
+  /**
+   * Returns true if the given class is an instance of the class
+   * or interface specified.
+   */
+  public boolean isInstanceOf (ClassInfo ci) {
+<span class="pc bpc" id="L1636" title="1 of 2 branches missed.">    if (isPrimitive()) { // no inheritance for builtin types</span>
+<span class="nc bnc" id="L1637" title="All 2 branches missed.">      return (this==ci);</span>
+    } else {
+<span class="fc bfc" id="L1639" title="All 2 branches covered.">      for (ClassInfo c = this; c != null; c = c.superClass) {</span>
+<span class="fc bfc" id="L1640" title="All 2 branches covered.">        if (c==ci) {</span>
+<span class="fc" id="L1641">          return true;</span>
+        }
+      }
+
+<span class="fc" id="L1645">      return getAllInterfaces().contains(ci);</span>
+    }
+  }
+
+  public boolean isInnerClassOf (String enclosingName){
+    // don't register or initialize yet
+<span class="nc" id="L1651">    ClassInfo ciEncl = classLoader.tryGetResolvedClassInfo( enclosingName);</span>
+<span class="nc bnc" id="L1652" title="All 2 branches missed.">    if (ciEncl != null){</span>
+<span class="nc" id="L1653">      return ciEncl.hasInnerClass(name);</span>
+    } else {
+<span class="nc" id="L1655">      return false;</span>
+    }
+  }
+  
+  public boolean hasInnerClass (String innerName){
+<span class="nc bnc" id="L1660" title="All 2 branches missed.">    for (int i=0; i&lt;innerClassNames.length; i++){</span>
+<span class="nc bnc" id="L1661" title="All 2 branches missed.">      if (innerClassNames[i].equals(innerName)){</span>
+<span class="nc" id="L1662">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L1666">    return false;</span>
+  }
+
+
+  public static String makeModelClassPath (Config config) {
+<span class="nc" id="L1671">    StringBuilder buf = new StringBuilder(256);</span>
+<span class="nc" id="L1672">    String ps = File.pathSeparator;</span>
+    String v;
+
+<span class="nc bnc" id="L1675" title="All 2 branches missed.">    for (File f : config.getPathArray(&quot;boot_classpath&quot;)){</span>
+<span class="nc" id="L1676">      buf.append(f.getAbsolutePath());</span>
+<span class="nc" id="L1677">      buf.append(ps);</span>
+    }
+
+<span class="nc bnc" id="L1680" title="All 2 branches missed.">    for (File f : config.getPathArray(&quot;classpath&quot;)){</span>
+<span class="nc" id="L1681">      buf.append(f.getAbsolutePath());</span>
+<span class="nc" id="L1682">      buf.append(ps);</span>
+    }
+
+    // finally, we load from the standard Java libraries
+<span class="nc" id="L1686">    v = System.getProperty(&quot;sun.boot.class.path&quot;);</span>
+<span class="nc bnc" id="L1687" title="All 2 branches missed.">    if (v != null) {</span>
+<span class="nc" id="L1688">      buf.append(v);</span>
+    }
+    
+<span class="nc" id="L1691">    return buf.toString();</span>
+  }
+  
+  protected static String[] loadArrayInterfaces () {
+<span class="fc" id="L1695">    return new String[] {&quot;java.lang.Cloneable&quot;, &quot;java.io.Serializable&quot;};</span>
+  }
+
+  protected static String[] loadBuiltinInterfaces (String type) {
+<span class="fc" id="L1699">    return EMPTY_STRING_ARRAY;</span>
+  }
+
+
+  /**
+   * Loads the ClassInfo for named class.
+   */
+  void loadInterfaceRec (Set&lt;ClassInfo&gt; set, String[] interfaces) throws ClassInfoException {
+<span class="pc bpc" id="L1707" title="1 of 2 branches missed.">    if (interfaces != null) {</span>
+<span class="fc bfc" id="L1708" title="All 2 branches covered.">      for (String iname : interfaces) {</span>
+
+<span class="fc" id="L1710">        ClassInfo ci = classLoader.getResolvedClassInfo(iname);</span>
+
+<span class="pc bpc" id="L1712" title="1 of 2 branches missed.">        if (set != null){</span>
+<span class="fc" id="L1713">          set.add(ci);</span>
+        }
+
+<span class="fc" id="L1716">        loadInterfaceRec(set, ci.interfaceNames);</span>
+      }
+    }
+<span class="fc" id="L1719">  }</span>
+
+  int computeInstanceDataOffset () {
+<span class="nc bnc" id="L1722" title="All 2 branches missed.">    if (superClass == null) {</span>
+<span class="nc" id="L1723">      return 0;</span>
+    } else {
+<span class="nc" id="L1725">      return superClass.getInstanceDataSize();</span>
+    }
+  }
+
+  int getInstanceDataOffset () {
+<span class="nc" id="L1730">    return instanceDataOffset;</span>
+  }
+
+  ClassInfo getClassBase (String clsBase) {
+<span class="nc bnc" id="L1734" title="All 4 branches missed.">    if ((clsBase == null) || (name.equals(clsBase))) return this;</span>
+
+<span class="nc bnc" id="L1736" title="All 2 branches missed.">    if (superClass != null) {</span>
+<span class="nc" id="L1737">      return superClass.getClassBase(clsBase);</span>
+    }
+
+<span class="nc" id="L1740">    return null; // Eeek - somebody asked for a class that isn't in the base list</span>
+  }
+
+  int computeInstanceDataSize () {
+<span class="fc" id="L1744">    int n = getDataSize( iFields);</span>
+
+<span class="fc bfc" id="L1746" title="All 2 branches covered.">    for (ClassInfo c=superClass; c!= null; c=c.superClass) {</span>
+<span class="fc" id="L1747">      n += c.getDataSize(c.iFields);</span>
+    }
+
+<span class="fc" id="L1750">    return n;</span>
+  }
+
+  public int getInstanceDataSize () {
+<span class="fc" id="L1754">    return instanceDataSize;</span>
+  }
+
+  int getDataSize (FieldInfo[] fields) {
+<span class="fc" id="L1758">    int n=0;</span>
+<span class="fc bfc" id="L1759" title="All 2 branches covered.">    for (int i=0; i&lt;fields.length; i++) {</span>
+<span class="fc" id="L1760">      n += fields[i].getStorageSize();</span>
+    }
+
+<span class="fc" id="L1763">    return n;</span>
+  }
+
+  public int getNumberOfDeclaredInstanceFields () {
+<span class="fc" id="L1767">    return iFields.length;</span>
+  }
+
+  public FieldInfo getDeclaredInstanceField (int i) {
+<span class="fc" id="L1771">    return iFields[i];</span>
+  }
+
+  public int getNumberOfInstanceFields () {
+<span class="fc" id="L1775">    return nInstanceFields;</span>
+  }
+
+  public FieldInfo getInstanceField (int i) {
+<span class="fc" id="L1779">    int idx = i - (nInstanceFields - iFields.length);</span>
+<span class="fc bfc" id="L1780" title="All 2 branches covered.">    if (idx &gt;= 0) {</span>
+<span class="pc bpc" id="L1781" title="1 of 2 branches missed.">      return ((idx &lt; iFields.length) ? iFields[idx] : null);</span>
+    } else {
+<span class="pc bpc" id="L1783" title="1 of 2 branches missed.">      return ((superClass != null) ? superClass.getInstanceField(i) : null);</span>
+    }
+  }
+
+  public FieldInfo[] getInstanceFields(){
+<span class="nc" id="L1788">    FieldInfo[] fields = new FieldInfo[nInstanceFields];</span>
+    
+<span class="nc bnc" id="L1790" title="All 2 branches missed.">    for (int i=0; i&lt;fields.length; i++){</span>
+<span class="nc" id="L1791">      fields[i] = getInstanceField(i);</span>
+    }
+    
+<span class="nc" id="L1794">    return fields;</span>
+  }
+
+  public int getStaticDataSize () {
+<span class="fc" id="L1798">    return staticDataSize;</span>
+  }
+
+  int computeStaticDataSize () {
+<span class="nc" id="L1802">    return getDataSize(sFields);</span>
+  }
+
+  public int getNumberOfStaticFields () {
+<span class="fc" id="L1806">    return sFields.length;</span>
+  }
+
+  protected Source loadSource () {
+<span class="nc" id="L1810">    return Source.getSource(sourceFileName);</span>
+  }
+
+  public static boolean isBuiltinClass (String cname) {
+<span class="fc" id="L1814">    char c = cname.charAt(0);</span>
+    
+    // The following handles invalid names, e.g., [Ljava.lang.Object;BeanInfo in Groovy
+<span class="fc bfc" id="L1817" title="All 4 branches covered.">    if (cname.indexOf(';') != -1 &amp;&amp; cname.indexOf(';') != cname.length() - 1) {</span>
+<span class="fc" id="L1818">      return false;</span>
+    }
+
+    // array class
+<span class="pc bpc" id="L1822" title="1 of 4 branches missed.">    if ((c == '[') || cname.endsWith(&quot;[]&quot;)) {</span>
+<span class="fc" id="L1823">      return true;</span>
+    }
+
+    // primitive type class
+<span class="fc bfc" id="L1827" title="All 2 branches covered.">    if (Character.isLowerCase(c)) {</span>
+<span class="fc bfc" id="L1828" title="All 4 branches covered.">      if (&quot;int&quot;.equals(cname) || &quot;byte&quot;.equals(cname) ||</span>
+<span class="fc bfc" id="L1829" title="All 4 branches covered.">          &quot;boolean&quot;.equals(cname) || &quot;double&quot;.equals(cname) ||</span>
+<span class="fc bfc" id="L1830" title="All 4 branches covered.">          &quot;long&quot;.equals(cname) || &quot;char&quot;.equals(cname) ||</span>
+<span class="fc bfc" id="L1831" title="All 6 branches covered.">          &quot;short&quot;.equals(cname) || &quot;float&quot;.equals(cname) || &quot;void&quot;.equals(cname)) {</span>
+<span class="fc" id="L1832">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L1836">    return false;</span>
+  }
+
+  /**
+   * set the locations where we look up sources
+   */
+  static void setSourceRoots (Config config) {
+<span class="fc" id="L1843">    Source.init(config);</span>
+<span class="fc" id="L1844">  }</span>
+
+  /**
+   * get names of all interfaceNames (transitive, idx.e. incl. bases and super-interfaceNames)
+   * @return a Set of String interface names
+   */
+  public Set&lt;ClassInfo&gt; getAllInterfaces () {
+<span class="fc bfc" id="L1851" title="All 2 branches covered.">    if (allInterfaces == null) {</span>
+<span class="fc" id="L1852">      HashSet&lt;ClassInfo&gt; set = new HashSet&lt;ClassInfo&gt;();</span>
+
+<span class="fc bfc" id="L1854" title="All 2 branches covered.">      for (ClassInfo ci=this; ci != null; ci=ci.superClass) {</span>
+<span class="fc" id="L1855">        loadInterfaceRec(set, ci.interfaceNames);</span>
+      }
+
+<span class="fc" id="L1858">      allInterfaces = Collections.unmodifiableSet(set);</span>
+    }
+
+<span class="fc" id="L1861">    return allInterfaces;</span>
+  }
+
+  /**
+   * get names of directly implemented interfaceNames
+   */
+  public String[] getDirectInterfaceNames () {
+<span class="fc" id="L1868">    return interfaceNames;</span>
+  }
+
+  public Set&lt;ClassInfo&gt; getInterfaceClassInfos() {
+<span class="fc" id="L1872">    return interfaces;</span>
+  }
+
+  public Set&lt;ClassInfo&gt; getAllInterfaceClassInfos() {
+<span class="fc" id="L1876">    return getAllInterfaces();</span>
+  }
+
+  
+  /**
+   * get names of direct inner classes
+   */
+  public String[] getInnerClasses(){
+<span class="nc" id="L1884">    return innerClassNames;</span>
+  }
+  
+  public ClassInfo[] getInnerClassInfos(){
+<span class="nc" id="L1888">    ClassInfo[] innerClassInfos = new ClassInfo[innerClassNames.length];</span>
+    
+<span class="nc bnc" id="L1890" title="All 2 branches missed.">    for (int i=0; i&lt; innerClassNames.length; i++){</span>
+<span class="nc" id="L1891">      innerClassInfos[i] = classLoader.getResolvedClassInfo(innerClassNames[i]); // ? is this supposed to use the same classloader</span>
+    }
+    
+<span class="nc" id="L1894">    return innerClassInfos;</span>
+  }
+  
+  public BootstrapMethodInfo getBootstrapMethodInfo(int index) {
+<span class="fc" id="L1898">    return bootstrapMethods[index];</span>
+  }
+
+  public ClassInfo getComponentClassInfo () {
+<span class="pc bpc" id="L1902" title="1 of 2 branches missed.">    if (isArray()) {</span>
+<span class="fc" id="L1903">      String cn = name.substring(1);</span>
+
+<span class="fc bfc" id="L1905" title="All 2 branches covered.">      if (cn.charAt(0) != '[') {</span>
+<span class="fc" id="L1906">        cn = Types.getTypeName(cn);</span>
+      }
+
+<span class="fc" id="L1909">      ClassInfo cci = classLoader.getResolvedClassInfo(cn);</span>
+
+<span class="fc" id="L1911">      return cci;</span>
+    }
+
+<span class="nc" id="L1914">    return null;</span>
+  }
+
+  /**
+   * most definitely not a public method, but handy for the NativePeer
+   */
+  protected Map&lt;String, MethodInfo&gt; getDeclaredMethods () {
+<span class="fc" id="L1921">    return methods;</span>
+  }
+
+  /**
+   * be careful, this replaces or adds MethodInfos dynamically
+   */
+  public MethodInfo putDeclaredMethod (MethodInfo mi){
+<span class="fc" id="L1928">    return methods.put(mi.getUniqueName(), mi);</span>
+  }
+
+  public MethodInfo[] getDeclaredMethodInfos() {
+<span class="fc" id="L1932">    MethodInfo[] a = new MethodInfo[methods.size()];</span>
+<span class="fc" id="L1933">    methods.values().toArray(a);</span>
+<span class="fc" id="L1934">    return a;</span>
+  }
+
+  public Instruction[] getMatchingInstructions (LocationSpec lspec){
+<span class="fc" id="L1938">    Instruction[] insns = null;</span>
+
+<span class="pc bpc" id="L1940" title="1 of 2 branches missed.">    if (lspec.matchesFile(sourceFileName)){</span>
+<span class="fc bfc" id="L1941" title="All 2 branches covered.">      for (MethodInfo mi : methods.values()) {</span>
+<span class="fc" id="L1942">        Instruction[] a = mi.getMatchingInstructions(lspec);</span>
+<span class="fc bfc" id="L1943" title="All 2 branches covered.">        if (a != null){</span>
+<span class="pc bpc" id="L1944" title="1 of 2 branches missed.">          if (insns != null) {</span>
+            // not very efficient but probably rare
+<span class="nc" id="L1946">            insns = Misc.appendArray(insns, a);</span>
+          } else {
+<span class="fc" id="L1948">            insns = a;</span>
+          }
+
+          // little optimization
+<span class="pc bpc" id="L1952" title="1 of 2 branches missed.">          if (!lspec.isLineInterval()) {</span>
+<span class="fc" id="L1953">            break;</span>
+          }
+        }
+<span class="fc" id="L1956">      }</span>
+    }
+
+<span class="fc" id="L1959">    return insns;</span>
+  }
+
+  public List&lt;MethodInfo&gt; getMatchingMethodInfos (MethodSpec mspec){
+<span class="fc" id="L1963">    ArrayList&lt;MethodInfo&gt; list = null;</span>
+<span class="fc bfc" id="L1964" title="All 2 branches covered.">    if (mspec.matchesClass(name)) {</span>
+<span class="fc bfc" id="L1965" title="All 2 branches covered.">      for (MethodInfo mi : methods.values()) {</span>
+<span class="fc bfc" id="L1966" title="All 2 branches covered.">        if (mspec.matches(mi)) {</span>
+<span class="pc bpc" id="L1967" title="1 of 2 branches missed.">          if (list == null) {</span>
+<span class="fc" id="L1968">            list = new ArrayList&lt;MethodInfo&gt;();</span>
+          }
+<span class="fc" id="L1970">          list.add(mi);</span>
+        }
+<span class="fc" id="L1972">      }</span>
+    }
+<span class="fc" id="L1974">    return list;</span>
+  }
+
+  public MethodInfo getFinalizer () {
+<span class="fc" id="L1978">    return finalizer;</span>
+  }
+
+  public MethodInfo getClinit() {
+    // &lt;2do&gt; braindead - cache
+<span class="nc bnc" id="L1983" title="All 2 branches missed.">    for (MethodInfo mi : methods.values()) {</span>
+<span class="nc bnc" id="L1984" title="All 2 branches missed.">      if (&quot;&lt;clinit&gt;&quot;.equals(mi.getName())) {</span>
+<span class="nc" id="L1985">        return mi;</span>
+      }
+<span class="nc" id="L1987">    }</span>
+<span class="nc" id="L1988">    return null;</span>
+  }
+
+  public boolean hasCtors() {
+    // &lt;2do&gt; braindead - cache
+<span class="nc bnc" id="L1993" title="All 2 branches missed.">    for (MethodInfo mi : methods.values()) {</span>
+<span class="nc bnc" id="L1994" title="All 2 branches missed.">      if (&quot;&lt;init&gt;&quot;.equals(mi.getName())) {</span>
+<span class="nc" id="L1995">        return true;</span>
+      }
+<span class="nc" id="L1997">    }</span>
+<span class="nc" id="L1998">    return false;</span>
+  }
+
+  /**
+   * see getInitializedClassInfo() for restrictions.
+   */
+  public static ClassInfo getInitializedSystemClassInfo (String clsName, ThreadInfo ti){
+<span class="fc" id="L2005">    ClassLoaderInfo systemLoader = ClassLoaderInfo.getCurrentSystemClassLoader();</span>
+<span class="fc" id="L2006">    ClassInfo ci = systemLoader.getResolvedClassInfo(clsName);</span>
+<span class="fc" id="L2007">    ci.initializeClassAtomic(ti);</span>
+
+<span class="fc" id="L2009">    return ci;</span>
+  }
+
+  /**
+   * this one is for clients that need to synchronously get an initialized classinfo.
+   * NOTE: we don't handle clinits here. If there is one, this will throw
+   * an exception. NO STATIC BLOCKS / FIELDS ALLOWED
+   */
+  public static ClassInfo getInitializedClassInfo (String clsName, ThreadInfo ti){
+<span class="fc" id="L2018">    ClassLoaderInfo cl = ClassLoaderInfo.getCurrentClassLoader();</span>
+<span class="fc" id="L2019">    ClassInfo ci = cl.getResolvedClassInfo(clsName);</span>
+<span class="fc" id="L2020">    ci.initializeClassAtomic(ti);</span>
+
+<span class="fc" id="L2022">    return ci;</span>
+  }
+
+  public boolean isRegistered () {
+    //return (id != -1);
+<span class="fc bfc" id="L2027" title="All 2 branches covered.">    return getStaticElementInfo() != null;</span>
+  }
+  
+  /**
+   * this registers a ClassInfo in the corresponding ClassLoader statics so that we can cross-link from
+   * SUT code and access static fields.
+   */
+  public StaticElementInfo registerClass (ThreadInfo ti){
+<span class="fc" id="L2035">    StaticElementInfo sei = getStaticElementInfo();</span>
+    
+<span class="fc bfc" id="L2037" title="All 2 branches covered.">    if (sei == null) {</span>
+      // do this recursively for superclasses and interfaceNames
+      // respective classes might be defined by another classloader, so we have to call their ClassInfo.registerClass()
+      
+<span class="pc bpc" id="L2041" title="1 of 2 branches missed.">      if (superClass != null) {</span>
+<span class="fc" id="L2042">        superClass.registerClass(ti);</span>
+      }
+
+<span class="fc bfc" id="L2045" title="All 2 branches covered.">      for (ClassInfo ifc : interfaces) {</span>
+<span class="fc" id="L2046">        ifc.registerClass(ti);</span>
+<span class="fc" id="L2047">      }</span>
+      
+<span class="fc" id="L2049">      ClassInfo.logger.finer(&quot;registering class: &quot;, name);</span>
+      
+<span class="fc" id="L2051">      ElementInfo ei = createClassObject( ti);</span>
+<span class="fc" id="L2052">      sei = createAndLinkStaticElementInfo( ti, ei);</span>
+      
+      // SUT class is fully resolved and registered (but not necessarily initialized), notify listeners
+<span class="fc" id="L2055">      ti.getVM().notifyClassLoaded(this);</span>
+    }
+    
+<span class="fc" id="L2058">    return sei;</span>
+  }
+
+  ElementInfo createClassObject (ThreadInfo ti){
+<span class="fc" id="L2062">    Heap heap = VM.getVM().getHeap(); // ti can be null (during main thread initialization)</span>
+
+<span class="fc" id="L2064">    int anchor = name.hashCode(); // 2do - this should also take the ClassLoader ref into account</span>
+
+<span class="fc" id="L2066">    SystemClassLoaderInfo systemClassLoader = ti.getSystemClassLoaderInfo();</span>
+
+<span class="fc" id="L2068">    ClassInfo classClassInfo = systemClassLoader.getClassClassInfo();    </span>
+<span class="fc" id="L2069">    ElementInfo ei = heap.newSystemObject(classClassInfo, ti, anchor);</span>
+<span class="fc" id="L2070">    int clsObjRef = ei.getObjectRef();</span>
+    
+<span class="fc" id="L2072">    ElementInfo eiClsName = heap.newSystemString(name, ti, clsObjRef);</span>
+<span class="fc" id="L2073">    ei.setReferenceField(&quot;name&quot;, eiClsName.getObjectRef());</span>
+
+<span class="fc" id="L2075">    ei.setBooleanField(&quot;isPrimitive&quot;, isPrimitive());</span>
+    
+    // setting the ID_FIELD is done in registerClass once we have a StaticElementInfo
+
+    // link the SUT class object to the classloader 
+<span class="fc" id="L2080">    ei.setReferenceField(&quot;classLoader&quot;, classLoader.getClassLoaderObjectRef());</span>
+    
+<span class="fc" id="L2082">    return ei;</span>
+  }
+  
+  StaticElementInfo createAndLinkStaticElementInfo (ThreadInfo ti, ElementInfo eiClsObj) {
+<span class="fc" id="L2086">    Statics statics = classLoader.getStatics();</span>
+<span class="fc" id="L2087">    StaticElementInfo sei = statics.newClass(this, ti, eiClsObj);</span>
+    
+<span class="fc" id="L2089">    id = sei.getObjectRef();  // kind of a misnomer, it's really an id    </span>
+<span class="fc" id="L2090">    uniqueId = ((long)classLoader.getId() &lt;&lt; 32) | id;</span>
+    
+<span class="fc" id="L2092">    eiClsObj.setIntField( ID_FIELD, id);      </span>
+    
+<span class="fc" id="L2094">    return sei;</span>
+  }
+
+  
+  // for startup classes, the order of initialization is reversed since we can't create
+  // heap objects before we have a minimal set of registered classes
+  
+  void registerStartupClass(ThreadInfo ti, List&lt;ClassInfo&gt; list) {
+<span class="fc bfc" id="L2102" title="All 2 branches covered.">    if (!isRegistered()) {</span>
+      // do this recursively for superclasses and interfaceNames
+      // respective classes might be defined by another classloader, so we have
+      // to call their ClassInfo.registerClass()
+
+<span class="fc bfc" id="L2107" title="All 2 branches covered.">      if (superClass != null) {</span>
+<span class="fc" id="L2108">        superClass.registerStartupClass(ti, list);</span>
+      }
+
+<span class="fc bfc" id="L2111" title="All 2 branches covered.">      for (ClassInfo ifc : interfaces) {</span>
+<span class="fc" id="L2112">        ifc.registerStartupClass(ti, list);</span>
+<span class="fc" id="L2113">      }</span>
+    }
+
+<span class="fc bfc" id="L2116" title="All 2 branches covered.">    if (!list.contains(this)) {</span>
+<span class="fc" id="L2117">      list.add(this);</span>
+<span class="fc" id="L2118">      ClassInfo.logger.finer(&quot;registering startup class: &quot;, name);</span>
+<span class="fc" id="L2119">      createStartupStaticElementInfo(ti);</span>
+    }
+    
+      // SUT class is fully resolved and registered (but not necessarily initialized), notify listeners
+<span class="fc" id="L2123">      ti.getVM().notifyClassLoaded(this);</span>
+<span class="fc" id="L2124">  }</span>
+  
+  StaticElementInfo createStartupStaticElementInfo (ThreadInfo ti) {
+<span class="fc" id="L2127">    Statics statics = classLoader.getStatics();</span>
+<span class="fc" id="L2128">    StaticElementInfo sei = statics.newStartupClass(this, ti);</span>
+    
+<span class="fc" id="L2130">    id = sei.getObjectRef();  // kind of a misnomer, it's really an id    </span>
+<span class="fc" id="L2131">    uniqueId = ((long)classLoader.getId() &lt;&lt; 32) | id;</span>
+    
+<span class="fc" id="L2133">    return sei;</span>
+  }
+  
+  ElementInfo createAndLinkStartupClassObject (ThreadInfo ti) {
+<span class="fc" id="L2137">    StaticElementInfo sei = getStaticElementInfo();</span>
+<span class="fc" id="L2138">    ElementInfo ei = createClassObject(ti);</span>
+    
+<span class="fc" id="L2140">    sei.setClassObjectRef(ei.getObjectRef());</span>
+<span class="fc" id="L2141">    ei.setIntField( ID_FIELD, id);      </span>
+    
+<span class="fc" id="L2143">    return ei;</span>
+  }
+  
+  boolean checkIfValidClassClassInfo() {
+<span class="pc bpc" id="L2147" title="1 of 2 branches missed.">    return getDeclaredInstanceField( ID_FIELD) != null;</span>
+  }
+  
+  public boolean isInitializing () {
+<span class="nc" id="L2151">    StaticElementInfo sei = getStaticElementInfo();</span>
+<span class="nc bnc" id="L2152" title="All 4 branches missed.">    return ((sei != null) &amp;&amp; (sei.getStatus() &gt;= 0));</span>
+  }
+
+  /**
+   * note - this works recursively upwards since there might
+   * be a superclass with a clinit that is still executing
+   */
+  public boolean isInitialized () {
+<span class="fc bfc" id="L2160" title="All 2 branches covered.">    for (ClassInfo ci = this; ci != null; ci = ci.superClass){</span>
+<span class="fc" id="L2161">      StaticElementInfo sei = ci.getStaticElementInfo();</span>
+<span class="fc bfc" id="L2162" title="All 4 branches covered.">      if (sei == null || sei.getStatus() != INITIALIZED){</span>
+<span class="fc" id="L2163">        return false;</span>
+      }
+    }
+    
+<span class="fc" id="L2167">    return true;</span>
+  }
+
+  public boolean isResolved () {
+<span class="nc bnc" id="L2171" title="All 4 branches missed.">    return (!isObjectClassInfo() &amp;&amp; superClass != null);</span>
+  }
+
+  public boolean needsInitialization (ThreadInfo ti){
+<span class="fc" id="L2175">    StaticElementInfo sei = getStaticElementInfo();</span>
+<span class="fc bfc" id="L2176" title="All 2 branches covered.">    if (sei != null){</span>
+<span class="fc" id="L2177">      int status = sei.getStatus();</span>
+<span class="fc bfc" id="L2178" title="All 4 branches covered.">      if (status == INITIALIZED || status == ti.getId()){</span>
+<span class="fc" id="L2179">        return false;</span>
+      }
+    }
+
+<span class="fc" id="L2183">    return true;</span>
+  }
+
+  public void setInitializing(ThreadInfo ti) {
+<span class="fc" id="L2187">    StaticElementInfo sei = getModifiableStaticElementInfo();</span>
+<span class="fc" id="L2188">    sei.setStatus(ti.getId());</span>
+<span class="fc" id="L2189">  }</span>
+  
+  /**
+   * initialize this class and its superclasses (but not interfaces)
+   * this will cause execution of clinits of not-yet-initialized classes in this hierarchy
+   *
+   * note - we don't treat registration/initialization of a class as
+   * a sharedness-changing operation since it is done automatically by
+   * the VM and the triggering action in the SUT (e.g. static field access or method call)
+   * is the one that should update sharedness and/or break the transition accordingly
+   *
+   * @return true - if initialization pushed DirectCallStackFrames and caller has to re-execute
+   */
+  public boolean initializeClass(ThreadInfo ti){
+<span class="fc" id="L2203">    int pushedFrames = 0;</span>
+
+    // push clinits of class hierarchy (upwards, since call stack is LIFO)
+<span class="pc bpc" id="L2206" title="1 of 2 branches missed.">    for (ClassInfo ci = this; ci != null; ci = ci.getSuperClass()) {</span>
+<span class="fc" id="L2207">      StaticElementInfo sei = ci.getStaticElementInfo();</span>
+<span class="fc bfc" id="L2208" title="All 2 branches covered.">      if (sei == null){</span>
+<span class="fc" id="L2209">        sei = ci.registerClass(ti);</span>
+      }
+
+<span class="fc" id="L2212">      int status = sei.getStatus();</span>
+<span class="fc bfc" id="L2213" title="All 2 branches covered.">      if (status != INITIALIZED){</span>
+        // we can't do setInitializing() yet because there is no global lock that
+        // covers the whole clinit chain, and we might have a context switch before executing
+        // a already pushed subclass clinit - there can be races as to which thread
+        // does the static init first. Note this case is checked in INVOKECLINIT
+        // (which is one of the reasons why we have it).
+
+<span class="fc bfc" id="L2220" title="All 2 branches covered.">        if (status != ti.getId()) {</span>
+          // even if it is already initializing - if it does not happen in the current thread
+          // we have to sync, which we do by calling clinit
+<span class="fc" id="L2223">          MethodInfo mi = ci.getMethod(&quot;&lt;clinit&gt;()V&quot;, false);</span>
+<span class="fc bfc" id="L2224" title="All 2 branches covered.">          if (mi != null) {</span>
+<span class="fc" id="L2225">            DirectCallStackFrame frame = ci.createDirectCallStackFrame(ti, mi, 0);</span>
+<span class="fc" id="L2226">            ti.pushFrame( frame);</span>
+<span class="fc" id="L2227">            pushedFrames++;</span>
+
+<span class="fc" id="L2229">          } else {</span>
+            // it has no clinit, we can set it initialized
+<span class="fc" id="L2231">            ci.setInitialized();</span>
+          }
+        } else {
+          // ignore if it's already being initialized  by our own thread (recursive request)
+        }
+      } else {
+        break; // if this class is initialized, so are its superclasses
+      }
+    }
+
+<span class="fc bfc" id="L2241" title="All 2 branches covered.">    return (pushedFrames &gt; 0);</span>
+  }
+
+  /**
+   * use this with care since it will throw a JPFException if we encounter a choice point
+   * during execution of clinits
+   * Use this mostly for wrapper exceptions and other system classes that are guaranteed to load
+   */
+  public void initializeClassAtomic (ThreadInfo ti){
+<span class="pc bpc" id="L2250" title="1 of 2 branches missed.">    for (ClassInfo ci = this; ci != null; ci = ci.getSuperClass()) {</span>
+<span class="fc" id="L2251">      StaticElementInfo sei = ci.getStaticElementInfo();</span>
+<span class="fc bfc" id="L2252" title="All 2 branches covered.">      if (sei == null){</span>
+<span class="fc" id="L2253">        sei = ci.registerClass(ti);</span>
+      }
+
+<span class="fc" id="L2256">      int status = sei.getStatus();</span>
+<span class="pc bpc" id="L2257" title="1 of 4 branches missed.">      if (status != INITIALIZED &amp;&amp; status != ti.getId()){</span>
+<span class="fc" id="L2258">          MethodInfo mi = ci.getMethod(&quot;&lt;clinit&gt;()V&quot;, false);</span>
+<span class="fc bfc" id="L2259" title="All 2 branches covered.">          if (mi != null) {</span>
+<span class="fc" id="L2260">            DirectCallStackFrame frame = ci.createDirectCallStackFrame(ti, mi, 0);</span>
+<span class="fc" id="L2261">            ti.executeMethodAtomic(frame);</span>
+<span class="fc" id="L2262">          } else {</span>
+<span class="fc" id="L2263">            ci.setInitialized();</span>
+          }
+      } else {
+        break; // if this class is initialized, so are its superclasses
+      }
+    }
+<span class="fc" id="L2269">  }</span>
+
+  public void setInitialized() {
+<span class="fc" id="L2272">    StaticElementInfo sei = getStaticElementInfo();</span>
+<span class="pc bpc" id="L2273" title="1 of 4 branches missed.">    if (sei != null &amp;&amp; sei.getStatus() != INITIALIZED){</span>
+<span class="fc" id="L2274">      sei = getModifiableStaticElementInfo();</span>
+<span class="fc" id="L2275">      sei.setStatus(INITIALIZED);</span>
+
+      // we don't emit classLoaded() notifications for non-builtin classes
+      // here anymore because it would be confusing to get instructionExecuted()
+      // notifications from the &lt;clinit&gt; execution before the classLoaded()
+    }
+<span class="fc" id="L2281">  }</span>
+
+  public StaticElementInfo getStaticElementInfo() {
+<span class="fc bfc" id="L2284" title="All 2 branches covered.">    if (id != -1) {</span>
+<span class="fc" id="L2285">      return classLoader.getStatics().get( id);</span>
+    } else {
+<span class="fc" id="L2287">      return null;</span>
+    }
+  }
+
+  public StaticElementInfo getModifiableStaticElementInfo() {
+<span class="pc bpc" id="L2292" title="1 of 2 branches missed.">    if (id != -1) {</span>
+<span class="fc" id="L2293">      return classLoader.getStatics().getModifiable( id);</span>
+    } else {
+<span class="nc" id="L2295">      return null;      </span>
+    }
+  }
+
+  Fields createArrayFields (String type, int nElements, int typeSize, boolean isReferenceArray) {
+<span class="fc" id="L2300">    return fieldsFactory.createArrayFields( type, this,</span>
+                                            nElements, typeSize, isReferenceArray);
+  }
+
+  /**
+   * Creates the fields for a class.  This gets called during registration of a ClassInfo
+   */
+  Fields createStaticFields () {
+<span class="fc" id="L2308">    return fieldsFactory.createStaticFields(this);</span>
+  }
+
+  void initializeStaticData (ElementInfo ei, ThreadInfo ti) {
+<span class="fc bfc" id="L2312" title="All 2 branches covered.">    for (int i=0; i&lt;sFields.length; i++) {</span>
+<span class="fc" id="L2313">      FieldInfo fi = sFields[i];</span>
+<span class="fc" id="L2314">      fi.initialize(ei, ti);</span>
+    }
+<span class="fc" id="L2316">  }</span>
+
+  /**
+   * Creates the fields for an object.
+   */
+  public Fields createInstanceFields () {
+<span class="fc" id="L2322">    return fieldsFactory.createInstanceFields(this);</span>
+  }
+
+  void initializeInstanceData (ElementInfo ei, ThreadInfo ti) {
+    // Note this is only used for field inits, and array elements are not fields!
+    // Since Java has only limited element init requirements (either 0 or null),
+    // we do this ad hoc in the ArrayFields ctor
+
+    // the order of inits should not matter, since this is only
+    // for constant inits. In case of a &quot;class X { int a=42; int b=a; ..}&quot;
+    // we have a explicit &quot;GETFIELD a, PUTFIELD b&quot; in the ctor, but to play it
+    // safely we init top down
+
+<span class="fc bfc" id="L2335" title="All 2 branches covered.">    if (superClass != null) { // do superclasses first</span>
+<span class="fc" id="L2336">      superClass.initializeInstanceData(ei, ti);</span>
+    }
+
+<span class="fc bfc" id="L2339" title="All 2 branches covered.">    for (int i=0; i&lt;iFields.length; i++) {</span>
+<span class="fc" id="L2340">      FieldInfo fi = iFields[i];</span>
+<span class="fc" id="L2341">      fi.initialize(ei, ti);</span>
+    }
+<span class="fc" id="L2343">  }</span>
+
+  Map&lt;String, MethodInfo&gt; loadArrayMethods () {
+<span class="fc" id="L2346">    return new HashMap&lt;String, MethodInfo&gt;(0);</span>
+  }
+
+  Map&lt;String, MethodInfo&gt; loadBuiltinMethods (String type) {
+<span class="fc" id="L2350">    type = null;  // Get rid of IDE warning </span>
+     
+<span class="fc" id="L2352">    return new HashMap&lt;String, MethodInfo&gt;(0);</span>
+  }
+
+  protected ClassInfo loadSuperClass (String superName) throws ClassInfoException {
+<span class="pc bpc" id="L2356" title="1 of 2 branches missed.">    if (isObjectClassInfo()) {</span>
+<span class="nc" id="L2357">      return null;</span>
+    }
+
+<span class="fc" id="L2360">    logger.finer(&quot;resolving superclass: &quot;, superName, &quot; of &quot;, name);</span>
+
+    // resolve the superclass
+<span class="fc" id="L2363">    ClassInfo sci = resolveReferencedClass(superName);</span>
+
+<span class="fc" id="L2365">    return sci;</span>
+  }
+
+  protected Set&lt;ClassInfo&gt; loadInterfaces (String[] ifcNames) throws ClassInfoException {
+<span class="pc bpc" id="L2369" title="1 of 4 branches missed.">    if (ifcNames == null || ifcNames.length == 0){</span>
+<span class="fc" id="L2370">      return NO_INTERFACES;</span>
+      
+    } else {
+<span class="fc" id="L2373">      Set&lt;ClassInfo&gt; set = new HashSet&lt;ClassInfo&gt;();</span>
+
+<span class="fc bfc" id="L2375" title="All 2 branches covered.">      for (String ifcName : ifcNames) {</span>
+<span class="fc" id="L2376">        ClassInfo.logger.finer(&quot;resolving interface: &quot;, ifcName, &quot; of &quot;, name);</span>
+<span class="fc" id="L2377">        ClassInfo ifc = resolveReferencedClass(ifcName);</span>
+<span class="fc" id="L2378">        set.add(ifc);</span>
+      }
+
+<span class="fc" id="L2381">      return set;</span>
+    }
+  }
+  
+  /**
+   * loads superclass and direct interfaces, and computes information
+   * that depends on them
+   */
+  protected void resolveClass() {
+<span class="fc bfc" id="L2390" title="All 2 branches covered.">    if (!isObjectClassInfo){</span>
+<span class="fc" id="L2391">      superClass = loadSuperClass(superClassName);</span>
+<span class="fc" id="L2392">      releaseActions = superClass.releaseActions;</span>
+    }
+<span class="fc" id="L2394">    interfaces = loadInterfaces(interfaceNames);</span>
+
+    //computeInheritedAnnotations(superClass);
+
+<span class="fc" id="L2398">    isWeakReference = isWeakReference0();</span>
+<span class="fc" id="L2399">    isEnum = isEnum0();</span>
+<span class="fc" id="L2400">  }</span>
+
+  /**
+   * get a ClassInfo for a referenced type that is resolved with the same classLoader, but make
+   * sure we only do this once per path
+   * 
+   * This method is called by the following bytecode instructions:
+   * anewarray, checkcast, getstatic, instanceof, invokespecial, 
+   * invokestatic, ldc, ldc_w, multianewarray, new, and putstatic
+   * 
+   * It loads the class referenced by these instructions and adds it to the 
+   * resolvedClasses map of the classLoader
+   */
+  public ClassInfo resolveReferencedClass(String cname) {
+<span class="fc bfc" id="L2414" title="All 2 branches covered.">    if(name.equals(cname)) {</span>
+<span class="fc" id="L2415">      return this;</span>
+    }
+
+    // if the class has been already resolved just return it
+<span class="fc" id="L2419">    ClassInfo ci = classLoader.getAlreadyResolvedClassInfo(cname);</span>
+<span class="fc bfc" id="L2420" title="All 2 branches covered.">    if(ci != null) {</span>
+<span class="fc" id="L2421">      return ci;</span>
+    }
+ 
+    // The defining class loader of the class initiate the load of referenced classes
+<span class="fc" id="L2425">    ci = classLoader.loadClass(cname);</span>
+<span class="fc" id="L2426">    classLoader.addResolvedClass(ci);</span>
+
+<span class="fc" id="L2428">    return ci;</span>
+  }
+
+  protected int linkFields (FieldInfo[] fields, int idx, int off){
+<span class="fc bfc" id="L2432" title="All 2 branches covered.">    for (FieldInfo fi: fields) {      </span>
+<span class="fc" id="L2433">      fi.linkToClass(this, idx, off);</span>
+      
+<span class="fc" id="L2435">      int storageSize = fi.getStorageSize();      </span>
+<span class="fc" id="L2436">      off += storageSize;</span>
+<span class="fc" id="L2437">      idx++;</span>
+    }
+    
+<span class="fc" id="L2440">    return off;</span>
+  }
+  
+  protected void linkFields() {
+    //--- instance fields
+<span class="fc bfc" id="L2445" title="All 2 branches covered.">    if(superClass != null) {</span>
+<span class="fc" id="L2446">      int superDataSize = superClass.instanceDataSize;</span>
+<span class="fc" id="L2447">      instanceDataSize = linkFields( iFields,  superClass.nInstanceFields, superDataSize);</span>
+<span class="fc" id="L2448">      nInstanceFields = superClass.nInstanceFields + iFields.length;</span>
+<span class="fc" id="L2449">      instanceDataOffset = superClass.instanceDataSize;</span>
+      
+<span class="fc" id="L2451">    } else {</span>
+<span class="fc" id="L2452">      instanceDataSize = linkFields( iFields, 0, 0);</span>
+<span class="fc" id="L2453">      nInstanceFields = iFields.length;</span>
+<span class="fc" id="L2454">      instanceDataOffset = 0;</span>
+    }
+    
+    //--- static fields
+<span class="fc" id="L2458">    staticDataSize = linkFields( sFields, 0, 0);</span>
+<span class="fc" id="L2459">  }</span>
+
+  // this resolves all annotations in this class hierarchy, which sets inherited attributes
+  protected void checkInheritedAnnotations (){
+    
+<span class="nc" id="L2464">  }</span>
+  
+  @Override
+  public String toString() {
+<span class="fc" id="L2468">    return &quot;ClassInfo[name=&quot; + name + &quot;]&quot;;</span>
+  }
+
+  protected MethodInfo getFinalizer0 () {
+<span class="fc" id="L2472">    MethodInfo mi = getMethod(&quot;finalize()V&quot;, true);</span>
+
+    // we are only interested in non-empty method bodies, Object.finalize()
+    // is a dummy
+<span class="fc bfc" id="L2476" title="All 4 branches covered.">    if ((mi != null) &amp;&amp; (!mi.getClassInfo().isObjectClassInfo())) {</span>
+<span class="fc" id="L2477">      return mi;</span>
+    }
+
+<span class="fc" id="L2480">    return null;</span>
+  }
+
+  protected boolean isObjectClassInfo0 () {
+<span class="fc bfc" id="L2484" title="All 2 branches covered.">	if (name.equals(&quot;java.lang.Object&quot;)) {</span>
+<span class="fc" id="L2485">	  return true;</span>
+	}
+<span class="fc" id="L2487">	return false;</span>
+  }
+
+  protected boolean isStringClassInfo0 () {
+<span class="fc bfc" id="L2491" title="All 2 branches covered.">    if(name.equals(&quot;java.lang.String&quot;)) {</span>
+<span class="fc" id="L2492">      return true;</span>
+    }
+<span class="fc" id="L2494">    return false;</span>
+  }
+
+  protected boolean isRefClassInfo0 () {
+<span class="fc bfc" id="L2498" title="All 2 branches covered.">    if(name.equals(&quot;java.lang.ref.Reference&quot;)) {</span>
+<span class="fc" id="L2499">      return true;</span>
+    }
+<span class="fc" id="L2501">    return false;</span>
+  }
+
+  protected boolean isWeakReference0 () {
+<span class="fc bfc" id="L2505" title="All 2 branches covered.">	if(name.equals(&quot;java.lang.ref.WeakReference&quot;)) {</span>
+<span class="fc" id="L2506">      return true;</span>
+	}
+
+<span class="fc bfc" id="L2509" title="All 2 branches covered.">    for (ClassInfo ci = this; !ci.isObjectClassInfo(); ci = ci.superClass) {</span>
+<span class="fc bfc" id="L2510" title="All 2 branches covered.">      if (ci.isWeakReference()) {</span>
+<span class="fc" id="L2511">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L2515">    return false;</span>
+  }
+
+  protected boolean isEnum0 () {
+<span class="fc bfc" id="L2519" title="All 2 branches covered.">	if(name.equals(&quot;java.lang.Enum&quot;)) {</span>
+<span class="fc" id="L2520">      return true;</span>
+	}
+
+<span class="fc bfc" id="L2523" title="All 2 branches covered.">    for (ClassInfo ci = this; !ci.isObjectClassInfo(); ci = ci.superClass) {</span>
+<span class="fc bfc" id="L2524" title="All 2 branches covered.">      if (ci.isEnum()) {</span>
+<span class="fc" id="L2525">        return true;</span>
+      }
+    }
+
+<span class="fc" id="L2529">    return false;</span>
+  }
+
+  protected boolean isThreadClassInfo0 () {
+<span class="fc bfc" id="L2533" title="All 2 branches covered.">    if(name.equals(&quot;java.lang.Thread&quot;)) {</span>
+<span class="fc" id="L2534">      return true;</span>
+    }
+<span class="fc" id="L2536">    return false;</span>
+  }
+
+
+  /**
+   * It creates an instance from a original ClassInfo instance. It doesn't copy sei &amp; 
+   * uniqueId.
+   * 
+   * It is used for the cases where cl tries to load a class that the original version 
+   * of which has been loaded by some other classloader.
+   */
+  public ClassInfo cloneFor (ClassLoaderInfo cl) {
+    ClassInfo ci;
+
+    try {
+<span class="fc" id="L2551">      ci = (ClassInfo)clone();</span>
+
+<span class="fc" id="L2553">      ci.classLoader = cl;</span>
+<span class="fc" id="L2554">      ci.interfaces = new HashSet&lt;ClassInfo&gt;();</span>
+<span class="fc" id="L2555">      ci.resolveClass();</span>
+
+<span class="fc" id="L2557">      ci.id = -1;</span>
+<span class="fc" id="L2558">      ci.uniqueId = -1;</span>
+
+<span class="pc bpc" id="L2560" title="1 of 2 branches missed.">      if (methods != Collections.EMPTY_MAP){</span>
+<span class="fc" id="L2561">        ci.methods = (Map&lt;String, MethodInfo&gt;)((HashMap&lt;String, MethodInfo&gt;) methods).clone();</span>
+      }
+
+<span class="fc bfc" id="L2564" title="All 2 branches covered.">      for(Map.Entry&lt;String, MethodInfo&gt; e: ci.methods.entrySet()) {</span>
+<span class="fc" id="L2565">        MethodInfo mi = e.getValue();</span>
+<span class="fc" id="L2566">        e.setValue(mi.getInstanceFor(ci));</span>
+<span class="fc" id="L2567">      }</span>
+
+<span class="fc" id="L2569">      ci.iFields = new FieldInfo[iFields.length];</span>
+<span class="fc bfc" id="L2570" title="All 2 branches covered.">      for(int i=0; i&lt;iFields.length; i++) {</span>
+<span class="fc" id="L2571">        ci.iFields[i] = iFields[i].getInstanceFor(ci);</span>
+      }
+
+<span class="fc" id="L2574">      ci.sFields = new FieldInfo[sFields.length];</span>
+<span class="fc bfc" id="L2575" title="All 2 branches covered.">      for(int i=0; i&lt;sFields.length; i++) {</span>
+<span class="fc" id="L2576">        ci.sFields[i] = sFields[i].getInstanceFor(ci);</span>
+      }
+
+<span class="fc bfc" id="L2579" title="All 2 branches covered.">      if(nativePeer != null) {</span>
+<span class="fc" id="L2580">        ci.nativePeer = NativePeer.getNativePeer(ci);</span>
+      }
+
+<span class="fc" id="L2583">      ci.setAssertionStatus();</span>
+
+<span class="nc" id="L2585">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L2586">      cnsx.printStackTrace();</span>
+<span class="nc" id="L2587">      return null;</span>
+<span class="fc" id="L2588">    }</span>
+
+<span class="fc" id="L2590">    VM.getVM().notifyClassLoaded(ci);</span>
+<span class="fc" id="L2591">    return ci;</span>
+  }
+  
+  // &lt;2do&gt; should be abstract
+  public StackFrame createStackFrame (ThreadInfo ti, MethodInfo callee){
+<span class="nc" id="L2596">    return null;</span>
+  }
+  
+  public DirectCallStackFrame createDirectCallStackFrame (ThreadInfo ti, MethodInfo callee, int nLocalSlots){
+<span class="nc" id="L2600">    return null;</span>
+  }
+  
+  public DirectCallStackFrame createRunStartStackFrame (ThreadInfo ti, MethodInfo miRun){
+<span class="nc" id="L2604">    return null;</span>
+  }
+}
+
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

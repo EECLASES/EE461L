@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MethodSpec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">MethodSpec.java</span></div><h1>MethodSpec.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.Types;
+
+import java.util.BitSet;
+
+/**
+ * utility class that can match methods/args against specs.
+ * argument signatures can be given in dot notation (like javap), arguments
+ * can be marked with a preceeding '^'
+ * if the class or name part are omitted, &quot;*&quot; is assumed
+ * a preceeding '!' means the match is inverted
+ *
+ * spec examples
+ *   &quot;x.y.Foo.*&quot;
+ *   &quot;java.util.HashMap.add(java.lang.Object,^java.lang.Object)&quot;
+ *   &quot;*.*(x.y.MyClass)&quot;
+ *   
+ * Note: with a single '*' we can't tell if this is for the typename
+ * or the method, so something like &quot;java.*&quot; is probably not doing
+ * what you expect - it uses the wildcard for the method and 'java' for
+ * the type
+ *   
+ * &lt;2do&gt; we should extend this to allow alternatives
+ */
+public class MethodSpec extends FeatureSpec {
+
+<span class="fc" id="L48">  static class MethodParseData extends ParseData {</span>
+    String sigSpec;
+  }
+
+  static final char MARK = '^';  // to mark arguments
+
+  String  sigSpec;  // this is only the argument part, including parenthesis
+  BitSet  markedArgs;
+
+  /**
+   * factory method that includes the parser
+   */
+  public static MethodSpec createMethodSpec (String s){
+<span class="fc" id="L61">    MethodParseData d = new MethodParseData();</span>
+
+<span class="fc" id="L63">    s = s.trim();</span>
+<span class="fc" id="L64">    String src = s;</span>
+
+<span class="fc" id="L66">    s = parseInversion(s,d);</span>
+
+<span class="fc" id="L68">    int i = s.indexOf(('('));</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">    if (i &gt;= 0){ // we have a signature part</span>
+<span class="fc" id="L70">      int j = s.lastIndexOf(')');</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">      if (j &gt; i){</span>
+<span class="fc" id="L72">        d.sigSpec = s.substring(i, j+1);</span>
+<span class="fc" id="L73">        s = s.substring(0, i);</span>
+
+      } else {
+<span class="fc" id="L76">        return null; // error, unbalanced parenthesis</span>
+      }
+    }
+
+<span class="fc" id="L80">    parseTypeAndName(s,d);</span>
+
+    try {
+<span class="fc" id="L83">      return new MethodSpec(src, d.typeSpec, d.nameSpec, d.sigSpec, d.matchInverted);</span>
+<span class="nc" id="L84">    } catch (IllegalArgumentException iax){</span>
+<span class="nc" id="L85">      return null;</span>
+    }
+  }
+
+
+  public MethodSpec (String rawSpec, String cls, String name, String argSig, boolean inverted){
+<span class="fc" id="L91">    super(rawSpec,cls,name,inverted);</span>
+
+<span class="fc bfc" id="L93" title="All 2 branches covered.">    if (argSig != null){</span>
+<span class="fc" id="L94">      parseSignature(argSig);</span>
+    }
+<span class="fc" id="L96">  }</span>
+
+  /**
+   * assumed to be comma separated type list using fully qualified dot notation 
+   * like javap, but arguments can be marked with preceeding '^', 
+   * like &quot;(java.lang.String,^int[])&quot;
+   * spec includes parenthesis
+   */
+  void parseSignature (String spec){
+<span class="fc" id="L105">    BitSet m = null;</span>
+<span class="fc" id="L106">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L107">    String al = spec.substring(1, spec.length()-1);</span>
+<span class="fc" id="L108">    String[] args = al.split(&quot;,&quot;);</span>
+
+<span class="fc" id="L110">    sb.append('(');</span>
+<span class="fc" id="L111">    int i=0;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">    for (String a : args){</span>
+<span class="fc" id="L113">      a = a.trim();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">      if (a.length() &gt; 0){</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (a.charAt(0) == MARK){</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">          if (m == null){</span>
+<span class="fc" id="L117">            m = new BitSet(args.length);</span>
+          }
+<span class="fc" id="L119">          m.set(i);</span>
+<span class="fc" id="L120">          a = a.substring(1);</span>
+        }
+<span class="fc" id="L122">        String tc = Types.getTypeSignature(a, false);</span>
+<span class="fc" id="L123">        sb.append(tc);</span>
+<span class="fc" id="L124">        i++;</span>
+
+      } else {
+        // error in arg type spec
+      }
+    }
+<span class="fc" id="L130">    sb.append(')');</span>
+
+<span class="fc" id="L132">    sigSpec = sb.toString();</span>
+<span class="fc" id="L133">    markedArgs = m;</span>
+<span class="fc" id="L134">  }</span>
+
+
+  @Override
+  public String toString() {
+<span class="fc" id="L139">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L140">    sb.append(&quot;MethodSpec {&quot;);</span>
+<span class="fc" id="L141">    sb.append(&quot;matchInverted:&quot;);</span>
+<span class="fc" id="L142">    sb.append(matchInverted);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">    if (clsSpec != null){</span>
+<span class="fc" id="L144">      sb.append(&quot;,clsSpec:\&quot;&quot;);</span>
+<span class="fc" id="L145">      sb.append(clsSpec);</span>
+<span class="fc" id="L146">      sb.append('&quot;');</span>
+    }
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">    if (nameSpec != null){</span>
+<span class="fc" id="L149">      sb.append(&quot;,nameSpec:\&quot;&quot;);</span>
+<span class="fc" id="L150">      sb.append(nameSpec);</span>
+<span class="fc" id="L151">      sb.append('&quot;');</span>
+    }
+<span class="fc bfc" id="L153" title="All 2 branches covered.">    if (sigSpec != null){</span>
+<span class="fc" id="L154">      sb.append(&quot;,sigSpec:\&quot;&quot;);</span>
+<span class="fc" id="L155">      sb.append(sigSpec);</span>
+<span class="fc" id="L156">      sb.append('&quot;');</span>
+    }
+<span class="fc bfc" id="L158" title="All 2 branches covered.">    if (markedArgs != null){</span>
+<span class="fc" id="L159">      sb.append(&quot;,marked:&quot;);</span>
+<span class="fc" id="L160">      sb.append(markedArgs);</span>
+    }
+<span class="fc" id="L162">    sb.append('}');</span>
+<span class="fc" id="L163">    return sb.toString();</span>
+  }
+
+  
+  public BitSet getMarkedArgs () {
+<span class="nc" id="L168">    return markedArgs;</span>
+  }
+
+  public boolean isMarkedArg(int idx){
+<span class="nc bnc" id="L172" title="All 4 branches missed.">    return (markedArgs == null || markedArgs.get(idx));</span>
+  }
+
+
+  //--- our matchers
+
+  @Override
+  public boolean matches (Object feature){
+<span class="nc bnc" id="L180" title="All 2 branches missed.">    if (feature instanceof MethodInfo){</span>
+<span class="nc" id="L181">      return matches((MethodInfo)feature);</span>
+    } else {
+<span class="nc" id="L183">      return false;</span>
+    }
+  }
+
+  public boolean matches (MethodInfo mi){
+<span class="fc" id="L188">    boolean isMatch = false;</span>
+
+<span class="fc" id="L190">    ClassInfo ci = mi.getClassInfo();</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">    if (isMatchingType(ci)){</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">      if (nameSpec.matches(mi.getName())){</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (sigSpec != null){</span>
+          // sigSpec includes '(',')' but not return type
+<span class="fc" id="L195">          isMatch = mi.getSignature().startsWith(sigSpec);</span>
+        } else { // no sigSpec -&gt; matches all signatures
+<span class="fc" id="L197">          isMatch = true;</span>
+        }
+      }
+    }
+
+<span class="fc bfc" id="L202" title="All 2 branches covered.">    return (isMatch != matchInverted);</span>
+  }
+
+  public boolean matches (String clsName, String mthName){
+<span class="nc bnc" id="L206" title="All 4 branches missed.">    boolean isMatch = clsSpec.matches(clsName) &amp;&amp; nameSpec.matches(mthName);</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">    return isMatch != matchInverted;</span>
+  }
+
+  public boolean matchesClass (String clsName){
+<span class="fc bfc" id="L211" title="All 2 branches covered.">    return clsSpec.matches(clsName) != matchInverted;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

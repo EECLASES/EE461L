@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ErrorTraceGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.listener</a> &gt; <span class="el_source">ErrorTraceGenerator.java</span></div><h1>ErrorTraceGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.listener;
+
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.JPF;
+import gov.nasa.jpf.PropertyListenerAdapter;
+import gov.nasa.jpf.annotation.JPFOption;
+import gov.nasa.jpf.report.ConsolePublisher;
+import gov.nasa.jpf.report.Publisher;
+import gov.nasa.jpf.report.PublisherExtension;
+import gov.nasa.jpf.search.Search;
+import gov.nasa.jpf.vm.ChoiceGenerator;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.VM;
+import gov.nasa.jpf.vm.SystemState;
+
+import java.io.PrintWriter;
+
+/** 
+ * A lightweight listener to generate the error trace by printing
+ * the program instructions at transition boundaries. The idea is to have
+ * a shorter trace output that only shows the choices
+ */
+public class ErrorTraceGenerator extends PropertyListenerAdapter implements PublisherExtension {
+
+  protected ChoiceGenerator&lt;?&gt;[] trace;
+
+<span class="nc" id="L46">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;etg.show_insn&quot;, defaultValue = &quot;true&quot;, comment = &quot;print instruction that caused CG&quot;)</span>
+  protected boolean showInsn = true;
+  
+<span class="nc" id="L49">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;etg.show_loc&quot;, defaultValue = &quot;true&quot;, comment = &quot;print source location that caused CG&quot;)</span>
+  protected boolean showLoc = true;
+
+<span class="nc" id="L52">  @JPFOption(type = &quot;Boolean&quot;, key = &quot;etg.show_src&quot;, defaultValue = &quot;true&quot;, comment = &quot;print source line that caused CG&quot;)</span>
+  protected boolean showSrc = true;
+  
+<span class="nc" id="L55">	public ErrorTraceGenerator(Config conf, JPF jpf) {</span>
+<span class="nc" id="L56">		jpf.addPublisherExtension(ConsolePublisher.class, this);</span>
+    
+<span class="nc" id="L58">    showInsn = conf.getBoolean(&quot;etg.show_insn&quot;, showInsn);</span>
+<span class="nc" id="L59">    showSrc = conf.getBoolean(&quot;etg.show_src&quot;, showLoc);</span>
+<span class="nc" id="L60">    showLoc = conf.getBoolean(&quot;etg.show_loc&quot;, showSrc);</span>
+<span class="nc" id="L61">	}</span>
+
+  @Override
+  public void publishPropertyViolation (Publisher p){
+<span class="nc" id="L65">    PrintWriter pw = p.getOut();</span>
+    
+<span class="nc" id="L67">    p.publishTopicStart(&quot;error trace choices&quot;);</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">    if (trace != null){</span>
+<span class="nc" id="L70">      int i=0;</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">      for (ChoiceGenerator&lt;?&gt; cg : trace){</span>
+<span class="nc" id="L72">        int tid = cg.getThreadInfo().getId();</span>
+<span class="nc" id="L73">        Instruction insn = cg.getInsn();</span>
+
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (!cg.isCascaded()){</span>
+<span class="nc" id="L76">          pw.printf(&quot;#%2d [tid=%2d] &quot;, i++, tid);</span>
+        } else {
+<span class="nc" id="L78">          pw.print(&quot;             &quot;);</span>
+        }
+        
+<span class="nc" id="L81">        pw.println(cg);</span>
+        
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (!cg.isCascaded()){</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">          if (showLoc){</span>
+<span class="nc" id="L85">            String loc = insn.getFilePos();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">            if (loc == null){</span>
+<span class="nc" id="L87">              loc = &quot;[no file]&quot;;</span>
+            }
+<span class="nc" id="L89">            pw.print(&quot;\tat &quot;);</span>
+<span class="nc" id="L90">            pw.print(loc);</span>
+            
+<span class="nc" id="L92">            pw.print(&quot; in &quot;);</span>
+<span class="nc" id="L93">            pw.println( insn.getMethodInfo());</span>
+          }
+          
+<span class="nc bnc" id="L96" title="All 2 branches missed.">          if (showInsn) {</span>
+<span class="nc" id="L97">            pw.printf(&quot;\tinstruction: [pc=%d] %s\n&quot;, insn.getPosition(), insn);</span>
+          }
+
+<span class="nc bnc" id="L100" title="All 2 branches missed.">          if (showSrc) {</span>
+<span class="nc" id="L101">            String srcLine = insn.getSourceLine();</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">            if (srcLine == null){</span>
+<span class="nc" id="L103">              srcLine = &quot;[no source]&quot;;</span>
+            } else {
+<span class="nc" id="L105">              srcLine = srcLine.trim();</span>
+            }
+<span class="nc" id="L107">            pw.print(&quot;\tsource: &quot;);</span>
+<span class="nc" id="L108">            pw.println( srcLine);</span>
+          }
+        }
+      }
+    }
+<span class="nc" id="L113">  }</span>
+  
+  @Override
+  public void propertyViolated(Search search) {
+<span class="nc" id="L117">    VM vm = search.getVM();</span>
+<span class="nc" id="L118">    SystemState ss = vm.getSystemState();</span>
+<span class="nc" id="L119">    trace = ss.getChoiceGenerators();</span>
+<span class="nc" id="L120">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

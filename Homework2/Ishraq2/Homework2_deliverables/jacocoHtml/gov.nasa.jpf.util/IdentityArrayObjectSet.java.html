@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IdentityArrayObjectSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">IdentityArrayObjectSet.java</span></div><h1>IdentityArrayObjectSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.util;
+
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+/**
+ * simple identity set for objects 
+ * we don't sort&amp;bisect, assuming the number of entries will be small
+ * be aware this doesn't scale to large sets
+ */
+public class IdentityArrayObjectSet&lt;E&gt; implements IdentityObjectSet&lt;E&gt; {
+
+  static final int DEFAULT_CAPACITY = 4;
+  
+<span class="nc" id="L33">  private class StoreOrderIterator implements Iterator&lt;E&gt; {</span>
+<span class="nc" id="L34">    int next = 0;</span>
+
+    @Override
+    public void remove() {
+<span class="nc" id="L38">      int idx = next-1;</span>
+<span class="nc bnc" id="L39" title="All 2 branches missed.">      if (idx &gt;=0){</span>
+<span class="nc bnc" id="L40" title="All 2 branches missed.">        if (idx &lt; size-1){</span>
+<span class="nc" id="L41">          System.arraycopy(elements, next, elements, idx, size-idx);</span>
+        }
+<span class="nc" id="L43">        size--;</span>
+<span class="nc" id="L44">        next = idx;</span>
+      }
+<span class="nc" id="L46">    }</span>
+
+    @Override
+    public boolean hasNext() {
+<span class="nc bnc" id="L50" title="All 2 branches missed.">      return (next &lt; size);</span>
+    }
+
+    @Override
+    public E next() {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">      if (next &lt; size){</span>
+<span class="nc" id="L56">        return (E) elements[next++];</span>
+      } else {
+<span class="nc" id="L58">        throw new NoSuchElementException();</span>
+      }
+    }
+  }
+  
+  protected int size;
+  protected Object[] elements;
+  
+<span class="fc" id="L66">  public IdentityArrayObjectSet(){</span>
+    // nothing, elements allocated on demand
+<span class="fc" id="L68">  }</span>
+  
+<span class="nc" id="L70">  public IdentityArrayObjectSet (int initialCapacity){</span>
+<span class="nc" id="L71">    elements = new Object[initialCapacity];</span>
+<span class="nc" id="L72">  }</span>
+  
+<span class="nc" id="L74">  public IdentityArrayObjectSet (E initialElement){</span>
+<span class="nc" id="L75">    elements = new Object[DEFAULT_CAPACITY];</span>
+    
+<span class="nc" id="L77">    elements[0] = initialElement;</span>
+<span class="nc" id="L78">    size = 1;</span>
+<span class="nc" id="L79">  }</span>
+  
+  @Override
+  public int size(){
+<span class="fc" id="L83">    return size;</span>
+  }
+  
+  public boolean isEmpty(){
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">    return (size == 0);</span>
+  }
+  
+  @Override
+  public boolean add (E obj){
+<span class="fc bfc" id="L92" title="All 2 branches covered.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">      if (elements[i] == obj){</span>
+<span class="fc" id="L94">        return false;</span>
+      }
+    }
+    
+<span class="fc bfc" id="L98" title="All 2 branches covered.">    if (size == 0){</span>
+<span class="fc" id="L99">      elements = new Object[DEFAULT_CAPACITY];</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">    } else if (size == elements.length){</span>
+<span class="nc" id="L101">      Object[] newElements = new Object[elements.length * 3 / 2];</span>
+<span class="nc" id="L102">      System.arraycopy(elements, 0, newElements, 0, size);</span>
+<span class="nc" id="L103">      elements = newElements;</span>
+    }
+    
+<span class="fc" id="L106">    elements[size] = obj;</span>
+<span class="fc" id="L107">    size++;</span>
+<span class="fc" id="L108">    return true;</span>
+  }
+  
+  @Override
+  public boolean contains (E obj){
+<span class="fc bfc" id="L113" title="All 2 branches covered.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">      if (elements[i] == obj){</span>
+<span class="fc" id="L115">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L119">    return false;</span>
+  }
+  
+  @Override
+  public boolean remove (E obj){
+<span class="fc" id="L124">    int len = size;</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">    for (int i=0; i&lt;len; i++){</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">      if (elements[i] == obj){</span>
+<span class="fc" id="L127">        len--;</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (len == 0){</span>
+<span class="fc" id="L129">          size = 0;</span>
+<span class="fc" id="L130">          elements = null;</span>
+          
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        } else if (i &lt; len){</span>
+<span class="fc" id="L133">          System.arraycopy(elements, i+1, elements, i, len-i);</span>
+        } else {
+<span class="nc" id="L135">          elements[len] = null; // avoid memory leak</span>
+        }
+        
+<span class="fc" id="L138">        size = len;</span>
+<span class="fc" id="L139">        return true;</span>
+      }
+    }
+    
+<span class="fc" id="L143">    return false;    </span>
+  }
+  
+  @Override
+  public ObjectSet&lt;E&gt; clone(){
+    try {
+<span class="nc" id="L149">      return (ObjectSet&lt;E&gt;)super.clone();</span>
+<span class="nc" id="L150">    } catch (CloneNotSupportedException x){</span>
+      // can't happen
+<span class="nc" id="L152">      return null;</span>
+    }
+  }
+  
+  @Override
+  public Iterator&lt;E&gt; iterator(){
+<span class="nc" id="L158">    return new StoreOrderIterator();</span>
+  }
+  
+  @Override
+  public String toString(){
+<span class="fc" id="L163">    StringBuilder sb = new StringBuilder(/*getClass().getName()*/);</span>
+<span class="fc" id="L164">    sb.append('{');</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">    for (int i=0; i&lt;size; i++){</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">      if (i&gt;0){</span>
+<span class="fc" id="L167">        sb.append(',');</span>
+      }
+<span class="fc" id="L169">      sb.append(elements[i]);</span>
+    }
+<span class="fc" id="L171">    sb.append('}');</span>
+<span class="fc" id="L172">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

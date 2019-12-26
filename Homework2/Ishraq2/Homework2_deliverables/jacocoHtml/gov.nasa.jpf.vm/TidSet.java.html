@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TidSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">TidSet.java</span></div><h1>TidSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.util.UnsortedArrayIntSet;
+
+/**
+ * set that stores threads via (search global) thread ids. Used to detect shared objects/classes,
+ * created by configured SharedObjectPolicy factory
+ * 
+ * Note - this class modified contents of instances, i.e. it does destructive updates
+ * and hence has state carry-over between paths
+ */
+public class TidSet extends UnsortedArrayIntSet implements ThreadInfoSet, Memento&lt;ThreadInfoSet&gt; {
+  
+  protected VM vm;
+  
+<span class="fc" id="L34">  public TidSet (ThreadInfo ti){</span>
+<span class="fc" id="L35">    vm = ti.getVM();</span>
+    
+<span class="fc" id="L37">    add( ti.getId());</span>
+<span class="fc" id="L38">  }  </span>
+  
+  //--- set update
+  
+  @Override
+  public ThreadInfoSet add (ThreadInfo ti) {
+<span class="fc" id="L44">    add( ti.getId());</span>
+<span class="fc" id="L45">    return this;</span>
+  }
+  
+  @Override
+  public ThreadInfoSet remove (ThreadInfo ti) {
+<span class="nc" id="L50">    remove( ti.getId());</span>
+<span class="nc" id="L51">    return this;</span>
+  }
+  
+  
+  //--- set query
+  
+  @Override
+  public boolean contains (ThreadInfo ti) {
+<span class="nc" id="L59">    return contains( ti.getId());</span>
+  }
+  
+  @Override
+  public boolean isShared (ThreadInfo ti, ElementInfo ei){
+<span class="fc" id="L64">    return hasMultipleLiveThreads();</span>
+  }
+  
+  @Override
+  public boolean hasMultipleLiveThreads(){
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L70">      return false;</span>
+      
+    } else {
+<span class="fc" id="L73">      boolean alreadyHadOne = false;</span>
+<span class="fc" id="L74">      ThreadList tl = vm.getThreadList();</span>
+      
+<span class="fc bfc" id="L76" title="All 2 branches covered.">      for (int i=0; i&lt;size; i++){</span>
+<span class="fc" id="L77">        ThreadInfo ti = tl.getThreadInfoForId(elements[i]);</span>
+<span class="fc bfc" id="L78" title="All 4 branches covered.">        if (ti != null &amp;&amp; !ti.isTerminated()){</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">          if (alreadyHadOne){</span>
+<span class="fc" id="L80">            return true;</span>
+          }
+<span class="fc" id="L82">          alreadyHadOne = true;</span>
+        }
+      }
+      
+<span class="fc" id="L86">      return false;</span>
+    }
+  }
+
+  @Override
+  public boolean hasMultipleRunnableThreads(){
+<span class="nc bnc" id="L92" title="All 2 branches missed.">    if (size == 0){</span>
+<span class="nc" id="L93">      return false;</span>
+      
+    } else {
+<span class="nc" id="L96">      boolean alreadyHadOne = false;</span>
+<span class="nc" id="L97">      ThreadList tl = vm.getThreadList();</span>
+      
+<span class="nc bnc" id="L99" title="All 2 branches missed.">      for (int i=0; i&lt;size; i++){</span>
+<span class="nc" id="L100">        ThreadInfo ti = tl.getThreadInfoForId(elements[i]);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">        if (ti != null &amp;&amp; ti.isRunnable()){</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">          if (alreadyHadOne){</span>
+<span class="nc" id="L103">            return true;</span>
+          }
+<span class="nc" id="L105">          alreadyHadOne = true;</span>
+        }
+      }
+      
+<span class="nc" id="L109">      return false;</span>
+    }
+  }
+  
+  @Override
+  public String toString() {
+<span class="nc" id="L115">    StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L116">    sb.append(getClass().getName());</span>
+<span class="nc" id="L117">    sb.append('{');</span>
+<span class="nc bnc" id="L118" title="All 2 branches missed.">    for (int i = 0; i&lt;size; i++) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">      if (i&gt;0) {</span>
+<span class="nc" id="L120">        sb.append(',');</span>
+      }
+<span class="nc" id="L122">      sb.append(elements[i]);</span>
+    }
+<span class="nc" id="L124">    sb.append('}');</span>
+    
+<span class="nc" id="L126">    return sb.toString();</span>
+  }
+
+  
+  //--- state management (TidSet instance per default are their own mementos)
+  
+  @Override
+  public Memento&lt;ThreadInfoSet&gt; getMemento(){
+<span class="nc" id="L134">    return this;</span>
+  }
+
+  @Override
+  public ThreadInfoSet restore(ThreadInfoSet inSitu) {
+<span class="nc" id="L139">    return this;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

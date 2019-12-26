@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SortedArrayIntSet.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">SortedArrayIntSet.java</span></div><h1>SortedArrayIntSet.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+
+/**
+ * a set of integers that uses a simple sorted int array and binary search
+ * 
+ * To be used in a context where
+ * 
+ *  - the number of elements does not have a hard limit
+ *  - the number of elements is assumed to be small, but potentially sparse
+ *  - the following operations are time critical
+ *     + inclusion check
+ *     + size check
+ *     + cloning
+ *     + iteration over elements
+ *  - adding/removing should be better than O(N)
+ *  
+ */
+public class SortedArrayIntSet extends ArrayIntSet {
+  
+  static final int DEFAULT_CAPACITY = 8;
+  static final int GROWTH = 8;
+      
+  //--- private methods
+  
+  // returns the index where the match should be
+  // caller has to make sure size &gt; 0
+  protected final int bisect (int val){
+<span class="fc" id="L46">    int min = 0;</span>
+<span class="fc" id="L47">    int max = size-1;</span>
+<span class="fc" id="L48">    int[] a = elements;</span>
+    
+<span class="fc bfc" id="L50" title="All 2 branches covered.">    while (max &gt; min) {</span>
+<span class="fc" id="L51">      int mid = (min + max) / 2;</span>
+      
+<span class="fc bfc" id="L53" title="All 2 branches covered.">      if (a[mid] &lt; val) {</span>
+<span class="fc" id="L54">        min = mid + 1;</span>
+      } else {
+<span class="fc" id="L56">        max = mid;</span>
+      }
+<span class="fc" id="L58">    }</span>
+    
+<span class="fc" id="L60">    return min;</span>
+  }
+  
+  
+  // if we already have elements, idx has to be within range
+  protected final void insertElement (int idx){
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">    if (elements == null){</span>
+<span class="nc" id="L67">      elements = new int[DEFAULT_CAPACITY];</span>
+     
+    } else {
+<span class="fc" id="L70">      int[] a = elements;      </span>
+      
+<span class="fc bfc" id="L72" title="All 2 branches covered.">      if (size == a.length){</span>
+<span class="fc" id="L73">        int newLength = a.length + GROWTH;</span>
+<span class="fc" id="L74">        int[] newElements = new int[newLength];</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (idx &gt; 0){</span>
+<span class="fc" id="L76">          System.arraycopy(a, 0, newElements, 0, idx);</span>
+        }
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (idx &lt; size){</span>
+<span class="fc" id="L79">          System.arraycopy(a, idx, newElements, idx+1, size-idx);</span>
+        }
+<span class="fc" id="L81">        elements = newElements;</span>
+        
+<span class="fc" id="L83">      } else {</span>
+<span class="fc" id="L84">        System.arraycopy(a, idx, a, idx+1, size-idx);</span>
+      }
+    }
+<span class="fc" id="L87">  }</span>
+  
+  
+  //--- public methods
+  
+<span class="fc" id="L92">  public SortedArrayIntSet (){</span>
+    // nothing
+<span class="fc" id="L94">  }</span>
+  
+  public SortedArrayIntSet (int initialCapacity){
+<span class="fc" id="L97">    super(initialCapacity);</span>
+<span class="fc" id="L98">  }</span>
+  
+  @Override
+  public boolean contains (int v) {
+<span class="fc bfc" id="L102" title="All 4 branches covered.">    return ((size &gt; 0) &amp;&amp; elements[bisect(v)] == v);      </span>
+  }
+  
+  @Override
+  public boolean add (int v){
+<span class="fc bfc" id="L107" title="All 2 branches covered.">    if (size == 0){</span>
+<span class="fc" id="L108">      elements = new int[DEFAULT_CAPACITY];</span>
+<span class="fc" id="L109">      elements[0] = v;</span>
+<span class="fc" id="L110">      size++;</span>
+<span class="fc" id="L111">      return true;</span>
+      
+    } else {
+<span class="fc" id="L114">      int i = bisect(v);</span>
+<span class="fc" id="L115">      int e = elements[i];</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">      if (e != v){</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (e &lt; v) {</span>
+<span class="fc" id="L118">          i++;</span>
+        }
+        
+<span class="fc" id="L121">        insertElement(i);</span>
+<span class="fc" id="L122">        elements[i] = v;</span>
+<span class="fc" id="L123">        size++;</span>
+<span class="fc" id="L124">        return true;</span>
+        
+      } else {
+<span class="fc" id="L127">        return false; // was already there</span>
+      }
+    }
+  }
+    
+  @Override
+  public boolean remove (int v) {
+<span class="fc" id="L134">    int len = size;</span>
+    
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">    if (len &gt; 0){</span>
+<span class="fc" id="L137">      int[] a = elements;</span>
+<span class="fc" id="L138">      int i = bisect(v);</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">      if (a[i] == v) {</span>
+<span class="fc" id="L140">        len--;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (len == 0){</span>
+<span class="fc" id="L142">          elements = null;</span>
+<span class="fc" id="L143">          size = 0;</span>
+          
+        } else {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">          if (i &lt; len){</span>
+<span class="fc" id="L147">            System.arraycopy(a, i + 1, a, i, (len - i));          </span>
+          }
+<span class="fc" id="L149">          size = len;</span>
+        }
+        
+<span class="fc" id="L152">        return true;</span>
+      }
+    }
+    
+<span class="nc" id="L156">    return false; // wasn't there</span>
+  }
+  
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

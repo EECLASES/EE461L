@@ -1,0 +1,574 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IntTable.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util</a> &gt; <span class="el_source">IntTable.java</span></div><h1>IntTable.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util;
+
+import gov.nasa.jpf.JPFException;
+
+import java.util.Iterator;
+
+/**
+ * A hash map that holds int values associated with generic key objects.
+ * This is a straight forward linked list hashmap.
+ *
+ * Key objects have to be invariant, lookup uses equality but checks for
+ * identity as an optimization.
+ *
+ * note: this does deep copy clones, which can be quite expensive
+ */
+public final class IntTable&lt;E&gt; implements Iterable&lt;IntTable.Entry&lt;E&gt;&gt;, Cloneable{
+  static final int INIT_TBL_POW = 7;
+  static final double MAX_LOAD = 0.80;
+  
+  //--- inner types
+  
+  /**
+   * encapsulates an Entry in the table.  changes to val will be reflected
+   * in the table.
+   */  
+  public static class Entry&lt;E&gt; implements Cloneable {
+    public final E key;
+    public final int val;
+    protected Entry&lt;E&gt; next;
+    
+<span class="fc" id="L48">    protected Entry(E k, int v) {</span>
+<span class="fc" id="L49">      key = k;</span>
+<span class="fc" id="L50">      val = v;</span>
+<span class="fc" id="L51">      next = null;</span>
+<span class="fc" id="L52">      }</span>
+<span class="fc" id="L53">    protected Entry(E k, int v, Entry&lt;E&gt; n) {</span>
+<span class="fc" id="L54">      key = k; </span>
+<span class="fc" id="L55">      val = v;</span>
+<span class="fc" id="L56">      next = n; </span>
+<span class="fc" id="L57">    }</span>
+
+    @Override
+	@SuppressWarnings(&quot;unchecked&quot;)
+    public Entry&lt;E&gt; clone() {
+      try {
+<span class="fc" id="L63">        return (Entry&lt;E&gt;)super.clone();</span>
+<span class="nc" id="L64">      } catch (CloneNotSupportedException x){</span>
+<span class="nc" id="L65">        throw new JPFException(&quot;clone failed&quot;);</span>
+      }
+    }
+
+    @Override
+	public String toString() {
+<span class="fc" id="L71">      return key.toString() + &quot; =&gt; &quot; + val;</span>
+    }
+    
+    //--- methods required to use IntTable entries itself as HashMap keys
+    // but beware - val can be modified since we expose it (never modify
+    // key objects of HashMaps)
+
+    @Override
+	public int hashCode (){
+<span class="nc" id="L80">      return OATHash.hash(key.hashCode(), val);</span>
+    }
+    
+    @Override
+	public boolean equals (Object o){
+<span class="nc bnc" id="L85" title="All 2 branches missed.">      if (o instanceof Entry){</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L87">        Entry&lt;E&gt; other = (Entry&lt;E&gt;)o;</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (val == other.val){</span>
+<span class="nc" id="L89">          E k = other.key;</span>
+<span class="nc bnc" id="L90" title="All 4 branches missed.">          if (key == k || key.equals(k)){</span>
+<span class="nc" id="L91">            return true;</span>
+          }
+        }
+      }
+      
+<span class="nc" id="L96">      return false;</span>
+    }
+  }
+  
+  /**
+   * helper class to store a compact, invariant representation of this table
+   */
+  public static class Snapshot&lt;E&gt; {
+    protected final int tblSize;
+    protected final int tblPow;
+    
+    protected final int[] indices;
+    protected final E[] keys;
+    protected final int[] vals;
+    
+    @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L112">    protected Snapshot (IntTable&lt;E&gt; t){</span>
+<span class="fc" id="L113">      Entry&lt;E&gt;[] tbl = t.table;</span>
+<span class="fc" id="L114">      int nEntries = t.size;</span>
+            
+<span class="fc" id="L116">      tblSize = tbl.length;</span>
+<span class="fc" id="L117">      tblPow = t.tblPow;</span>
+      
+<span class="fc" id="L119">      indices = new int[nEntries];</span>
+<span class="fc" id="L120">      keys = (E[]) new Object[nEntries];</span>
+<span class="fc" id="L121">      vals = new int[nEntries];</span>
+      
+<span class="fc" id="L123">      int j = 0;</span>
+<span class="fc bfc" id="L124" title="All 4 branches covered.">      for (int i=0; i&lt;tbl.length &amp;&amp; j&lt;nEntries; i++){</span>
+<span class="fc" id="L125">        Entry&lt;E&gt; e = tbl[i];</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (e != null){</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">          if (e.next == null){ // just one entry under this head</span>
+            
+<span class="fc" id="L129">            indices[j] = i;</span>
+<span class="fc" id="L130">            keys[j] = e.key;</span>
+<span class="fc" id="L131">            vals[j] = e.val;</span>
+<span class="fc" id="L132">            j++;</span>
+            
+          } else {
+            // we have to store in reverse order so that restore preserves it
+            // we do the revert here because storing happens once, whereas restore can happen many times
+<span class="fc" id="L137">            int n = 1;</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            for (Entry&lt;E&gt; ee = e.next; ee != null; ee = ee.next){</span>
+<span class="fc" id="L139">              n++;</span>
+            }
+
+<span class="fc" id="L142">            int k = j+n-1;</span>
+<span class="fc" id="L143">            j += n;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            for (; e != null; e = e.next){  </span>
+<span class="fc" id="L145">              indices[k] = i;</span>
+<span class="fc" id="L146">              keys[k] = e.key;</span>
+<span class="fc" id="L147">              vals[k] = e.val;</span>
+<span class="fc" id="L148">              k--;</span>
+            }
+          }
+        }
+      }
+<span class="fc" id="L153">    }</span>
+  }
+  
+  //--- instance fields
+  
+  protected Entry&lt;E&gt;[] table;  // array of entry heads
+  protected int tblPow;        // = log_2(table.length)
+  protected int mask;          // = table.length - 1
+  protected int nextRehash;    // = ceil(MAX_LOAD * table.length);
+  protected int size;          // number of Entry&lt;E&gt; objects reachable from table
+  
+<span class="fc" id="L164">  protected Entry&lt;E&gt; nullEntry = null;</span>
+  
+  Snapshot&lt;E&gt; lastSnapshot;   // cache for the last snapshot (nulled once the IntTable is changed)
+  
+  public IntTable() {
+<span class="fc" id="L169">    this(INIT_TBL_POW);</span>
+<span class="fc" id="L170">  }</span>
+  
+<span class="fc" id="L172">  public IntTable(int pow) {</span>
+<span class="fc" id="L173">    newTable(pow);</span>
+<span class="fc" id="L174">    size = 0;</span>
+<span class="fc" id="L175">  }</span>
+  
+  public Snapshot&lt;E&gt; getSnapshot(){
+<span class="fc bfc" id="L178" title="All 2 branches covered.">    if (lastSnapshot == null) {</span>
+<span class="fc" id="L179">      lastSnapshot = new Snapshot&lt;E&gt;(this);</span>
+    }
+    
+<span class="fc" id="L182">    return lastSnapshot;</span>
+  }
+  
+  @SuppressWarnings(&quot;unchecked&quot;)
+  public void restore (Snapshot&lt;E&gt; snapshot){
+<span class="fc" id="L187">    Entry&lt;E&gt;[] tbl = new Entry[snapshot.tblSize];</span>
+    
+<span class="fc" id="L189">    int[] indices = snapshot.indices;</span>
+<span class="fc" id="L190">    E[] keys = snapshot.keys;</span>
+<span class="fc" id="L191">    int[] vals = snapshot.vals; </span>
+<span class="fc" id="L192">    int nEntries = vals.length;</span>
+    
+<span class="fc bfc" id="L194" title="All 2 branches covered.">    for (int i=0; i&lt;nEntries; i++){</span>
+<span class="fc" id="L195">      int idx = indices[i];</span>
+<span class="fc" id="L196">      tbl[idx] = new Entry&lt;E&gt;( keys[i], vals[i], tbl[idx]);</span>
+    }
+    
+<span class="fc" id="L199">    table = tbl;</span>
+<span class="fc" id="L200">    size = nEntries;</span>
+<span class="fc" id="L201">    mask = table.length -1;</span>
+<span class="fc" id="L202">    nextRehash = (int) Math.ceil(MAX_LOAD * table.length);</span>
+<span class="fc" id="L203">    tblPow = snapshot.tblPow;</span>
+    
+<span class="fc" id="L205">    lastSnapshot = snapshot;</span>
+<span class="fc" id="L206">  }</span>
+
+  // this is a deep copy (needs to be because entries are reused when growing the table)
+  @Override
+  public IntTable&lt;E&gt; clone() {
+    try {
+      @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L213">      IntTable&lt;E&gt; t = (IntTable&lt;E&gt;)super.clone();</span>
+<span class="fc" id="L214">      Entry&lt;E&gt;[] tbl = table.clone();</span>
+<span class="fc" id="L215">      t.table = tbl;</span>
+
+      // clone entries
+<span class="fc" id="L218">      int len = table.length;</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">      for (int i=0; i&lt;len; i++){</span>
+<span class="fc" id="L220">        Entry&lt;E&gt; eFirst = tbl[i];</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if (eFirst != null){</span>
+<span class="fc" id="L222">          eFirst = eFirst.clone();</span>
+<span class="fc" id="L223">          Entry&lt;E&gt; ePrev = eFirst;</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">          for (Entry&lt;E&gt; e = eFirst.next; e != null; e = e.next){</span>
+<span class="fc" id="L225">            e = e.clone();</span>
+<span class="fc" id="L226">            ePrev.next = e;</span>
+<span class="fc" id="L227">            ePrev = e;</span>
+          }
+<span class="fc" id="L229">          tbl[i] = eFirst;</span>
+        }
+      }
+
+<span class="fc" id="L233">      return t;</span>
+
+<span class="nc" id="L235">    } catch (CloneNotSupportedException cnsx){</span>
+<span class="nc" id="L236">      throw new JPFException(&quot;clone failed&quot;);</span>
+    }
+  }
+
+  @SuppressWarnings(&quot;unchecked&quot;)
+  protected void newTable(int pow) {
+<span class="fc" id="L242">    tblPow = pow;</span>
+<span class="fc" id="L243">    table = new Entry[1 &lt;&lt; tblPow];</span>
+<span class="fc" id="L244">    mask = table.length - 1;</span>
+<span class="fc" id="L245">    nextRehash = (int) Math.ceil(MAX_LOAD * table.length);</span>
+<span class="fc" id="L246">  }</span>
+  
+  protected int getTableIndex(E key) {
+<span class="fc" id="L249">    int hc = key.hashCode();</span>
+<span class="fc" id="L250">    int ret = hc ^ 786668707;</span>
+<span class="fc" id="L251">    ret += (hc &gt;&gt;&gt; tblPow);</span>
+<span class="fc" id="L252">    return (ret ^ 1558394450) &amp; mask;</span>
+  }
+
+  protected boolean maybeRehash() {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">    if (size &lt; nextRehash){</span>
+<span class="fc" id="L257">      return false;</span>
+      
+    } else {
+<span class="fc" id="L260">      lastSnapshot = null;</span>
+<span class="fc" id="L261">      size = 0;</span>
+<span class="fc" id="L262">      Entry&lt;E&gt;[] old = table;</span>
+<span class="fc" id="L263">      int oldTblLength = old.length;</span>
+<span class="fc" id="L264">      newTable(tblPow + 1);</span>
+<span class="fc" id="L265">      int len = oldTblLength;</span>
+<span class="fc bfc" id="L266" title="All 2 branches covered.">      for (int i = 0; i &lt; len; i++) {</span>
+<span class="fc" id="L267">        addList(old[i]);</span>
+      }
+
+<span class="fc" id="L270">      return true;</span>
+    }
+  }
+  
+  private void addList(Entry&lt;E&gt; e) {
+<span class="fc" id="L275">    Entry&lt;E&gt; cur = e;</span>
+<span class="fc bfc" id="L276" title="All 2 branches covered.">    while (cur != null) {</span>
+<span class="fc" id="L277">      Entry&lt;E&gt; tmp = cur;</span>
+<span class="fc" id="L278">      cur = cur.next;</span>
+<span class="fc" id="L279">      addEntry(tmp, getTableIndex(tmp.key));</span>
+<span class="fc" id="L280">    }</span>
+<span class="fc" id="L281">  }</span>
+  
+  //--- the methods traversing the entry lists
+  
+  // helper for adding
+  protected void addEntry(Entry&lt;E&gt; e, int idx) {
+<span class="fc" id="L287">    e.next = table[idx];</span>
+<span class="fc" id="L288">    table[idx] = e;</span>
+    
+<span class="fc" id="L290">    size++;</span>
+<span class="fc" id="L291">    lastSnapshot = null;</span>
+<span class="fc" id="L292">  }</span>
+  
+  // helper for searching
+  protected Entry&lt;E&gt; getEntry(E key, int idx) {
+<span class="fc" id="L296">    Entry&lt;E&gt; cur = table[idx];</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">    while (cur != null) {</span>
+<span class="fc" id="L298">      E k = cur.key;</span>
+      
+      // note - this assumes invariant keys !!
+<span class="fc bfc" id="L301" title="All 4 branches covered.">      if (k == key || (k.equals(key))){</span>
+<span class="fc" id="L302">        return cur;</span>
+      }
+<span class="fc" id="L304">      cur = cur.next;</span>
+<span class="fc" id="L305">    }</span>
+<span class="fc" id="L306">    return null; // not found</span>
+  }
+
+  // helper for value update
+  protected void replaceEntryValue( int idx, Entry&lt;E&gt; oldEntry, int newValue) {
+<span class="nc" id="L311">    Entry&lt;E&gt; last = null;</span>
+    
+<span class="nc bnc" id="L313" title="All 2 branches missed.">    for (Entry&lt;E&gt; e = table[idx]; e != null; e = e.next, last = e) {</span>
+<span class="nc bnc" id="L314" title="All 2 branches missed.">      if (e == oldEntry) {</span>
+<span class="nc" id="L315">        Entry&lt;E&gt; newEntry = new Entry&lt;E&gt;(oldEntry.key, newValue);</span>
+<span class="nc" id="L316">        newEntry.next = e.next;</span>
+<span class="nc" id="L317">        lastSnapshot = null;</span>
+        
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (last == null) {</span>
+<span class="nc" id="L320">          table[idx] = newEntry;</span>
+        } else {
+<span class="nc" id="L322">          last.next = newEntry;</span>
+        }
+      }
+    }    
+<span class="nc" id="L326">  }</span>
+  
+  //--- public methods
+  
+  /** returns number of bindings in the table. */
+  public int size() {
+<span class="fc" id="L332">    return size;</span>
+  }
+  
+  /** ONLY USE IF YOU ARE SURE NO PREVIOUS BINDING FOR key EXISTS. */
+  public Entry&lt;E&gt; add (E key, int val) {
+<span class="fc" id="L337">    Entry&lt;E&gt; e = new Entry&lt;E&gt;(key,val);</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">    if (key == null) {</span>
+<span class="nc" id="L339">      nullEntry = e;</span>
+    } else {
+<span class="fc" id="L341">      maybeRehash();</span>
+<span class="fc" id="L342">      addEntry(e, getTableIndex(key));</span>
+    }
+    
+<span class="fc" id="L345">    return e;</span>
+  }
+  
+  /** lookup, returning null if no binding. */
+  public Entry&lt;E&gt; get (E key) {
+<span class="fc" id="L350">    return getEntry(key, getTableIndex(key));</span>
+  }
+  
+  /**
+   * a little optimization to speed up counter increments
+   */
+  public Entry&lt;E&gt; getInc (E key){
+<span class="fc" id="L357">    int idx = getTableIndex(key);</span>
+    
+<span class="fc" id="L359">    Entry&lt;E&gt; last = null;</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">    for (Entry&lt;E&gt; e = table[idx]; e != null; e = e.next) {</span>
+<span class="pc bpc" id="L361" title="1 of 4 branches missed.">      if (e.key == key || e.key.equals(key)) { // found it, replace entry</span>
+<span class="fc" id="L362">        Entry&lt;E&gt; newEntry = new Entry&lt;E&gt;(key, e.val+1, e.next);</span>
+<span class="fc" id="L363">        lastSnapshot = null;</span>
+        
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        if (last == null) {</span>
+<span class="fc" id="L366">          table[idx] = newEntry;</span>
+        } else {
+<span class="fc" id="L368">          last.next = newEntry;</span>
+        }
+        
+<span class="fc" id="L371">        return newEntry;</span>
+        
+      } else {
+<span class="fc" id="L374">        last = e;</span>
+      }
+    }
+    
+    // it wasn't there, add a new entry with value 1
+<span class="fc" id="L379">    Entry&lt;E&gt; newEntry = new Entry&lt;E&gt;( key, 1);</span>
+<span class="fc bfc" id="L380" title="All 2 branches covered.">    if (maybeRehash()) {</span>
+<span class="fc" id="L381">      idx = getTableIndex(key);</span>
+    }
+<span class="fc" id="L383">    addEntry( newEntry, idx);</span>
+
+<span class="fc" id="L385">    return newEntry;</span>
+  }
+  
+  /** just like HashMap put. */
+  public void put(E key, int val) {    
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">    if (key == null) {</span>
+<span class="nc bnc" id="L391" title="All 2 branches missed.">      if (nullEntry == null) {</span>
+<span class="nc" id="L392">        nullEntry = new Entry&lt;E&gt;(null,val);</span>
+<span class="nc" id="L393">        size++;</span>
+      } else {
+<span class="nc" id="L395">        nullEntry = new Entry&lt;E&gt;(null, val);</span>
+      }
+<span class="nc" id="L397">      return;</span>
+    }
+    
+<span class="fc" id="L400">    int idx = getTableIndex(key);</span>
+<span class="fc" id="L401">    Entry&lt;E&gt; e = getEntry(key, idx);</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">    if (e == null) { // wasn't there</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">      if (maybeRehash()){</span>
+<span class="fc" id="L404">        idx = getTableIndex(key);</span>
+      }
+<span class="fc" id="L406">      addEntry(new Entry&lt;E&gt;(key,val), idx);</span>
+      
+    } else {
+<span class="nc" id="L409">      replaceEntryValue( idx, e, val);</span>
+<span class="nc" id="L410">      lastSnapshot = null;</span>
+    }
+<span class="fc" id="L412">  }</span>
+
+  /** removes a binding/entry from the table. */
+  public Entry&lt;E&gt; remove(E key) {
+<span class="fc" id="L416">    int idx = getTableIndex(key);</span>
+<span class="fc" id="L417">    Entry&lt;E&gt; prev = null;</span>
+<span class="fc" id="L418">    Entry&lt;E&gt; cur = table[idx];</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">    while (cur != null) {</span>
+<span class="fc" id="L420">      E k = cur.key;</span>
+<span class="pc bpc" id="L421" title="1 of 4 branches missed.">      if (k == key || k.equals(key)) {</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">        if (prev == null) {</span>
+<span class="fc" id="L423">          table[idx] = cur.next;</span>
+        } else {
+<span class="fc" id="L425">          prev.next = cur.next;</span>
+        }
+<span class="fc" id="L427">        cur.next = null;</span>
+<span class="fc" id="L428">        size--;</span>
+<span class="fc" id="L429">        lastSnapshot = null;</span>
+    
+<span class="fc" id="L431">        return cur;</span>
+      }
+<span class="fc" id="L433">      prev = cur;</span>
+<span class="fc" id="L434">      cur = cur.next;</span>
+<span class="fc" id="L435">    }</span>
+    
+<span class="nc" id="L437">    return null; // not found</span>
+  }
+  
+  
+  /** empties the table, leaving it capacity the same. */
+  public void clear() {
+<span class="nc" id="L443">    table = new Entry[table.length];</span>
+<span class="nc" id="L444">    nullEntry = null;</span>
+<span class="nc" id="L445">    size = 0;</span>
+<span class="nc" id="L446">    lastSnapshot = null;</span>
+<span class="nc" id="L447">  }</span>
+  
+  /** returns the next val to be assigned by a call to pool() on a fresh key. */
+  public int nextPoolVal() {
+<span class="nc" id="L451">    return size;</span>
+  }
+  
+  /** gets the Entry associated with key, adding previous `size' if not yet bound. */
+  public Entry&lt;E&gt; pool(E key) {
+<span class="nc bnc" id="L456" title="All 2 branches missed.">    if (key == null) {</span>
+<span class="nc bnc" id="L457" title="All 2 branches missed.">      if (nullEntry == null) {</span>
+<span class="nc" id="L458">        nullEntry = new Entry&lt;E&gt;(null,size);</span>
+<span class="nc" id="L459">        size++;</span>
+      }
+<span class="nc" id="L461">      return nullEntry;</span>
+    }
+    
+<span class="nc" id="L464">    int idx = getTableIndex(key);</span>
+<span class="nc" id="L465">    Entry&lt;E&gt; e = getEntry(key, idx);</span>
+<span class="nc bnc" id="L466" title="All 2 branches missed.">    if (e == null) {</span>
+<span class="nc bnc" id="L467" title="All 2 branches missed.">      if (maybeRehash()) {</span>
+<span class="nc" id="L468">        idx = getTableIndex(key);</span>
+      }
+<span class="nc" id="L470">      e = new Entry&lt;E&gt;(key,size);</span>
+<span class="nc" id="L471">      addEntry(e, idx);</span>
+    }
+<span class="nc" id="L473">    return e;</span>
+  }
+  
+  /** shorthand for &lt;code&gt;pool(key).val&lt;/code&gt;. */
+  public int poolIndex(E key) {
+<span class="nc" id="L478">    return pool(key).val;</span>
+  }
+  
+  /** shorthand for &lt;code&gt;pool(key).key&lt;/code&gt;. */
+  public E poolKey(E key) {
+<span class="nc" id="L483">    return pool(key).key;</span>
+  }
+  
+  /** shorthand for &lt;code&gt;get(key) != null&lt;/code&gt;. */
+  public boolean hasEntry(E key) {
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">    return get(key) != null;</span>
+  }
+  
+
+
+  /**
+   * returns an iterator over the entries.  unpredictable behavior could result if
+   * using iterator after table is altered.
+   */
+  @Override
+  public Iterator&lt;Entry&lt;E&gt;&gt; iterator () {
+<span class="fc" id="L499">    return new TblIterator();</span>
+  }
+
+  protected class TblIterator implements Iterator&lt;Entry&lt;E&gt;&gt; {
+    int idx;
+    Entry&lt;E&gt; cur;
+
+<span class="fc" id="L506">    public TblIterator() {</span>
+<span class="fc" id="L507">      idx = -1; cur = null;</span>
+<span class="fc" id="L508">      advance();</span>
+<span class="fc" id="L509">    }</span>
+    
+    void advance() {
+<span class="fc bfc" id="L512" title="All 2 branches covered.">      if (cur != null) {</span>
+<span class="fc" id="L513">        cur = cur.next;</span>
+      }
+<span class="fc" id="L515">      int len = table.length;</span>
+<span class="fc bfc" id="L516" title="All 4 branches covered.">      while (idx &lt; len &amp;&amp; cur == null) {</span>
+<span class="fc" id="L517">        idx++;</span>
+<span class="fc bfc" id="L518" title="All 2 branches covered.">        if (idx &lt; len) {</span>
+<span class="fc" id="L519">          cur = table[idx];</span>
+        }
+      }
+<span class="fc" id="L522">    }</span>
+    
+    @Override
+	public boolean hasNext () {
+<span class="fc bfc" id="L526" title="All 2 branches covered.">      return idx &lt; table.length;</span>
+    }
+
+    @Override
+	public Entry&lt;E&gt; next () {
+<span class="fc" id="L531">      Entry&lt;E&gt; e = cur;</span>
+<span class="fc" id="L532">      advance();</span>
+<span class="fc" id="L533">      return e;</span>
+    }
+
+    @Override
+	public void remove () { 
+<span class="nc" id="L538">      throw new UnsupportedOperationException();</span>
+    }
+  }
+
+  /**
+   * for debugging purposes
+   */
+  public void dump(){
+<span class="fc" id="L546">    System.out.print('{');</span>
+<span class="fc" id="L547">    int n=0;</span>
+<span class="fc bfc" id="L548" title="All 2 branches covered.">    for (int i=0; i&lt;table.length; i++){</span>
+<span class="fc bfc" id="L549" title="All 2 branches covered.">      for (Entry&lt;E&gt; e = table[i]; e != null; e = e.next){</span>
+<span class="fc bfc" id="L550" title="All 2 branches covered.">        if (n++&gt;0){</span>
+<span class="fc" id="L551">          System.out.print(',');</span>
+        }
+<span class="fc" id="L553">        System.out.print('(');</span>
+<span class="fc" id="L554">        System.out.print(e.key);</span>
+<span class="fc" id="L555">        System.out.print(&quot;=&gt;&quot;);</span>
+<span class="fc" id="L556">        System.out.print(e.val);</span>
+<span class="fc" id="L557">        System.out.print(')');</span>
+      }
+    }
+<span class="fc" id="L560">    System.out.println('}');</span>
+<span class="fc" id="L561">  }</span>
+  
+  public int computeSize() {
+<span class="nc" id="L564">    int n=0;</span>
+<span class="nc bnc" id="L565" title="All 2 branches missed.">    for (int i=0; i&lt;table.length; i++){</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">      for (Entry&lt;E&gt; e = table[i]; e != null; e = e.next){</span>
+<span class="nc" id="L567">        n++;</span>
+      }
+    }
+    
+<span class="nc" id="L571">    return n;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

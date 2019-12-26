@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>INVOKECLINIT.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.jvm.bytecode</a> &gt; <span class="el_source">INVOKECLINIT.java</span></div><h1>INVOKECLINIT.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.jvm.bytecode;
+
+import gov.nasa.jpf.vm.ClassInfo;
+import gov.nasa.jpf.vm.ElementInfo;
+import gov.nasa.jpf.vm.Instruction;
+import gov.nasa.jpf.vm.MethodInfo;
+import gov.nasa.jpf.vm.ThreadInfo;
+
+/**
+ * this is an artificial bytecode that we use to deal with the particularities of 
+ * &lt;clinit&gt; calls, which are never in the loaded bytecode but always directly called by
+ * the VM. The most obvious difference is that &lt;clinit&gt; execution does not trigger
+ * class initialization.
+ * A more subtle difference is that we save a wait() - if a class
+ * is concurrently initialized, both enter INVOKECLINIT (i.e. compete and sync for/on
+ * the class object lock), but once the second thread gets resumed and detects that the
+ * class is now initialized (by the first thread), it skips the method execution and
+ * returns right away (after deregistering as a lock contender). That's kind of hackish,
+ * but we have no method to do the wait in, unless we significantly complicate the
+ * direct call stubs, which would obfuscate observability (debugging dynamically
+ * generated code isn't very appealing). 
+ */
+public class INVOKECLINIT extends INVOKESTATIC {
+
+  public INVOKECLINIT (ClassInfo ci){
+<span class="fc" id="L43">    super(ci.getSignature(), &quot;&lt;clinit&gt;&quot;, &quot;()V&quot;);</span>
+<span class="fc" id="L44">  }</span>
+
+  @Override
+  public Instruction execute (ThreadInfo ti) {    
+<span class="fc" id="L48">    MethodInfo callee = getInvokedMethod(ti);</span>
+<span class="fc" id="L49">    ClassInfo ciClsObj = callee.getClassInfo();</span>
+<span class="fc" id="L50">    ElementInfo ei = ciClsObj.getClassObject();</span>
+
+<span class="fc bfc" id="L52" title="All 2 branches covered.">    if (ciClsObj.isInitialized()) { // somebody might have already done it if this is re-executed</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">      if (ei.isRegisteredLockContender(ti)){</span>
+<span class="fc" id="L54">        ei = ei.getModifiableInstance();</span>
+<span class="fc" id="L55">        ei.unregisterLockContender(ti);</span>
+      }
+<span class="fc" id="L57">      return getNext();</span>
+    }
+
+    // not much use to update sharedness, clinits are automatically synchronized
+<span class="fc bfc" id="L61" title="All 2 branches covered.">    if (reschedulesLockAcquisition(ti, ei)){     // this blocks or registers as lock contender</span>
+<span class="fc" id="L62">      return this;</span>
+    }
+    
+    // if we get here we still have to execute the clinit method
+<span class="fc" id="L66">    setupCallee( ti, callee); // this creates, initializes &amp; pushes the callee StackFrame, then acquires the lock</span>
+<span class="fc" id="L67">    ciClsObj.setInitializing(ti);</span>
+
+<span class="fc" id="L69">    return ti.getPC(); // we can't just return the first callee insn if a listener throws an exception</span>
+  }
+
+  @Override
+  public boolean isExtendedInstruction() {
+<span class="nc" id="L74">    return true;</span>
+  }
+
+  public static final int OPCODE = 256;
+
+  @Override
+  public int getByteCode () {
+<span class="nc" id="L81">    return OPCODE;</span>
+  }
+  
+  @Override
+  public void accept(JVMInstructionVisitor insVisitor) {
+<span class="fc" id="L86">	  insVisitor.visit(this);</span>
+<span class="fc" id="L87">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

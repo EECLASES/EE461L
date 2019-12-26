@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JSONLexer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.util.json</a> &gt; <span class="el_source">JSONLexer.java</span></div><h1>JSONLexer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.util.json;
+
+import gov.nasa.jpf.JPFException;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
+/**
+ * Lexical analyzer that reads stream and return JSON tokens.
+ * @author Ivan Mushketik
+ */
+public class JSONLexer {
+
+  // JSON document reader
+  private Reader reader;
+  // number of symbol in text
+  int symbolNumber;
+  // number line
+  int lineNumber;
+  // number of symbol in line
+  int symbolNumberInLine;
+
+  // If parser backtracked to previous symbol
+  boolean backtracked;
+  // Last read character
+  int currentChar;
+
+<span class="fc" id="L45">  private final int STREAM_END = -1;</span>
+
+<span class="fc" id="L47">  public JSONLexer(Reader reader) {</span>
+<span class="fc" id="L48">    this.reader = reader;</span>
+<span class="fc" id="L49">    backtracked = false;</span>
+<span class="fc" id="L50">  }</span>
+
+  public JSONLexer(String JSONStr) {
+<span class="fc" id="L53">    this(new StringReader(JSONStr));</span>
+<span class="fc" id="L54">  }</span>
+
+  /**
+   * Read next token from input stream.
+   * @return new read token
+   */
+  public Token getNextToken() {
+
+    int c;
+    // Skip whitespaces
+    do {
+<span class="fc" id="L65">      c = next();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">    } while(isSkipChar(c));</span>
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">    if (c == STREAM_END) {</span>
+<span class="fc" id="L69">      return new Token(Token.Type.DocumentEnd, null);</span>
+    }
+
+<span class="fc bfc" id="L72" title="All 2 branches covered.">    if (c == '{') {</span>
+<span class="fc" id="L73">      return new Token(Token.Type.ObjectStart, &quot;{&quot;);</span>
+    }
+
+<span class="fc bfc" id="L76" title="All 2 branches covered.">    if (c == '}') {</span>
+<span class="fc" id="L77">      return new Token(Token.Type.ObjectEnd, &quot;}&quot;);</span>
+    }
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">    if (c == '[') {</span>
+<span class="fc" id="L81">      return new Token(Token.Type.ArrayStart, &quot;[&quot;);</span>
+    }
+
+<span class="fc bfc" id="L84" title="All 2 branches covered.">    if (c == ']') {</span>
+<span class="fc" id="L85">      return new Token(Token.Type.ArrayEnd, &quot;]&quot;);</span>
+    }
+
+<span class="fc bfc" id="L88" title="All 2 branches covered.">    if (c == ':') {</span>
+<span class="fc" id="L89">      return new Token(Token.Type.KeyValueSeparator, &quot;:&quot;);</span>
+    }
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">    if (c == ',') {</span>
+<span class="fc" id="L93">      return new Token(Token.Type.Comma, &quot;,&quot;);</span>
+    }
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">    if (c == '(') {</span>
+<span class="fc" id="L97">      return new Token(Token.Type.CGCallParamsStart, &quot;(&quot;);</span>
+    }
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">    if (c == ')') {</span>
+<span class="fc" id="L101">      return new Token(Token.Type.CGCallParamsEnd, &quot;)&quot;);</span>
+    }
+
+<span class="fc bfc" id="L104" title="All 4 branches covered.">    if (c == '\&quot;' || c == '\'') {</span>
+<span class="fc" id="L105">      return parseString(c);</span>
+    }
+
+<span class="fc bfc" id="L108" title="All 4 branches covered.">    if (Character.isDigit(c) || c == '-') {</span>
+<span class="fc" id="L109">      back();</span>
+<span class="fc" id="L110">      return parseNumber();</span>
+    }
+
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">    if (isIdentifierStartSymbol(c)) {</span>
+<span class="fc" id="L114">      back();</span>
+<span class="fc" id="L115">      return parseIdentifier();</span>
+    }
+
+    // No sutable symbols found
+<span class="nc" id="L119">    error(&quot;Unexpected sybmol&quot;);</span>
+<span class="nc" id="L120">    return null;</span>
+  }
+
+  /**
+   * Method checks if parser has more input to read
+   * @return true if scanner has more tokens to read
+   */
+  public boolean hasMore() {
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">    return currentChar != STREAM_END;</span>
+  }
+
+  /**
+   * Read next symbol from input stream
+   * @return new read symbol
+   */
+  private int next() {
+    try {
+<span class="fc bfc" id="L137" title="All 2 branches covered.">      if (backtracked) {</span>
+<span class="fc" id="L138">        backtracked = false;</span>
+<span class="fc" id="L139">        return currentChar;</span>
+      }
+
+<span class="fc" id="L142">      currentChar = reader.read();</span>
+      
+<span class="fc" id="L144">      symbolNumber++;</span>
+<span class="fc" id="L145">      symbolNumberInLine++;</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">      if (currentChar == '\n') {</span>
+<span class="nc" id="L147">        lineNumber++;</span>
+<span class="nc" id="L148">        symbolNumberInLine = 0;</span>
+      }
+
+<span class="fc" id="L151">      return currentChar;</span>
+<span class="nc" id="L152">    } catch (IOException ex) {</span>
+<span class="nc" id="L153">      throw new JPFException(&quot;IOException during tokenizing JSON&quot;, ex);</span>
+    }
+  }
+
+  /**
+   * Backtrack to previous symbol
+   */
+  private void back() {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">    if (backtracked) {</span>
+<span class="nc" id="L162">      throw new JPFException(&quot;Tried to return twice. Posibly an error. Please report&quot;);</span>
+    }
+<span class="fc" id="L164">    backtracked = true;</span>
+<span class="fc" id="L165">  }</span>
+
+  // Scaner doesn't backtrack before call this method
+  private Token parseString(int delimiter) {
+<span class="fc" id="L169">    StringBuilder result = new StringBuilder();</span>
+    int c;
+
+<span class="fc bfc" id="L172" title="All 2 branches covered.">    while((c = next()) != delimiter) {</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">      if (c == '\\') {</span>
+<span class="fc" id="L174">          result.append((char) readEscapedSymbol());</span>
+      } else {
+<span class="fc" id="L176">         result.append((char) c);</span>
+      }
+    }
+
+<span class="fc" id="L180">    return new Token(Token.Type.String, result.toString());</span>
+  }
+
+  private int readEscapedSymbol() {
+<span class="fc" id="L184">    int escaped = next();</span>
+
+<span class="fc" id="L186">    int res = -1;</span>
+
+<span class="pc bpc" id="L188" title="4 of 8 branches missed.">    switch(escaped) {</span>
+      case '\&quot;':
+      case '\\':
+      case '/':
+<span class="fc" id="L192">        res = escaped;</span>
+<span class="fc" id="L193">        break;</span>
+
+      case 'b':
+<span class="nc" id="L196">        res = '\b';</span>
+<span class="nc" id="L197">        break;</span>
+
+      case 'f':
+<span class="nc" id="L200">        res = '\f';</span>
+<span class="nc" id="L201">        break;</span>
+
+      case 'n':
+<span class="fc" id="L204">        res = '\n';</span>
+<span class="fc" id="L205">        break;</span>
+
+      case 'r':
+<span class="nc" id="L208">        res = '\r';</span>
+<span class="nc" id="L209">        break;</span>
+
+      case 't':
+<span class="fc" id="L212">        res = '\t';</span>
+<span class="fc" id="L213">        break;</span>
+
+      // Extract hexadecimal Unicode symbol (\\uXXXX)
+      case 'u': {
+<span class="fc" id="L217">        String r = &quot;&quot;;</span>
+<span class="fc" id="L218">        int i = 0;</span>
+        int c;
+
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        while (hexadecimalChar(c = next()) &amp;&amp; i &lt; 4) {</span>
+<span class="fc" id="L222">          r += (char) c;</span>
+<span class="fc" id="L223">          i++;</span>
+        }
+
+        // Unicode escape consists of 4 hexadecimal symbols
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">        if (i &lt; 4) {</span>
+<span class="nc" id="L228">          error(&quot;Escaped Unicode symbol should consist of 4 hexadecimal digits&quot;);</span>
+        }
+        
+<span class="fc" id="L231">        back();</span>
+
+<span class="fc" id="L233">        res = Integer.parseInt(r, 16);</span>
+      }
+<span class="fc" id="L235">      break;</span>
+
+      default:
+<span class="nc" id="L238">        error(&quot;Illegal excape&quot;);</span>
+        break;
+    }
+
+<span class="fc" id="L242">    return res;</span>
+  }
+
+  private Token parseNumber() {    
+<span class="fc" id="L246">    StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L247">    int c = next();</span>
+
+    // '-' symbol is not obligatory
+<span class="fc bfc" id="L250" title="All 2 branches covered.">    if (c == '-') {</span>
+<span class="fc" id="L251">      sb.append('-');</span>
+    } else {
+      // We read unnecessary symbol, need to bactrack
+<span class="fc" id="L254">      back();</span>
+    }
+
+<span class="fc" id="L257">    c = next();</span>
+
+    // Integer part of digit is either '0' or '1'..'9' and digits
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">    if (c == '0') {</span>
+<span class="nc" id="L261">      sb.append('0');</span>
+    } else {
+<span class="fc" id="L263">      back();</span>
+<span class="fc" id="L264">      sb.append(readDigits());</span>
+    }
+
+<span class="fc" id="L267">    c = next();</span>
+
+    // &quot;float part&quot;
+<span class="fc bfc" id="L270" title="All 2 branches covered.">    if (c == '.') {</span>
+<span class="fc" id="L271">      sb.append('.');</span>
+<span class="fc" id="L272">      sb.append(readDigits());</span>
+    } else {
+<span class="fc" id="L274">      back();</span>
+    }
+
+<span class="fc" id="L277">    c = next();</span>
+
+<span class="pc bpc" id="L279" title="1 of 4 branches missed.">    if (c == 'e' || c == 'E') {</span>
+<span class="fc" id="L280">      sb.append((char) c);</span>
+<span class="fc" id="L281">      c = next();</span>
+<span class="pc bpc" id="L282" title="2 of 4 branches missed.">      if (c == '+' || c == '-') {</span>
+<span class="nc" id="L283">        sb.append((char) c);</span>
+      } else {
+<span class="fc" id="L285">        back();</span>
+      }
+
+<span class="fc" id="L288">      sb.append(readDigits());</span>
+    } else {
+<span class="fc" id="L290">      back();</span>
+    }
+
+<span class="fc" id="L293">    return new Token(Token.Type.Number, sb.toString());</span>
+  }
+
+  /**
+   * Read at least one digit
+   * @return String that represents read number
+   */
+  private String readDigits() {
+<span class="fc" id="L301">    StringBuilder sb = new StringBuilder();</span>
+    int c;
+<span class="fc" id="L303">    int n = 0;</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">    while (Character.isDigit(c = next())) {</span>
+<span class="fc" id="L305">      sb.append((char) c);</span>
+<span class="fc" id="L306">      n++;</span>
+    }
+
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">    if (n == 0) {</span>
+<span class="nc" id="L310">      error(&quot;Expected not empty sequence of digits&quot;);</span>
+    }
+
+<span class="fc" id="L313">    back();</span>
+<span class="fc" id="L314">    return sb.toString();</span>
+  }
+
+  private Token parseIdentifier() {
+<span class="fc" id="L318">    StringBuilder result = new StringBuilder();</span>
+
+<span class="fc" id="L320">    int c = next();</span>
+
+<span class="fc bfc" id="L322" title="All 2 branches covered.">    while (Character.isJavaIdentifierPart(c)) {</span>
+<span class="fc" id="L323">      result.append((char) c);</span>
+
+<span class="fc" id="L325">      c = next();</span>
+    }
+
+<span class="fc" id="L328">    back();</span>
+
+<span class="fc" id="L330">    return new Token(Token.Type.Identificator, result.toString());</span>
+  }
+
+  private boolean isIdentifierStartSymbol(int c) {
+<span class="fc" id="L334">    return Character.isJavaIdentifierStart(c);</span>
+  }
+
+  private boolean isSkipChar(int currentChar) {
+<span class="fc" id="L338">    return Character.isSpaceChar(currentChar);</span>
+  }
+
+  private void error(String string) {
+<span class="nc" id="L342">    throw new JPFException(string + &quot; '&quot; + (char) currentChar + &quot;' charCode = &quot; + currentChar +</span>
+                           &quot;; in line &quot; + lineNumber + &quot; pos &quot; + symbolNumberInLine);
+  }
+
+  private boolean hexadecimalChar(int i) {
+<span class="pc bpc" id="L347" title="4 of 10 branches missed.">    return Character.isDigit(i) || (i &lt;= 'F' &amp;&amp; i &gt;= 'A') || (i &lt;= 'f' &amp;&amp; i &gt;= 'a');</span>
+  }
+
+  int getLineNumber() {
+<span class="nc" id="L351">    return lineNumber;</span>
+  }
+
+  int getCurrentPos() {
+<span class="nc" id="L355">    return symbolNumberInLine;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

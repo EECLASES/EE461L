@@ -1,0 +1,2282 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StackFrame.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">StackFrame.java</span></div><h1>StackFrame.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.JPFException;
+import gov.nasa.jpf.util.BitSetN;
+import gov.nasa.jpf.util.BitSet1024;
+import gov.nasa.jpf.util.BitSet256;
+import gov.nasa.jpf.util.BitSet64;
+import gov.nasa.jpf.util.FixedBitSet;
+import gov.nasa.jpf.util.HashData;
+import gov.nasa.jpf.util.Misc;
+import gov.nasa.jpf.util.OATHash;
+import gov.nasa.jpf.util.ObjectList;
+import gov.nasa.jpf.util.PrintUtils;
+import gov.nasa.jpf.vm.bytecode.InvokeInstruction;
+
+import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.Iterator;
+
+
+/**
+ * Describes callerSlots stack frame.
+ *
+ * Java methods always have bounded local and operand stack sizes, computed
+ * at compile time, stored in the classfile, and checked at runtime by the
+ * bytecode verifier. Consequently, we combine locals and operands in one
+ * data structure with the following layout
+ *
+ *   slot[0]                : 'this'
+ *   ..                          .. local vars
+ *   slot[stackBase-1]      : last local var
+ *   slot[stackBase]        : first operand slot
+ *   ..    ^
+ *   ..    | operand stack range
+ *   ..    v
+ *   slot[top]              : highest used operand slot
+ *
+ */
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">public abstract class StackFrame implements Cloneable {</span>
+  
+  /**
+   * this StackFrame is not allowed to be modified anymore because it has been state stored.
+   * Set during state storage and checked upon each modification, causing exceptions on attempts
+   * to modify callerSlots frozen instance. The flag is reset in clones
+   */
+  public static final int   ATTR_IS_FROZEN  = 0x100;  
+  static final int ATTR_IS_REFLECTION = 0x1000;  
+   /**
+    * the previous StackFrame (usually the caller, null if first). To be set when
+    * the frame is pushed on the ThreadInfo callstack
+    */
+  protected StackFrame prev;
+
+  /**
+   * state management related attributes similar to ElementInfo. The lower 16 bits
+   * are stored/restored, the upper 16 bits are for transient use
+   */
+  protected int attributes;
+
+  
+  protected int top;                // top index of the operand stack (NOT size)
+                                    // this points to the last pushed value
+
+<span class="pc" id="L82">  protected int thisRef = MJIEnv.NULL;       // slots[0] can change, but we have to keep 'this'</span>
+  protected int stackBase;          // index where the operand stack begins
+
+  protected int[] slots;            // the combined local and operand slots
+  protected FixedBitSet isRef;      // which slots contain references
+
+  protected Object frameAttr;       // optional user attrs for the whole frame
+  
+  /*
+   * This array can be used to store attributes (e.g. variable names) for
+   * operands. We don't do anything with this except of preserving it (across
+   * dups etc.), so it's pretty much up to the VM listeners/peers what's stored
+   *
+   * NOTE: attribute values are not restored upon backtracking per default, but
+   * attribute references are. If you need restoration of values, use copy-on-write
+   * in your clients
+   *
+   * these are set on demand
+   */
+<span class="pc" id="L101">  protected Object[] attrs = null;  // the combined user-defined callerSlots (set on demand)</span>
+
+  protected Instruction pc;         // the next insn to execute (program counter)
+  protected MethodInfo mi;          // which method is executed in this frame
+
+<span class="fc" id="L106">  static final int[] EMPTY_ARRAY = new int[0];</span>
+<span class="fc" id="L107">  static final FixedBitSet EMPTY_BITSET = new BitSet64();</span>
+
+<span class="fc" id="L109">  protected StackFrame (MethodInfo callee, int nLocals, int nOperands){</span>
+<span class="fc" id="L110">    mi = callee;</span>
+<span class="fc" id="L111">    pc = mi.getInstruction(0);</span>
+
+<span class="fc" id="L113">    stackBase = nLocals;</span>
+<span class="fc" id="L114">    top = nLocals-1;</span>
+
+<span class="fc" id="L116">    int nSlots = nLocals + nOperands;</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">    if (nSlots &gt; 0){</span>
+<span class="fc" id="L118">      slots = new int[nLocals + nOperands];</span>
+<span class="fc" id="L119">      isRef = createReferenceMap(slots.length);</span>
+    } else {
+      // NativeStackFrames don't use locals or operands, but we
+      // don't want to add tests to all our methods
+<span class="fc" id="L123">      slots = EMPTY_ARRAY;</span>
+<span class="fc" id="L124">      isRef = EMPTY_BITSET;</span>
+    }
+<span class="fc" id="L126">  }</span>
+  
+  public StackFrame (MethodInfo callee){
+<span class="fc" id="L129">    this( callee, callee.getMaxLocals(), callee.getMaxStack());</span>
+<span class="fc" id="L130">  }</span>
+
+
+
+  /**
+   * Creates an empty stack frame. Used by clone.
+   */
+<span class="nc" id="L137">  protected StackFrame () {</span>
+<span class="nc" id="L138">  }</span>
+
+  /**
+   * creates callerSlots dummy Stackframe for testing of operand/local operations
+   * NOTE - TESTING ONLY! this does not have a MethodInfo
+   */
+<span class="fc" id="L144">  protected StackFrame (int nLocals, int nOperands){</span>
+<span class="fc" id="L145">    stackBase = nLocals;</span>
+<span class="fc" id="L146">    slots = new int[nLocals + nOperands];</span>
+<span class="fc" id="L147">    isRef = createReferenceMap(slots.length);</span>
+<span class="fc" id="L148">    top = nLocals-1;  // index, not size!</span>
+<span class="fc" id="L149">  }</span>
+  
+  /**
+   * re-execute method from the beginning - use with care
+   */
+  public void reset() {
+<span class="fc" id="L155">    pc = mi.getInstruction(0);</span>
+<span class="fc" id="L156">  }  </span>
+  
+
+
+  protected FixedBitSet createReferenceMap (int nSlots){
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">    if (nSlots &lt;= 64){</span>
+<span class="fc" id="L162">      return new BitSet64();</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">    } else if (nSlots &lt;= 256){</span>
+<span class="nc" id="L164">      return new BitSet256();  </span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">    } else if (nSlots &lt;= 1024) {</span>
+<span class="nc" id="L166">      return new BitSet1024();</span>
+    } else {
+<span class="nc" id="L168">      return new BitSetN(nSlots);</span>
+    }
+  }
+
+  public boolean isNative() {
+<span class="nc" id="L173">    return false;</span>
+  }
+  
+  public StackFrame getCallerFrame (){
+<span class="nc" id="L177">    MethodInfo callee = mi;</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">    for (StackFrame frame = getPrevious(); frame != null; frame = frame.getPrevious()){</span>
+<span class="nc" id="L179">      Instruction insn = frame.getPC();</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">      if (insn instanceof InvokeInstruction){</span>
+<span class="nc" id="L181">        InvokeInstruction call = (InvokeInstruction)insn;</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">        if (call.getInvokedMethod() == callee){</span>
+<span class="nc" id="L183">          return frame;</span>
+        }
+      }
+    }
+    
+<span class="nc" id="L188">    return null;</span>
+  }
+  
+  /**
+   * return the object reference for an instance method to be called (we are still in the
+   * caller's frame). This only makes sense after all params have been pushed, before the
+   * INVOKEx insn is executed
+   */
+  public int getCalleeThis (MethodInfo mi) {
+<span class="fc" id="L197">    return getCalleeThis(mi.getArgumentsSize());</span>
+  }
+
+  /**
+   * return reference of called object in the context of the caller
+   * (i.e. we are in the caller frame)
+   */
+  public int getCalleeThis (int size) {
+    // top is the topmost index
+<span class="fc" id="L206">    int i = size-1;</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">    if (top &lt; i) {</span>
+<span class="nc" id="L208">      return MJIEnv.NULL;</span>
+    }
+
+<span class="fc" id="L211">    return slots[top-i];</span>
+  }
+
+  public StackFrame getPrevious() {
+<span class="fc" id="L215">    return prev;</span>
+  }
+  
+  /**
+   * to be set (by ThreadInfo) when the frame is pushed. Can also be used
+   * for non-local gotos, but be warned - that's tricky
+   */
+  public void setPrevious (StackFrame frame){
+<span class="fc" id="L223">    prev = frame;</span>
+<span class="fc" id="L224">  }</span>
+
+  public Object getLocalOrFieldValue (String id) {
+    // try locals first
+<span class="fc" id="L228">    LocalVarInfo lv = mi.getLocalVar(id, pc.getPosition());</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">    if (lv != null){</span>
+<span class="fc" id="L230">      return getLocalValueObject(lv);</span>
+    }
+
+    // then fields
+<span class="fc" id="L234">    return getFieldValue(id);</span>
+  }
+
+  public Object getLocalValueObject (LocalVarInfo lv) {
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">    if (lv != null) { // might not have been compiled with debug info</span>
+<span class="fc" id="L239">      String sig = lv.getSignature();</span>
+<span class="fc" id="L240">      int slotIdx = lv.getSlotIndex();</span>
+<span class="fc" id="L241">      int v = slots[slotIdx];</span>
+
+<span class="pc bpc" id="L243" title="6 of 9 branches missed.">      switch (sig.charAt(0)) {</span>
+        case 'Z':
+<span class="nc bnc" id="L245" title="All 2 branches missed.">          return Boolean.valueOf(v != 0);</span>
+        case 'B':
+<span class="nc" id="L247">          return new Byte((byte) v);</span>
+        case 'C':
+<span class="nc" id="L249">          return new Character((char) v);</span>
+        case 'S':
+<span class="nc" id="L251">          return new Short((short) v);</span>
+        case 'I':
+<span class="fc" id="L253">          return new Integer(v);</span>
+        case 'J':
+<span class="fc" id="L255">          return new Long(Types.intsToLong(slots[slotIdx + 1], v)); // Java is big endian, Types expects low,high</span>
+        case 'F':
+<span class="nc" id="L257">          return new Float(Float.intBitsToFloat(v));</span>
+        case 'D':
+<span class="fc" id="L259">          return new Double(Double.longBitsToDouble(Types.intsToLong(slots[slotIdx + 1], v)));</span>
+        default:  // reference
+<span class="nc bnc" id="L261" title="All 2 branches missed.">          if (v &gt;= 0) {</span>
+<span class="nc" id="L262">            return VM.getVM().getHeap().get(v);</span>
+          }
+      }
+    }
+
+<span class="nc" id="L267">    return null;</span>
+  }
+
+  public Object getFieldValue (String id) {
+    // try instance fields first
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">    if (thisRef != MJIEnv.NULL) {  // it's an instance method</span>
+<span class="fc" id="L273">      ElementInfo ei = VM.getVM().getHeap().get(thisRef);</span>
+<span class="fc" id="L274">      Object v = ei.getFieldValueObject(id);</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">      if (v != null) {</span>
+<span class="fc" id="L276">        return v;</span>
+      }
+    }
+
+    // check static fields (in method class and its superclasses)
+<span class="nc" id="L281">    return mi.getClassInfo().getStaticFieldValueObject(id);</span>
+  }
+
+  public ClassInfo getClassInfo () {
+<span class="fc" id="L285">    return mi.getClassInfo();</span>
+  }
+
+  public String getClassName () {
+<span class="nc" id="L289">    return mi.getClassInfo().getName();</span>
+  }
+
+  public String getSourceFile () {
+<span class="nc" id="L293">    return mi.getClassInfo().getSourceFileName();</span>
+  }
+
+  /**
+   * does any of the 'nTopSlots' hold callerSlots reference value of 'objRef'
+   * 'nTopSlots' is usually obtained from MethodInfo.getNumberOfCallerStackSlots()
+   */
+  public boolean includesReferenceOperand (int nTopSlots, int objRef){
+
+<span class="nc bnc" id="L302" title="All 4 branches missed.">    for (int i=0, j=top-nTopSlots+1; i&lt;nTopSlots &amp;&amp; j&gt;=0; i++, j++) {</span>
+<span class="nc bnc" id="L303" title="All 4 branches missed.">      if (isRef.get(j) &amp;&amp; (slots[j] == objRef)){</span>
+<span class="nc" id="L304">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L308">    return false;</span>
+  }
+
+  /**
+   * does any of the operand slots hold callerSlots reference value of 'objRef'
+   */
+  public boolean includesReferenceOperand (int objRef){
+
+<span class="nc bnc" id="L316" title="All 2 branches missed.">    for (int i=stackBase; i&lt;=top; i++) {</span>
+<span class="nc bnc" id="L317" title="All 4 branches missed.">      if (isRef.get(i) &amp;&amp; (slots[i] == objRef)){</span>
+<span class="nc" id="L318">        return true;</span>
+      }
+    }
+
+<span class="nc" id="L322">    return false;</span>
+  }
+
+  /**
+   * is this StackFrame modifying the KernelState
+   * this is true unless this is callerSlots NativeStackFrame
+   */
+  public boolean modifiesState() {
+<span class="nc" id="L330">    return true;</span>
+  }
+
+  public boolean isDirectCallFrame () {
+<span class="fc" id="L334">    return false;</span>
+  }
+
+  public boolean isSynthetic() {
+<span class="fc" id="L338">    return false;</span>
+  }
+
+  // gets and sets some derived information
+  public int getLine () {
+<span class="nc" id="L343">    return mi.getLineNumber(pc);</span>
+  }
+
+
+  /**
+   * generic visitor for reference arguments
+   */
+  public void processRefArguments (MethodInfo miCallee, ReferenceProcessor visitor){
+<span class="nc" id="L351">    int nArgSlots = miCallee.getArgumentsSize();</span>
+
+<span class="nc bnc" id="L353" title="All 2 branches missed.">    for (int i=top-1; i&gt;=top-nArgSlots; i--){</span>
+<span class="nc bnc" id="L354" title="All 2 branches missed.">      if (isRef.get(i)){</span>
+<span class="nc" id="L355">        visitor.processReference(slots[i]);</span>
+      }
+    }
+<span class="nc" id="L358">  }</span>
+
+  public int getSlot(int idx){
+<span class="fc" id="L361">    return slots[idx];</span>
+  }
+  public boolean isReferenceSlot(int idx){
+<span class="fc" id="L364">    return isRef.get(idx);</span>
+  }
+
+
+  public void setOperand (int offset, int v, boolean isRefValue){
+<span class="fc" id="L369">    int i = top-offset;</span>
+<span class="fc" id="L370">    slots[i] = v;</span>
+<span class="fc" id="L371">    isRef.set(i, isRefValue);</span>
+<span class="fc" id="L372">  }</span>
+
+  
+  //----------------------------- various attribute accessors
+
+  public boolean hasAttrs () {
+<span class="nc bnc" id="L378" title="All 2 branches missed.">    return attrs != null;</span>
+  }
+
+  public boolean hasFrameAttr(){
+<span class="nc bnc" id="L382" title="All 2 branches missed.">    return frameAttr != null;</span>
+  }
+  
+  public boolean hasFrameAttr (Class&lt;?&gt; attrType){
+<span class="fc" id="L386">    return ObjectList.containsType(frameAttr, attrType);</span>
+  }
+  
+  public boolean hasFrameAttrValue (Object a){
+<span class="nc" id="L390">    return ObjectList.contains(frameAttr, a);</span>
+  }
+  
+  //--- the frame attr accessors 
+  
+ /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at callerSlots time, or check/process result with ObjectList
+   */
+  public Object getFrameAttr(){
+<span class="nc" id="L400">    return frameAttr;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know there are no 
+   * SystemAttributes in the list (which would cause an exception)
+   */
+  public void setFrameAttr (Object attr){
+<span class="fc" id="L408">    frameAttr = ObjectList.set(frameAttr, attr);    </span>
+<span class="fc" id="L409">  }</span>
+
+  public void addFrameAttr (Object attr){
+<span class="fc" id="L412">    frameAttr = ObjectList.add(frameAttr, attr);</span>
+<span class="fc" id="L413">  }</span>
+
+  public void removeFrameAttr (Object attr){
+<span class="fc" id="L416">    frameAttr = ObjectList.remove(frameAttr, attr);</span>
+<span class="fc" id="L417">  }</span>
+
+  public void replaceFrameAttr (Object oldAttr, Object newAttr){
+<span class="nc" id="L420">    frameAttr = ObjectList.replace(frameAttr, oldAttr, newAttr);</span>
+<span class="nc" id="L421">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getFrameAttr (Class&lt;T&gt; attrType) {
+<span class="fc" id="L428">    return ObjectList.getFirst(frameAttr, attrType);</span>
+  }
+  
+  public &lt;T&gt; T getAndResetFrameAttr (Class&lt;T&gt; attrType) {
+<span class="fc" id="L432">    T attr = ObjectList.getFirst(frameAttr, attrType);</span>
+<span class="fc bfc" id="L433" title="All 2 branches covered.">    if (attr != null){</span>
+<span class="fc" id="L434">      frameAttr = ObjectList.remove(frameAttr, attr);</span>
+    }
+<span class="fc" id="L436">    return attr;</span>
+  }
+  
+
+  public &lt;T&gt; T getNextFrameAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="nc" id="L441">    return ObjectList.getNext(frameAttr, attrType, prev);</span>
+  }
+
+  public ObjectList.Iterator frameAttrIterator(){
+<span class="nc" id="L445">    return ObjectList.iterator(frameAttr);</span>
+  }
+  
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; frameAttrIterator(Class&lt;T&gt; attrType){
+<span class="nc" id="L449">    return ObjectList.typedIterator(frameAttr, attrType);</span>
+  }
+  
+  //--- the top single-slot operand attrs
+
+  public boolean hasOperandAttr(){
+<span class="nc bnc" id="L455" title="All 4 branches missed.">    if ((top &gt;= stackBase) &amp;&amp; (attrs != null)){</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">      return (attrs[top] != null);</span>
+    }
+<span class="nc" id="L458">    return false;</span>
+  }
+  public boolean hasOperandAttr(Class&lt;?&gt; type){
+<span class="nc bnc" id="L461" title="All 4 branches missed.">    if ((top &gt;= stackBase) &amp;&amp; (attrs != null)){</span>
+<span class="nc" id="L462">      return ObjectList.containsType(attrs[top], type);</span>
+    }
+<span class="nc" id="L464">    return false;</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at callerSlots time, or check/process result with ObjectList
+   */
+  public Object getOperandAttr () {
+<span class="pc bpc" id="L472" title="1 of 4 branches missed.">    if ((top &gt;= stackBase) &amp;&amp; (attrs != null)){</span>
+<span class="fc" id="L473">      return attrs[top];</span>
+    }
+<span class="fc" id="L475">    return null;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at callerSlots time
+   *  - you obtained the value you set by callerSlots previous getXAttr()
+   *  - you constructed callerSlots multi value list with ObjectList.createList()
+   */
+  public void setOperandAttr (Object a){
+<span class="pc bpc" id="L485" title="2 of 4 branches missed.">    assert (top &gt;= stackBase);</span>
+<span class="fc bfc" id="L486" title="All 2 branches covered.">    if (attrs == null) {</span>
+<span class="pc bpc" id="L487" title="1 of 2 branches missed.">      if (a == null) return;</span>
+<span class="fc" id="L488">      attrs = new Object[slots.length];</span>
+    }
+<span class="fc" id="L490">    attrs[top] = a;</span>
+<span class="fc" id="L491">  }</span>
+
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getOperandAttr (Class&lt;T&gt; attrType){
+<span class="nc bnc" id="L499" title="All 4 branches missed.">    assert (top &gt;= stackBase);</span>
+    
+<span class="nc bnc" id="L501" title="All 2 branches missed.">    if ((attrs != null)){</span>
+<span class="nc" id="L502">      return ObjectList.getFirst(attrs[top], attrType);</span>
+    }
+<span class="nc" id="L504">    return null;</span>
+  }
+  public &lt;T&gt; T getNextOperandAttr (Class&lt;T&gt; attrType, Object prev){
+<span class="nc bnc" id="L507" title="All 4 branches missed.">    assert (top &gt;= stackBase);</span>
+<span class="nc bnc" id="L508" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L509">      return ObjectList.getNext( attrs[top], attrType, prev);</span>
+    }
+<span class="nc" id="L511">    return null;</span>
+  }
+  public Iterator operandAttrIterator(){
+<span class="nc bnc" id="L514" title="All 4 branches missed.">    assert (top &gt;= stackBase);</span>
+<span class="nc bnc" id="L515" title="All 2 branches missed.">    Object a = (attrs != null) ? attrs[top] : null;</span>
+<span class="nc" id="L516">    return ObjectList.iterator(a);</span>
+  }
+  public &lt;T&gt; Iterator&lt;T&gt; operandAttrIterator(Class&lt;T&gt; attrType){
+<span class="nc bnc" id="L519" title="All 4 branches missed.">    assert (top &gt;= stackBase);</span>
+<span class="nc bnc" id="L520" title="All 2 branches missed.">    Object a = (attrs != null) ? attrs[top] : null;</span>
+<span class="nc" id="L521">    return ObjectList.typedIterator(a, attrType);</span>
+  }
+  
+
+  public void addOperandAttr (Object a){
+<span class="nc bnc" id="L526" title="All 4 branches missed.">    assert (top &gt;= stackBase);</span>
+<span class="nc bnc" id="L527" title="All 2 branches missed.">    if (a != null){</span>
+<span class="nc bnc" id="L528" title="All 2 branches missed.">      if (attrs == null) {</span>
+<span class="nc" id="L529">        attrs = new Object[slots.length];</span>
+      }
+
+<span class="nc" id="L532">      attrs[top] = ObjectList.add(attrs[top], a);</span>
+    }        
+<span class="nc" id="L534">  }</span>
+  
+  public void removeOperandAttr (Object a){
+<span class="nc bnc" id="L537" title="All 6 branches missed.">    assert (top &gt;= stackBase) &amp;&amp; (a != null);</span>
+<span class="nc bnc" id="L538" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L539">      attrs[top] = ObjectList.remove(attrs[top], a);</span>
+    }        
+<span class="nc" id="L541">  }</span>
+  
+  public void replaceOperandAttr (Object oldAttr, Object newAttr){
+<span class="nc bnc" id="L544" title="All 8 branches missed.">    assert (top &gt;= stackBase) &amp;&amp; (oldAttr != null) &amp;&amp; (newAttr != null);</span>
+<span class="nc bnc" id="L545" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L546">      attrs[top] = ObjectList.replace(attrs[top], oldAttr, newAttr);</span>
+    }        
+<span class="nc" id="L548">  }</span>
+  
+  
+  //--- offset operand attrs
+
+  public boolean hasOperandAttr(int offset){
+<span class="nc" id="L554">    int i = top-offset;</span>
+<span class="nc bnc" id="L555" title="All 4 branches missed.">    assert (i &gt;= stackBase);</span>
+<span class="nc bnc" id="L556" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc bnc" id="L557" title="All 2 branches missed.">      return (attrs[i] != null);</span>
+    }
+<span class="nc" id="L559">    return false;</span>
+  }
+  public boolean hasOperandAttr(int offset, Class&lt;?&gt; type){
+<span class="fc" id="L562">    int i = top-offset;</span>
+<span class="pc bpc" id="L563" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+<span class="pc bpc" id="L564" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L565">      return ObjectList.containsType(attrs[i], type);</span>
+    }
+<span class="nc" id="L567">    return false;</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at callerSlots time, or check/process result with ObjectList
+   */
+  public Object getOperandAttr (int offset) {
+<span class="fc" id="L575">    int i = top-offset;</span>
+<span class="pc bpc" id="L576" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+    
+<span class="fc bfc" id="L578" title="All 2 branches covered.">    if (attrs != null) {</span>
+<span class="fc" id="L579">      return attrs[i];</span>
+    }
+<span class="fc" id="L581">    return null;</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at callerSlots time
+   *  - you obtained the value you set by callerSlots previous getXAttr()
+   *  - you constructed callerSlots multi value list with ObjectList.createList()
+   */  
+  public void setOperandAttr (int offset, Object a){
+<span class="fc" id="L591">    int i = top-offset;</span>
+<span class="pc bpc" id="L592" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+
+<span class="fc bfc" id="L594" title="All 2 branches covered.">    if (attrs == null) {</span>
+<span class="pc bpc" id="L595" title="1 of 2 branches missed.">      if (a == null) return;</span>
+<span class="fc" id="L596">      attrs = new Object[slots.length];</span>
+    }
+<span class="fc" id="L598">    attrs[i] = a;</span>
+<span class="fc" id="L599">  }</span>
+
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getOperandAttr (int offset, Class&lt;T&gt; attrType){
+<span class="fc" id="L606">    int i = top-offset;</span>
+<span class="pc bpc" id="L607" title="2 of 4 branches missed.">    assert (i &gt;= stackBase) : this;</span>
+<span class="pc bpc" id="L608" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L609">      return ObjectList.getFirst(attrs[i], attrType);</span>
+    }
+<span class="nc" id="L611">    return null;</span>
+  }
+  public &lt;T&gt; T getNextOperandAttr (int offset, Class&lt;T&gt; attrType, Object prev){
+<span class="fc" id="L614">    int i = top-offset;</span>
+<span class="pc bpc" id="L615" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+<span class="pc bpc" id="L616" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L617">      return ObjectList.getNext( attrs[i], attrType, prev);</span>
+    }
+<span class="nc" id="L619">    return null;</span>
+  }
+  public ObjectList.Iterator operandAttrIterator(int offset){
+<span class="fc" id="L622">    int i = top-offset;</span>
+<span class="pc bpc" id="L623" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+<span class="pc bpc" id="L624" title="1 of 2 branches missed.">    Object a = (attrs != null) ? attrs[i] : null;</span>
+<span class="fc" id="L625">    return ObjectList.iterator(a);</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; operandAttrIterator(int offset, Class&lt;T&gt; attrType){
+<span class="nc" id="L628">    int i = top-offset;</span>
+<span class="nc bnc" id="L629" title="All 4 branches missed.">    assert (i &gt;= stackBase);</span>
+<span class="nc bnc" id="L630" title="All 2 branches missed.">    Object a = (attrs != null) ? attrs[i] : null;</span>
+<span class="nc" id="L631">    return ObjectList.typedIterator(a, attrType);</span>
+  }
+
+
+  public void addOperandAttr (int offset, Object a){
+<span class="fc" id="L636">    int i = top-offset;</span>
+<span class="pc bpc" id="L637" title="2 of 4 branches missed.">    assert (i &gt;= stackBase);</span>
+
+<span class="pc bpc" id="L639" title="1 of 2 branches missed.">    if (a != null){</span>
+<span class="fc bfc" id="L640" title="All 2 branches covered.">      if (attrs == null) {</span>
+<span class="fc" id="L641">        attrs = new Object[slots.length];</span>
+      }
+<span class="fc" id="L643">      attrs[i] = ObjectList.add(attrs[i],a);</span>
+    }    
+<span class="fc" id="L645">  }</span>
+
+  public void removeOperandAttr (int offset, Object a){
+<span class="nc" id="L648">    int i = top-offset;</span>
+<span class="nc bnc" id="L649" title="All 6 branches missed.">    assert (i &gt;= stackBase) &amp;&amp; (a != null);</span>
+<span class="nc bnc" id="L650" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L651">      attrs[i] = ObjectList.remove(attrs[i], a);</span>
+    }        
+<span class="nc" id="L653">  }</span>
+  
+  public void replaceOperandAttr (int offset, Object oldAttr, Object newAttr){
+<span class="nc" id="L656">    int i = top-offset;</span>
+<span class="nc bnc" id="L657" title="All 8 branches missed.">    assert (i &gt;= stackBase) &amp;&amp; (oldAttr != null) &amp;&amp; (newAttr != null);</span>
+<span class="nc bnc" id="L658" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L659">      attrs[i] = ObjectList.replace(attrs[i], oldAttr, newAttr);</span>
+    }        
+<span class="nc" id="L661">  }</span>
+  
+  
+  //--- top double-slot operand attrs
+  // we store attributes for double slot values at the local var index,
+  // which is the lower one. The ..LongOperand.. APIs are handling this offset
+ 
+  public boolean hasLongOperandAttr(){
+<span class="nc" id="L669">    return hasOperandAttr(1);</span>
+  }
+  public boolean hasLongOperandAttr(Class&lt;?&gt; type){
+<span class="nc" id="L672">    return hasOperandAttr(1, type);</span>
+  }
+  
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at callerSlots time, or check/process result with ObjectList
+   */
+  public Object getLongOperandAttr () {
+<span class="fc" id="L680">    return getOperandAttr(1);</span>
+  }
+
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at callerSlots time
+   *  - you obtained the value you set by callerSlots previous getXAttr()
+   *  - you constructed callerSlots multi value list with ObjectList.createList()
+   */  
+  public void setLongOperandAttr (Object a){
+<span class="fc" id="L690">    setOperandAttr(1, a);</span>
+<span class="fc" id="L691">  }</span>
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getLongOperandAttr (Class&lt;T&gt; attrType) {
+<span class="fc" id="L698">    return getOperandAttr(1, attrType);</span>
+  }
+  public &lt;T&gt; T getNextLongOperandAttr (Class&lt;T&gt; attrType, Object prev) {
+<span class="fc" id="L701">    return getNextOperandAttr(1, attrType, prev);</span>
+  }
+  public ObjectList.Iterator longOperandAttrIterator(){
+<span class="fc" id="L704">    return operandAttrIterator(1);</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; longOperandAttrIterator(Class&lt;T&gt; attrType){
+<span class="nc" id="L707">    return operandAttrIterator(1, attrType);</span>
+  }
+    
+  public void addLongOperandAttr (Object a){
+<span class="fc" id="L711">    addOperandAttr(1, a);</span>
+<span class="fc" id="L712">  }</span>
+
+  public void removeLongOperandAttr (Object a){
+<span class="nc" id="L715">    removeOperandAttr(1, a);</span>
+<span class="nc" id="L716">  }</span>
+
+  public void replaceLongOperandAttr (Object oldAttr, Object newAttr){
+<span class="nc" id="L719">    replaceOperandAttr(1, oldAttr, newAttr);</span>
+<span class="nc" id="L720">  }</span>
+
+
+  //--- local attrs
+  // single- or double-slot - you have to provide the var index anyways)
+  
+  public boolean hasLocalAttr(int index){
+<span class="nc bnc" id="L727" title="All 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="nc bnc" id="L728" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc bnc" id="L729" title="All 2 branches missed.">      return (attrs[index] != null);</span>
+    }
+<span class="nc" id="L731">    return false;</span>
+  }
+  public boolean hasLocalAttr(int index, Class&lt;?&gt; type){
+<span class="nc bnc" id="L734" title="All 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="nc bnc" id="L735" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L736">      return ObjectList.containsType(attrs[index], type);</span>
+    }
+<span class="nc" id="L738">    return false;</span>
+  }
+
+  /**
+   * this returns all of them - use either if you know there will be only
+   * one attribute at callerSlots time, or check/process result with ObjectList
+   */
+  public Object getLocalAttr (int index){
+<span class="pc bpc" id="L746" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="pc bpc" id="L747" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L748">      return attrs[index];</span>
+    }
+<span class="nc" id="L750">    return null;</span>
+  }
+   
+  public Object getLongLocalAttr (int index){
+<span class="nc" id="L754">    return getLocalAttr( index);</span>
+  }
+  
+  /**
+   * this replaces all of them - use only if you know 
+   *  - there will be only one attribute at callerSlots time
+   *  - you obtained the value you set by callerSlots previous getXAttr()
+   *  - you constructed callerSlots multi value list with ObjectList.createList()
+   */  
+  public void setLocalAttr (int index, Object a) {
+<span class="pc bpc" id="L764" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="fc bfc" id="L765" title="All 2 branches covered.">    if (attrs == null){</span>
+<span class="pc bpc" id="L766" title="1 of 2 branches missed.">      if (a == null) return;</span>
+<span class="fc" id="L767">      attrs = new Object[slots.length];</span>
+    }
+<span class="fc" id="L769">    attrs[index] = a;</span>
+<span class="fc" id="L770">  }</span>
+
+  public void setLongLocalAttr (int index, Object a){
+<span class="nc" id="L773">    setLocalAttr( index, a);</span>
+<span class="nc" id="L774">  }</span>
+  
+  public void addLongLocalAttr (int index, Object a){
+<span class="nc" id="L777">    addLocalAttr( index, a);</span>
+<span class="nc" id="L778">  }</span>
+  
+  /**
+   * this only returns the first attr of this type, there can be more
+   * if you don't use client private types or the provided type is too general
+   */
+  public &lt;T&gt; T getLocalAttr (int index, Class&lt;T&gt; attrType){
+<span class="pc bpc" id="L785" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="pc bpc" id="L786" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L787">      return ObjectList.getFirst( attrs[index], attrType);</span>
+    }
+<span class="nc" id="L789">    return null;</span>
+  }
+  public &lt;T&gt; T getNextLocalAttr (int index, Class&lt;T&gt; attrType, Object prev){
+<span class="pc bpc" id="L792" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="pc bpc" id="L793" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L794">      return ObjectList.getNext( attrs[index], attrType, prev);</span>
+    }
+<span class="nc" id="L796">    return null;</span>
+  }
+  public ObjectList.Iterator localAttrIterator(int index){
+<span class="pc bpc" id="L799" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">    Object a = (attrs != null) ? attrs[index] : null;</span>
+<span class="fc" id="L801">    return ObjectList.iterator(a);</span>
+  }
+  public &lt;T&gt; ObjectList.TypedIterator&lt;T&gt; localAttrIterator(int index, Class&lt;T&gt; attrType){
+<span class="nc bnc" id="L804" title="All 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="nc bnc" id="L805" title="All 2 branches missed.">    Object a = (attrs != null) ? attrs[index] : null;</span>
+<span class="nc" id="L806">    return ObjectList.typedIterator(a, attrType);</span>
+  }
+  
+
+  public void addLocalAttr (int index, Object attr){
+<span class="pc bpc" id="L811" title="2 of 4 branches missed.">    assert index &lt; stackBase;</span>
+<span class="fc bfc" id="L812" title="All 2 branches covered.">    if (attrs == null){</span>
+<span class="pc bpc" id="L813" title="1 of 2 branches missed.">      if (attr == null) return;</span>
+<span class="fc" id="L814">      attrs = new Object[slots.length];</span>
+    }
+<span class="fc" id="L816">    attrs[index] = ObjectList.add(attrs[index], attr);</span>
+<span class="fc" id="L817">  }</span>
+  
+  public void removeLocalAttr (int index, Object attr){
+<span class="pc bpc" id="L820" title="3 of 6 branches missed.">    assert index &lt; stackBase &amp;&amp; attr != null;</span>
+<span class="pc bpc" id="L821" title="1 of 2 branches missed.">    if (attr != null){</span>
+<span class="fc" id="L822">      attrs[index] = ObjectList.remove(attrs[index], attr);    </span>
+    }
+<span class="fc" id="L824">  }</span>
+
+  public void replaceLocalAttr (int index, Object oldAttr, Object newAttr){
+<span class="pc bpc" id="L827" title="4 of 8 branches missed.">    assert index &lt; stackBase &amp;&amp; oldAttr != null &amp;&amp; newAttr != null;</span>
+<span class="pc bpc" id="L828" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L829">      attrs[index] = ObjectList.replace(attrs[index], oldAttr, newAttr);    </span>
+    }
+<span class="fc" id="L831">  }</span>
+  
+  //--- various special attr accessors
+
+  /**
+   * helper to quickly find out if any of the locals slots holds
+   * an attribute of the provided type
+   * 
+   * @param attrType type of attribute to look for
+   * @param startIdx local index to start from
+   * @return index of local slot with attribute, -1 if none found
+   */
+  public int getLocalAttrIndex (Class&lt;?&gt; attrType, int startIdx){
+<span class="nc bnc" id="L844" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc bnc" id="L845" title="All 2 branches missed.">      for (int i=startIdx; i&lt;stackBase; i++){</span>
+<span class="nc" id="L846">        Object a = attrs[i];</span>
+<span class="nc bnc" id="L847" title="All 2 branches missed.">        if (ObjectList.containsType(a, attrType)){</span>
+<span class="nc" id="L848">          return i;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L853">    return -1;</span>
+  }
+  
+  // &lt;2do&gt; this is machine dependent since it uses the operand stack. Only here because there
+  // is no suitable place to factor this out between xStackFrame, xNativeStackFrame and xDirectCallStackFrame
+  // (another example of missing multiple inheritance)
+  // Needs to be overridden for Dalvik
+  
+  /**
+   * this retrieves the argument values from the caller, i.e. the previous stackframe 
+   * 
+   * references are returned as ElementInfos or null
+   * primitive values are returned as box objects (e.g. int -&gt; Integer)
+   */
+  public Object[] getArgumentValues (ThreadInfo ti){
+<span class="nc" id="L868">    StackFrame callerFrame = getCallerFrame();</span>
+<span class="nc bnc" id="L869" title="All 2 branches missed.">    if (callerFrame != null){</span>
+<span class="nc" id="L870">      return callerFrame.getCallArguments(ti);</span>
+    } else {
+      // &lt;2do&gt; what about main(String[] args) ?
+    }
+    
+<span class="nc" id="L875">    return null;</span>
+  }
+  
+  /**
+   * get the arguments of the executed call
+   * Note - this throws an exception if the StackFrame pc is not an InvokeInstruction
+   */
+  public Object[] getCallArguments (ThreadInfo ti){
+<span class="pc bpc" id="L883" title="2 of 4 branches missed.">    if (pc == null || !(pc instanceof InvokeInstruction)){</span>
+<span class="nc" id="L884">      throw new JPFException(&quot;stackframe not executing invoke: &quot; + pc);</span>
+    }
+    
+<span class="fc" id="L887">    InvokeInstruction call = (InvokeInstruction) pc;    </span>
+<span class="fc" id="L888">    MethodInfo callee = call.getInvokedMethod();</span>
+
+<span class="fc" id="L890">    byte[] argTypes = callee.getArgumentTypes();</span>
+
+<span class="fc" id="L892">    return getArgumentsValues(ti, argTypes);</span>
+  }
+
+  public Object[] getArgumentsValues (ThreadInfo ti, byte[] argTypes){
+<span class="fc" id="L896">    int n = argTypes.length;</span>
+<span class="fc" id="L897">    Object[] args = new Object[n];</span>
+
+<span class="fc bfc" id="L899" title="All 2 branches covered.">    for (int i=n-1, off=0; i&gt;=0; i--) {</span>
+<span class="pc bpc" id="L900" title="7 of 10 branches missed.">      switch (argTypes[i]) {</span>
+      case Types.T_ARRAY:
+      //case Types.T_OBJECT:
+      case Types.T_REFERENCE:
+<span class="fc" id="L904">        int ref = peek(off);</span>
+<span class="fc bfc" id="L905" title="All 2 branches covered.">        if (ref != MJIEnv.NULL) {</span>
+<span class="fc" id="L906">          args[i] = ti.getElementInfo(ref);</span>
+        } else {
+<span class="fc" id="L908">          args[i] = null;</span>
+        }
+<span class="fc" id="L910">        off++;</span>
+<span class="fc" id="L911">        break;</span>
+
+      case Types.T_LONG:
+<span class="nc" id="L914">        args[i] = new Long(peekLong(off));</span>
+<span class="nc" id="L915">        off+=2;</span>
+<span class="nc" id="L916">        break;</span>
+      case Types.T_DOUBLE:
+<span class="fc" id="L918">        args[i] = new Double(Types.longToDouble(peekLong(off)));</span>
+<span class="fc" id="L919">        off+=2;</span>
+<span class="fc" id="L920">        break;</span>
+
+      case Types.T_BOOLEAN:
+<span class="nc bnc" id="L923" title="All 2 branches missed.">        args[i] = new Boolean(peek(off) != 0);</span>
+<span class="nc" id="L924">        off++;</span>
+<span class="nc" id="L925">        break;</span>
+      case Types.T_BYTE:
+<span class="nc" id="L927">        args[i] = new Byte((byte)peek(off));</span>
+<span class="nc" id="L928">        off++;</span>
+<span class="nc" id="L929">        break;</span>
+      case Types.T_CHAR:
+<span class="nc" id="L931">        args[i] = new Character((char)peek(off));</span>
+<span class="nc" id="L932">        off++;</span>
+<span class="nc" id="L933">        break;</span>
+      case Types.T_SHORT:
+<span class="nc" id="L935">        args[i] = new Short((short)peek(off));</span>
+<span class="nc" id="L936">        off++;</span>
+<span class="nc" id="L937">        break;</span>
+      case Types.T_INT:
+<span class="fc" id="L939">        args[i] = new Integer(peek(off));</span>
+<span class="fc" id="L940">        off++;</span>
+<span class="fc" id="L941">        break;</span>
+      case Types.T_FLOAT:
+<span class="nc" id="L943">        args[i] = new Float(Types.intToFloat(peek(off)));</span>
+<span class="nc" id="L944">        off++;</span>
+<span class="nc" id="L945">        break;</span>
+      default:
+        // error, unknown argument type
+      }
+    }
+<span class="fc" id="L950">    return args;</span>
+  }
+  
+  /**
+   * return an array of all argument attrs, which in turn can be lists. If
+   * you have to retrieve values, use the ObjectList APIs
+   * 
+   * this is here (and not in ThreadInfo) because we might call it
+   * on callerSlots cached/cloned StackFrame (caller stack might be already
+   * modified, e.g. for callerSlots native method).
+   * to be used from listeners.
+   */
+  public Object[] getArgumentAttrs (MethodInfo miCallee) {
+<span class="fc bfc" id="L963" title="All 2 branches covered.">    if (attrs != null) {</span>
+<span class="fc" id="L964">      int nArgs = miCallee.getNumberOfArguments();</span>
+<span class="fc" id="L965">      byte[] at = miCallee.getArgumentTypes();</span>
+      Object[] a;
+
+<span class="pc bpc" id="L968" title="1 of 2 branches missed.">      if (!miCallee.isStatic()) {</span>
+<span class="fc" id="L969">        a = new Object[nArgs+1];</span>
+<span class="fc" id="L970">        a[0] = getOperandAttr(miCallee.getArgumentsSize()-1);</span>
+      } else {
+<span class="nc" id="L972">        a = new Object[nArgs];</span>
+      }
+
+<span class="fc bfc" id="L975" title="All 2 branches covered.">      for (int i=nArgs-1, off=0, j=a.length-1; i&gt;=0; i--, j--) {</span>
+<span class="fc" id="L976">        byte argType = at[i];</span>
+<span class="pc bpc" id="L977" title="1 of 4 branches missed.">        if (argType == Types.T_LONG || argType == Types.T_DOUBLE) {</span>
+<span class="fc" id="L978">          a[j] = getOperandAttr(off+1);</span>
+<span class="fc" id="L979">          off +=2;</span>
+        } else {
+<span class="fc" id="L981">          a[j] = getOperandAttr(off);</span>
+<span class="fc" id="L982">          off++;</span>
+        }
+      }
+
+<span class="fc" id="L986">      return a;</span>
+
+    } else {
+<span class="fc" id="L989">      return null;</span>
+    }
+  }
+
+  /**
+   * check if there is any argument attr of the provided type on the operand stack
+   * this is far more efficient than retrieving attribute values (we don't
+   * care for argument types)
+   */
+  public boolean hasArgumentAttr (MethodInfo miCallee, Class&lt;?&gt; attrType){
+<span class="nc bnc" id="L999" title="All 2 branches missed.">    if (attrs != null) {</span>
+<span class="nc" id="L1000">      int nArgSlots = miCallee.getArgumentsSize();</span>
+
+<span class="nc bnc" id="L1002" title="All 2 branches missed.">      for (int i=0; i&lt;nArgSlots; i++){</span>
+<span class="nc" id="L1003">        Object a = getOperandAttr(i);</span>
+<span class="nc bnc" id="L1004" title="All 2 branches missed.">        if (ObjectList.containsType(a, attrType)){</span>
+<span class="nc" id="L1005">          return true;</span>
+        }
+      }
+    }
+
+<span class="nc" id="L1010">    return false;</span>
+  }
+
+  public boolean hasArgumentObjectAttr (ThreadInfo ti, MethodInfo miCallee, Class&lt;?&gt; type){
+<span class="nc" id="L1014">    int nArgSlots = miCallee.getArgumentsSize();</span>
+<span class="nc bnc" id="L1015" title="All 2 branches missed.">    for (int i=0; i&lt;nArgSlots; i++){</span>
+<span class="nc bnc" id="L1016" title="All 2 branches missed.">      if (isOperandRef(i)){</span>
+<span class="nc" id="L1017">        int objRef = peek(i);</span>
+<span class="nc bnc" id="L1018" title="All 2 branches missed.">        if (objRef != MJIEnv.NULL){</span>
+<span class="nc" id="L1019">          ElementInfo ei = ti.getElementInfo(objRef);</span>
+<span class="nc bnc" id="L1020" title="All 2 branches missed.">          if (ei.getObjectAttr(type) != null) {</span>
+<span class="nc" id="L1021">            return true;</span>
+          }
+        }
+      }
+    }
+
+<span class="nc" id="L1027">    return false;</span>
+  }
+  
+  
+  // -- end attrs --
+  
+  public void setLocalReferenceVariable (int index, int ref){
+<span class="pc bpc" id="L1034" title="1 of 2 branches missed.">    if (slots[index] != MJIEnv.NULL){</span>
+<span class="nc" id="L1035">      VM.getVM().getSystemState().activateGC();</span>
+    }
+    
+<span class="fc" id="L1038">    slots[index] = ref;</span>
+<span class="fc" id="L1039">    isRef.set(index);</span>
+<span class="fc" id="L1040">  }</span>
+
+  public void setLocalVariable (int index, int v){
+    // Hmm, should we treat this an error?
+<span class="pc bpc" id="L1044" title="3 of 4 branches missed.">    if (isRef.get(index) &amp;&amp; slots[index] != MJIEnv.NULL){</span>
+<span class="nc" id="L1045">      VM.getVM().getSystemState().activateGC();      </span>
+    }
+    
+<span class="fc" id="L1048">    slots[index] = v;</span>
+<span class="fc" id="L1049">    isRef.clear(index);</span>
+<span class="fc" id="L1050">  }</span>
+  
+  public void setFloatLocalVariable (int index, float f){
+<span class="nc" id="L1053">    setLocalVariable( index, Float.floatToIntBits(f));</span>
+<span class="nc" id="L1054">  }</span>
+
+  public void setDoubleLocalVariable (int index, double f){
+<span class="nc" id="L1057">    setLongLocalVariable( index, Double.doubleToLongBits(f));</span>
+<span class="nc" id="L1058">  }</span>
+
+  
+  // &lt;2do&gt; replace with non-ref version
+  public void setLocalVariable (int index, int v, boolean ref) {
+    // &lt;2do&gt; activateGc should be replaced by local refChanged
+<span class="pc bpc" id="L1064" title="4 of 6 branches missed.">    boolean activateGc = ref || (isRef.get(index) &amp;&amp; (slots[index] != MJIEnv.NULL));</span>
+
+<span class="fc" id="L1066">    slots[index] = v;</span>
+<span class="fc" id="L1067">    isRef.set(index,ref);</span>
+
+<span class="pc bpc" id="L1069" title="1 of 2 branches missed.">    if (activateGc) {</span>
+<span class="nc" id="L1070">        VM.getVM().getSystemState().activateGC();</span>
+    }
+<span class="fc" id="L1072">  }</span>
+
+  public int getLocalVariable (int i) {
+<span class="fc" id="L1075">    return slots[i];</span>
+  }
+
+  public int getLocalVariable (String name) {
+<span class="nc" id="L1079">    int idx = getLocalVariableSlotIndex(name);</span>
+<span class="nc bnc" id="L1080" title="All 2 branches missed.">    if (idx &gt;= 0) {</span>
+<span class="nc" id="L1081">      return getLocalVariable(idx);</span>
+    } else {
+<span class="nc" id="L1083">      throw new JPFException(&quot;local variable not found: &quot; + name);</span>
+    }
+  }
+
+  public int getLocalVariableCount() {
+<span class="fc" id="L1088">    return stackBase;</span>
+  }
+
+  /**
+   * &lt;2do&gt; - this should return only LocalVarInfo for the current pc
+   */
+  public LocalVarInfo[] getLocalVars () {
+<span class="nc" id="L1095">    return mi.getLocalVars();</span>
+  }
+
+
+  public boolean isLocalVariableRef (int idx) {
+<span class="nc" id="L1100">    return isRef.get(idx);</span>
+  }
+
+  public String getLocalVariableType (String name) {
+<span class="nc" id="L1104">    LocalVarInfo lv = mi.getLocalVar(name, pc.getPosition()+pc.getLength());</span>
+<span class="nc bnc" id="L1105" title="All 2 branches missed.">    if (lv != null){</span>
+<span class="nc" id="L1106">      return lv.getType();</span>
+    }
+
+<span class="nc" id="L1109">    return null;</span>
+  }
+
+  public String getLocalVariableType (int idx){
+<span class="nc" id="L1113">    LocalVarInfo lv = mi.getLocalVar(idx, pc.getPosition()+pc.getLength());</span>
+<span class="nc bnc" id="L1114" title="All 2 branches missed.">    if (lv != null){</span>
+<span class="nc" id="L1115">      return lv.getType();</span>
+    }
+
+<span class="nc" id="L1118">    return null;</span>
+  }
+
+  public LocalVarInfo getLocalVarInfo (String name){
+<span class="nc" id="L1122">    return mi.getLocalVar(name, pc.getPosition()+pc.getLength());</span>
+  }
+
+  public LocalVarInfo getLocalVarInfo (int idx){
+<span class="nc" id="L1126">    return mi.getLocalVar(idx, pc.getPosition()+pc.getLength());</span>
+  }
+
+  public void setThis (int objRef){
+<span class="fc" id="L1130">    thisRef = objRef;</span>
+<span class="fc" id="L1131">  }</span>
+  
+  public FixedBitSet getReferenceMap(){
+<span class="fc" id="L1134">    return isRef;</span>
+  }
+
+  //--- direct slot access - provided for machine-independent clients
+  
+  public int[] getSlots () {
+<span class="fc" id="L1140">    return slots; // we should probably clone</span>
+  }
+  public Object[] getSlotAttrs(){
+<span class="nc" id="L1143">    return attrs;</span>
+  }
+  public Object getSlotAttr (int i){
+<span class="fc bfc" id="L1146" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1147">      return attrs[i];</span>
+    }
+<span class="fc" id="L1149">    return null;</span>
+  }
+  public &lt;T&gt; T getSlotAttr (int i, Class&lt;T&gt; attrType){
+<span class="fc bfc" id="L1152" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1153">      return ObjectList.getFirst( attrs[i], attrType);</span>
+    }
+<span class="fc" id="L1155">    return null;</span>
+  }  
+  public void setSlotAttr (int i, Object a){
+<span class="fc bfc" id="L1158" title="All 2 branches covered.">    if (attrs == null){</span>
+<span class="fc" id="L1159">      attrs = new Object[slots.length];</span>
+    }
+<span class="fc" id="L1161">    attrs[i] = a;</span>
+<span class="fc" id="L1162">  }</span>
+  public void addSlotAttr (int i, Object a){
+<span class="pc bpc" id="L1164" title="1 of 2 branches missed.">    if (a != null){</span>
+<span class="fc bfc" id="L1165" title="All 2 branches covered.">      if (attrs == null) {</span>
+<span class="fc" id="L1166">        attrs = new Object[slots.length];</span>
+      }
+
+<span class="fc" id="L1169">      attrs[i] = ObjectList.add(attrs[i], a);</span>
+    }        
+<span class="fc" id="L1171">  }  </span>
+  public void replaceSlotAttr (int i, Object oldAttr, Object newAttr){
+<span class="pc bpc" id="L1173" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="fc" id="L1174">      attrs[i] = ObjectList.replace(attrs[i], oldAttr, newAttr);</span>
+    }        
+<span class="fc" id="L1176">  }</span>
+  
+  
+  
+  public void visitReferenceSlots (ReferenceProcessor visitor){
+<span class="fc bfc" id="L1181" title="All 4 branches covered.">    for (int i=isRef.nextSetBit(0); i&gt;=0 &amp;&amp; i&lt;=top; i=isRef.nextSetBit(i+1)){</span>
+<span class="fc" id="L1182">      visitor.processReference(slots[i]);</span>
+    }
+<span class="fc" id="L1184">  }</span>
+
+  public void setLongLocalVariable (int index, long v) {
+    // WATCH OUT: apparently, slots can change type, so we have to
+    // reset the reference flag (happened in JavaSeq)
+
+<span class="nc" id="L1190">    slots[index] = Types.hiLong(v);</span>
+<span class="nc" id="L1191">    isRef.clear(index);</span>
+
+<span class="nc" id="L1193">    index++;</span>
+<span class="nc" id="L1194">    slots[index] = Types.loLong(v);</span>
+<span class="nc" id="L1195">    isRef.clear(index);</span>
+<span class="nc" id="L1196">  }</span>
+
+  public long getLongLocalVariable (int idx) {
+<span class="fc" id="L1199">    return Types.intsToLong(slots[idx + 1], slots[idx]);</span>
+  }
+  
+  public double getDoubleLocalVariable (int idx) {
+<span class="nc" id="L1203">    return Types.intsToDouble(slots[idx + 1], slots[idx]);</span>
+  }
+
+  public float getFloatLocalVariable (int idx) {
+<span class="nc" id="L1207">    int bits = slots[idx];</span>
+<span class="nc" id="L1208">    return Float.intBitsToFloat(bits);</span>
+  }
+
+  public double getDoubleLocalVariable (String name) {
+<span class="nc" id="L1212">    int idx = getLocalVariableSlotIndex(name);</span>
+<span class="nc bnc" id="L1213" title="All 2 branches missed.">    if (idx &gt;= 0) {</span>
+<span class="nc" id="L1214">      return getDoubleLocalVariable(idx);</span>
+    } else {
+<span class="nc" id="L1216">      throw new JPFException(&quot;long local variable not found: &quot; + name);</span>
+    }    
+  }
+  
+  public long getLongLocalVariable (String name) {
+<span class="nc" id="L1221">    int idx = getLocalVariableSlotIndex(name);</span>
+
+<span class="nc bnc" id="L1223" title="All 2 branches missed.">    if (idx &gt;= 0) {</span>
+<span class="nc" id="L1224">      return getLongLocalVariable(idx);</span>
+    } else {
+<span class="nc" id="L1226">      throw new JPFException(&quot;long local variable not found: &quot; + name);</span>
+    }
+  }
+
+  public MethodInfo getMethodInfo () {
+<span class="fc" id="L1231">    return mi;</span>
+  }
+
+  public String getMethodName () {
+<span class="nc" id="L1235">    return mi.getName();</span>
+  }
+
+  public boolean isOperandRef (int offset) {
+<span class="fc" id="L1239">    return isRef.get(top-offset);</span>
+  }
+
+  public boolean isOperandRef () {
+<span class="nc" id="L1243">    return isRef.get(top);</span>
+  }
+
+  //--- direct pc modification
+  // NOTE: this is dangerous, caller has to guarantee stack consistency
+  public void setPC (Instruction newpc) {
+<span class="fc" id="L1249">    pc = newpc;</span>
+<span class="fc" id="L1250">  }</span>
+
+  public Instruction getPC () {
+<span class="fc" id="L1253">    return pc;</span>
+  }
+
+  public void advancePC() {
+<span class="fc" id="L1257">    int i = pc.getInstructionIndex() + 1;</span>
+<span class="pc bpc" id="L1258" title="1 of 2 branches missed.">    if (i &lt; mi.getNumberOfInstructions()) {</span>
+<span class="fc" id="L1259">      pc = mi.getInstruction(i);</span>
+    } else {
+<span class="nc" id="L1261">      pc = null;</span>
+    }
+<span class="fc" id="L1263">  }</span>
+
+  public int getTopPos() {
+<span class="fc" id="L1266">    return top;</span>
+  }
+
+  ExceptionHandler getHandlerFor (ClassInfo ciException){
+<span class="fc" id="L1270">    return mi.getHandlerFor (ciException, pc);</span>
+  }
+  
+  public boolean isFirewall (){
+<span class="fc" id="L1274">    return mi.isFirewall();</span>
+  }
+  
+  public String getStackTraceInfo () {
+<span class="fc" id="L1278">    StringBuilder sb = new StringBuilder(128);</span>
+
+<span class="pc bpc" id="L1280" title="1 of 2 branches missed.">    if(!mi.isJPFInternal()) {</span>
+<span class="fc" id="L1281">    	sb.append(mi.getStackTraceName());</span>
+    	
+<span class="pc bpc" id="L1283" title="1 of 2 branches missed.">    	if(pc != null) {</span>
+<span class="fc" id="L1284">    		sb.append('(');</span>
+<span class="fc" id="L1285">            sb.append( pc.getFilePos());</span>
+<span class="fc" id="L1286">            sb.append(')');</span>
+    	}
+    } else {
+<span class="nc" id="L1289">    	sb.append(mi.getName());</span>
+    	
+<span class="nc bnc" id="L1291" title="All 2 branches missed.">    	if(mi.isMJI()) {</span>
+<span class="nc" id="L1292">    		sb.append(&quot;(Native)&quot;);</span>
+    	} else {
+<span class="nc" id="L1294">    		sb.append(&quot;(Synthetic)&quot;);</span>
+    	}
+    }
+
+<span class="fc" id="L1298">    return sb.toString();</span>
+  }
+
+  /**
+   * if this is an instance method, return the reference of the corresponding object
+   * (note this only has to be in slot 0 upon entry)
+   */
+  public int getThis () {
+<span class="fc" id="L1306">    return thisRef;</span>
+  }
+
+  // stack operations
+  public void clearOperandStack () {
+<span class="fc bfc" id="L1311" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc bfc" id="L1312" title="All 2 branches covered.">      for (int i=stackBase; i&lt;= top; i++){</span>
+<span class="fc" id="L1313">        attrs[i] = null;</span>
+      }
+    }
+    
+<span class="fc" id="L1317">    top = stackBase-1;</span>
+<span class="fc" id="L1318">  }</span>
+  
+  // this is callerSlots deep copy
+  @Override
+  public StackFrame clone () {
+    try {
+<span class="fc" id="L1324">      StackFrame sf = (StackFrame) super.clone();</span>
+
+<span class="fc" id="L1326">      sf.defreeze();</span>
+      
+<span class="fc" id="L1328">      sf.slots = slots.clone();</span>
+<span class="fc" id="L1329">      sf.isRef = isRef.clone();</span>
+
+<span class="fc bfc" id="L1331" title="All 2 branches covered.">      if (attrs != null){</span>
+<span class="fc" id="L1332">        sf.attrs = attrs.clone();</span>
+      }
+
+      // frameAttr is not cloned to allow search global use 
+
+<span class="fc" id="L1337">      return sf;</span>
+<span class="nc" id="L1338">    } catch (CloneNotSupportedException cnsx) {</span>
+<span class="nc" id="L1339">      throw new JPFException(cnsx);</span>
+    }
+  }
+  
+  //--- change management
+  
+  protected void checkIsModifiable() {
+<span class="nc bnc" id="L1346" title="All 2 branches missed.">    if ((attributes &amp; ATTR_IS_FROZEN) != 0) {</span>
+<span class="nc" id="L1347">      throw new JPFException(&quot;attempt to modify frozen stackframe: &quot; + this);</span>
+    }
+<span class="nc" id="L1349">  }</span>
+  
+  public void freeze() {
+<span class="fc" id="L1352">    attributes |= ATTR_IS_FROZEN;</span>
+<span class="fc" id="L1353">  }</span>
+
+  public void defreeze() {
+<span class="fc" id="L1356">    attributes &amp;= ~ATTR_IS_FROZEN;</span>
+<span class="fc" id="L1357">  }</span>
+  
+  public boolean isFrozen() {
+<span class="fc bfc" id="L1360" title="All 2 branches covered.">    return ((attributes &amp; ATTR_IS_FROZEN) != 0);    </span>
+  }
+  
+  
+  public void setReflection(){
+<span class="fc" id="L1365">    attributes |= ATTR_IS_REFLECTION;</span>
+<span class="fc" id="L1366">  }</span>
+  
+  public boolean isReflection(){
+<span class="fc bfc" id="L1369" title="All 2 branches covered.">    return ((attributes &amp; ATTR_IS_REFLECTION) != 0);</span>
+  }
+
+  // all the dupses don't have any GC side effect (everything is already
+  // on the stack), so skip the GC requests associated with push()/pop()
+
+  public void dup () {
+    // .. A     =&gt;
+    // .. A A
+    //    ^
+
+<span class="fc" id="L1380">    int t= top;</span>
+
+<span class="fc" id="L1382">    int td=t+1;</span>
+<span class="fc" id="L1383">    slots[td] = slots[t];</span>
+<span class="fc" id="L1384">    isRef.set(td, isRef.get(t));</span>
+
+<span class="fc bfc" id="L1386" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1387">      attrs[td] = attrs[t];</span>
+    }
+
+<span class="fc" id="L1390">    top = td;</span>
+<span class="fc" id="L1391">  }</span>
+
+  public void dup2 () {
+    // .. A B        =&gt;
+    // .. A B A B
+    //      ^
+
+    int ts, td;
+<span class="fc" id="L1399">    int t=top;</span>
+
+    // duplicate A
+<span class="fc" id="L1402">    td = t+1; ts = t-1;</span>
+<span class="fc" id="L1403">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1404">    isRef.set(td, isRef.get(ts));</span>
+<span class="pc bpc" id="L1405" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1406">      attrs[td] = attrs[ts];</span>
+    }
+
+    // duplicate B
+<span class="fc" id="L1410">    td++; ts=t;</span>
+<span class="fc" id="L1411">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1412">    isRef.set(td, isRef.get(ts));</span>
+<span class="pc bpc" id="L1413" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1414">      attrs[td] = attrs[ts];</span>
+    }
+
+<span class="fc" id="L1417">    top = td;</span>
+<span class="fc" id="L1418">  }</span>
+
+  public void dup2_x1 () {
+    // .. A B C       =&gt;
+    // .. B C A B C
+    //        ^
+
+    int b, c;
+    boolean bRef, cRef;
+<span class="fc" id="L1427">    Object bAnn = null, cAnn = null;</span>
+    int ts, td;
+<span class="fc" id="L1429">    int t = top;</span>
+
+    // duplicate C
+<span class="fc" id="L1432">    ts=t; td = t+2;                              // ts=top, td=top+2</span>
+<span class="fc" id="L1433">    slots[td] = c = slots[ts];</span>
+<span class="fc" id="L1434">    cRef = isRef.get(ts);</span>
+<span class="fc" id="L1435">    isRef.set(td,cRef);</span>
+<span class="fc bfc" id="L1436" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1437">      attrs[td] = cAnn = attrs[ts];</span>
+    }
+
+    // duplicate B
+<span class="fc" id="L1441">    ts--; td--;                                  // ts=top-1, td=top+1</span>
+<span class="fc" id="L1442">    slots[td] = b = slots[ts];</span>
+<span class="fc" id="L1443">    bRef = isRef.get(ts);</span>
+<span class="fc" id="L1444">    isRef.set(td, bRef);</span>
+<span class="fc bfc" id="L1445" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1446">      attrs[td] = bAnn = attrs[ts];</span>
+    }
+
+    // shuffle A
+<span class="fc" id="L1450">    ts=t-2; td=t;                                // ts=top-2, td=top</span>
+<span class="fc" id="L1451">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1452">    isRef.set(td, isRef.get(ts));</span>
+<span class="fc bfc" id="L1453" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1454">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle B
+<span class="fc" id="L1458">    td = ts;                                     // td=top-2</span>
+<span class="fc" id="L1459">    slots[td] = b;</span>
+<span class="fc" id="L1460">    isRef.set(td, bRef);</span>
+<span class="fc bfc" id="L1461" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1462">      attrs[td] = bAnn;</span>
+    }
+
+    // shuffle C
+<span class="fc" id="L1466">    td++;                                        // td=top-1</span>
+<span class="fc" id="L1467">    slots[td] = c;</span>
+<span class="fc" id="L1468">    isRef.set(td, cRef);</span>
+<span class="fc bfc" id="L1469" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1470">      attrs[td] = cAnn;</span>
+    }
+
+<span class="fc" id="L1473">    top += 2;</span>
+<span class="fc" id="L1474">  }</span>
+
+  public void dup2_x2 () {
+    // .. A B C D       =&gt;
+    // .. C D A B C D
+    //          ^
+
+    int c, d;
+    boolean cRef, dRef;
+<span class="fc" id="L1483">    Object cAnn = null, dAnn = null;</span>
+    int ts, td;
+<span class="fc" id="L1485">    int t = top;</span>
+
+    // duplicate C
+<span class="fc" id="L1488">    ts = t-1; td = t+1;                          // ts=top-1, td=top+1</span>
+<span class="fc" id="L1489">    slots[td] = c = slots[ts];</span>
+<span class="fc" id="L1490">    cRef = isRef.get(ts);</span>
+<span class="fc" id="L1491">    isRef.set(td, cRef);</span>
+<span class="fc bfc" id="L1492" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1493">      attrs[td] = cAnn = attrs[ts];</span>
+    }
+
+    // duplicate D
+<span class="fc" id="L1497">    ts=t; td++;                                  // ts=top, td=top+2</span>
+<span class="fc" id="L1498">    slots[td] = d = slots[ts];</span>
+<span class="fc" id="L1499">    dRef = isRef.get(ts);</span>
+<span class="fc" id="L1500">    isRef.set(td, dRef);</span>
+<span class="fc bfc" id="L1501" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1502">      attrs[td] = dAnn = attrs[ts];</span>
+    }
+
+    // shuffle A
+<span class="fc" id="L1506">    ts = t-3; td = t-1;                          // ts=top-3, td=top-1</span>
+<span class="fc" id="L1507">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1508">    isRef.set( td, isRef.get(ts));</span>
+<span class="fc bfc" id="L1509" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1510">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle B
+<span class="fc" id="L1514">    ts++; td = t;                                // ts = top-2</span>
+<span class="fc" id="L1515">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1516">    isRef.set( td, isRef.get(ts));</span>
+<span class="fc bfc" id="L1517" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1518">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle D
+<span class="fc" id="L1522">    td = ts;                                     // td = top-2</span>
+<span class="fc" id="L1523">    slots[td] = d;</span>
+<span class="fc" id="L1524">    isRef.set( td, dRef);</span>
+<span class="fc bfc" id="L1525" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1526">      attrs[td] = dAnn;</span>
+    }
+
+    // shuffle C
+<span class="fc" id="L1530">    td--;                                        // td = top-3</span>
+<span class="fc" id="L1531">    slots[td] = c;</span>
+<span class="fc" id="L1532">    isRef.set(td, cRef);</span>
+<span class="fc bfc" id="L1533" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L1534">      attrs[td] = cAnn;</span>
+    }
+
+<span class="fc" id="L1537">    top += 2;</span>
+<span class="fc" id="L1538">  }</span>
+
+  public void dup_x1 () {
+    // .. A B     =&gt;
+    // .. B A B
+    //      ^
+
+    int b;
+    boolean bRef;
+<span class="fc" id="L1547">    Object bAnn = null;</span>
+    int ts, td;
+<span class="fc" id="L1549">    int t = top;</span>
+
+    // duplicate B
+<span class="fc" id="L1552">    ts = t; td = t+1;</span>
+<span class="fc" id="L1553">    slots[td] = b = slots[ts];</span>
+<span class="fc" id="L1554">    bRef = isRef.get(ts);</span>
+<span class="fc" id="L1555">    isRef.set(td, bRef);</span>
+<span class="pc bpc" id="L1556" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1557">      attrs[td] = bAnn = attrs[ts];</span>
+    }
+
+    // shuffle A
+<span class="fc" id="L1561">    ts--; td = t;       // ts=top-1, td = top</span>
+<span class="fc" id="L1562">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1563">    isRef.set( td, isRef.get(ts));</span>
+<span class="pc bpc" id="L1564" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1565">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle B
+<span class="fc" id="L1569">    td = ts;            // td=top-1</span>
+<span class="fc" id="L1570">    slots[td] = b;</span>
+<span class="fc" id="L1571">    isRef.set( td, bRef);</span>
+<span class="pc bpc" id="L1572" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1573">      attrs[td] = bAnn;</span>
+    }
+
+<span class="fc" id="L1576">    top++;</span>
+<span class="fc" id="L1577">  }</span>
+
+  public void dup_x2 () {
+    // .. A B C     =&gt;
+    // .. C A B C
+    //        ^
+
+    int c;
+    boolean cRef;
+<span class="fc" id="L1586">    Object cAnn = null;</span>
+    int ts, td;
+<span class="fc" id="L1588">    int t = top;</span>
+
+    // duplicate C
+<span class="fc" id="L1591">    ts = t; td = t+1;</span>
+<span class="fc" id="L1592">    slots[td] = c = slots[ts];</span>
+<span class="fc" id="L1593">    cRef = isRef.get(ts);</span>
+<span class="fc" id="L1594">    isRef.set( td, cRef);</span>
+<span class="pc bpc" id="L1595" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1596">      attrs[td] = cAnn = attrs[ts];</span>
+    }
+
+    // shuffle B
+<span class="fc" id="L1600">    td = ts; ts--;               // td=top, ts=top-1</span>
+<span class="fc" id="L1601">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1602">    isRef.set( td, isRef.get(ts));</span>
+<span class="pc bpc" id="L1603" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1604">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle A
+<span class="fc" id="L1608">    td=ts; ts--;                 // td=top-1, ts=top-2</span>
+<span class="fc" id="L1609">    slots[td] = slots[ts];</span>
+<span class="fc" id="L1610">    isRef.set( td, isRef.get(ts));</span>
+<span class="pc bpc" id="L1611" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1612">      attrs[td] = attrs[ts];</span>
+    }
+
+    // shuffle C
+<span class="fc" id="L1616">    td = ts;                     // td = top-2</span>
+<span class="fc" id="L1617">    slots[td] = c;</span>
+<span class="fc" id="L1618">    isRef.set(td, cRef);</span>
+<span class="pc bpc" id="L1619" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1620">      attrs[td] = cAnn;</span>
+    }
+
+<span class="fc" id="L1623">    top++;</span>
+<span class="fc" id="L1624">  }</span>
+
+  /**
+   * to be used to check if a StackFrame got cloned due to its execution
+   * changing attributes and/or slots, but otherwise represents the same
+   * execution
+   */
+  public boolean originatesFrom (StackFrame other){
+<span class="fc bfc" id="L1632" title="All 2 branches covered.">    if (other == this){</span>
+<span class="fc" id="L1633">      return true;</span>
+    } else {
+<span class="pc bpc" id="L1635" title="2 of 6 branches missed.">      return ((mi == other.mi) &amp;&amp;</span>
+              (prev == other.prev) &amp;&amp;
+              (top == other.top) &amp;&amp;
+<span class="pc bpc" id="L1638" title="1 of 2 branches missed.">              (getClass() == other.getClass()));</span>
+    }
+  }
+  
+  
+  // &lt;2do&gt; pcm - I assume this compares snapshots, not types. Otherwise it
+  // would be pointless to equals stack/local values
+  @Override
+  public boolean equals (Object o) {
+<span class="nc bnc" id="L1647" title="All 2 branches missed.">    if (o instanceof StackFrame){</span>
+<span class="nc" id="L1648">      StackFrame other = (StackFrame)o;</span>
+
+<span class="nc bnc" id="L1650" title="All 2 branches missed.">      if (prev != other.prev) {</span>
+<span class="nc" id="L1651">        return false;</span>
+      }
+<span class="nc bnc" id="L1653" title="All 2 branches missed.">      if (pc != other.pc) {</span>
+<span class="nc" id="L1654">        return false;</span>
+      }
+<span class="nc bnc" id="L1656" title="All 2 branches missed.">      if (mi != other.mi) {</span>
+<span class="nc" id="L1657">        return false;</span>
+      }
+<span class="nc bnc" id="L1659" title="All 2 branches missed.">      if (top != other.top){</span>
+<span class="nc" id="L1660">        return false;</span>
+      }
+
+<span class="nc" id="L1663">      int[] otherSlots = other.slots;</span>
+<span class="nc" id="L1664">      FixedBitSet otherIsRef = other.isRef;</span>
+<span class="nc bnc" id="L1665" title="All 2 branches missed.">      for (int i=0; i&lt;=top; i++){</span>
+<span class="nc bnc" id="L1666" title="All 2 branches missed.">        if ( slots[i] != otherSlots[i]){</span>
+<span class="nc" id="L1667">          return false;</span>
+        }
+<span class="nc bnc" id="L1669" title="All 2 branches missed.">        if ( isRef.get(i) != otherIsRef.get(i)){</span>
+<span class="nc" id="L1670">          return false;</span>
+        }
+      }
+
+<span class="nc bnc" id="L1674" title="All 2 branches missed.">      if (!Misc.compare(top,attrs,other.attrs)){</span>
+<span class="nc" id="L1675">        return false;</span>
+      }
+      
+<span class="nc bnc" id="L1678" title="All 2 branches missed.">      if (!ObjectList.equals(frameAttr, other.frameAttr)){</span>
+<span class="nc" id="L1679">        return false;</span>
+      }
+
+<span class="nc" id="L1682">      return true;</span>
+    }
+
+<span class="nc" id="L1685">    return false;</span>
+  }
+  
+  public boolean hasAnyRef () {
+<span class="fc bfc" id="L1689" title="All 2 branches covered.">    return isRef.cardinality() &gt; 0;</span>
+  }
+  
+  public int mixinExecutionStateHash (int h) {
+<span class="nc" id="L1693">    h = OATHash.hashMixin( h, mi.getGlobalId());</span>
+    
+<span class="nc bnc" id="L1695" title="All 2 branches missed.">    if (pc != null){</span>
+<span class="nc" id="L1696">      h = OATHash.hashMixin(h, pc.getInstructionIndex());</span>
+      // we don't need the bytecode since there can only be one insn with this index in this method
+    }
+    
+<span class="nc bnc" id="L1700" title="All 2 branches missed.">    for (int i=0; i&lt;top; i++) {</span>
+<span class="nc" id="L1701">      h = OATHash.hashMixin(h, slots[i]);</span>
+    }
+   
+<span class="nc" id="L1704">    return h;</span>
+  }
+
+  protected void hash (HashData hd) {
+<span class="nc bnc" id="L1708" title="All 2 branches missed.">    if (prev != null){</span>
+<span class="nc" id="L1709">      hd.add(prev.objectHashCode());</span>
+    }
+<span class="nc" id="L1711">    hd.add(mi.getGlobalId());</span>
+
+<span class="nc bnc" id="L1713" title="All 2 branches missed.">    if (pc != null){</span>
+<span class="nc" id="L1714">      hd.add(pc.getInstructionIndex());</span>
+    }
+
+<span class="nc bnc" id="L1717" title="All 2 branches missed.">    for (int i=0; i&lt;=top; i++){</span>
+<span class="nc" id="L1718">      hd.add(slots[i]);</span>
+    }
+
+<span class="nc" id="L1721">    isRef.hash(hd);</span>
+
+    // it's debatable if we add the attributes to the state, but whatever it
+    // is, it should be kept consistent with the Fields.hash()
+<span class="nc bnc" id="L1725" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc bnc" id="L1726" title="All 2 branches missed.">      for (int i=0; i&lt;=top; i++){</span>
+<span class="nc" id="L1727">        ObjectList.hash( attrs[i], hd);</span>
+      }
+    }
+    
+<span class="nc bnc" id="L1731" title="All 2 branches missed.">    if (frameAttr != null){</span>
+<span class="nc" id="L1732">      ObjectList.hash(frameAttr, hd);</span>
+    }
+<span class="nc" id="L1734">  }</span>
+
+  // computes an hash code for the hash table
+  // the default hash code is different for each object
+  // we need to redifine it to make the hash table work
+  @Override
+  public int hashCode () {
+<span class="nc" id="L1741">    HashData hd = new HashData();</span>
+<span class="nc" id="L1742">    hash(hd);</span>
+<span class="nc" id="L1743">    return hd.getValue();</span>
+  }
+
+  /**
+   * mark all objects reachable from local or operand stack positions containing
+   * references. Done during phase1 marking of threads (the stack is one of the
+   * Thread gc roots)
+   */
+  public void markThreadRoots (Heap heap, int tid) {
+
+    /**
+    for (int i = isRef.nextSetBit(0); i&gt;=0 &amp;&amp; i&lt;=top; i = isRef.nextSetBit(i + 1)) {
+      int objref = slots[i];
+      if (objref != MJIEnv.NULL) {
+        heap.markThreadRoot(objref, tid);
+      }
+    }
+    **/
+<span class="fc bfc" id="L1761" title="All 2 branches covered.">    for (int i = 0; i &lt;= top; i++) {</span>
+<span class="fc bfc" id="L1762" title="All 2 branches covered.">      if (isRef.get(i)) {</span>
+<span class="fc" id="L1763">        int objref = slots[i];</span>
+<span class="fc bfc" id="L1764" title="All 2 branches covered.">        if (objref != MJIEnv.NULL) {</span>
+<span class="fc" id="L1765">          heap.markThreadRoot(objref, tid);</span>
+        }
+      }
+    }
+<span class="fc" id="L1769">  }</span>
+
+  //--- debugging methods
+
+  public void printOperands (PrintStream pw){
+<span class="fc" id="L1774">    pw.print(&quot;operands = [&quot;);</span>
+<span class="fc bfc" id="L1775" title="All 2 branches covered.">    for (int i=stackBase; i&lt;=top; i++){</span>
+<span class="fc bfc" id="L1776" title="All 2 branches covered.">      if (i&gt;0){</span>
+<span class="fc" id="L1777">        pw.print(',');</span>
+      }
+<span class="pc bpc" id="L1779" title="1 of 2 branches missed.">      if (isOperandRef(i)){</span>
+<span class="nc" id="L1780">        pw.print('^');</span>
+      }
+<span class="fc" id="L1782">      pw.print(slots[i]);</span>
+<span class="fc" id="L1783">      Object a = getOperandAttr(top-i);</span>
+<span class="fc bfc" id="L1784" title="All 2 branches covered.">      if (a != null){</span>
+<span class="fc" id="L1785">        pw.print(&quot; {&quot;);</span>
+<span class="fc" id="L1786">        pw.print(a);</span>
+<span class="fc" id="L1787">        pw.print('}');</span>
+      }
+    }
+<span class="fc" id="L1790">    pw.println(']');</span>
+<span class="fc" id="L1791">  }</span>
+
+  /**
+   * this includes locals and pc
+   */
+  public void printStackContent () {
+<span class="nc" id="L1797">    PrintStream pw = System.out;</span>
+
+<span class="nc" id="L1799">    pw.print( &quot;\tat &quot;);</span>
+<span class="nc" id="L1800">    pw.print( mi.getFullName());</span>
+
+<span class="nc bnc" id="L1802" title="All 2 branches missed.">    if (pc != null) {</span>
+<span class="nc" id="L1803">      pw.println( &quot;:&quot; + pc.getPosition());</span>
+    } else {
+<span class="nc" id="L1805">      pw.println();</span>
+    }
+
+<span class="nc" id="L1808">    pw.print(&quot;\t slots: &quot;);</span>
+<span class="nc bnc" id="L1809" title="All 2 branches missed.">    for (int i=0; i&lt;=top; i++){</span>
+<span class="nc bnc" id="L1810" title="All 2 branches missed.">      if (i == stackBase){</span>
+<span class="nc" id="L1811">        pw.println(&quot;\t      ----------- operand stack&quot;);</span>
+      }
+
+<span class="nc" id="L1814">      pw.print( &quot;\t    [&quot;);</span>
+<span class="nc" id="L1815">      pw.print(i);</span>
+<span class="nc" id="L1816">      pw.print(&quot;] &quot;);</span>
+<span class="nc bnc" id="L1817" title="All 2 branches missed.">      if (isRef.get(i)) {</span>
+<span class="nc" id="L1818">        pw.print( &quot;@&quot;);</span>
+      }
+<span class="nc" id="L1820">      pw.print( slots[i]);</span>
+
+<span class="nc bnc" id="L1822" title="All 2 branches missed.">      if (attrs != null){</span>
+<span class="nc" id="L1823">        pw.print(&quot;  attr=&quot;);</span>
+<span class="nc" id="L1824">        pw.print(attrs[i]);</span>
+      }
+
+<span class="nc" id="L1827">      pw.println();</span>
+    }
+<span class="nc" id="L1829">  }</span>
+
+  public void printStackTrace () {
+<span class="nc" id="L1832">    System.out.println( getStackTraceInfo());</span>
+<span class="nc" id="L1833">  }</span>
+
+  public void swap () {
+<span class="nc" id="L1836">    int t = top-1;</span>
+
+<span class="nc" id="L1838">    int v = slots[top];</span>
+<span class="nc" id="L1839">    boolean isTopRef = isRef.get(top);</span>
+
+<span class="nc" id="L1841">    slots[top] = slots[t];</span>
+<span class="nc" id="L1842">    isRef.set( top, isRef.get(t));</span>
+
+<span class="nc" id="L1844">    slots[t] = v;</span>
+<span class="nc" id="L1845">    isRef.set( t, isTopRef);</span>
+
+<span class="nc bnc" id="L1847" title="All 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1848">      Object a = attrs[top];</span>
+<span class="nc" id="L1849">      attrs[top] = attrs[t];</span>
+<span class="nc" id="L1850">      attrs[t] = a;</span>
+    }
+<span class="nc" id="L1852">  }</span>
+
+  protected void printContentsOn(PrintWriter pw){
+<span class="nc" id="L1855">    pw.print(&quot;isFrozen=&quot;);</span>
+<span class="nc" id="L1856">    pw.print(isFrozen());</span>
+<span class="nc" id="L1857">    pw.print(&quot;,mi=&quot;);</span>
+<span class="nc bnc" id="L1858" title="All 2 branches missed.">    pw.print( mi != null ? mi.getUniqueName() : &quot;null&quot;);</span>
+<span class="nc" id="L1859">    pw.print(&quot;,top=&quot;); pw.print(top);</span>
+<span class="nc" id="L1860">    pw.print(&quot;,slots=[&quot;);</span>
+
+<span class="nc bnc" id="L1862" title="All 2 branches missed.">    for (int i = 0; i &lt;= top; i++) {</span>
+<span class="nc bnc" id="L1863" title="All 2 branches missed.">      if (i == stackBase){</span>
+<span class="nc" id="L1864">        pw.print(&quot;||&quot;);</span>
+      } else {
+<span class="nc bnc" id="L1866" title="All 2 branches missed.">        if (i != 0) {</span>
+<span class="nc" id="L1867">          pw.print(',');</span>
+        }
+      }
+
+<span class="nc bnc" id="L1871" title="All 2 branches missed.">      if (isRef.get(i)){</span>
+<span class="nc" id="L1872">        pw.print('@');</span>
+      }
+<span class="nc" id="L1874">      pw.print(slots[i]);</span>
+
+<span class="nc bnc" id="L1876" title="All 4 branches missed.">      if (attrs != null &amp;&amp; attrs[i] != null) {</span>
+<span class="nc" id="L1877">        pw.print('(');</span>
+<span class="nc" id="L1878">        pw.print(attrs[i]);</span>
+<span class="nc" id="L1879">        pw.print(')');</span>
+      }
+    }
+
+<span class="nc" id="L1883">    pw.print(&quot;],pc=&quot;);</span>
+<span class="nc bnc" id="L1884" title="All 2 branches missed.">    pw.print(pc != null ? pc.getPosition() : &quot;null&quot;);</span>
+
+<span class="nc" id="L1886">    pw.print(']');</span>
+
+<span class="nc" id="L1888">  }</span>
+  
+  // &lt;2do&gt; there are way too many different print/debug methods here
+  public void printSlots (PrintStream ps){
+<span class="nc bnc" id="L1892" title="All 2 branches missed.">    for (int i = 0; i &lt;= top; i++) {</span>
+<span class="nc bnc" id="L1893" title="All 2 branches missed.">      if (i == stackBase){</span>
+<span class="nc" id="L1894">        ps.print(&quot;||&quot;);</span>
+      } else {
+<span class="nc bnc" id="L1896" title="All 2 branches missed.">        if (i != 0) {</span>
+<span class="nc" id="L1897">          ps.print(',');</span>
+        }
+      }
+
+<span class="nc bnc" id="L1901" title="All 2 branches missed.">      if (isRef.get(i)){</span>
+<span class="nc" id="L1902">        PrintUtils.printReference(ps, slots[i]);</span>
+      } else {
+<span class="nc" id="L1904">        ps.print(slots[i]);</span>
+      }
+    }    
+<span class="nc" id="L1907">  }</span>
+
+  public int getDepth(){
+<span class="nc" id="L1910">    int depth = 0;</span>
+    
+<span class="nc bnc" id="L1912" title="All 2 branches missed.">    for (StackFrame frame = prev; frame != null; frame = frame.prev){</span>
+<span class="nc" id="L1913">      depth++;</span>
+    }
+    
+<span class="nc" id="L1916">    return depth;</span>
+  }
+  
+  protected int objectHashCode() {
+<span class="nc" id="L1920">    return super.hashCode();</span>
+  }
+
+  @Override
+  public String toString () {
+<span class="nc" id="L1925">    StringWriter sw = new StringWriter(128);</span>
+<span class="nc" id="L1926">    PrintWriter pw = new PrintWriter(sw);</span>
+
+<span class="nc" id="L1928">    pw.print(getClass().getSimpleName() + '{');</span>
+    //pw.print(Integer.toHexString(objectHashCode()));
+<span class="nc" id="L1930">    printContentsOn(pw);</span>
+<span class="nc" id="L1931">    pw.print('}');</span>
+
+<span class="nc" id="L1933">    return sw.toString();</span>
+  }
+
+  public float peekFloat() {
+<span class="nc" id="L1937">    return Float.intBitsToFloat(slots[top]);</span>
+  }
+
+  public float peekFloat (int offset){
+<span class="nc" id="L1941">    return Float.intBitsToFloat(slots[top-offset]);    </span>
+  }
+  
+  public double peekDouble() {
+<span class="nc" id="L1945">    int i = top;</span>
+<span class="nc" id="L1946">    return Types.intsToDouble( slots[i], slots[i-1]);</span>
+  }
+  
+  public double peekDouble (int offset){
+<span class="nc" id="L1950">    int i = top-offset;</span>
+<span class="nc" id="L1951">    return Types.intsToDouble( slots[i], slots[i-1]);</span>
+  }
+  
+  public long peekLong () {
+<span class="fc" id="L1955">    int i = top;</span>
+<span class="fc" id="L1956">    return Types.intsToLong( slots[i], slots[i-1]);</span>
+  }
+
+  public long peekLong (int offset) {
+<span class="fc" id="L1960">    int i = top - offset;</span>
+<span class="fc" id="L1961">    return Types.intsToLong( slots[i], slots[i-1]);</span>
+  }
+
+  public void pushLong (long v) {
+<span class="fc" id="L1965">    push( (int) (v&gt;&gt;32));</span>
+<span class="fc" id="L1966">    push( (int) v);</span>
+<span class="fc" id="L1967">  }</span>
+
+  public void pushDouble (double v) {
+<span class="fc" id="L1970">    long l = Double.doubleToLongBits(v);</span>
+<span class="fc" id="L1971">    push( (int) (l&gt;&gt;32));</span>
+<span class="fc" id="L1972">    push( (int) l);</span>
+<span class="fc" id="L1973">  }</span>
+
+  public void pushFloat (float v) {
+<span class="fc" id="L1976">    push( Float.floatToIntBits(v));</span>
+<span class="fc" id="L1977">  }</span>
+  
+  public double popDouble () {
+<span class="fc" id="L1980">    int i = top;</span>
+
+<span class="fc" id="L1982">    int lo = slots[i--];</span>
+<span class="fc" id="L1983">    int hi = slots[i--];</span>
+
+<span class="pc bpc" id="L1985" title="1 of 2 branches missed.">    if (attrs != null){</span>
+<span class="nc" id="L1986">      i = top;</span>
+<span class="nc" id="L1987">      attrs[i--] = null; // not really required</span>
+<span class="nc" id="L1988">      attrs[i--] = null; // that's where the attribute should be</span>
+    }
+
+<span class="fc" id="L1991">    top = i;</span>
+<span class="fc" id="L1992">    return Types.intsToDouble(lo, hi);</span>
+  }
+
+  public long popLong () {
+<span class="fc" id="L1996">    int i = top;</span>
+
+<span class="fc" id="L1998">    int lo = slots[i--];</span>
+<span class="fc" id="L1999">    int hi = slots[i--];</span>
+
+<span class="fc bfc" id="L2001" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L2002">      i = top;</span>
+<span class="fc" id="L2003">      attrs[i--] = null; // not really required</span>
+<span class="fc" id="L2004">      attrs[i--] = null; // that's where the attribute should be</span>
+    }
+
+<span class="fc" id="L2007">    top = i;</span>
+<span class="fc" id="L2008">    return Types.intsToLong(lo, hi);</span>
+  }
+
+  public int peek () {
+<span class="fc" id="L2012">    return slots[top];</span>
+  }
+
+  public int peek (int offset) {
+<span class="fc" id="L2016">    return slots[top-offset];</span>
+  }
+
+  public void removeArguments (MethodInfo mi) {
+<span class="fc" id="L2020">    int i = mi.getArgumentsSize();</span>
+
+<span class="fc bfc" id="L2022" title="All 2 branches covered.">    if (i != 0) {</span>
+<span class="fc" id="L2023">      pop(i);</span>
+    }
+<span class="fc" id="L2025">  }</span>
+  
+  public void pop (int n) {
+    //assert (top &gt;= stackBase) : &quot;stack empty&quot;;
+
+<span class="fc" id="L2030">    int t = top - n;</span>
+
+    // &lt;2do&gt; get rid of this !
+<span class="fc bfc" id="L2033" title="All 2 branches covered.">    for (int i=top; i&gt;t; i--) {</span>
+<span class="fc bfc" id="L2034" title="All 4 branches covered.">      if (isRef.get(i) &amp;&amp; (slots[i] != MJIEnv.NULL)) {</span>
+<span class="fc" id="L2035">        VM.getVM().getSystemState().activateGC();</span>
+<span class="fc" id="L2036">        break;</span>
+      }
+    }
+
+<span class="fc bfc" id="L2040" title="All 2 branches covered.">    if (attrs != null){  // just to avoid memory leaks</span>
+<span class="fc bfc" id="L2041" title="All 2 branches covered.">      for (int i=top; i&gt;t; i--){</span>
+<span class="fc" id="L2042">        attrs[i] = null;</span>
+      }
+    }
+
+<span class="fc" id="L2046">    top = t;</span>
+<span class="fc" id="L2047">  }</span>
+
+  public float popFloat() {    
+<span class="fc" id="L2050">    int v = slots[top];</span>
+
+<span class="pc bpc" id="L2052" title="1 of 2 branches missed.">    if (attrs != null){ // just to avoid memory leaks</span>
+<span class="nc" id="L2053">      attrs[top] = null;</span>
+    }
+
+<span class="fc" id="L2056">    top--;</span>
+
+<span class="fc" id="L2058">    return Float.intBitsToFloat(v);</span>
+  }
+  
+  public int pop () {
+    //assert (top &gt;= stackBase) : &quot;stack empty&quot;;
+    
+<span class="fc" id="L2064">    int v = slots[top];</span>
+
+    // &lt;2do&gt; get rid of this
+<span class="fc bfc" id="L2067" title="All 2 branches covered.">    if (isRef.get(top)) {</span>
+<span class="fc bfc" id="L2068" title="All 2 branches covered.">      if (v != MJIEnv.NULL) {</span>
+<span class="fc" id="L2069">        VM.getVM().getSystemState().activateGC();</span>
+      }
+    }
+
+<span class="fc bfc" id="L2073" title="All 2 branches covered.">    if (attrs != null){ // just to avoid memory leaks</span>
+<span class="fc" id="L2074">      attrs[top] = null;</span>
+    }
+
+<span class="fc" id="L2077">    top--;</span>
+
+    // note that we don't reset the operands or oRefs values, so that
+    // we can still access them after the insn doing the pop got executed
+    // (e.g. useful for listeners)
+
+<span class="fc" id="L2083">    return v;</span>
+  }
+  
+  public void pushLocal (int index) {
+<span class="fc" id="L2087">    top++;</span>
+<span class="fc" id="L2088">    slots[top] = slots[index];</span>
+<span class="fc" id="L2089">    isRef.set(top, isRef.get(index));</span>
+
+<span class="fc bfc" id="L2091" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L2092">      attrs[top] = attrs[index];</span>
+    }
+<span class="fc" id="L2094">  }</span>
+
+  public void pushLongLocal (int index){
+<span class="fc" id="L2097">    int t = top;</span>
+
+<span class="fc" id="L2099">    slots[++t] = slots[index];</span>
+<span class="fc" id="L2100">    isRef.clear(t);</span>
+<span class="fc" id="L2101">    slots[++t] = slots[index+1];</span>
+<span class="fc" id="L2102">    isRef.clear(t);</span>
+
+<span class="fc bfc" id="L2104" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L2105">      attrs[t-1] = attrs[index];</span>
+<span class="fc" id="L2106">      attrs[t] = null;</span>
+    }
+
+<span class="fc" id="L2109">    top = t;</span>
+<span class="fc" id="L2110">  }</span>
+
+  public void storeOperand (int index){
+<span class="fc" id="L2113">    slots[index] = slots[top];</span>
+<span class="fc" id="L2114">    isRef.set( index, isRef.get(top));</span>
+
+<span class="fc bfc" id="L2116" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L2117">      attrs[index] = attrs[top];</span>
+<span class="fc" id="L2118">      attrs[top] = null;</span>
+    }
+
+<span class="fc" id="L2121">    top--;</span>
+<span class="fc" id="L2122">  }</span>
+
+  public void storeLongOperand (int index){
+<span class="fc" id="L2125">    int t = top-1;</span>
+<span class="fc" id="L2126">    int i = index;</span>
+
+<span class="fc" id="L2128">    slots[i] = slots[t];</span>
+<span class="fc" id="L2129">    isRef.clear(i);</span>
+
+<span class="fc" id="L2131">    slots[++i] = slots[t+1];</span>
+<span class="fc" id="L2132">    isRef.clear(i);</span>
+
+<span class="fc bfc" id="L2134" title="All 2 branches covered.">    if (attrs != null){</span>
+<span class="fc" id="L2135">      attrs[index] = attrs[t]; // its in the lower word</span>
+<span class="fc" id="L2136">      attrs[i] = null;</span>
+
+<span class="fc" id="L2138">      attrs[t] = null;</span>
+<span class="fc" id="L2139">      attrs[t+1] = null;</span>
+    }
+
+<span class="fc" id="L2142">    top -=2;</span>
+<span class="fc" id="L2143">  }</span>
+
+  public void push (int v){
+<span class="fc" id="L2146">    top++;</span>
+<span class="fc" id="L2147">    slots[top] = v;</span>
+<span class="fc" id="L2148">    isRef.clear(top);</span>
+
+    //if (attrs != null){ // done on pop
+    //  attrs[top] = null;
+    //}
+<span class="fc" id="L2153">  }</span>
+
+  public void pushRef (int ref){
+<span class="fc" id="L2156">    top++;</span>
+<span class="fc" id="L2157">    slots[top] = ref;</span>
+<span class="fc" id="L2158">    isRef.set(top);</span>
+
+    //if (attrs != null){ // done on pop
+    //  attrs[top] = null;
+    //}
+
+<span class="fc bfc" id="L2164" title="All 2 branches covered.">    if (ref != MJIEnv.NULL) {</span>
+<span class="fc" id="L2165">      VM.getVM().getSystemState().activateGC();</span>
+    }
+<span class="fc" id="L2167">  }</span>
+
+  public void push (int v, boolean ref) {
+<span class="fc" id="L2170">    top++;</span>
+<span class="fc" id="L2171">    slots[top] = v;</span>
+<span class="fc" id="L2172">    isRef.set(top, ref);</span>
+
+    //if (attrs != null){ // done on pop
+    //  attrs[top] = null;
+    //}
+
+<span class="fc bfc" id="L2178" title="All 4 branches covered.">    if (ref &amp;&amp; (v != MJIEnv.NULL)) {</span>
+<span class="fc" id="L2179">      VM.getVM().getSystemState().activateGC();</span>
+    }
+<span class="fc" id="L2181">  }</span>
+
+  // return the value of callerSlots variable given the name
+  public int getLocalVariableSlotIndex (String name) {
+<span class="fc" id="L2185">    LocalVarInfo lv = mi.getLocalVar(name, pc.getPosition());</span>
+
+<span class="pc bpc" id="L2187" title="1 of 2 branches missed.">    if (lv != null){</span>
+<span class="fc" id="L2188">      return lv.getSlotIndex();</span>
+    }
+
+<span class="nc" id="L2191">    return -1;</span>
+  }
+
+  //--- abstract argument &amp; return passing that can have VM dependend implementation
+  
+  public void setReferenceResult (int ref, Object attr){
+<span class="nc" id="L2197">    pushRef(ref);</span>
+<span class="nc bnc" id="L2198" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L2199">      setOperandAttr(attr);</span>
+    }
+<span class="nc" id="L2201">  }</span>
+  
+  public void setResult (int r, Object attr){
+<span class="nc" id="L2204">    push(r);</span>
+<span class="nc bnc" id="L2205" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L2206">      setOperandAttr(attr);</span>
+    }    
+<span class="nc" id="L2208">  }</span>
+  
+  public void setResult (long r, Object attr){
+<span class="nc" id="L2211">    pushLong(r);</span>
+<span class="nc bnc" id="L2212" title="All 2 branches missed.">    if (attr != null){</span>
+<span class="nc" id="L2213">      setLongOperandAttr(attr);</span>
+    }    
+<span class="nc" id="L2215">  }</span>
+  
+  public int getResult(){
+<span class="nc" id="L2218">    return pop();</span>
+  }
+  
+  public long getLongResult(){
+<span class="nc" id="L2222">    return popLong();</span>
+  }
+
+  public int getReferenceResult () {
+<span class="nc" id="L2226">    return pop();</span>
+  }
+  
+  public Object getResultAttr () {
+<span class="nc" id="L2230">    return getOperandAttr();</span>
+  }
+
+  public Object getLongResultAttr () {
+<span class="nc" id="L2234">    return getLongOperandAttr();</span>
+  }
+  
+  public float getFloatResult(){
+<span class="fc" id="L2238">    return Float.intBitsToFloat(getResult());    </span>
+  }
+  public double getDoubleResult(){
+<span class="fc" id="L2241">    return Double.longBitsToDouble(getLongResult());</span>
+  }
+  public Object getFloatResultAttr(){
+<span class="nc" id="L2244">    return getResultAttr();</span>
+  }
+  public Object getDoubleResultAttr(){
+<span class="nc" id="L2247">    return getLongResultAttr();</span>
+  }
+
+  
+  //--- VM independent exception handler setup
+  
+  public void setExceptionReference (int exRef){
+<span class="nc" id="L2254">    pushRef(exRef);</span>
+<span class="nc" id="L2255">  }</span>
+  
+  public int getExceptionReference (){
+<span class="nc" id="L2258">    return pop();</span>
+  }
+  
+  public void setExceptionReferenceAttribute (Object attr){
+<span class="nc" id="L2262">    setOperandAttr(attr);</span>
+<span class="nc" id="L2263">  }</span>
+  
+  public Object getExceptionReferenceAttribute (){
+<span class="nc" id="L2266">    return getOperandAttr();</span>
+  }
+  
+  
+  // those set the local vars that are normally initialized from call arguments
+  public abstract void setArgumentLocal (int idx, int value, Object attr);
+  public abstract void setLongArgumentLocal (int idx, long value, Object attr);
+  public abstract void setReferenceArgumentLocal (int idx, int ref, Object attr);
+
+  public void setFloatArgumentLocal (int idx, float value, Object attr){
+<span class="nc" id="L2276">    setArgumentLocal( idx, Float.floatToIntBits(value), attr);</span>
+<span class="nc" id="L2277">  }</span>
+  public void setDoubleArgumentLocal (int idx, double value, Object attr){
+<span class="nc" id="L2279">    setLongArgumentLocal( idx, Double.doubleToLongBits(value), attr);</span>
+<span class="nc" id="L2280">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreciseAllocationContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">jpf-core</a> &gt; <a href="index.source.html" class="el_package">gov.nasa.jpf.vm</a> &gt; <span class="el_source">PreciseAllocationContext.java</span></div><h1>PreciseAllocationContext.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (C) 2014, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ * All rights reserved.
+ *
+ * The Java Pathfinder core (jpf-core) platform is licensed under the
+ * Apache License, Version 2.0 (the &quot;License&quot;); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
+ * 
+ *        http://www.apache.org/licenses/LICENSE-2.0. 
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and 
+ * limitations under the License.
+ */
+package gov.nasa.jpf.vm;
+
+import gov.nasa.jpf.Config;
+import gov.nasa.jpf.util.OATHash;
+
+import java.util.Arrays;
+import java.util.HashMap;
+
+/**
+ * class that captures execution context consisting of executing thread and 
+ * pc's of ti's current StackFrames
+ * 
+ * note that we pool (i.e. use static factory methods) in order to avoid
+ * creating a myriad of redundant objects
+ */
+public class PreciseAllocationContext implements AllocationContext {
+
+  // this is search global, i.e. does not have to be backtracked, but has to be
+  // re-initialized between JPF runs (everything that changes hashCode)
+<span class="nc" id="L37">  static private HashMap&lt;PreciseAllocationContext,PreciseAllocationContext&gt; ccCache = new HashMap&lt;PreciseAllocationContext,PreciseAllocationContext&gt;();</span>
+  
+  protected ThreadInfo ti;
+  protected Instruction[] cc;
+  protected int hashCode; // computed once during construction (from LookupContext)
+  
+  // a mutable ExecutionContext that is only used internally to avoid creating superfluous new instances to
+  // find out if we already have seen a similar one
+  private static class LookupContext extends PreciseAllocationContext {
+    int stackDepth;
+    
+<span class="nc" id="L48">    LookupContext (){</span>
+<span class="nc" id="L49">      cc = new Instruction[64];</span>
+<span class="nc" id="L50">    }</span>
+    
+    @Override
+	public int getStackDepth(){
+<span class="nc" id="L54">      return stackDepth;</span>
+    }    
+  }
+  
+<span class="nc" id="L58">  private static LookupContext lookupContext = new LookupContext();</span>
+  
+  static boolean init (Config config) {
+<span class="nc" id="L61">    ccCache = new HashMap&lt;PreciseAllocationContext,PreciseAllocationContext&gt;();</span>
+<span class="nc" id="L62">    return true;</span>
+  }
+  
+  public static synchronized PreciseAllocationContext getSUTExecutionContext (ClassInfo ci, ThreadInfo ti){
+<span class="nc" id="L66">    int stackDepth = ti.getStackDepth();</span>
+<span class="nc" id="L67">    int h = 0;</span>
+    
+<span class="nc" id="L69">    lookupContext.ti = ti;</span>
+<span class="nc" id="L70">    lookupContext.stackDepth = stackDepth;</span>
+    
+<span class="nc" id="L72">    h = OATHash.hashMixin(h, ti.getId());</span>
+    
+<span class="nc" id="L74">    Instruction[] cc = lookupContext.cc;</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">    if (cc.length &lt; stackDepth){</span>
+<span class="nc" id="L76">      cc = new Instruction[stackDepth];</span>
+<span class="nc" id="L77">      lookupContext.cc = cc;</span>
+    }
+
+<span class="nc" id="L80">    int i=0;</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">    for (StackFrame f = ti.getTopFrame(); f != null; f = f.getPrevious()){</span>
+<span class="nc" id="L82">      Instruction insn = f.getPC();</span>
+<span class="nc" id="L83">      cc[i++] = insn;</span>
+<span class="nc" id="L84">      h = OATHash.hashMixin(h, insn.hashCode());</span>
+    }
+<span class="nc" id="L86">    h = OATHash.hashFinalize(h);</span>
+<span class="nc" id="L87">    lookupContext.hashCode = h;</span>
+    
+<span class="nc" id="L89">    PreciseAllocationContext ec = ccCache.get(lookupContext);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">    if (ec == null){</span>
+<span class="nc" id="L91">      ec = new PreciseAllocationContext(ti, Arrays.copyOf(cc, stackDepth), h);</span>
+<span class="nc" id="L92">      ccCache.put(ec, ec);</span>
+    }
+    
+<span class="nc" id="L95">    return ec;</span>
+  }
+  
+<span class="nc" id="L98">  protected PreciseAllocationContext(){</span>
+    // for subclassing
+<span class="nc" id="L100">  }</span>
+  
+  // we only construct this from a LookupContext, which already has all the data
+<span class="nc" id="L103">  private PreciseAllocationContext (ThreadInfo ti, Instruction[] cc, int hashCode){</span>
+<span class="nc" id="L104">    this.ti = ti;</span>
+<span class="nc" id="L105">    this.cc = cc;</span>
+<span class="nc" id="L106">    this.hashCode = hashCode;</span>
+<span class="nc" id="L107">  }</span>
+  
+  @Override
+  public int hashCode(){
+<span class="nc" id="L111">    return hashCode;</span>
+  }
+  
+  public int getStackDepth(){
+<span class="nc" id="L115">    return cc.length;</span>
+  }
+    
+  @Override
+  public boolean equals (Object o){
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (o == this){ // identity shortcut</span>
+<span class="nc" id="L121">      return true;</span>
+      
+    } else {
+<span class="nc bnc" id="L124" title="All 2 branches missed.">      if (o instanceof PreciseAllocationContext){</span>
+<span class="nc" id="L125">        PreciseAllocationContext other = (PreciseAllocationContext)o;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (hashCode == other.hashCode){ // we might get here because of bin masking</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">          if (ti.getId() == other.ti.getId()) {</span>
+<span class="nc" id="L128">            Instruction[] ccOther = other.cc;</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">            if (cc.length == other.getStackDepth()) {</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">              for (int i = 0; i &lt; cc.length; i++) {</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">                if (cc[i] != ccOther[i]) {</span>
+<span class="nc" id="L132">                  return false;</span>
+                }
+              }
+<span class="nc" id="L135">              return true;</span>
+            }
+          }
+        }
+      }
+      
+<span class="nc" id="L141">      return false;</span>
+    }
+  }
+  
+  // for automatic field init allocations
+  @Override
+  public AllocationContext extend (ClassInfo ci, int anchor) {
+<span class="nc" id="L148">    return new PreciseAllocationContext(ti, cc, OATHash.hash(hashCode, ci.hashCode()));</span>
+  }
+  
+  /** mostly for debugging purposes */
+  @Override
+  public String toString(){
+<span class="nc" id="L154">    StringBuffer sb = new StringBuffer();</span>
+<span class="nc" id="L155">    sb.append(&quot;(tid=&quot;);</span>
+<span class="nc" id="L156">    sb.append(ti.getId());</span>
+<span class="nc" id="L157">    sb.append(&quot;,stack=[&quot;);</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">    for (int i=0; i&lt;cc.length; i++){</span>
+<span class="nc bnc" id="L159" title="All 2 branches missed.">      if (i&gt;0){</span>
+<span class="nc" id="L160">        sb.append(',');</span>
+      }
+<span class="nc" id="L162">      sb.append(cc[i]);</span>
+    }
+<span class="nc" id="L164">    sb.append(&quot;])&quot;);</span>
+<span class="nc" id="L165">    return sb.toString();</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.3.201901230119</span></div></body></html>
